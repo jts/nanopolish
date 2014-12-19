@@ -8,3 +8,8 @@ easy_install h5py==2.3.0
 easy_install poretools
 easy_install matplotlib
 easy_install BioPython
+
+# Manually instal yahmm, then:
+
+pip install networkx
+pip install scipy

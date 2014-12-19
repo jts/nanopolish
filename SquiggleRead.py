@@ -5,6 +5,7 @@ from PoreModel import *
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import collections  as mc
+from yahmm import *
 
 # A SquiggleRead represents a nanopore read
 # as a list of events and a mapping between
@@ -109,7 +110,6 @@ class SquiggleRead:
         for (tidx, cidx) in self.event_map['2D'][k_idx]:
             te = None
             ce = None
-            print tidx, cidx
             if tidx >= 0:
                 te = self.events['t'][tidx]
             if cidx >= 0:
@@ -167,36 +167,254 @@ class SquiggleRead:
     def flip_k_idx_strand(self, k_idx, k):
         return len(self.fh.get_fastas('2D')[0].seq) - k_idx - k
 
+    def create_trace(self, m, n):
+        out = list()
+        for i in xrange(0, m):
+            out.append(list(('-') * n))
+        return out
+
+    def hmm_align(self, seq):
+
+        # Clamp lengths to 100!
+        n_rows = 9 # number of events
+        n_cols = 11 # number of k-mers
+
+        strand = 't'
+
+        # Break the sequence into k-mers for easy access
+        kmers = []
+        for i in xrange(0, len(seq)):
+            kmers.append(seq[i:i+5])
+
+        # Easy access to the event stream
+        events = self.events[strand]
+
+        M = np.zeros(shape=(n_rows, n_cols))
+        E = np.zeros(shape=(n_rows, n_cols))
+        K = np.zeros(shape=(n_rows, n_cols))
+        
+        trace_M = self.create_trace(n_rows, n_cols)
+        trace_E = self.create_trace(n_rows, n_cols)
+        trace_K = self.create_trace(n_rows, n_cols)
+
+        # Initialize
+        M[0,0] = log(1.0)
+        E[0,0] = log(0.0)
+        K[0,0] = log(0.0)
+
+        for row in xrange(1, n_rows):
+            M[row, 0] = log(0.0)
+            E[row, 0] = log(0.0)
+            K[row, 0] = log(0.0)
+            trace_E[row][0] = 'E'
+            trace_M[row][0] = 'E'
+
+        for col in xrange(1, n_cols):
+            M[0, col] = log(0.0)
+            E[0, col] = log(0.0)
+            K[0, col] = log(0.0)
+            trace_K[0][col] = 'K'
+            trace_M[0][col] = 'K'
+        
+        print M
+        print E
+        print K
+
+        # Fixed transition probabilities
+        t_mm = log(0.9)
+        t_me = log(0.05)
+        t_mk = log(0.05)
+
+        t_ee = t_kk = log(0.1)
+        t_em = t_km = log(0.9)
+        t_ek = t_ke = log(0.0)
+
+        for col in xrange(1, n_cols):
+            for row in xrange(1, n_rows):
+
+                i = row - 1
+                j = col - 1
+
+                # Probability of matching k_i to e_j
+                # This is P(k_i, e_j | M) = P(e_j | k_i, M) P(k_i | M)
+                if i >= 0 and j >= 0:
+                    l_p_m = self.pm[strand].get_log_probability(events[i].mean, kmers[j])
+                else:
+                    l_p_m = log(0.0)
+
+                # Probability of an inserted event
+                # We model this by calculating the probability that e_j
+                # is actually the signal for the previous k-mer, k_(i-1)
+                l_p_e = self.pm[strand].get_log_probability(events[i].mean, kmers[j])
+
+                # Probability of an inserted k-mer
+                # THIS IS HACKY AND WRONG
+                l_p_k = log(0.1)
+
+                # Calculate M[i, j]
+                d_m = t_mm + M[row - 1, col - 1]
+                d_e = t_em + E[row - 1, col - 1]
+                d_k = t_km + K[row - 1, col - 1]
+                max_diag = max(d_m, d_e, d_k)
+
+                # Fill trace matrix
+                if max_diag == d_m:
+                    trace_M[row][col] = 'M'
+                elif max_diag == d_e:
+                    trace_M[row][col] = 'E'
+                elif max_diag == d_k:
+                    trace_M[row][col] = 'K'
+
+                M[row, col] = l_p_m + max_diag
+
+                print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f]' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k)
+
+                # Calculate E[i, j]
+                u_m = t_me + M[row - 1, col]
+                u_e = t_ee + E[row - 1, col]
+                max_up = max(u_m, u_e)
+
+                if max_up == u_m:
+                    trace_E[row][col] = 'M'
+                elif max_up == u_e:
+                    trace_E[row][col] = 'E'
+
+                E[row, col] = l_p_e + max_up
+
+                print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f]' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e)
+
+                # Calculate K[i, j]
+                l_m = t_mk + M[row, col - 1]
+                l_k = t_kk + K[row, col - 1]
+
+                max_left = max(l_m, l_k)
+
+                if max_left == l_m:
+                    trace_K[row][col] = 'M'
+                elif max_left == l_k:
+                    trace_K[row][col] = 'K'
+
+                K[row,col] = l_p_k + max_left
+                print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f]' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_k)
+
+        # Reconstruct path
+        i = n_rows - 1
+        j = n_cols - 1
+        curr_state = 'M'
+
+        out = []
+        while i > 0 and j > 0:
+            print 'backtrack', i, j, curr_state
+            out.append(curr_state)
+            
+            if curr_state == 'E':
+                curr_state = trace_E[i][j]
+                i -= 1
+
+            elif curr_state == 'K':
+                curr_state = trace_K[i][j]
+                j -= 1
+
+            elif curr_state == 'M':
+                curr_state = trace_M[i][j]
+                i -= 1
+                j -= 1
+            
+            else:
+                print 'Invalid backtrack:', i, j
+                print 'State to here:', ''.join(reversed(out))
+                sys.exit(1)
+        print ''.join(reversed(out))
+
+# 
+def example_hmm():
+    # Textbook example
+        
+    # Initialize the model object
+    model = Model( name="Rainy-Sunny" )
+
+    # Initialize the two hidden states, with an appropriate discrete distribution
+    rainy = State( DiscreteDistribution({ 'walk': 0.1, 'shop': 0.4, 'clean': 0.5 }), name='Rainy' )
+    sunny = State( DiscreteDistribution({ 'walk': 0.6, 'shop': 0.3, 'clean': 0.1 }), name='Sunny' )
+
+    # Add the states to the model
+    model.add_state( rainy )
+    model.add_state( sunny )
+
+    # Now add the two transitions from the start of the model to the hidden states
+    model.add_transition( model.start, rainy, 0.6 )
+    model.add_transition( model.start, sunny, 0.4 )
+
+    # Add the transitions from the hidden states to each other
+    model.add_transition( rainy, rainy, 0.7 )
+    model.add_transition( rainy, sunny, 0.3 )
+    model.add_transition( sunny, rainy, 0.4 )
+    model.add_transition( sunny, sunny, 0.6 )
+
+    # Finalize the model structure
+    model.bake( verbose=True )
+
+    # observations
+    day1 = [ 'walk', 'walk', 'shop', 'walk', 'clean', 'walk' ]
+
+    print model.log_probability( day1 )
+
+    print model.viterbi( day1 )
+    print model.sample(10)
+
 if __name__ == '__main__':
+
     test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"
     #test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5"
     sr = SquiggleRead(test_file)
-
-    temp_seq = sr.get_template_sequence()
-    comp_seq = sr.get_complement_sequence()
-    twod_seq = sr.get_2D_sequence()
     
-    temp_idx = 124
-    t_events = sr.get_events_for_kmer(temp_idx, 't')
+    #con0 = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTTGCCATATGACGTCAAACCGCGGTTTGAATGAAACGCTGGATGATATTTGCGAAGCATTGAGTATTATGT"
+    #sr.hmm_align(con0)
 
-    # translate comp idx onto other strand
-    comp_idx = 179
-    comp_idx = len(comp_seq) - comp_idx - 5
-    c_events = sr.get_events_for_kmer(comp_idx, 'c')
-    
-    twod_idx = 140
-    twod_kmer = twod_seq[twod_idx:twod_idx+5]
-    td_events = sr.get_events_for_2D_kmer(twod_idx)
-    td_out = []
-    for (x,y) in td_events:
-        if x != None:
-            x = (x.mean, x.model_state)
-        if y != None:
-            y = (y.mean, y.model_state, revcomp(y.model_state))
-        td_out.append((x,y))
-    
-    print temp_idx, comp_idx, twod_idx
+    test_seq = sr.get_2D_sequence()[0:14]
+    sr.hmm_align(test_seq)
 
-    print temp_seq[temp_idx:temp_idx+5], sr.get_expected_level(twod_kmer, 't'), [(x.mean, x.model_state, x.model_level) for x in t_events]
-    print revcomp(comp_seq[comp_idx:comp_idx+5]), sr.get_expected_level(revcomp(twod_kmer), 'c'), [(x.mean, revcomp(x.model_state), x.model_level) for x in c_events]
-    print twod_seq[twod_idx:twod_idx+5], td_out
+    #sys.exit(1)
+
+    for i in xrange(0, 10):
+        kmer = sr.get_2D_kmer_at(i, 5)
+        td_events = sr.get_events_for_2D_kmer(i)
+
+        td_out = []
+        for (x,y) in td_events:
+            if x != None:
+                x = (x.mean, x.model_state, sr.get_expected_level(kmer, 't'))
+            td_out.append(x)
+
+        print i, kmer, td_out
+
+
+    if False:
+        temp_seq = sr.get_template_sequence()
+        comp_seq = sr.get_complement_sequence()
+        twod_seq = sr.get_2D_sequence()
+        
+        temp_idx = 124
+        t_events = sr.get_events_for_kmer(temp_idx, 't')
+
+        # translate comp idx onto other strand
+        comp_idx = 179
+        comp_idx = len(comp_seq) - comp_idx - 5
+        c_events = sr.get_events_for_kmer(comp_idx, 'c')
+        
+        twod_idx = 140
+        twod_kmer = twod_seq[twod_idx:twod_idx+5]
+        td_events = sr.get_events_for_2D_kmer(twod_idx)
+        td_out = []
+        for (x,y) in td_events:
+            if x != None:
+                x = (x.mean, x.model_state)
+            if y != None:
+                y = (y.mean, y.model_state, revcomp(y.model_state))
+            td_out.append((x,y))
+        
+        print temp_idx, comp_idx, twod_idx
+
+        print temp_seq[temp_idx:temp_idx+5], sr.get_expected_level(twod_kmer, 't'), [(x.mean, x.model_state, x.model_level) for x in t_events]
+        print revcomp(comp_seq[comp_idx:comp_idx+5]), sr.get_expected_level(revcomp(twod_kmer), 'c'), [(x.mean, revcomp(x.model_state), x.model_level) for x in c_events]
+        print twod_seq[twod_idx:twod_idx+5], td_out

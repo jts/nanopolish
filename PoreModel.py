@@ -1,6 +1,7 @@
 from SquiggleRead import *
 from NanoUtils import *
 from pylab import *
+from scipy.stats import norm
 
 class PoreModel:
     def __init__(self, fh, strand):
@@ -24,6 +25,25 @@ class PoreModel:
     def get_expected(self, kmer):
         # TODO: account for drift?
         return (self.model[self.rank_map[kmer]][2] + self.shift) * self.scale
+    
+    def get_sd(self, kmer):
+        # TODO: account for drift?
+        return self.model[self.rank_map[kmer]][3] * self.scale
+
+    # Get the probability of seeing signal s, given the k-mer in the pore
+    def get_probability(self, s, kmer):
+        m = self.get_expected(kmer)
+        sd = self.get_sd(kmer)
+        p = norm.pdf(s, m, sd)
+        print 'k: %s s: %.1f m: %.1f p: %.3f' % (kmer, m, s, p)
+        return p
+    
+    # Get the probability of seeing signal s, given the k-mer in the pore
+    def get_log_probability(self, s, kmer):
+        m = self.get_expected(kmer)
+        sd = self.get_sd(kmer)
+        lp = norm.logpdf(s, m, sd)
+        return lp
     
     #
     def plot(self, filename):
