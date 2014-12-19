@@ -5,7 +5,6 @@ from PoreModel import *
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import collections  as mc
-from yahmm import *
 
 # A SquiggleRead represents a nanopore read
 # as a list of events and a mapping between
@@ -220,14 +219,31 @@ class SquiggleRead:
         print E
         print K
 
-        # Fixed transition probabilities
-        t_mm = log(0.9)
-        t_me = log(0.05)
-        t_mk = log(0.05)
+        # Pseudocounts to calculate normalized transition probability
+        t_mat = np.matrix([[90., 5., 5.], [90., 10., 5.], [90, 5., 10.]])
 
-        t_ee = t_kk = log(0.1)
-        t_em = t_km = log(0.9)
-        t_ek = t_ke = log(0.0)
+        t_m_sum = sum(t_mat[0, :])
+        t_e_sum = sum(t_mat[1, :])
+        t_k_sum = sum(t_mat[2, :])
+
+        print t_mat[0,0], t_m_sum, 
+
+        # Fixed transition probabilities
+        t_mm = log( t_mat[0,0] / t_m_sum )
+        t_me = log( t_mat[0,1] / t_m_sum )
+        t_mk = log( t_mat[0,2] / t_m_sum )
+        
+        t_em = log( t_mat[1,0] / t_e_sum )
+        t_ee = log( t_mat[1,1] / t_e_sum )
+        t_ek = log( t_mat[1,2] / t_e_sum )
+        
+        t_km = log( t_mat[2,0] / t_k_sum )
+        t_ke = log( t_mat[2,1] / t_k_sum )
+        t_kk = log( t_mat[2,2] / t_k_sum )
+        
+        print 'Match transitions:', exp(t_mm), exp(t_me), exp(t_mk)
+        print 'EIns  transitions:', exp(t_em), exp(t_ee), exp(t_ek)
+        print 'KIns  transitions:', exp(t_km), exp(t_ke), exp(t_kk)
 
         for col in xrange(1, n_cols):
             for row in xrange(1, n_rows):
@@ -246,6 +262,7 @@ class SquiggleRead:
                 # We model this by calculating the probability that e_j
                 # is actually the signal for the previous k-mer, k_(i-1)
                 l_p_e = self.pm[strand].get_log_probability(events[i].mean, kmers[j])
+                #l_p_e = log(0.1)
 
                 # Probability of an inserted k-mer
                 # THIS IS HACKY AND WRONG
@@ -267,63 +284,76 @@ class SquiggleRead:
 
                 M[row, col] = l_p_m + max_diag
 
-                print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f]' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k)
+                print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f] %c' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k, trace_M[row][col])
 
                 # Calculate E[i, j]
                 u_m = t_me + M[row - 1, col]
                 u_e = t_ee + E[row - 1, col]
-                max_up = max(u_m, u_e)
+                u_k = t_ke + K[row - 1, col]
+
+                max_up = max(u_m, u_e, u_k)
 
                 if max_up == u_m:
                     trace_E[row][col] = 'M'
                 elif max_up == u_e:
                     trace_E[row][col] = 'E'
+                elif max_up == u_k:
+                    trace_E[row][col] = 'K'
 
                 E[row, col] = l_p_e + max_up
 
-                print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f]' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e)
+                print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f %.1f] %c' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e, u_k, trace_E[row][col])
 
                 # Calculate K[i, j]
                 l_m = t_mk + M[row, col - 1]
                 l_k = t_kk + K[row, col - 1]
-
-                max_left = max(l_m, l_k)
+                l_e = t_ek + E[row, col - 1]
+                max_left = max(l_m, l_k, l_e)
 
                 if max_left == l_m:
                     trace_K[row][col] = 'M'
                 elif max_left == l_k:
                     trace_K[row][col] = 'K'
+                elif max_left == l_e:
+                    trace_K[row][col] = 'E'
 
                 K[row,col] = l_p_k + max_left
-                print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f]' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_k)
+                print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f %.1f] %c' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_e, l_k, trace_K[row][col])
 
         # Reconstruct path
         i = n_rows - 1
         j = n_cols - 1
-        curr_state = 'M'
 
         out = []
+        curr_m = 'M'
         while i > 0 and j > 0:
-            print 'backtrack', i, j, curr_state
-            out.append(curr_state)
-            
-            if curr_state == 'E':
-                curr_state = trace_E[i][j]
-                i -= 1
 
-            elif curr_state == 'K':
-                curr_state = trace_K[i][j]
-                j -= 1
+            print 'Current matrix', curr_m
+            print 'Current cell', i, j
 
-            elif curr_state == 'M':
-                curr_state = trace_M[i][j]
+            # What matrix was used to arrive at this cell of the current matrix?
+            if curr_m == 'M':
+                prev_m = trace_M[i][j]
+            if curr_m == 'K':
+                prev_m = trace_K[i][j]
+            if curr_m == 'E':
+                prev_m = trace_E[i][j]
+
+            # Move to the previous cell based on the current matrix
+            if curr_m == 'M':
                 i -= 1
                 j -= 1
-            
-            else:
-                print 'Invalid backtrack:', i, j
-                print 'State to here:', ''.join(reversed(out))
-                sys.exit(1)
+                out.append('M')
+
+            if curr_m == 'K':
+                j -= 1
+                out.append('K')
+
+            if curr_m == 'E':
+                i -= 1
+                out.append('E')
+
+            curr_m = prev_m    
         print ''.join(reversed(out))
 
 # 
