@@ -174,16 +174,15 @@ class SquiggleRead:
 
     def hmm_align(self, seq):
 
-        # Clamp lengths to 100!
-        n_rows = 9 # number of events
-        n_cols = 11 # number of k-mers
-
         strand = 't'
 
         # Break the sequence into k-mers for easy access
         kmers = []
-        for i in xrange(0, len(seq)):
+        for i in xrange(0, len(seq) - 4):
             kmers.append(seq[i:i+5])
+        
+        n_rows = 46 # number of events
+        n_cols = len(kmers) + 1 # number of k-mers + 1
 
         # Easy access to the event stream
         events = self.events[strand]
@@ -197,36 +196,41 @@ class SquiggleRead:
         trace_K = self.create_trace(n_rows, n_cols)
 
         # Initialize
+        NEG_INF = float("-inf")
         M[0,0] = log(1.0)
-        E[0,0] = log(0.0)
-        K[0,0] = log(0.0)
+        E[0,0] = NEG_INF
+        K[0,0] = NEG_INF
 
         for row in xrange(1, n_rows):
-            M[row, 0] = log(0.0)
-            E[row, 0] = log(0.0)
-            K[row, 0] = log(0.0)
+            M[row, 0] = NEG_INF
+            E[row, 0] = NEG_INF
+            K[row, 0] = NEG_INF
             trace_E[row][0] = 'E'
             trace_M[row][0] = 'E'
 
         for col in xrange(1, n_cols):
-            M[0, col] = log(0.0)
-            E[0, col] = log(0.0)
-            K[0, col] = log(0.0)
+            M[0, col] = NEG_INF
+            E[0, col] = NEG_INF
+            K[0, col] = NEG_INF
             trace_K[0][col] = 'K'
             trace_M[0][col] = 'K'
         
-        print M
-        print E
-        print K
+        fM = M.copy()
+        fE = E.copy()
+        fK = K.copy()
+        Debug = False
 
         # Pseudocounts to calculate normalized transition probability
+
+        # Guessed counts
         t_mat = np.matrix([[90., 5., 5.], [90., 10., 5.], [90, 5., 10.]])
 
-        t_m_sum = sum(t_mat[0, :])
-        t_e_sum = sum(t_mat[1, :])
-        t_k_sum = sum(t_mat[2, :])
-
-        print t_mat[0,0], t_m_sum, 
+        # Tweaked Pseudocounts from a small training set
+        #t_mat = np.matrix([[7950, 1478, 2032,], [1198, 1105,  280], [2311,  100, 418]])
+        
+        t_m_sum = float(sum(t_mat[0, :]))
+        t_e_sum = float(sum(t_mat[1, :]))
+        t_k_sum = float(sum(t_mat[2, :]))
 
         # Fixed transition probabilities
         t_mm = log( t_mat[0,0] / t_m_sum )
@@ -256,13 +260,12 @@ class SquiggleRead:
                 if i >= 0 and j >= 0:
                     l_p_m = self.pm[strand].get_log_probability(events[i].mean, kmers[j])
                 else:
-                    l_p_m = log(0.0)
+                    l_p_m = NEG_INF
 
                 # Probability of an inserted event
                 # We model this by calculating the probability that e_j
                 # is actually the signal for the previous k-mer, k_(i-1)
                 l_p_e = self.pm[strand].get_log_probability(events[i].mean, kmers[j])
-                #l_p_e = log(0.1)
 
                 # Probability of an inserted k-mer
                 # THIS IS HACKY AND WRONG
@@ -283,8 +286,7 @@ class SquiggleRead:
                     trace_M[row][col] = 'K'
 
                 M[row, col] = l_p_m + max_diag
-
-                print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f] %c' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k, trace_M[row][col])
+                fM[row, col] = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k))
 
                 # Calculate E[i, j]
                 u_m = t_me + M[row - 1, col]
@@ -301,8 +303,7 @@ class SquiggleRead:
                     trace_E[row][col] = 'K'
 
                 E[row, col] = l_p_e + max_up
-
-                print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f %.1f] %c' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e, u_k, trace_E[row][col])
+                fE[row, col] = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k))
 
                 # Calculate K[i, j]
                 l_m = t_mk + M[row, col - 1]
@@ -318,18 +319,26 @@ class SquiggleRead:
                     trace_K[row][col] = 'E'
 
                 K[row,col] = l_p_k + max_left
-                print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f %.1f] %c' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_e, l_k, trace_K[row][col])
+                fK[row, col] = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k))
+                
+                if Debug:               
+                    print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f] %c' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k, trace_M[row][col])
+                    print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f %.1f] %c' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e, u_k, trace_E[row][col])
+                    print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f %.1f] %c' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_e, l_k, trace_K[row][col])
 
         # Reconstruct path
         i = n_rows - 1
         j = n_cols - 1
+        print "FINAL: ", M[i,j]
+        print "FWD FINAL: ", log(exp(fM[i,j]) + exp(fK[i,j]) + exp(fE[i,j]))
 
         out = []
         curr_m = 'M'
         while i > 0 and j > 0:
 
-            print 'Current matrix', curr_m
-            print 'Current cell', i, j
+            if Debug:
+                print 'Current matrix', curr_m
+                print 'Current cell', i, j
 
             # What matrix was used to arrive at this cell of the current matrix?
             if curr_m == 'M':
@@ -353,70 +362,119 @@ class SquiggleRead:
                 i -= 1
                 out.append('E')
 
-            curr_m = prev_m    
+            curr_m = prev_m
+
         print ''.join(reversed(out))
 
-# 
-def example_hmm():
-    # Textbook example
+        # Print match in long form
+        i = 0
+        j = 0
+        for s in reversed(out):
+            out = [s]
+            out.append(kmers[j])
+            out.append(events[i].mean)
+            out.append(sr.pm[strand].get_expected(kmers[j]))
+
+            if s == 'M':
+                i += 1
+                j += 1
+            if s == 'K':
+                j += 1
+            if s == 'E':
+                i += 1
+            
+            print '\t'.join([str(x) for x in out])
+
+def learn_model_parameters():
+
+    fofn_fh = open('training.fofn')
+    files = []
+    for f in fofn_fh:
+        files.append(f.rstrip())
+
+    out = list()
+    
+    for f in files[0:10]:
+        sys.stderr.write("loading " + f + "\n")
+        sr = SquiggleRead(f)
+        stop = len(sr.get_2D_sequence()) - 5
         
-    # Initialize the model object
-    model = Model( name="Rainy-Sunny" )
+        
+        e_last = None
+        for i in xrange(0, stop):
+            kmer = sr.get_2D_kmer_at(i, 5)
+       
+            td_events = sr.get_events_for_2D_kmer(i)
 
-    # Initialize the two hidden states, with an appropriate discrete distribution
-    rainy = State( DiscreteDistribution({ 'walk': 0.1, 'shop': 0.4, 'clean': 0.5 }), name='Rainy' )
-    sunny = State( DiscreteDistribution({ 'walk': 0.6, 'shop': 0.3, 'clean': 0.1 }), name='Sunny' )
+            # subset to template events
+            t_events = []
+            for (x,y) in td_events:
+                if x != None:
+                    t_events.append(x)
 
-    # Add the states to the model
-    model.add_state( rainy )
-    model.add_state( sunny )
+            k_level = sr.get_expected_level(kmer, 't')
 
-    # Now add the two transitions from the start of the model to the hidden states
-    model.add_transition( model.start, rainy, 0.6 )
-    model.add_transition( model.start, sunny, 0.4 )
+            if len(t_events) == 0:
 
-    # Add the transitions from the hidden states to each other
-    model.add_transition( rainy, rainy, 0.7 )
-    model.add_transition( rainy, sunny, 0.3 )
-    model.add_transition( sunny, rainy, 0.4 )
-    model.add_transition( sunny, sunny, 0.6 )
+                mean = 0
+                diff = 0
+                length = 0
 
-    # Finalize the model structure
-    model.bake( verbose=True )
+                if e_last != None:
+                    mean = e_last.mean
+                    length = e_last.length
+                
+                diff = mean - k_level
+                out.append(('K', kmer, mean, k_level, diff, length))
 
-    # observations
-    day1 = [ 'walk', 'walk', 'shop', 'walk', 'clean', 'walk' ]
+            else:
 
-    print model.log_probability( day1 )
+                # First event is match
+                e0 = t_events[0]
+                out.append(('M', kmer, e0.mean, k_level, e0.mean - k_level,  e0.length))
 
-    print model.viterbi( day1 )
-    print model.sample(10)
+                # Subsequent events are insertions
+                for ei in t_events[1:]:
+                    out.append(('E', kmer, ei.mean, k_level, ei.mean - k_level,  ei.length))
+                
+                #
+                e_last = t_events[-1]
+
+    for o in out:
+        print "\t".join([str(x) for x in o])   
+
+    # Transitions
+    index_map = { 'M':0, 'E':1, 'K':2 }
+    t_mat = np.matrix([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    for i in xrange(0, len(out) - 1):
+        s0 = out[i][0]
+        s1 = out[i+1][0]
+
+        i0 = index_map[s0]
+        i1 = index_map[s1]
+        t_mat[i0,i1] += 1
+    print t_mat
 
 if __name__ == '__main__':
 
+    #learn_model_parameters()
+    #sys.exit(1)
+
     test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"
-    #test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5"
     sr = SquiggleRead(test_file)
     
     #con0 = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTTGCCATATGACGTCAAACCGCGGTTTGAATGAAACGCTGGATGATATTTGCGAAGCATTGAGTATTATGT"
-    #sr.hmm_align(con0)
 
-    test_seq = sr.get_2D_sequence()[0:14]
-    sr.hmm_align(test_seq)
+    #Query  AACAGTCCACTATTGGATGGTAAAGCC--AACAGAAATTTTTACGCAAGCTAAAGCCCGG
+    #       ||||||||||||||||||||||||||   |||||||||||||||||||||||||||||||
+    #Sbjct  AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGG
+    #con0 =  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGG"
+    con0 = "AACAGTCGACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
+    truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
+    sr.hmm_align(con0)
+    sr.hmm_align(truth)
 
-    #sys.exit(1)
-
-    for i in xrange(0, 10):
-        kmer = sr.get_2D_kmer_at(i, 5)
-        td_events = sr.get_events_for_2D_kmer(i)
-
-        td_out = []
-        for (x,y) in td_events:
-            if x != None:
-                x = (x.mean, x.model_state, sr.get_expected_level(kmer, 't'))
-            td_out.append(x)
-
-        print i, kmer, td_out
+    sys.exit(1)
 
 
     if False:
