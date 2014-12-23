@@ -6,6 +6,13 @@ from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import collections  as mc
 
+# Select a few fields from a pair of events for pretty printing
+def shortevent(x):
+    if x != None:
+        return (x.mean, x.model_state)
+    else:
+        return x
+
 # A SquiggleRead represents a nanopore read
 # as a list of events and a mapping between
 # template and complement events
@@ -171,6 +178,105 @@ class SquiggleRead:
         for i in xrange(0, m):
             out.append(list(('-') * n))
         return out
+
+    def initialize_matrices(self, n_cols, n_rows):
+        M = np.zeros(shape=(n_rows, n_cols))
+        E = np.zeros(shape=(n_rows, n_cols))
+        K = np.zeros(shape=(n_rows, n_cols))
+        
+        # Initialize
+        NEG_INF = float("-inf")
+        M[0,0] = log(1.0)
+        E[0,0] = NEG_INF
+        K[0,0] = NEG_INF
+
+        for row in xrange(1, n_rows):
+            M[row, 0] = NEG_INF
+            E[row, 0] = NEG_INF
+            K[row, 0] = NEG_INF
+
+        for col in xrange(1, n_cols):
+            M[0, col] = NEG_INF
+            E[0, col] = NEG_INF
+            K[0, col] = NEG_INF
+
+        return (M, E, K)
+
+    def initialize_transitions(self):
+        
+        # Guessed counts
+        t = np.matrix([[90., 5., 5.], [85., 10., 5.], [85, 5., 10.]])
+        return t / t.sum(axis=1)
+
+    def hmm2(self, kmers, strand, e_offset, stride):
+        
+        events = self.events[strand]
+
+        n_cols = len(kmers) + 1
+        n_rows = 2 * len(kmers) + 2
+        (M, E, K) = self.initialize_matrices(n_cols, n_rows)
+        t = self.initialize_transitions()
+
+        Debug = True
+        for col in xrange(1, n_cols):
+            for row in xrange(1, n_rows):
+
+                i = row - 1
+                j = col - 1
+                
+                event_idx = stride * i + e_offset
+                event_i = events[event_idx]
+
+                # Probability of matching k_i to e_j
+                # This is P(k_i, e_j | M) = P(e_j | k_i, M) P(k_i | M)
+                if i >= 0 and j >= 0:
+                    l_p_m = self.pm[strand].get_log_probability(event_i.mean, kmers[j])
+                else:
+                    l_p_m = NEG_INF
+
+                # Probability of an inserted event
+                # We model this by calculating the probability that e_j
+                # is actually the signal for the previous k-mer, k_(i-1)
+                l_p_e = self.pm[strand].get_log_probability(event_i.mean, kmers[j])
+                l_p_k = log(0.1)
+
+                # Calculate M[i, j]
+                d_m = t[0, 0] + M[row - 1, col - 1]
+                d_e = t[1, 0] + E[row - 1, col - 1]
+                d_k = t[2, 0] + K[row - 1, col - 1]
+                M[row, col] = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k))
+
+                # Calculate E[i, j]
+                u_m = t[0, 1] + M[row - 1, col]
+                u_e = t[1, 1] + E[row - 1, col]
+                u_k = t[2, 1] + K[row - 1, col]
+                E[row, col] = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k))
+
+                # Calculate K[i, j]
+                l_m = t[0, 2] + M[row, col - 1]
+                l_e = t[1, 2] + E[row, col - 1]
+                l_k = t[2, 2] + K[row, col - 1]
+                K[row, col] = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k))
+                
+                if Debug:
+                    print 'M[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_m: %.2f [%.1f %.1f %.1f]' % (row, col, M[row,col], kmers[j], events[i].mean, l_p_m, d_m, d_e, d_k)
+                    print 'E[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_x: %.2f [%.1f %.1f %.1f]' % (row, col, E[row,col], kmers[j], events[i].mean, l_p_e, u_m, u_e, u_k)
+                    print 'K[%d, %d] = %.1f -- k_i: %s e_j: %.1f p_y: %.2f [%.1f %1.f %.1f]' % (row, col, K[row,col], kmers[j], events[j].mean, l_p_k, l_m, l_e, l_k)
+        
+        # Return the row with the max score
+        max_s = float("-inf")
+        max_row = -1
+        j = n_cols - 1
+
+        # require a few events to be incorporated in the alignment 
+        for i in xrange(2, n_rows):
+            s = log(exp(M[i,j]) + exp(K[i,j]) + exp(E[i,j]))
+            if s > max_s:
+                max_s = s
+                max_row = i
+        if Debug:
+            print "best", max_row, j, max_s, kmers
+        return max_s
 
     def hmm_align(self, seq):
 
@@ -463,19 +569,31 @@ if __name__ == '__main__':
     test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"
     sr = SquiggleRead(test_file)
     
-    #con0 = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTTGCCATATGACGTCAAACCGCGGTTTGAATGAAACGCTGGATGATATTTGCGAAGCATTGAGTATTATGT"
+    if False:
+        #con0 = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTTGCCATATGACGTCAAACCGCGGTTTGAATGAAACGCTGGATGATATTTGCGAAGCATTGAGTATTATGT"
 
-    #Query  AACAGTCCACTATTGGATGGTAAAGCC--AACAGAAATTTTTACGCAAGCTAAAGCCCGG
-    #       ||||||||||||||||||||||||||   |||||||||||||||||||||||||||||||
-    #Sbjct  AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGG
-    #con0 =  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGG"
-    con0 = "AACAGTCGACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
-    truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
-    sr.hmm_align(con0)
-    sr.hmm_align(truth)
+        #Query  AACAGTCCACTATTGGATGGTAAAGCC--AACAGAAATTTTTACGCAAGCTAAAGCCCGG
+        #       ||||||||||||||||||||||||||   |||||||||||||||||||||||||||||||
+        #Sbjct  AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGG
+        #con0 =  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGG"
+        con0 = "AACAGTCGACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
+        truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCC"
+        sr.hmm_align(con0)
+        sr.hmm_align(truth)
 
-    sys.exit(1)
+        sys.exit(1)
 
+    if True:
+        temp_seq = sr.get_template_sequence()
+        comp_seq = sr.get_complement_sequence()
+        twod_seq = sr.get_2D_sequence()
+        
+        for i in xrange(0, 6):
+            twod_kmer = twod_seq[i:i+5]
+            events = sr.event_map['2D'][i]
+            td_events = sr.get_events_for_2D_kmer(i)
+            for (x,y) in events:
+                print i, twod_kmer, x, y
 
     if False:
         temp_seq = sr.get_template_sequence()

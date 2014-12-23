@@ -1,5 +1,5 @@
 import sys
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from NanoUtils import *
 from SquiggleRead import *
 from Bio import AlignIO
@@ -137,7 +137,7 @@ class Clustal:
                 continue
 
             mer = self.get_kmer(row_idx, i, 5)
-
+            stop = i + len(mer)
             # Count the number of reads that have the same pattern in these columns
             support = 0
             for j in read_row_indices:
@@ -207,6 +207,40 @@ class Clustal:
 
         return branches
 
+    # Returns the indices of reads that have a base (not a gap)
+    # in the specified column
+    def get_reads_with_bases_in_columns(self, i, j):
+        out = []
+        for ri in self.get_read_rows():
+            if self.alignment[ri][i] != '-' and self.alignment[ri][j] != '-':
+                out.append(ri)
+        return out
+
+    # Generate the possible consensus sequences from
+    # column i to column j using the reads in read_indices
+    def generate_possible_consensus(self, read_indices, i, j):
+        out = [""]
+        while i <= j:
+            symbols = defaultdict(int)
+            for ri in read_indices:
+                symbols[self.alignment[ri][i]] += 1
+
+            new_out = []
+
+            # Append every symbol to every previous string
+            for (base, count) in symbols.iteritems():
+                #if count <= 1:
+                #    continue
+
+                for seq in out:
+                    if base != '-':
+                        new_out.append(seq + base)
+                    else:
+                        new_out.append(seq)
+            out = new_out
+            i += 1
+        return out
+
 if __name__ == '__main__':
 
     ca_fn = 'clustal-32.out'
@@ -223,49 +257,14 @@ if __name__ == '__main__':
     squiggle_reads = []
     for read in ca.reads:
         print read, files[read.index]
-        squiggle_reads.append(SquiggleRead(files[read.index]))
+        #squiggle_reads.append(SquiggleRead(files[read.index]))
 
     #ca.show_pairwise(0, 1)
     #ca.show_pairwise(0, 2)
     #ca.print_consensus_5mers()
-    #ca.get_supported_consensus_kmers(3)
-    branches = ca.compare_consensus_rows()
-    b = branches[0]
-    print b
 
-    matches = ca.match_column_kmer(b[0], b[1])
-    for (idx, k_idx) in matches:
-
-        if k_idx == -1:
-            continue
-
-        read = ca.reads[idx]
-        
-        sr = squiggle_reads[idx]
-        
-        # Setup branch k-mers
-        x = branches[0][1]
-        y = branches[0][2]
-        z = branches[0][3]
-
-        # If these read was used in reverse-complement orientation
-        # to build the POA, we need to reverse the coordinates and k-mers below
-        if read.strand == 'c':
-            x = revcomp(x)
-            y = revcomp(y)
-            z = revcomp(z)
-            k_idx = sr.flip_k_idx_strand(k_idx, 5)
-            (branch_te, branch_ce) = sr.get_event_before_2D_kmer(k_idx)
-        else:
-            (branch_te, branch_ce) = sr.get_event_after_2D_kmer(k_idx)
-
-        print 'Computing branches:', read.index, read.strand, x, sr.get_2D_kmer_at(k_idx, 5)
-
-        print 'Matched:'
-        matched_events = sr.get_events_for_2D_kmer(k_idx)
-        for (te, ce) in matched_events:
-            print sr.format_kmer_event_pair(te, ce, x)
-
-        print 'Next:'
-        print sr.format_kmer_event_pair(branch_te, branch_ce, y)
-        print sr.format_kmer_event_pair(branch_te, branch_ce, z)
+    col_start = 0
+    col_stop = 10
+    read_indices = ca.get_reads_with_bases_in_columns(col_start, col_stop)
+    consensus_set = ca.generate_possible_consensus(read_indices, col_start, col_stop)
+    print consensus_set

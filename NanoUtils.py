@@ -32,9 +32,22 @@ def generate_mers_rank_map(alphabet, k):
         rank_dict[o] = i
     return rank_dict
 
+# Generate all of the kmers of the string
+def str2kmers(s, k):
+    out = []
+    for i in xrange(0, len(s) - k + 1):
+        out.append(s[i:i+k])
+    return out
+
 # reverse complement a sequence
 complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
 
 def revcomp(seq):
     reverse_complement = "".join(complement.get(base, base) for base in reversed(seq))
     return reverse_complement
+
+def revcomplist(l):
+    out = []
+    for k in l:
+        out.append(revcomp(k))
+    return out
