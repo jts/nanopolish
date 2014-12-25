@@ -29,7 +29,14 @@ class SquiggleRead:
         self.events['t'] = self.fh.get_template_events()
         self.events['c'] = self.fh.get_complement_events()
 
+        # Convert events into a numpy array
+        self.event_levels = {}
+        for s in ('t', 'c'):
+            self.event_levels[s] = np.array([x.mean for x in self.events[s]])
+            self.event_levels[s].astype(np.float64)
+
         self.event_map = {}
+
         self.event_map['t'] = self.build_1D_event_map('t')
         self.event_map['c'] = self.build_1D_event_map('c')
         self.event_map['2D'] = self.build_2D_event_map()

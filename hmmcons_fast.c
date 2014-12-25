@@ -28,9 +28,16 @@ struct CPoreModelParameters
     double shift;
 };
 
+struct CEventData
+{
+    int n_events;
+    double* level;
+};
+
 struct CSquiggleReadParameters
 {
     CPoreModelParameters pore_model[2];
+    CEventData events[2];
 };
 
 // A global vector used to store data we've received from the python code
@@ -58,10 +65,15 @@ void add_read(CSquiggleReadParameters params)
                                                          params.pore_model[0].sd[i],
                                                          params.pore_model[1].mean[i],
                                                          params.pore_model[1].sd[i]);
+
     printf("Scale: %lf %lf Shift: %lf %lf\n", params.pore_model[0].scale,
                                               params.pore_model[1].scale,
                                               params.pore_model[0].shift,
                                               params.pore_model[1].shift);
+
+    printf("First 100 events of %d, %d\n", params.events[0].n_events, params.events[1].n_events);
+    for(int i = 0; i < 100; ++i)
+        printf("i: %lf %lf\n", params.events[0].level[i], params.events[1].level[i]);
 }
 
 int main(int argc, char** argv)

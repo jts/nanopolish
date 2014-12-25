@@ -30,18 +30,32 @@ class CPoreModelParameters(Structure):
                 ('pore_model_scale', c_double),
                 ('pore_model_shift', c_double)]
 
+class CEventData(Structure):
+    _fields_ = [('n_events', c_int),
+                ('levels', c_double_p)]
+
 class CSquiggleReadParameters(Structure):
-    _fields_ = [('pore_model', CPoreModelParameters * 2)]
+    _fields_ = [('pore_model', CPoreModelParameters * 2),
+                ('events', CEventData * 2)]
 
 pm_params = []
+event_params = []
 for s in ('t', 'c'):
+
+    # Pore Model
     mean = sr.pm[s].model_mean.ctypes.data_as(c_double_p)
     sd = sr.pm[s].model_sd.ctypes.data_as(c_double_p)
     scale = sr.pm[s].scale
     shift = sr.pm[s].shift
     pm_params.append(CPoreModelParameters(1024, mean, sd, scale, shift))
 
-params = CSquiggleReadParameters((pm_params[0], pm_params[1]))
+    # Events
+    n_events = len(sr.event_levels[s])
+    levels = sr.event_levels[s].ctypes.data_as(c_double_p)
+    event_params.append(CEventData(n_events, levels))
+
+params = CSquiggleReadParameters((pm_params[0], pm_params[1]), 
+                                 (event_params[0], event_params[1]))
 lib_hmmcons_fast.add_read(params)
 
 #lib_hmmcons_fast.add_model(sr.pm['t'].model_mean.ctypes, len(sr.pm['t'].model_mean))
