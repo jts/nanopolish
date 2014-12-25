@@ -1,5 +1,6 @@
 from SquiggleRead import *
 from NanoUtils import *
+from ctypes import *
 
 # Generate all the paths of length (k+1)
 # starting from the given k-mer
@@ -12,6 +13,44 @@ def generate_kmer_paths(kmer):
         path_str = kmer + a
         out.append(str2kmers(kmer + a, k))
     return out
+
+#
+# 
+#
+lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
+sr = SquiggleRead("../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5")
+
+# Convenience type for working with ctypes
+c_double_p = POINTER(c_double)
+
+class CPoreModelParameters(Structure):
+    _fields_ = [('n_states', c_int),
+                ('pore_model_mean', c_double_p),
+                ('pore_model_sd', c_double_p),
+                ('pore_model_scale', c_double),
+                ('pore_model_shift', c_double)]
+
+class CSquiggleReadParameters(Structure):
+    _fields_ = [('pore_model', CPoreModelParameters * 2)]
+
+pm_params = []
+for s in ('t', 'c'):
+    mean = sr.pm[s].model_mean.ctypes.data_as(c_double_p)
+    sd = sr.pm[s].model_sd.ctypes.data_as(c_double_p)
+    scale = sr.pm[s].scale
+    shift = sr.pm[s].shift
+    pm_params.append(CPoreModelParameters(1024, mean, sd, scale, shift))
+
+params = CSquiggleReadParameters((pm_params[0], pm_params[1]))
+lib_hmmcons_fast.add_read(params)
+
+#lib_hmmcons_fast.add_model(sr.pm['t'].model_mean.ctypes, len(sr.pm['t'].model_mean))
+
+sys.exit(0)
+
+#
+# OLD
+#
 
 test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"),
               (1608, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5"),

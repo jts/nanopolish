@@ -15,10 +15,18 @@ class PoreModel:
         self.scale_sd = obj.attrs['scale_sd']
         self.shift = obj.attrs['shift']
         self.var = obj.attrs['var']
-        self.var_2d = obj.attrs['var_sd']
-        #print self.shift, self.drift, self.scale, self.var
+        self.var_sd = obj.attrs['var_sd']
+        print self.shift, self.drift, self.scale, self.var
 
-        self.model = list(obj)
+        self.model = np.array(obj)
+
+        self.model_mean = np.array([x[2] for x in obj])
+        self.model_sd = np.array([x[3] for x in obj])
+
+        # coerece data into the right type to pass to the C HMM library
+        self.model_mean = self.model_mean.astype(np.float64)
+        self.model_sd = self.model_sd.astype(np.float64)
+
         self.rank_map = generate_mers_rank_map(dna_alphabet, 5)
 
     # Get the expected value for the given kmer
