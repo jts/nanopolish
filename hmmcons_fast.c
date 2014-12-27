@@ -66,14 +66,14 @@ struct HMMConsReadState
     uint32_t event_idx;
     uint32_t kmer_idx;
     uint8_t strand;
-    uint8_t stride;
+    int8_t stride;
+    uint8_t rc;
     std::string alignment;
 };
 
 struct ExtensionResult
 {
-    double full_path[1024];
-    double next_kmer[4];
+    double b[4];
 };
 
 // A global vector used to store data we've received from the python code
@@ -128,6 +128,7 @@ void add_read_state(CReadStateInterface params)
     rs.kmer_idx = 0;
     rs.strand = params.strand;
     rs.stride = params.stride;
+    rs.rc = params.rc;
 }
 
 //
@@ -152,6 +153,15 @@ inline uint32_t kmer_rank(const char* str, uint32_t K)
         rank |= base_rank[str[i]] << 2 * (K - i - 1);
     return rank;
 }
+
+inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
+{
+    uint32_t rank = 0;
+    for(int32_t i = K - 1; i >= 0; --i)
+        rank |= ((3 - base_rank[str[i]]) << 2 * i);
+    return rank;
+}
+
 
 // Increment the input string to be the next sequence in lexicographic order
 void lexicographic_next(std::string& str)
@@ -182,25 +192,22 @@ inline double log_normal_pdf(double x, double m, double s)
     return log_inv_sqrt_2pi - log(s) + (-0.5f * a * a);
 }
 
-inline double log_probability_match(const CSquiggleRead& read, 
-                                    const char* str,
+inline double log_probability_match(const CSquiggleRead& read,
+                                    uint32_t kmer_rank,
                                     uint32_t event_idx, 
                                     uint8_t strand)
 {
-    uint32_t rank = kmer_rank(str, K);
-    
     const CPoreModel& pm = read.pore_model[strand];
 
     // Extract event
     double level = read.events[strand].level[event_idx];
     
-    double m = (pm.state[rank].mean + pm.shift) * pm.scale;
-    double s = pm.state[rank].sd * pm.scale;
+    double m = (pm.state[kmer_rank].mean + pm.shift) * pm.scale;
+    double s = pm.state[kmer_rank].sd * pm.scale;
     double lp = log_normal_pdf(level, m, s);
 
 #if DEBUG_HMM_EMISSION
-    std::string kmer(str, K);
-    printf("Event[%d] Kmer: %s[%d] -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer.c_str(), rank, level, m, s, exp(lp), normal_pdf(level, m, s));
+    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, m, s, exp(lp), normal_pdf(level, m, s));
 #endif
 
     return lp;
@@ -217,7 +224,7 @@ void print_matrix(const HMMCell* matrix, uint32_t n_rows, uint32_t n_cols)
     }
 }
 
-void run_extension_hmm(const std::string& consensus, const HMMConsReadState& state)
+ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsReadState& state)
 {
     double time_start = clock();
     const CSquiggleRead& read = g_data.reads[state.read_idx];
@@ -228,7 +235,8 @@ void run_extension_hmm(const std::string& consensus, const HMMConsReadState& sta
     // The root of the extension sequences to test is the last k-mer
     std::string root_kmer = consensus.substr(consensus.size() - K);
     std::string extension = root_kmer + "AAAAA";
-    
+    //std::string extension = root_kmer + "TCCAC";
+
     // Get the start/end event indices
     uint32_t e_start = state.event_idx;
     uint32_t e_end = e_start + 10;
@@ -260,7 +268,7 @@ void run_extension_hmm(const std::string& consensus, const HMMConsReadState& sta
     
     ExtensionResult result;
     for(uint8_t i = 0; i < 4; ++i)
-        result.next_kmer[i] = -INFINITY;
+        result.b[i] = -INFINITY;
 
     uint32_t extension_rank = 0;
     while(extension.substr(0, K) == root_kmer) {
@@ -296,11 +304,13 @@ void run_extension_hmm(const std::string& consensus, const HMMConsReadState& sta
                 uint32_t up =   cell(row - 1, col, n_cols);
                 uint32_t left = cell(row, col - 1, n_cols);
 
-                uint32_t event_idx = e_start + row - 1;
+                uint32_t event_idx = e_start + (row - 1) * state.stride;
                 uint32_t kmer_idx = col - 1;
 
                 // Emission probability for a match
-                double l_p_m = log_probability_match(read, extension.c_str() + kmer_idx, event_idx, state.strand);
+                uint32_t rank = !state.rc ? 
+                    kmer_rank(extension.c_str() + kmer_idx, K) : rc_kmer_rank(extension.c_str() + kmer_idx, K);
+                double l_p_m = log_probability_match(read, rank, event_idx, state.strand);
 
                 // Emission probility for an event insertion
                 // This is calculated using the emission probability for a match to the same kmer as the previous row
@@ -360,37 +370,42 @@ void run_extension_hmm(const std::string& consensus, const HMMConsReadState& sta
                 extension.substr(extension.size() - K).c_str(), max_row, 
                 max_value, best_extension, sum_all_extensions);
         */
-
-        // Store the result for the full k-mer and also summing over all paths
-        // starting with a particular base
-        result.full_path[extension_rank++] = max_value;
-        
         // path sum
         uint8_t br = base_rank[extension[extension.size() - K]];
-
-        double kmer_sum = log(exp(result.next_kmer[br]) + exp(max_value));
-        result.next_kmer[br] = kmer_sum;
+        double kmer_sum = log(exp(result.b[br]) + exp(max_value));
+        result.b[br] = kmer_sum;
         
         // Set the extension to the next string
         lexicographic_next(extension);
     }
 
-    for(uint32_t i = 0; i < 4; ++i) {
-        printf("L(%c) = %.2lf\n", "ACGT"[i], result.next_kmer[i]);
-    }
-
     double time_stop = clock();
-    printf("Time: %.2lfs\n", (time_stop - time_start) / CLOCKS_PER_SEC);
+    //printf("Time: %.2lfs\n", (time_stop - time_start) / CLOCKS_PER_SEC);
     free(matrix);
+
+    return result;
 }
 
 extern "C"
 void run_consensus()
 {
     std::string consensus = "AACAG";
+
+    ExtensionResult all = { 0, 0, 0, 0 };
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        run_extension_hmm(consensus, g_data.read_states[i]);
+        ExtensionResult r = run_extension_hmm(consensus, g_data.read_states[i]);
+
+        // Normalize by the sum over all bases for this sequence
+        double sequence_sum = -INFINITY;
+        for(uint32_t j = 0; j < 4; ++j)
+            sequence_sum = log(exp(sequence_sum) + exp(r.b[j]));
+        for(uint32_t j = 0; j < 4; ++j) {
+            r.b[j] -= sequence_sum;
+            all.b[j] += r.b[j];
+        }
+        printf("seq[%d]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf\n", i, r.b[0], r.b[1], r.b[2], r.b[3]);
     }
+    printf("seq[a]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf\n", all.b[0], all.b[1], all.b[2], all.b[3]);
 }
 
 int main(int argc, char** argv)

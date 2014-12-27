@@ -41,7 +41,8 @@ class CReadStateInterface(Structure):
     _fields_ = [('read_idx', c_int),
                 ('event_idx', c_int),
                 ('strand', c_int),
-                ('stride', c_int)]
+                ('stride', c_int),
+                ('rc', c_int)]
 
 #
 # Load reads
@@ -54,7 +55,6 @@ test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_254
 reads = []
 for (offset, strand, fn) in test_data:
     reads.append(SquiggleRead(fn))
-    break
 
 #
 # Pass reads into C code
@@ -89,12 +89,27 @@ for (ri, sr) in enumerate(reads):
 #
 
 for (ri, sr) in enumerate(reads):
+
     k_idx = test_data[ri][0]
+    orientation = test_data[ri][1]
+    if orientation == 'n':
+        t_stride = 1
+        c_stride = -1
+        t_rc = 0
+        c_rc = 1
+    else:
+        t_stride = -1
+        c_stride = 1
+        t_rc = 1
+        c_rc = 0
+        k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
+
     (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
-    t_rs = CReadStateInterface(ri, t_ei, 0, 1)
+
+    t_rs = CReadStateInterface(ri, t_ei, 0, t_stride, t_rc)
     lib_hmmcons_fast.add_read_state(t_rs)
     
-    c_rs = CReadStateInterface(ri, c_ei, 1, -1)
+    c_rs = CReadStateInterface(ri, c_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
 lib_hmmcons_fast.run_consensus()
@@ -155,7 +170,7 @@ for (p, rc_p) in zip(paths, rc_paths):
     #
     # Read 2 example
     #
-    if True:
+    if False:
         ri = 2
         k_idx = test_data[ri][0]
         (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
@@ -167,13 +182,13 @@ for (p, rc_p) in zip(paths, rc_paths):
     #
     # Read 0 example
     #
-    if False:
+    if True:
         ri = 0
         k_idx = 0
         (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
 
         # template events
-        #f_t_0 = reads[ri].hmm2(p, 't', t_ei, 1)
+        f_t_0 = reads[ri].hmm2(p, 't', t_ei, 1)
         f_c_0 = reads[ri].hmm2(rc_p, 'c', c_ei, -1)
         #print f_t_0 + f_c_0 + f_t_2 + f_c_2, f_t_0, f_c_0, f_t_2, f_c_2, p
         continue

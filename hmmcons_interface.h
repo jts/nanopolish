@@ -41,6 +41,7 @@ struct CReadStateInterface
     int event_idx;
     int strand;
     int stride;
+    int rc;
 };
 
 #endif
