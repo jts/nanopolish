@@ -20,6 +20,8 @@ const uint8_t NUM_STRANDS = 2;
 // 
 const uint8_t K = 5;
 
+const static double LOG_KMER_INSERTION = log(0.1);
+
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -245,6 +247,94 @@ void print_matrix(const HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
     }
 }
 
+void initialize_forward(HMMMatrix& matrix)
+{
+    //
+    uint32_t c = cell(matrix, 0, 0);
+    matrix.cells[c].M = log(1.0);
+    matrix.cells[c].E = -INFINITY;
+    matrix.cells[c].K = -INFINITY;
+
+    // Initialize first row/column to prevent initial gaps
+    for(uint32_t i = 1; i < matrix.n_rows; i++) {
+        uint32_t c = cell(matrix, i, 0);
+        matrix.cells[c].M = -INFINITY;
+        matrix.cells[c].E = -INFINITY;
+        matrix.cells[c].K = -INFINITY;
+    }
+
+    for(uint32_t j = 1; j < matrix.n_cols; j++) {
+        uint32_t c = cell(matrix, 0, j);
+        matrix.cells[c].M = -INFINITY;
+        matrix.cells[c].E = -INFINITY;
+        matrix.cells[c].K = -INFINITY;
+    }
+}
+
+void fill_forward(HMMMatrix& matrix, 
+                  double t[][3], 
+                  const char* sequence,
+                  const CSquiggleRead& read, 
+                  const HMMConsReadState& state,
+                  uint32_t e_start, 
+                  uint32_t k_start)
+{
+    // Fill in matrix
+    for(uint32_t row = 1; row < matrix.n_rows; row++) {
+        for(uint32_t col = 1; col < matrix.n_cols; col++) {
+
+            // cell indices
+            uint32_t c = cell(matrix, row, col);
+            uint32_t diag = cell(matrix, row - 1, col - 1);
+            uint32_t up =   cell(matrix, row - 1, col);
+            uint32_t left = cell(matrix, row, col - 1);
+
+            uint32_t event_idx = e_start + (row - 1) * state.stride;
+            uint32_t kmer_idx = col - 1;
+
+            // Emission probability for a match
+            uint32_t rank = !state.rc ? 
+                kmer_rank(sequence + kmer_idx, K) : 
+                rc_kmer_rank(sequence + kmer_idx, K);
+            double l_p_m = log_probability_match(read, rank, event_idx, state.strand);
+
+            // Emission probility for an event insertion
+            // This is calculated using the emission probability for a match to the same kmer as the previous row
+            double l_p_e = l_p_m;
+
+            // Emission probability for a kmer insertion
+            double l_p_k = LOG_KMER_INSERTION;
+
+            // Calculate M[i, j]
+            double d_m = t[0][0] + matrix.cells[diag].M;
+            double d_e = t[1][0] + matrix.cells[diag].E;
+            double d_k = t[2][0] + matrix.cells[diag].K;
+            matrix.cells[c].M = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k));
+
+            // Calculate E[i, j]
+            double u_m = t[0][1] + matrix.cells[up].M;
+            double u_e = t[1][1] + matrix.cells[up].E;
+            double u_k = t[2][1] + matrix.cells[up].K;
+            matrix.cells[c].E = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k));
+
+            // Calculate K[i, j]
+            double l_m = t[0][2] + matrix.cells[left].M;
+            double l_e = t[1][2] + matrix.cells[left].E;
+            double l_k = t[2][2] + matrix.cells[left].K;
+            matrix.cells[c].K = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k));
+
+#ifdef DEBUG_HMM_UPDATE
+            printf("(%d %d) R -- [%.2lf %.2lf %.2lf]\n", row, col, matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
+            printf("(%d %d) D -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_m, t[0][0], t[1][0], t[2][0], d_m, d_e, d_k);
+            printf("(%d %d) U -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_e, t[0][1], t[1][1], t[2][1], u_m, u_e, u_k);
+            printf("(%d %d) L -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_k, t[0][2], t[1][2], t[2][2], l_m, l_e, l_k);
+#endif
+        }
+    }
+
+}
+
+
 ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsReadState& state)
 {
     double time_start = clock();
@@ -282,9 +372,6 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     HMMMatrix matrix;
     allocate_matrix(matrix, e_end - e_start + 2, n_kmers + 1);
     
-    double sum_all_extensions = -INFINITY;
-    double best_extension = -INFINITY;
-    
     ExtensionResult result;
     for(uint8_t i = 0; i < 4; ++i)
         result.b[i] = -INFINITY;
@@ -292,78 +379,10 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     uint32_t extension_rank = 0;
     while(extension.substr(0, K) == root_kmer) {
         
-        //
-        uint32_t c = cell(matrix, 0, 0);
-        matrix.cells[c].M = log(1.0);
-        matrix.cells[c].E = -INFINITY;
-        matrix.cells[c].K = -INFINITY;
+        initialize_forward(matrix);
 
-        // Initialize first row/column to prevent initial gaps
-        for(uint32_t i = 1; i < matrix.n_rows; i++) {
-            uint32_t c = cell(matrix, i, 0);
-            matrix.cells[c].M = -INFINITY;
-            matrix.cells[c].E = -INFINITY;
-            matrix.cells[c].K = -INFINITY;
-        }
-
-        for(uint32_t j = 1; j < matrix.n_cols; j++) {
-            uint32_t c = cell(matrix, 0, j);
-            matrix.cells[c].M = -INFINITY;
-            matrix.cells[c].E = -INFINITY;
-            matrix.cells[c].K = -INFINITY;
-        }
-        
-        // Fill in matrix
-        for(uint32_t row = 1; row < matrix.n_rows; row++) {
-            for(uint32_t col = 1; col < matrix.n_cols; col++) {
-     
-                // cell indices
-                uint32_t c = cell(matrix, row, col);
-                uint32_t diag = cell(matrix, row - 1, col - 1);
-                uint32_t up =   cell(matrix, row - 1, col);
-                uint32_t left = cell(matrix, row, col - 1);
-
-                uint32_t event_idx = e_start + (row - 1) * state.stride;
-                uint32_t kmer_idx = col - 1;
-
-                // Emission probability for a match
-                uint32_t rank = !state.rc ? 
-                    kmer_rank(extension.c_str() + kmer_idx, K) : rc_kmer_rank(extension.c_str() + kmer_idx, K);
-                double l_p_m = log_probability_match(read, rank, event_idx, state.strand);
-
-                // Emission probility for an event insertion
-                // This is calculated using the emission probability for a match to the same kmer as the previous row
-                double l_p_e = l_p_m;
-
-                // Emission probability for a kmer insertion
-                double l_p_k = LOG_KMER_INSERTION;
-
-                // Calculate M[i, j]
-                double d_m = t[0][0] + matrix.cells[diag].M;
-                double d_e = t[1][0] + matrix.cells[diag].E;
-                double d_k = t[2][0] + matrix.cells[diag].K;
-                matrix.cells[c].M = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k));
-
-                // Calculate E[i, j]
-                double u_m = t[0][1] + matrix.cells[up].M;
-                double u_e = t[1][1] + matrix.cells[up].E;
-                double u_k = t[2][1] + matrix.cells[up].K;
-                matrix.cells[c].E = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k));
-
-                // Calculate K[i, j]
-                double l_m = t[0][2] + matrix.cells[left].M;
-                double l_e = t[1][2] + matrix.cells[left].E;
-                double l_k = t[2][2] + matrix.cells[left].K;
-                matrix.cells[c].K = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k));
-
-#ifdef DEBUG_HMM_UPDATE
-                printf("(%d %d) R -- [%.2lf %.2lf %.2lf]\n", row, col, matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
-                printf("(%d %d) D -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_m, t[0][0], t[1][0], t[2][0], d_m, d_e, d_k);
-                printf("(%d %d) U -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_e, t[0][1], t[1][1], t[2][1], u_m, u_e, u_k);
-                printf("(%d %d) L -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_k, t[0][2], t[1][2], t[2][2], l_m, l_e, l_k);
-#endif
-            }
-        }
+        // Fill in the HMM matrix using the forward algorithm
+        fill_forward(matrix, t, extension.c_str(), read, state, e_start, k_start);
 
         // Determine the best scoring row in the last column
         uint32_t col = matrix.n_cols - 1;
@@ -379,15 +398,9 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
             }
         }
 
-        //print_matrix(matrix, n_rows, n_cols);
-        sum_all_extensions = log(exp(sum_all_extensions) + exp(max_value));
-        if(max_value > best_extension)
-            best_extension = max_value;
-        
         /*
-        printf("extensions: %s %d %.2lf %.2lf %.2lf\n", 
-                extension.substr(extension.size() - K).c_str(), max_row, 
-                max_value, best_extension, sum_all_extensions);
+        printf("extensions: %s %d %.2lff\n", 
+                extension.substr(extension.size() - K).c_str(), max_row, max_value);
         */
         // path sum
         uint8_t br = base_rank[extension[extension.size() - K]];
