@@ -141,9 +141,30 @@ struct HMMCell
     double K;
 };
 
-inline uint32_t cell(uint32_t row, uint32_t col, uint32_t n_cols)
+struct HMMMatrix
 {
-    return row * n_cols + col;
+    HMMCell* cells;
+    uint32_t n_rows;
+    uint32_t n_cols;
+};
+
+void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
+{
+    matrix.n_rows = n_rows;
+    matrix.n_cols = n_cols;
+    uint32_t N = matrix.n_rows * matrix.n_cols;
+    matrix.cells = (HMMCell*)malloc(N * sizeof(HMMCell));
+}
+
+void free_matrix(HMMMatrix matrix)
+{
+    free(matrix.cells);
+    matrix.cells = NULL;
+}
+
+inline uint32_t cell(const HMMMatrix& matrix, uint32_t row, uint32_t col)
+{
+    return row * matrix.n_cols + col;
 }
 
 inline uint32_t kmer_rank(const char* str, uint32_t K)
@@ -213,12 +234,12 @@ inline double log_probability_match(const CSquiggleRead& read,
     return lp;
 }
 
-void print_matrix(const HMMCell* matrix, uint32_t n_rows, uint32_t n_cols)
+void print_matrix(const HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
 {
     for(uint32_t i = 0; i < n_rows; ++i) {
         for(uint32_t j = 0; j < n_cols; ++j) {
-            uint32_t c = cell(i, j, n_cols);
-            printf("%.2lf\t", matrix[c].M);
+            uint32_t c = cell(matrix, i, j);
+            printf("%.2lf\t", matrix.cells[c].M);
         }
         printf("\n");
     }
@@ -258,10 +279,8 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     }
     
     // Set up HMM matrix
-    uint32_t n_cols = n_kmers + 1;
-    uint32_t n_rows = e_end - e_start + 2;
-    uint32_t N = n_rows * n_cols;
-    HMMCell* matrix = (HMMCell*)malloc(N * sizeof(HMMCell));
+    HMMMatrix matrix;
+    allocate_matrix(matrix, e_end - e_start + 2, n_kmers + 1);
     
     double sum_all_extensions = -INFINITY;
     double best_extension = -INFINITY;
@@ -274,35 +293,35 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     while(extension.substr(0, K) == root_kmer) {
         
         //
-        uint32_t c = cell(0, 0, n_cols);
-        matrix[c].M = log(1.0);
-        matrix[c].E = -INFINITY;
-        matrix[c].K = -INFINITY;
+        uint32_t c = cell(matrix, 0, 0);
+        matrix.cells[c].M = log(1.0);
+        matrix.cells[c].E = -INFINITY;
+        matrix.cells[c].K = -INFINITY;
 
         // Initialize first row/column to prevent initial gaps
-        for(uint32_t i = 1; i < n_rows; i++) {
-            uint32_t c = cell(i, 0, n_cols);
-            matrix[c].M = -INFINITY;
-            matrix[c].E = -INFINITY;
-            matrix[c].K = -INFINITY;
+        for(uint32_t i = 1; i < matrix.n_rows; i++) {
+            uint32_t c = cell(matrix, i, 0);
+            matrix.cells[c].M = -INFINITY;
+            matrix.cells[c].E = -INFINITY;
+            matrix.cells[c].K = -INFINITY;
         }
 
-        for(uint32_t j = 1; j < n_cols; j++) {
-            uint32_t c = cell(0, j, n_cols);
-            matrix[c].M = -INFINITY;
-            matrix[c].E = -INFINITY;
-            matrix[c].K = -INFINITY;
+        for(uint32_t j = 1; j < matrix.n_cols; j++) {
+            uint32_t c = cell(matrix, 0, j);
+            matrix.cells[c].M = -INFINITY;
+            matrix.cells[c].E = -INFINITY;
+            matrix.cells[c].K = -INFINITY;
         }
         
         // Fill in matrix
-        for(uint32_t row = 1; row < n_rows; row++) {
-            for(uint32_t col = 1; col < n_cols; col++) {
+        for(uint32_t row = 1; row < matrix.n_rows; row++) {
+            for(uint32_t col = 1; col < matrix.n_cols; col++) {
      
                 // cell indices
-                uint32_t c = cell(row, col, n_cols);
-                uint32_t diag = cell(row - 1, col - 1, n_cols);
-                uint32_t up =   cell(row - 1, col, n_cols);
-                uint32_t left = cell(row, col - 1, n_cols);
+                uint32_t c = cell(matrix, row, col);
+                uint32_t diag = cell(matrix, row - 1, col - 1);
+                uint32_t up =   cell(matrix, row - 1, col);
+                uint32_t left = cell(matrix, row, col - 1);
 
                 uint32_t event_idx = e_start + (row - 1) * state.stride;
                 uint32_t kmer_idx = col - 1;
@@ -320,25 +339,25 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
                 double l_p_k = LOG_KMER_INSERTION;
 
                 // Calculate M[i, j]
-                double d_m = t[0][0] + matrix[diag].M;
-                double d_e = t[1][0] + matrix[diag].E;
-                double d_k = t[2][0] + matrix[diag].K;
-                matrix[c].M = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k));
+                double d_m = t[0][0] + matrix.cells[diag].M;
+                double d_e = t[1][0] + matrix.cells[diag].E;
+                double d_k = t[2][0] + matrix.cells[diag].K;
+                matrix.cells[c].M = l_p_m + log(exp(d_m) + exp(d_e) + exp(d_k));
 
                 // Calculate E[i, j]
-                double u_m = t[0][1] + matrix[up].M;
-                double u_e = t[1][1] + matrix[up].E;
-                double u_k = t[2][1] + matrix[up].K;
-                matrix[c].E = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k));
+                double u_m = t[0][1] + matrix.cells[up].M;
+                double u_e = t[1][1] + matrix.cells[up].E;
+                double u_k = t[2][1] + matrix.cells[up].K;
+                matrix.cells[c].E = l_p_e + log(exp(u_m) + exp(u_e) + exp(u_k));
 
                 // Calculate K[i, j]
-                double l_m = t[0][2] + matrix[left].M;
-                double l_e = t[1][2] + matrix[left].E;
-                double l_k = t[2][2] + matrix[left].K;
-                matrix[c].K = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k));
+                double l_m = t[0][2] + matrix.cells[left].M;
+                double l_e = t[1][2] + matrix.cells[left].E;
+                double l_k = t[2][2] + matrix.cells[left].K;
+                matrix.cells[c].K = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k));
 
 #ifdef DEBUG_HMM_UPDATE
-                printf("(%d %d) R -- [%.2lf %.2lf %.2lf]\n", row, col, matrix[c].M, matrix[c].E, matrix[c].K);
+                printf("(%d %d) R -- [%.2lf %.2lf %.2lf]\n", row, col, matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
                 printf("(%d %d) D -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_m, t[0][0], t[1][0], t[2][0], d_m, d_e, d_k);
                 printf("(%d %d) U -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_e, t[0][1], t[1][1], t[2][1], u_m, u_e, u_k);
                 printf("(%d %d) L -- e: %.2lf t: [%.2lf %.2lf %.2lf] [%.2lf %.2lf %.2lf]\n", row, col, l_p_k, t[0][2], t[1][2], t[2][2], l_m, l_e, l_k);
@@ -347,13 +366,13 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
         }
 
         // Determine the best scoring row in the last column
-        uint32_t col = n_cols - 1;
+        uint32_t col = matrix.n_cols - 1;
         uint32_t max_row = 0;
         double max_value = -INFINITY;
         
-        for(uint32_t row = 2; row < n_rows; ++row) {
-            uint32_t c = cell(row, col, n_cols);
-            double sum = log(exp(matrix[c].M) + exp(matrix[c].E) + exp(matrix[c].K));
+        for(uint32_t row = 2; row < matrix.n_rows; ++row) {
+            uint32_t c = cell(matrix, row, col);
+            double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
             if(sum > max_value) {
                 max_value = sum;
                 max_row = row;
@@ -381,7 +400,7 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
 
     double time_stop = clock();
     //printf("Time: %.2lfs\n", (time_stop - time_start) / CLOCKS_PER_SEC);
-    free(matrix);
+    free_matrix(matrix);
 
     return result;
 }
