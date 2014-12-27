@@ -213,7 +213,7 @@ class SquiggleRead:
         
         # Guessed counts
         t = np.matrix([[90., 5., 5.], [85., 10., 5.], [85, 5., 10.]])
-        return t / t.sum(axis=1)
+        return log(t / t.sum(axis=1))
 
     def hmm2(self, kmers, strand, e_offset, stride):
         
@@ -274,7 +274,7 @@ class SquiggleRead:
         max_s = float("-inf")
         max_row = -1
         j = n_cols - 1
-
+        print(M)
         # require a few events to be incorporated in the alignment 
         for i in xrange(2, n_rows):
             s = log(exp(M[i,j]) + exp(K[i,j]) + exp(E[i,j]))
@@ -576,7 +576,7 @@ if __name__ == '__main__':
     test_file = "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"
     sr = SquiggleRead(test_file)
     
-    if False:
+    if True:
         #con0 = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTTGCCATATGACGTCAAACCGCGGTTTGAATGAAACGCTGGATGATATTTGCGAAGCATTGAGTATTATGT"
 
         #Query  AACAGTCCACTATTGGATGGTAAAGCC--AACAGAAATTTTTACGCAAGCTAAAGCCCGG
@@ -590,7 +590,7 @@ if __name__ == '__main__':
 
         sys.exit(1)
 
-    if True:
+    if False:
         temp_seq = sr.get_template_sequence()
         comp_seq = sr.get_complement_sequence()
         twod_seq = sr.get_2D_sequence()

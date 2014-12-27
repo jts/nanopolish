@@ -18,15 +18,7 @@ struct CPoreModel
 {
     double scale;
     double shift;
-
-    /* These are provided by the hdf5 file but currently unused
-    double drift;
-    double scale_sd;
-    double var;
-    double var_2d;
-    */
     CPoreModelStateParams state[1024];
 };
-
 
 #endif

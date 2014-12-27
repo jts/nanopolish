@@ -16,7 +16,6 @@ class PoreModel:
         self.shift = obj.attrs['shift']
         self.var = obj.attrs['var']
         self.var_sd = obj.attrs['var_sd']
-        print self.shift, self.drift, self.scale, self.var
 
         self.model = np.array(obj)
 
