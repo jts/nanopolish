@@ -18,6 +18,7 @@ def generate_kmer_paths(kmer):
 # 
 #
 lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
+lib_hmmcons_fast.initialize()
 
 # Convenience type for working with ctypes
 c_double_p = POINTER(c_double)
