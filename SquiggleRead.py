@@ -162,6 +162,9 @@ class SquiggleRead:
 
     def get_expected_level(self, k_mer, strand):
         return self.pm[strand].get_expected(k_mer)
+    
+    def get_expected_sd(self, k_mer, strand):
+        return self.pm[strand].get_sd(k_mer)
 
     def format_kmer_event_pair(self, te, ce, expected_kmer):
         tstr = self.format_kmer_event(te, expected_kmer, 't')

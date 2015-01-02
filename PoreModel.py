@@ -31,6 +31,7 @@ class PoreModel:
     # Get the expected value for the given kmer
     def get_expected(self, kmer):
         # TODO: account for drift?
+        #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
         return (self.model[self.rank_map[kmer]][2] + self.shift) * self.scale
     
     def get_sd(self, kmer):

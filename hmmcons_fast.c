@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <sys/time.h>
+#include <algorithm>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 
@@ -299,14 +300,29 @@ inline double log_probability_match(const CSquiggleRead& read,
     return lp;
 }
 
-inline double log_probability_event_insert()
+inline double log_probability_event_insert(const CSquiggleRead& read,
+                                           uint32_t kmer_rank,
+                                           uint32_t event_idx, 
+                                           uint8_t strand)
 {
-    return LOG_KMER_INSERTION;
+    return log_probability_match(read, kmer_rank, event_idx, strand);
 }
 
-inline double log_probability_kmer_insert()
+inline double log_probability_kmer_insert(const CSquiggleRead& read,
+                                          uint32_t kmer_rank1,
+                                          uint32_t kmer_rank2,
+                                          uint8_t strand)
+
 {
+    const CPoreModel& pm = read.pore_model[strand];
+    double m1 = (pm.state[kmer_rank1].mean + pm.shift) * pm.scale;
+    double s1 = pm.state[kmer_rank1].sd * pm.scale;
+    
+    double m2 = (pm.state[kmer_rank2].mean + pm.shift) * pm.scale;
+    double s2 = pm.state[kmer_rank2].sd * pm.scale;
+    //printf("LPKI -- %d %d %.2lf %.2lf %.2lf\n", kmer_rank1, kmer_rank2, m1, m2, s2);
     return LOG_KMER_INSERTION;
+    //return log_normal_pdf(m1, m2, s2);
 }
 
 void print_matrix(const HMMMatrix& matrix)
@@ -314,7 +330,7 @@ void print_matrix(const HMMMatrix& matrix)
     for(uint32_t i = 0; i < matrix.n_rows; ++i) {
         for(uint32_t j = 0; j < matrix.n_cols; ++j) {
             uint32_t c = cell(matrix, i, j);
-            printf("%.2lf\t", matrix.cells[c].K);
+            printf("%.2lf\t", matrix.cells[c].M);
         }
         printf("\n");
     }
@@ -383,10 +399,13 @@ double fill_forward(HMMMatrix& matrix,
             double l_p_m = log_probability_match(*state.read, rank, event_idx, state.strand);
 
             // Emission probility for an event insertion
-            double l_p_e = log_probability_event_insert();
+            double l_p_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
             
             // Emission probability for a kmer insertion
-            double l_p_k = log_probability_kmer_insert();
+            uint32_t next_rank = !state.rc ? 
+                kmer_rank(sequence + kmer_idx + 1, K) : 
+                rc_kmer_rank(sequence + kmer_idx + 1, K);
+            double l_p_k = log_probability_kmer_insert(*state.read, rank, next_rank, state.strand);
 
             // Calculate M[i, j]
             double d_m = hmm_params.t[0][0] + matrix.cells[diag].M;
@@ -471,14 +490,22 @@ void fill_backward(HMMMatrix& matrix,
                 uint32_t rank = !state.rc ? 
                     kmer_rank(sequence + kmer_idx, K) : 
                     rc_kmer_rank(sequence + kmer_idx, K);
-                double l_p_e = log_probability_event_insert();
+                double l_p_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
                 v_e = l_p_e + matrix.cells[down].E;
             }
 
             // Emission probability for skipping kmer k_(j+1)
             double v_k = -INFINITY;
             if(col < nc - 1) {
-                double l_p_k = log_probability_kmer_insert();
+                uint32_t kmer_idx = k_start + col;
+                uint32_t rank = !state.rc ? 
+                    kmer_rank(sequence + kmer_idx, K) : 
+                    rc_kmer_rank(sequence + kmer_idx, K);
+                
+                uint32_t next_rank = !state.rc ? 
+                    kmer_rank(sequence + kmer_idx + 1, K) : 
+                    rc_kmer_rank(sequence + kmer_idx + 1, K);
+                double l_p_k = log_probability_kmer_insert(*state.read, rank, next_rank, state.strand);
                 v_k = l_p_k + matrix.cells[right].K;
             }
 
@@ -499,7 +526,6 @@ void fill_backward(HMMMatrix& matrix,
 
 }
 
-
 ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsReadState& state)
 {
     double time_start = clock();
@@ -511,13 +537,13 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     // Get the start/end event indices
     uint32_t e_start = state.event_idx;
     uint32_t e_end = e_start + extension.size() + 10;
-    
+    uint32_t n_events = e_end - e_start + 1;
     uint32_t k_start = 0; // this is in reference to the extension sequence
     uint32_t n_kmers = extension.size() - K + 1;
  
     // Set up HMM matrix
     HMMMatrix matrix;
-    allocate_matrix(matrix, e_end - e_start + 2, n_kmers + 1);
+    allocate_matrix(matrix, n_events + 1, n_kmers + 1);
     
     ExtensionResult result;
     for(uint8_t i = 0; i < 4; ++i)
@@ -529,7 +555,7 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
         initialize_forward(matrix);
 
         // Fill in the HMM matrix using the forward algorithm
-        fill_forward(matrix, g_data.hmm_params, extension.c_str(), state, e_start, k_start);
+        double l_f = fill_forward(matrix, g_data.hmm_params, extension.c_str(), state, e_start, k_start);
 
         // Determine the best scoring row in the last column
         uint32_t col = matrix.n_cols - 1;
@@ -545,15 +571,39 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
             }
         }
 
-        
         printf("extensions: %s %d %.2lff\n", 
                 extension.substr(extension.size() - K).c_str(), max_row, max_value);
+        
+        print_matrix(matrix);
         
         // path sum
         uint8_t br = base_rank[extension[extension.size() - K]];
         double kmer_sum = log(exp(result.b[br]) + exp(max_value));
         result.b[br] = kmer_sum;
         
+        HMMMatrix b_matrix;
+        allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
+        initialize_backward(b_matrix, g_data.hmm_params);
+        fill_backward(b_matrix, g_data.hmm_params, extension.c_str(), state, e_start, k_start);
+        
+        printf("posterior:\n");
+        for(uint32_t col = 1; col < matrix.n_cols; ++col)
+            printf("%s\t", extension.substr(k_start + col - 1, K).c_str());
+        printf("\n");
+        for(uint32_t row = 1; row < matrix.n_rows; ++row) {
+            for(uint32_t col = 1; col < matrix.n_cols; ++col) {
+                uint32_t c = cell(matrix, row, col);
+
+                double p_m = exp(matrix.cells[c].M + b_matrix.cells[c].M - l_f);
+                double p_e = exp(matrix.cells[c].E + b_matrix.cells[c].E - l_f);
+                double p_k = exp(matrix.cells[c].K + b_matrix.cells[c].K - l_f);
+                printf("%.2lf,%.2lf,%.2lf\t", p_m, p_e, p_k);
+            }
+            printf("\n");
+        }
+
+        free(b_matrix.cells);
+
         // Set the extension to the next string
         lexicographic_next(extension);
     }
@@ -563,6 +613,123 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     free_matrix(matrix);
 
     return result;
+}
+
+void debug_align(const std::string& consensus, const HMMConsReadState& state)
+{
+    printf("\nAligning read to %s\n", consensus.c_str());
+    double time_start = clock();
+
+    // Get the start/end event indices
+    uint32_t e_start = state.event_idx;
+    uint32_t e_end = e_start + 11;
+    uint32_t n_events = e_end - e_start + 1;
+    uint32_t k_start = 0; // this is in reference to the extension sequence
+    uint32_t n_kmers = consensus.size() - K + 1;
+ 
+    // Set up HMM matrix
+    HMMMatrix matrix;
+    allocate_matrix(matrix, n_events + 1, n_kmers + 1);
+    
+    initialize_forward(matrix);
+
+    // Fill in the HMM matrix using the forward algorithm
+    double l_f = fill_forward(matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
+
+    // Determine the best scoring row in the last column
+    uint32_t col = matrix.n_cols - 1;
+    uint32_t max_row = 0;
+    double max_value = -INFINITY;
+
+    for(uint32_t row = 3; row < matrix.n_rows; ++row) {
+        uint32_t c = cell(matrix, row, col);
+        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
+        if(sum > max_value) {
+            max_value = sum;
+            max_row = row;
+        }
+    }
+
+
+    HMMMatrix b_matrix;
+    allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
+    initialize_backward(b_matrix, g_data.hmm_params);
+    fill_backward(b_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
+    
+    print_matrix(matrix);
+    print_matrix(b_matrix);
+
+    printf("l_f: %.2f posterior:\n", l_f);
+    for(uint32_t col = 1; col < matrix.n_cols; ++col)
+        printf("%s\t", consensus.substr(k_start + col - 1, K).c_str());
+    printf("\n");
+    for(uint32_t row = 1; row < matrix.n_rows; ++row) {
+        for(uint32_t col = 1; col < matrix.n_cols; ++col) {
+            uint32_t c = cell(matrix, row, col);
+
+            double p_m = exp(matrix.cells[c].M + b_matrix.cells[c].M - l_f);
+            double p_e = exp(matrix.cells[c].E + b_matrix.cells[c].E - l_f);
+            double p_k = exp(matrix.cells[c].K + b_matrix.cells[c].K - l_f);
+            printf("%.2lf,%.2lf,%.2lf\t", p_m, p_e, p_k);
+        }
+        printf("\n");
+    }
+    
+    // posterior decode
+    std::string states;
+    uint32_t row = matrix.n_rows - 1;
+    col = matrix.n_cols - 1;
+    while(row > 0 && col > 0) {
+        uint32_t c = cell(matrix, row, col);
+        double p_m = exp(matrix.cells[c].M + b_matrix.cells[c].M - l_f);
+        double p_e = exp(matrix.cells[c].E + b_matrix.cells[c].E - l_f);
+        double p_k = exp(matrix.cells[c].K + b_matrix.cells[c].K - l_f);
+        
+        if(p_m > p_e && p_m > p_k) {
+            states.append(1, 'M');
+            col -= 1;
+            row -= 1;
+        } else if (p_e > p_k) {
+            states.append(1, 'E');
+            row -= 1;
+        } else {
+            states.append(1, 'K');
+            col -= 1;
+        }
+    }
+
+    std::reverse(states.begin(), states.end());
+
+    uint32_t ei = e_start;
+    uint32_t ki = k_start;
+    for(size_t i = 0; i < states.size(); ++i) {
+        char s = states[i];
+        
+        double level = state.read->events[state.strand].level[ei];
+        uint32_t rank = !state.rc ? 
+            kmer_rank(consensus.c_str() + ki, K) : 
+            rc_kmer_rank(consensus.c_str() + ki, K);
+        
+        const CPoreModel& pm = state.read->pore_model[state.strand];
+        std::string kmer(consensus.c_str(), K);
+        //printf("%s %d %lf %lf %lf\n", kmer.c_str(), rank, pm.state[rank].mean, pm.shift, pm.scale);
+        
+        double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
+        double model_s = pm.state[rank].sd * pm.scale;
+        printf("%c %d %d %.2lf 0.00 %s %.2lf %.2lf\n", s, s != 'K' ? ei : -1, ki, level, consensus.substr(ki, K).c_str(), model_m, model_s);
+    
+        if(states[i + 1] == 'M') {
+            ei += state.stride;
+            ki += 1;
+        } else if(states[i + 1] == 'E') {
+            ei += state.stride;
+        } else {
+            ki += 1;
+        }
+    }
+
+    free(b_matrix.cells);
+    free_matrix(matrix);
 }
 
 void update_read_state(const std::string& consensus, HMMConsReadState& state)
@@ -627,6 +794,23 @@ void update_read_state(const std::string& consensus, HMMConsReadState& state)
     if(max_posterior > 0.25f) {
         state.kmer_idx += 1;
         state.event_idx += max_row - 1;
+    }
+
+    free(f_matrix.cells);
+    free(b_matrix.cells);
+}
+
+extern "C"
+void run_debug()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+
+    std::string consensus = "AACAGTCCACTATTGGAT";
+    for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
+        debug_align(consensus, g_data.read_states[i]);
     }
 }
 

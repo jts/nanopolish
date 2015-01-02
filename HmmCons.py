@@ -56,6 +56,7 @@ test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_254
 reads = []
 for (offset, strand, fn) in test_data:
     reads.append(SquiggleRead(fn))
+    break
 
 #
 # Pass reads into C code
@@ -88,6 +89,41 @@ for (ri, sr) in enumerate(reads):
 # Initialize HMM by telling C code where the events
 # start for each read
 #
+states = []
+for ki in range(0, 14):
+    a = reads[ri].event_map['2D'][ki]
+    for e in a:
+        if len(states) == 0 or states[-1][0] != e[0] or states[-1][1] != ki:
+            states.append((e[0], ki))
+    print reads[0].get_2D_kmer_at(ki, 5), a
+
+prev = (-1, -1)
+for curr in states:
+
+    # classify
+    sc = 'N'
+    if curr[1] == prev[1] and curr[0] == -1:
+        sc = 'S'
+    if curr[1] == prev[1]:
+        sc = 'E'
+    elif curr[0] == -1:
+        sc = 'K'
+    else:
+        sc = 'M'
+    
+    level = 0
+    sd = 0
+    if curr[0] != -1:
+        level = reads[0].events['t'][curr[0]].mean
+        sd = reads[0].events['t'][curr[0]].stdv
+    kmer = reads[0].get_2D_kmer_at(curr[1], 5)
+    k_level = reads[0].get_expected_level(kmer, 't')
+    k_sd = reads[0].get_expected_sd(kmer, 't')
+    if sc != 'S':
+        print sc, curr[0], curr[1], level, sd, k_level, k_sd
+    prev = curr
+
+#sys.exit(0)
 
 for (ri, sr) in enumerate(reads):
 
@@ -113,7 +149,8 @@ for (ri, sr) in enumerate(reads):
     c_rs = CReadStateInterface(ri, c_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
-lib_hmmcons_fast.run_consensus()
+lib_hmmcons_fast.run_debug()
+#lib_hmmcons_fast.run_consensus()
 sys.exit(0)
 
 #
