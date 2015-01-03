@@ -1,6 +1,7 @@
 from SquiggleRead import *
 from NanoUtils import *
 from ctypes import *
+from collections import defaultdict
 
 # Generate all the paths of length (k+1)
 # starting from the given k-mer
@@ -56,7 +57,6 @@ test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_254
 reads = []
 for (offset, strand, fn) in test_data:
     reads.append(SquiggleRead(fn))
-    break
 
 #
 # Pass reads into C code
@@ -85,46 +85,83 @@ for (ri, sr) in enumerate(reads):
                                     (event_params[0], event_params[1]))
     lib_hmmcons_fast.add_read(params)
 
+transition_counts = defaultdict(int)
+
+#
+# Debug code 
+#
+for (ri, sr) in enumerate(reads):
+
+    # initialize read parameters
+    for (strand_idx, strand) in enumerate(('t', 'c')):
+        do_rc = 0
+        if strand == 'c':
+            do_rc = 1
+
+        k_idx = test_data[ri][0]
+        orientation = test_data[ri][1]
+
+        if orientation != 'n':
+            k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
+        
+        print 'READ', ri, strand, do_rc 
+        # Emit alignments between events and kmers for this strand
+        states = []
+        n_kmers = 15
+        for ki in range(k_idx, k_idx + n_kmers):
+            a = reads[ri].event_map['2D'][ki]
+            for e in a:
+                if len(states) == 0 or states[-1][0] != e[strand_idx] or states[-1][1] != ki:
+                    states.append((e[strand_idx], ki))
+
+        # Classify the alignments and emit debug info
+        prev = (-1, -1)
+        from_sc = ''
+        for curr in states:
+
+            # classify
+            sc = 'N'
+            if curr[1] == prev[1] and curr[0] == -1:
+                sc = 'S'
+            elif curr[1] == prev[1]:
+                sc = 'E'
+            elif curr[0] == -1:
+                sc = 'K'
+            else:
+                sc = 'M'
+            
+            # Skip when there is no alignment
+            if sc == 'S':
+                continue
+
+            # Extract event info
+            mlevel = 0
+            level = 0
+            sd = 0
+
+            if curr[0] != -1:
+                level = reads[ri].events[strand][curr[0]].mean
+                mlevel = reads[ri].events[strand][curr[0]].model_level
+                sd = reads[ri].events[strand][curr[0]].stdv
+
+            kmer = reads[ri].get_2D_kmer_at(curr[1], 5)
+            if do_rc:
+                kmer = revcomp(kmer)
+            k_level = reads[ri].get_expected_level(kmer, strand)
+            k_sd = reads[ri].get_expected_sd(kmer, strand)
+            
+            print "%s %d %d %.2lf %.2lf %s %.2lf %.2lf %.2lf" % (sc, curr[0], curr[1] - k_idx, level, sd, kmer, k_level, k_sd, mlevel)
+            transition_counts[from_sc + '.' + sc] += 1
+            from_sc = sc
+            
+            prev = curr
+print transition_counts
+#sys.exit(0)
+
 #
 # Initialize HMM by telling C code where the events
 # start for each read
 #
-states = []
-for ki in range(0, 14):
-    a = reads[ri].event_map['2D'][ki]
-    for e in a:
-        if len(states) == 0 or states[-1][0] != e[0] or states[-1][1] != ki:
-            states.append((e[0], ki))
-    print reads[0].get_2D_kmer_at(ki, 5), a
-
-prev = (-1, -1)
-for curr in states:
-
-    # classify
-    sc = 'N'
-    if curr[1] == prev[1] and curr[0] == -1:
-        sc = 'S'
-    if curr[1] == prev[1]:
-        sc = 'E'
-    elif curr[0] == -1:
-        sc = 'K'
-    else:
-        sc = 'M'
-    
-    level = 0
-    sd = 0
-    if curr[0] != -1:
-        level = reads[0].events['t'][curr[0]].mean
-        sd = reads[0].events['t'][curr[0]].stdv
-    kmer = reads[0].get_2D_kmer_at(curr[1], 5)
-    k_level = reads[0].get_expected_level(kmer, 't')
-    k_sd = reads[0].get_expected_sd(kmer, 't')
-    if sc != 'S':
-        print sc, curr[0], curr[1], level, sd, k_level, k_sd
-    prev = curr
-
-#sys.exit(0)
-
 for (ri, sr) in enumerate(reads):
 
     k_idx = test_data[ri][0]

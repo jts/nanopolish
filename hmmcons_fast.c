@@ -77,6 +77,8 @@ struct HMMConsReadState
 struct ExtensionResult
 {
     double b[4];
+    std::string best_path;
+    double best_path_score;
 };
 
 //
@@ -321,8 +323,8 @@ inline double log_probability_kmer_insert(const CSquiggleRead& read,
     double m2 = (pm.state[kmer_rank2].mean + pm.shift) * pm.scale;
     double s2 = pm.state[kmer_rank2].sd * pm.scale;
     //printf("LPKI -- %d %d %.2lf %.2lf %.2lf\n", kmer_rank1, kmer_rank2, m1, m2, s2);
-    return LOG_KMER_INSERTION;
-    //return log_normal_pdf(m1, m2, s2);
+    //return LOG_KMER_INSERTION;
+    return log_normal_pdf(m1, m2, s2);
 }
 
 void print_matrix(const HMMMatrix& matrix)
@@ -544,7 +546,10 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     // Set up HMM matrix
     HMMMatrix matrix;
     allocate_matrix(matrix, n_events + 1, n_kmers + 1);
-    
+
+    std::string best_path_str;
+    double best_path_score = -INFINITY;
+       
     ExtensionResult result;
     for(uint8_t i = 0; i < 4; ++i)
         result.b[i] = -INFINITY;
@@ -574,35 +579,15 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
         printf("extensions: %s %d %.2lff\n", 
                 extension.substr(extension.size() - K).c_str(), max_row, max_value);
         
-        print_matrix(matrix);
-        
         // path sum
         uint8_t br = base_rank[extension[extension.size() - K]];
         double kmer_sum = log(exp(result.b[br]) + exp(max_value));
         result.b[br] = kmer_sum;
-        
-        HMMMatrix b_matrix;
-        allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
-        initialize_backward(b_matrix, g_data.hmm_params);
-        fill_backward(b_matrix, g_data.hmm_params, extension.c_str(), state, e_start, k_start);
-        
-        printf("posterior:\n");
-        for(uint32_t col = 1; col < matrix.n_cols; ++col)
-            printf("%s\t", extension.substr(k_start + col - 1, K).c_str());
-        printf("\n");
-        for(uint32_t row = 1; row < matrix.n_rows; ++row) {
-            for(uint32_t col = 1; col < matrix.n_cols; ++col) {
-                uint32_t c = cell(matrix, row, col);
 
-                double p_m = exp(matrix.cells[c].M + b_matrix.cells[c].M - l_f);
-                double p_e = exp(matrix.cells[c].E + b_matrix.cells[c].E - l_f);
-                double p_k = exp(matrix.cells[c].K + b_matrix.cells[c].K - l_f);
-                printf("%.2lf,%.2lf,%.2lf\t", p_m, p_e, p_k);
-            }
-            printf("\n");
+        if(max_value > best_path_score) {
+            best_path_score = max_value;
+            best_path_str = extension.substr(extension.size() - K);
         }
-
-        free(b_matrix.cells);
 
         // Set the extension to the next string
         lexicographic_next(extension);
@@ -611,7 +596,8 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     double time_stop = clock();
     //printf("Time: %.2lfs\n", (time_stop - time_start) / CLOCKS_PER_SEC);
     free_matrix(matrix);
-
+    result.best_path = best_path_str;
+    result.best_path_score = best_path_score;
     return result;
 }
 
@@ -622,7 +608,7 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
 
     // Get the start/end event indices
     uint32_t e_start = state.event_idx;
-    uint32_t e_end = e_start + 11;
+    uint32_t e_end = e_start + 15;
     uint32_t n_events = e_end - e_start + 1;
     uint32_t k_start = 0; // this is in reference to the extension sequence
     uint32_t n_kmers = consensus.size() - K + 1;
@@ -650,12 +636,12 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         }
     }
 
-
     HMMMatrix b_matrix;
     allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
     initialize_backward(b_matrix, g_data.hmm_params);
     fill_backward(b_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
     
+    /*
     print_matrix(matrix);
     print_matrix(b_matrix);
 
@@ -674,10 +660,11 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         }
         printf("\n");
     }
-    
+    */
+
     // posterior decode
     std::string states;
-    uint32_t row = matrix.n_rows - 1;
+    uint32_t row = max_row;
     col = matrix.n_cols - 1;
     while(row > 0 && col > 0) {
         uint32_t c = cell(matrix, row, col);
@@ -699,7 +686,8 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     }
 
     std::reverse(states.begin(), states.end());
-
+    
+    printf("Align log prob: %.2lf\n", l_f);
     uint32_t ei = e_start;
     uint32_t ki = k_start;
     for(size_t i = 0; i < states.size(); ++i) {
@@ -808,9 +796,10 @@ void run_debug()
         exit(EXIT_FAILURE);
     }
 
-    std::string consensus = "AACAGTCCACTATTGGAT";
+    std::string consensus = "AACAGTCCACTATTGGATG";
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
         debug_align(consensus, g_data.read_states[i]);
+        debug_align("AACAGTCCACTATTAAGT", g_data.read_states[i]);
     }
 }
 
@@ -839,7 +828,7 @@ void run_consensus()
                 r.b[j] -= sequence_sum;
                 all.b[j] += r.b[j];
             }
-            printf("seq[%d]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf\n", i, r.b[0], r.b[1], r.b[2], r.b[3]);
+            printf("seq[%d]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf path: %s %.2lf\n", i, r.b[0], r.b[1], r.b[2], r.b[3], r.best_path.c_str(), r.best_path_score);
         }
         printf("seq[a]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf\n", all.b[0], all.b[1], all.b[2], all.b[3]);
 
