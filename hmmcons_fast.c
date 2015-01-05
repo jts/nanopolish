@@ -222,6 +222,7 @@ void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
     matrix.n_cols = n_cols;
     uint32_t N = matrix.n_rows * matrix.n_cols;
     matrix.cells = (HMMCell*)malloc(N * sizeof(HMMCell));
+    memset(matrix.cells, 0, N * sizeof(HMMCell));
 }
 
 void free_matrix(HMMMatrix matrix)
@@ -311,20 +312,12 @@ inline double log_probability_event_insert(const CSquiggleRead& read,
 }
 
 inline double log_probability_kmer_insert(const CSquiggleRead& read,
-                                          uint32_t kmer_rank1,
-                                          uint32_t kmer_rank2,
+                                          uint32_t kmer_rank,
+                                          uint32_t event_idx, 
                                           uint8_t strand)
 
 {
-    const CPoreModel& pm = read.pore_model[strand];
-    double m1 = (pm.state[kmer_rank1].mean + pm.shift) * pm.scale;
-    double s1 = pm.state[kmer_rank1].sd * pm.scale;
-    
-    double m2 = (pm.state[kmer_rank2].mean + pm.shift) * pm.scale;
-    double s2 = pm.state[kmer_rank2].sd * pm.scale;
-    //printf("LPKI -- %d %d %.2lf %.2lf %.2lf\n", kmer_rank1, kmer_rank2, m1, m2, s2);
-    //return LOG_KMER_INSERTION;
-    return log_normal_pdf(m1, m2, s2);
+    return log_probability_match(read, kmer_rank, event_idx, strand);
 }
 
 void print_matrix(const HMMMatrix& matrix)
@@ -332,7 +325,7 @@ void print_matrix(const HMMMatrix& matrix)
     for(uint32_t i = 0; i < matrix.n_rows; ++i) {
         for(uint32_t j = 0; j < matrix.n_cols; ++j) {
             uint32_t c = cell(matrix, i, j);
-            printf("%.2lf\t", matrix.cells[c].M);
+            printf("%.1lf,%.1lf,%.1f\t", matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
         }
         printf("\n");
     }
@@ -407,7 +400,7 @@ double fill_forward(HMMMatrix& matrix,
             uint32_t next_rank = !state.rc ? 
                 kmer_rank(sequence + kmer_idx + 1, K) : 
                 rc_kmer_rank(sequence + kmer_idx + 1, K);
-            double l_p_k = log_probability_kmer_insert(*state.read, rank, next_rank, state.strand);
+            double l_p_k = log_probability_kmer_insert(*state.read, rank, event_idx, state.strand);
 
             // Calculate M[i, j]
             double d_m = hmm_params.t[0][0] + matrix.cells[diag].M;
@@ -499,15 +492,13 @@ void fill_backward(HMMMatrix& matrix,
             // Emission probability for skipping kmer k_(j+1)
             double v_k = -INFINITY;
             if(col < nc - 1) {
+                uint32_t event_idx = e_start + (row - 1) * state.stride;
                 uint32_t kmer_idx = k_start + col;
                 uint32_t rank = !state.rc ? 
                     kmer_rank(sequence + kmer_idx, K) : 
                     rc_kmer_rank(sequence + kmer_idx, K);
                 
-                uint32_t next_rank = !state.rc ? 
-                    kmer_rank(sequence + kmer_idx + 1, K) : 
-                    rc_kmer_rank(sequence + kmer_idx + 1, K);
-                double l_p_k = log_probability_kmer_insert(*state.read, rank, next_rank, state.strand);
+                double l_p_k = log_probability_kmer_insert(*state.read, rank, event_idx, state.strand);
                 v_k = l_p_k + matrix.cells[right].K;
             }
 
@@ -608,7 +599,7 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
 
     // Get the start/end event indices
     uint32_t e_start = state.event_idx;
-    uint32_t e_end = e_start + 15;
+    uint32_t e_end = e_start + consensus.size() + 10;
     uint32_t n_events = e_end - e_start + 1;
     uint32_t k_start = 0; // this is in reference to the extension sequence
     uint32_t n_kmers = consensus.size() - K + 1;
@@ -641,7 +632,6 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     initialize_backward(b_matrix, g_data.hmm_params);
     fill_backward(b_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
     
-    /*
     print_matrix(matrix);
     print_matrix(b_matrix);
 
@@ -660,10 +650,10 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         }
         printf("\n");
     }
-    */
 
     // posterior decode
     std::string states;
+    std::vector<double> posteriors;
     uint32_t row = max_row;
     col = matrix.n_cols - 1;
     while(row > 0 && col > 0) {
@@ -674,20 +664,24 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         
         if(p_m > p_e && p_m > p_k) {
             states.append(1, 'M');
+            posteriors.push_back(p_m);
             col -= 1;
             row -= 1;
         } else if (p_e > p_k) {
             states.append(1, 'E');
+            posteriors.push_back(p_e);
             row -= 1;
         } else {
             states.append(1, 'K');
+            posteriors.push_back(p_k);
             col -= 1;
         }
     }
 
     std::reverse(states.begin(), states.end());
+    std::reverse(posteriors.begin(), posteriors.end());
     
-    printf("Align log prob: %.2lf\n", l_f);
+    printf("Align max value: %.2lf\n", max_value);
     uint32_t ei = e_start;
     uint32_t ki = k_start;
     for(size_t i = 0; i < states.size(); ++i) {
@@ -704,7 +698,7 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         
         double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
         double model_s = pm.state[rank].sd * pm.scale;
-        printf("%c %d %d %.2lf 0.00 %s %.2lf %.2lf\n", s, s != 'K' ? ei : -1, ki, level, consensus.substr(ki, K).c_str(), model_m, model_s);
+        printf("%c %d %d %.2lf 0.00 %s %.2lf %.2lf %.2lf\n", s, s != 'K' ? ei : -1, ki, level, consensus.substr(ki, K).c_str(), model_m, model_s, posteriors[i]);
     
         if(states[i + 1] == 'M') {
             ei += state.stride;
@@ -829,6 +823,12 @@ void run_consensus()
                 all.b[j] += r.b[j];
             }
             printf("seq[%d]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf path: %s %.2lf\n", i, r.b[0], r.b[1], r.b[2], r.b[3], r.best_path.c_str(), r.best_path_score);
+        
+            printf("Debug alignment to best\n");
+            debug_align(consensus + r.best_path, g_data.read_states[i]);
+            
+            printf("Debug alignment to truth\n");
+            debug_align("AACAGTCCACTATTGGATG", g_data.read_states[i]);
         }
         printf("seq[a]\tLP(A): %.2lf LP(C): %.2lf LP(G): %.2lf LP(T): %.2lf\n", all.b[0], all.b[1], all.b[2], all.b[3]);
 

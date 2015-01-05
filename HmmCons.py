@@ -95,6 +95,7 @@ for (ri, sr) in enumerate(reads):
     # initialize read parameters
     for (strand_idx, strand) in enumerate(('t', 'c')):
         do_rc = 0
+        k_stride = 1
         if strand == 'c':
             do_rc = 1
 
@@ -103,12 +104,13 @@ for (ri, sr) in enumerate(reads):
 
         if orientation != 'n':
             k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
+            k_stride = -1
         
         print 'READ', ri, strand, do_rc 
         # Emit alignments between events and kmers for this strand
         states = []
         n_kmers = 15
-        for ki in range(k_idx, k_idx + n_kmers):
+        for ki in range(k_idx, k_idx + (k_stride * n_kmers), k_stride):
             a = reads[ri].event_map['2D'][ki]
             for e in a:
                 if len(states) == 0 or states[-1][0] != e[strand_idx] or states[-1][1] != ki:
