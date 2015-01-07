@@ -41,7 +41,8 @@ class CSquiggleReadInterface(Structure):
 
 class CReadStateInterface(Structure):
     _fields_ = [('read_idx', c_int),
-                ('event_idx', c_int),
+                ('event_start_idx', c_int),
+                ('event_stop_idx', c_int),
                 ('strand', c_int),
                 ('stride', c_int),
                 ('rc', c_int)]
@@ -49,13 +50,13 @@ class CReadStateInterface(Structure):
 #
 # Load reads
 # 
-test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"),
-              (1608, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5"),
-              (386,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5"),
-              (2747, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5") ]
+test_data = [ (0,    39,   'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"),
+              (1608, 1650, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5"),
+              (386,  425,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5"),
+              (2747, 2784, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5") ]
 
 reads = []
-for (offset, strand, fn) in test_data:
+for (start, stop, strand, fn) in test_data:
     reads.append(SquiggleRead(fn))
 
 #
@@ -88,86 +89,15 @@ for (ri, sr) in enumerate(reads):
 transition_counts = defaultdict(int)
 
 #
-# Debug code 
-#
-for (ri, sr) in enumerate(reads):
-
-    # initialize read parameters
-    for (strand_idx, strand) in enumerate(('t', 'c')):
-        do_rc = 0
-        k_stride = 1
-        if strand == 'c':
-            do_rc = 1
-
-        k_idx = test_data[ri][0]
-        orientation = test_data[ri][1]
-
-        if orientation != 'n':
-            k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
-            k_stride = -1
-        
-        print 'READ', ri, strand, do_rc 
-        # Emit alignments between events and kmers for this strand
-        states = []
-        n_kmers = 15
-        for ki in range(k_idx, k_idx + (k_stride * n_kmers), k_stride):
-            a = reads[ri].event_map['2D'][ki]
-            for e in a:
-                if len(states) == 0 or states[-1][0] != e[strand_idx] or states[-1][1] != ki:
-                    states.append((e[strand_idx], ki))
-
-        # Classify the alignments and emit debug info
-        prev = (-1, -1)
-        from_sc = ''
-        for curr in states:
-
-            # classify
-            sc = 'N'
-            if curr[1] == prev[1] and curr[0] == -1:
-                sc = 'S'
-            elif curr[1] == prev[1]:
-                sc = 'E'
-            elif curr[0] == -1:
-                sc = 'K'
-            else:
-                sc = 'M'
-            
-            # Skip when there is no alignment
-            if sc == 'S':
-                continue
-
-            # Extract event info
-            mlevel = 0
-            level = 0
-            sd = 0
-
-            if curr[0] != -1:
-                level = reads[ri].events[strand][curr[0]].mean
-                mlevel = reads[ri].events[strand][curr[0]].model_level
-                sd = reads[ri].events[strand][curr[0]].stdv
-
-            kmer = reads[ri].get_2D_kmer_at(curr[1], 5)
-            if do_rc:
-                kmer = revcomp(kmer)
-            k_level = reads[ri].get_expected_level(kmer, strand)
-            k_sd = reads[ri].get_expected_sd(kmer, strand)
-            
-            print "%s %d %d %.2lf %.2lf %s %.2lf %.2lf %.2lf" % (sc, curr[0], curr[1] - k_idx, level, sd, kmer, k_level, k_sd, mlevel)
-            transition_counts[from_sc + '.' + sc] += 1
-            from_sc = sc
-            
-            prev = curr
-print transition_counts
-#sys.exit(0)
-
-#
 # Initialize HMM by telling C code where the events
-# start for each read
+# start and end for each read
 #
 for (ri, sr) in enumerate(reads):
 
-    k_idx = test_data[ri][0]
-    orientation = test_data[ri][1]
+    k_start_idx = test_data[ri][0]
+    k_stop_idx = test_data[ri][1]
+    orientation = test_data[ri][2]
+
     if orientation == 'n':
         t_stride = 1
         c_stride = -1
@@ -178,18 +108,29 @@ for (ri, sr) in enumerate(reads):
         c_stride = 1
         t_rc = 1
         c_rc = 0
-        k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
+        k_start_idx = reads[ri].flip_k_idx_strand(k_start_idx, 5)
+        k_stop_idx = reads[ri].flip_k_idx_strand(k_stop_idx, 5)
 
-    (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
+    k1 = reads[ri].get_2D_kmer_at(k_start_idx, 5)
+    k2 = reads[ri].get_2D_kmer_at(k_stop_idx, 5)
 
-    t_rs = CReadStateInterface(ri, t_ei, 0, t_stride, t_rc)
+    if orientation == 'c':
+        k1 = revcomp(k1)
+        k2 = revcomp(k2)
+
+    (t_start_ei, c_start_ei) = reads[ri].event_map['2D'][k_start_idx][0]
+    (t_stop_ei, c_stop_ei) = reads[ri].event_map['2D'][k_stop_idx][0]
+    
+    print k1, k2, t_start_ei, t_stop_ei, c_start_ei, c_stop_ei, t_stride, c_stride
+
+    t_rs = CReadStateInterface(ri, t_start_ei, t_stop_ei, 0, t_stride, t_rc)
     lib_hmmcons_fast.add_read_state(t_rs)
     
-    c_rs = CReadStateInterface(ri, c_ei, 1, c_stride, c_rc)
+    c_rs = CReadStateInterface(ri, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
-lib_hmmcons_fast.run_debug()
-#lib_hmmcons_fast.run_consensus()
+#lib_hmmcons_fast.run_debug()
+lib_hmmcons_fast.run_mutation()
 sys.exit(0)
 
 #

@@ -38,7 +38,8 @@ struct CSquiggleReadInterface
 struct CReadStateInterface
 {
     int read_idx;
-    int event_idx;
+    int event_start_idx;
+    int event_stop_idx;
     int strand;
     int stride;
     int rc;

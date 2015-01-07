@@ -8,6 +8,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <algorithm>
+#include <sstream>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 
@@ -66,7 +67,8 @@ struct CSquiggleRead
 struct HMMConsReadState
 {
     CSquiggleRead* read;
-    uint32_t event_idx;
+    uint32_t event_start_idx;
+    uint32_t event_stop_idx;
     uint32_t kmer_idx;
     uint8_t strand;
     int8_t stride;
@@ -191,7 +193,8 @@ void add_read_state(CReadStateInterface params)
     g_data.read_states.push_back(HMMConsReadState());
     HMMConsReadState& rs = g_data.read_states.back();
     rs.read = &g_data.reads[params.read_idx];
-    rs.event_idx = params.event_idx;
+    rs.event_start_idx = params.event_start_idx;
+    rs.event_stop_idx = params.event_stop_idx;
     rs.kmer_idx = 0;
     rs.strand = params.strand;
     rs.stride = params.stride;
@@ -524,11 +527,10 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     double time_start = clock();
 
     std::string root(consensus.c_str() + state.kmer_idx);
-    printf("ROOT: %s e: %d k: %d\n", root.c_str(), state.event_idx, state.kmer_idx);
     std::string extension = root + "AAAAA";
 
     // Get the start/end event indices
-    uint32_t e_start = state.event_idx;
+    uint32_t e_start = state.event_start_idx;
     uint32_t e_end = e_start + extension.size() + 10;
     uint32_t n_events = e_end - e_start + 1;
     uint32_t k_start = 0; // this is in reference to the extension sequence
@@ -592,12 +594,17 @@ ExtensionResult run_extension_hmm(const std::string& consensus, const HMMConsRea
     return result;
 }
 
-double score_consensus(const std::string& consensus, const HMMConsReadState& state, uint32_t event_window)
+double score_consensus(const std::string& consensus, const HMMConsReadState& state)
 {
     // Get the start/end event indices
-    uint32_t e_start = state.event_idx;
-    uint32_t e_end = e_start + consensus.size() + event_window;
-    uint32_t n_events = e_end - e_start + 1;
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
     uint32_t k_start = 0; // this is in reference to the extension sequence
     uint32_t n_kmers = consensus.size() - K + 1;
  
@@ -612,20 +619,12 @@ double score_consensus(const std::string& consensus, const HMMConsReadState& sta
 
     // Determine the best scoring row in the last column
     uint32_t col = matrix.n_cols - 1;
-    uint32_t max_row = 0;
-    double max_value = -INFINITY;
-
-    for(uint32_t row = 3; row < matrix.n_rows; ++row) {
-        uint32_t c = cell(matrix, row, col);
-        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
-        if(sum > max_value) {
-            max_value = sum;
-            max_row = row;
-        }
-    }
+    uint32_t row = matrix.n_rows - 1;
+    uint32_t c = cell(matrix, row, col);
+    double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
 
     free_matrix(matrix);
-    return max_value;
+    return sum;
 }
 
 void debug_align(const std::string& consensus, const HMMConsReadState& state)
@@ -634,7 +633,7 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     double time_start = clock();
 
     // Get the start/end event indices
-    uint32_t e_start = state.event_idx;
+    uint32_t e_start = state.event_start_idx;
     uint32_t e_end = e_start + consensus.size() + 10;
     uint32_t n_events = e_end - e_start + 1;
     uint32_t k_start = 0; // this is in reference to the extension sequence
@@ -750,74 +749,6 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     free_matrix(matrix);
 }
 
-void update_read_state(const std::string& consensus, HMMConsReadState& state)
-{
-    // Calculate the forward and backward matrices for this read and consensus sequence
-    
-    // Get the start/end event indices
-    uint32_t e_start = state.event_idx;
-    uint32_t e_end = e_start + 10;
-    uint32_t n_events = e_end - e_start + 1;
-
-    uint32_t k_start = state.kmer_idx;
-    uint32_t n_kmers = (consensus.size() - K + 1) - k_start;
- 
-    // Forward algorithm
-    HMMMatrix f_matrix;
-    allocate_matrix(f_matrix, n_events + 1, n_kmers + 1);
-    initialize_forward(f_matrix);
-    double l_f = fill_forward(f_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
-
-    // Backward algorithm
-    HMMMatrix b_matrix;
-    allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
-    initialize_backward(b_matrix, g_data.hmm_params);
-    fill_backward(b_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
-
-    /*
-    printf("forward (%.2lf):\n", l_f);
-    print_matrix(f_matrix);
-    printf("backward:\n");
-    print_matrix(b_matrix);
-    
-    printf("posterior:\n");
-    for(uint32_t row = 1; row < f_matrix.n_rows; ++row) {
-        for(uint32_t col = 1; col < f_matrix.n_cols; ++col) {
-            uint32_t c = cell(f_matrix, row, col);
-
-            double p_m = exp(f_matrix.cells[c].M + b_matrix.cells[c].M - l_f);
-            double p_e = exp(f_matrix.cells[c].E + b_matrix.cells[c].E - l_f);
-            double p_k = exp(f_matrix.cells[c].K + b_matrix.cells[c].K - l_f);
-            printf("%.2lf, %.2lf, %.2lf\t", p_m, p_e, p_k);
-        }
-        printf("\n");
-    }
-    */
-
-    // Update event and kmer index if there is an event with high posterior of being matched to the new kmer
-    uint32_t col = 2;
-    double max_posterior = 0.0f;
-    uint32_t max_row = 0;
-    for(uint32_t row = 2; row < f_matrix.n_rows; ++row) {
-        uint32_t c = cell(f_matrix, row, col);
-        double p_m = exp(f_matrix.cells[c].M + b_matrix.cells[c].M - l_f);
-        if(p_m > max_posterior) {
-            max_posterior = p_m;
-            max_row = row;
-        }
-    }
-
-    printf("Max posterior: %.2lf in row %d\n", max_posterior, max_row);
-
-    if(max_posterior > 0.25f) {
-        state.kmer_idx += 1;
-        state.event_idx += max_row - 1;
-    }
-
-    free(f_matrix.cells);
-    free(b_matrix.cells);
-}
-
 extern "C"
 void run_debug()
 {
@@ -837,7 +768,8 @@ struct PathCons
 {
     std::string path;
     double score;
-
+    std::string mutdesc;
+    
 };
 typedef std::vector<PathCons> PathConsVector;
 
@@ -845,6 +777,155 @@ bool sortPathConsAsc(const PathCons& a, const PathCons& b)
 {
     return a.score > b.score;
 }
+
+void extend_paths(PathConsVector& paths, int maxk = 2)
+{
+    // Insert all possible extensions into the path sequence
+    // for k in 1 to maxk
+    PathConsVector new_paths;
+
+    for(int k = 1; k <= maxk; ++k) {
+
+        for(int pi = 0; pi < paths.size(); ++pi) {
+    
+            std::string first(k, 'A');
+            std::string extension = first;
+
+            do {
+                std::string current = paths[pi].path;
+                std::string ns = current.insert(current.size() - 5, extension);
+                PathCons ps = { ns, 0.0f };
+                new_paths.push_back(ps);
+                lexicographic_next(extension);
+            } while(extension != first);
+        }
+    }
+
+    paths.swap(new_paths);
+}
+
+PathConsVector generate_mutations(const std::string& sequence)
+{
+    PathConsVector mutations;
+
+    // Add the unmutated sequence
+    {
+        PathCons pc = { sequence, 0.0f };
+        mutations.push_back(pc);
+    }
+
+    // Mutate every base
+    for(size_t si = 0; si < sequence.size(); ++si) {
+        
+        // All subs
+        for(size_t bi = 0; bi < 4; bi++) {
+            char b = "ACGT"[bi];
+            if(sequence[si] == b)
+                continue;
+            PathCons pc = { sequence, 0.0f };
+            pc.path[si] = b;
+            std::stringstream ss;
+            ss << "sub-" << si << "-" << b;
+            pc.mutdesc = ss.str();
+            mutations.push_back(pc);
+
+
+        }
+
+        // 1bp del at this position
+        {
+            PathCons pc = { sequence, 0.0f };
+            pc.path.erase(si, 1);
+            
+            std::stringstream ss;
+            ss << "del-" << si;
+            pc.mutdesc = ss.str();
+            
+            mutations.push_back(pc);
+        }
+
+        // All 1bp ins before this position
+        for(size_t bi = 0; bi < 4; bi++) {
+            char b = "ACGT"[bi];
+            PathCons pc = { sequence, 0.0f };
+            pc.path.insert(si, 1, b);
+            
+            std::stringstream ss;
+            ss << "ins-" << si << "-" << b;
+            pc.mutdesc = ss.str();
+            
+            mutations.push_back(pc);
+        }
+    }
+
+    return mutations;
+}
+
+extern "C"
+void run_mutation()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+
+    std::string sequence = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG";
+
+    int iteration = 0;
+    while(iteration++ < 1) {
+
+        // Generate possible sequences
+        PathConsVector paths = generate_mutations(sequence);
+
+        // Score all reads
+        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+            std::vector<double> scores;
+            double sum_score = -INFINITY;
+
+            // Score all paths
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                sum_score = log(exp(sum_score) + exp(curr));
+                scores.push_back(curr);
+            }
+            
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                paths[pi].score += (scores[pi] - sum_score);
+            }
+        }
+        
+        // Cull paths
+        std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+        std::string truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTGTGCCGATATGATCAAACCGCGGTTGAATGAAAC";
+        
+        printf("Iteration %d\n", iteration);
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+            // Calculate the length of the matching prefix with the truth
+            const std::string& s = paths[pi].path;
+
+            uint32_t plen = 0;
+            while(s[plen] == truth[plen] && plen < s.length() && plen < truth.length())
+                plen++;
+
+            // Match info
+            char match = plen == s.length() ? '*' : ' ';
+            
+            char initial = s == sequence ? 'I' : ' ';
+
+            printf("%zu\t%s\t%.1lf %d %c %c %s", pi, paths[pi].path.c_str(), paths[pi].score, plen, match, initial, paths[pi].mutdesc.c_str());
+            // If this is the truth path or the best path, show the scores for all reads
+            if(pi == 0 || match == '*') {
+                for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                    double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                    printf("%.1lf ", curr);
+                }
+            }
+            printf("\n");
+        }
+    }    
+}
+
 
 extern "C"
 void run_consensus()
@@ -854,9 +935,71 @@ void run_consensus()
         exit(EXIT_FAILURE);
     }
 
-    std::string consensus = "AACAG";
+    std::string consensus = "AACAGGCAAG";
     
+    // Populate initial pathcons vector
+    PathConsVector paths;
+    PathCons pc = { consensus, 0.0f };
+    paths.push_back( pc );
+
+    for(size_t i = 0; i < paths.size(); ++i) {
+        printf("%zu %s\n", i, paths[i].path.c_str());
+    }
     
+    int iteration = 0;
+    while(iteration++ < 1) {
+        
+        extend_paths(paths);
+
+        // Score all reads
+        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+            std::vector<double> scores;
+            double sum_score = -INFINITY;
+
+            // Score all paths
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                sum_score = log(exp(sum_score) + exp(curr));
+                scores.push_back(curr);
+            }
+            
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                paths[pi].score += (scores[pi] - sum_score);
+            }
+        }
+        
+        // Cull paths
+        std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+        std::string truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTGTGCCGATATGATCAAACCGCGGTTGAATGAAAC";
+        
+        printf("Iteration %d\n", iteration);
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+            // Calculate the length of the matching prefix with the truth
+            const std::string& s = paths[pi].path;
+
+            uint32_t plen = 0;
+            while(s[plen] == truth[plen] && plen < s.length() && plen < truth.length())
+                plen++;
+
+            // Match info
+            char match = plen == s.length() ? '*' : ' ';
+            
+            printf("%zu %s %.1lf %d %c", pi, paths[pi].path.c_str(), paths[pi].score, plen, match);
+            // If this is the truth path or the best path, show the scores for all reads
+            if(pi == 0 || match == '*') {
+                for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                    double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                    printf("%.1lf ", curr);
+                }
+            }
+            printf("\n");
+        }
+
+        paths.resize(std::min(paths.size(), (size_t)256));
+    }
+
+#if 0
     // Populate initial pathcons vector
     PathConsVector paths;
     std::string extension = "AAAAA";
@@ -926,6 +1069,7 @@ void run_consensus()
 
         paths.assign(new_paths.begin(), new_paths.begin() + 1024);
     }
+#endif
 }
 
 extern "C"
