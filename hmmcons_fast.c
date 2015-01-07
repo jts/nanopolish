@@ -634,8 +634,13 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
 
     // Get the start/end event indices
     uint32_t e_start = state.event_start_idx;
-    uint32_t e_end = e_start + consensus.size() + 10;
-    uint32_t n_events = e_end - e_start + 1;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+    
     uint32_t k_start = 0; // this is in reference to the extension sequence
     uint32_t n_kmers = consensus.size() - K + 1;
  
@@ -648,25 +653,12 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     // Fill in the HMM matrix using the forward algorithm
     double l_f = fill_forward(matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
 
-    // Determine the best scoring row in the last column
-    uint32_t col = matrix.n_cols - 1;
-    uint32_t max_row = 0;
-    double max_value = -INFINITY;
-
-    for(uint32_t row = 3; row < matrix.n_rows; ++row) {
-        uint32_t c = cell(matrix, row, col);
-        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
-        if(sum > max_value) {
-            max_value = sum;
-            max_row = row;
-        }
-    }
-
     HMMMatrix b_matrix;
     allocate_matrix(b_matrix, n_events + 1, n_kmers + 1);
     initialize_backward(b_matrix, g_data.hmm_params);
     fill_backward(b_matrix, g_data.hmm_params, consensus.c_str(), state, e_start, k_start);
     
+    /*
     print_matrix(matrix);
     print_matrix(b_matrix);
 
@@ -685,12 +677,14 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         }
         printf("\n");
     }
+    */
 
     // posterior decode
     std::string states;
     std::vector<double> posteriors;
-    uint32_t row = max_row;
-    col = matrix.n_cols - 1;
+    
+    uint32_t row = matrix.n_rows - 1;
+    uint32_t col = matrix.n_cols - 1;
     while(row > 0 && col > 0) {
         uint32_t c = cell(matrix, row, col);
         double p_m = exp(matrix.cells[c].M + b_matrix.cells[c].M - l_f);
@@ -716,7 +710,7 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     std::reverse(states.begin(), states.end());
     std::reverse(posteriors.begin(), posteriors.end());
     
-    printf("Align max value: %.2lf\n", max_value);
+    printf("Align max value: %.2lf\n", l_f);
     uint32_t ei = e_start;
     uint32_t ki = k_start;
     for(size_t i = 0; i < states.size(); ++i) {
@@ -757,10 +751,9 @@ void run_debug()
         exit(EXIT_FAILURE);
     }
 
-    std::string consensus = "AACAGTCCACTATTGGATG";
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_align(consensus, g_data.read_states[i]);
-        debug_align("AACAGTCCACTATTAAGT", g_data.read_states[i]);
+        debug_align("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
+        debug_align("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
     }
 }
 
@@ -872,7 +865,7 @@ void run_mutation()
     std::string sequence = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG";
 
     int iteration = 0;
-    while(iteration++ < 1) {
+    while(iteration++ < 20) {
 
         // Generate possible sequences
         PathConsVector paths = generate_mutations(sequence);
@@ -923,6 +916,8 @@ void run_mutation()
             }
             printf("\n");
         }
+
+        sequence = paths[0].path;
     }    
 }
 
