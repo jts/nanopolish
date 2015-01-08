@@ -50,6 +50,7 @@ struct CEventSequence
 {
     uint32_t n_events;
     const double* level;
+    const double* stdv;
 };
 
 struct CSquiggleRead
@@ -98,23 +99,25 @@ struct HMMParameters
 
 void initialize_hmm(HMMParameters& params)
 {
+    // These values are trained from ONT's 2D alignments
+
     // transitions from the match state
-    params.t[0][0] = 90.f; // M
-    params.t[0][1] = 5.f;  // E
-    params.t[0][2] = 5.f;  // K
-    params.t[0][3] = 1.f;  // terminal
+    params.t[0][0] = 8980.f; // M
+    params.t[0][1] = 2147.f; // E
+    params.t[0][2] = 1973.f; // K
+    params.t[0][3] =  200.f; // terminal
     
     // transitions from the event insertion state
-    params.t[1][0] = 85.f; // M
-    params.t[1][1] = 10.f; // E
-    params.t[1][2] = 5.f;  // K
-    params.t[1][3] = 1.f;  // terminal
+    params.t[1][0] = 1746.f; // M
+    params.t[1][1] = 1352.f; // E
+    params.t[1][2] =  401.f; // K
+    params.t[1][3] =   35.f; // terminal
 
     // transitions from the k-mer insertion state
-    params.t[2][0] = 85.f; // M
-    params.t[2][1] = 5.f;  // E
-    params.t[2][2] = 10.f; // K
-    params.t[2][3] = 1.f;  // terminal
+    params.t[2][0] = 2373.f; // M
+    params.t[2][1] =    0.f; // E
+    params.t[2][2] =  519.f; // K
+    params.t[2][3] =   30.f; // terminal
 
     // transitions from the terminal state
     params.t[3][0] = 0.f;  // M
@@ -173,6 +176,7 @@ void add_read(CSquiggleReadInterface params)
         // Initialize events
         sr.events[i].n_events = params.events[i].n_events;
         sr.events[i].level = params.events[i].level;
+        sr.events[i].stdv = params.events[i].stdvs;
         
         /*
         printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 
@@ -400,9 +404,6 @@ double fill_forward(HMMMatrix& matrix,
             double l_p_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
             
             // Emission probability for a kmer insertion
-            uint32_t next_rank = !state.rc ? 
-                kmer_rank(sequence + kmer_idx + 1, K) : 
-                rc_kmer_rank(sequence + kmer_idx + 1, K);
             double l_p_k = log_probability_kmer_insert(*state.read, rank, event_idx, state.strand);
 
             // Calculate M[i, j]
@@ -424,6 +425,7 @@ double fill_forward(HMMMatrix& matrix,
             matrix.cells[c].K = l_p_k + log(exp(l_m) + exp(l_e) + exp(l_k));
 
 #ifdef DEBUG_HMM_UPDATE
+            printf("(%d %d) ei: %zu ki: %zu\n", row, col, event_idx, kmer_idx);
             printf("(%d %d) R -- [%.2lf %.2lf %.2lf]\n", row, col, matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
             printf("(%d %d) D -- e: %.2lf [%.2lf %.2lf %.2lf]\n", row, col, l_p_m, d_m, d_e, d_k);
             printf("(%d %d) U -- e: %.2lf [%.2lf %.2lf %.2lf]\n", row, col, l_p_e, u_m, u_e, u_k);
@@ -711,12 +713,16 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     std::reverse(posteriors.begin(), posteriors.end());
     
     printf("Align max value: %.2lf\n", l_f);
+    row = 1;
+    col = 1;
+
     uint32_t ei = e_start;
     uint32_t ki = k_start;
     for(size_t i = 0; i < states.size(); ++i) {
         char s = states[i];
-        
+
         double level = state.read->events[state.strand].level[ei];
+        double sd = state.read->events[state.strand].stdv[ei];
         uint32_t rank = !state.rc ? 
             kmer_rank(consensus.c_str() + ki, K) : 
             rc_kmer_rank(consensus.c_str() + ki, K);
@@ -727,15 +733,22 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
         
         double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
         double model_s = pm.state[rank].sd * pm.scale;
-        printf("%c %d %d %.2lf 0.00 %s %.2lf %.2lf %.2lf\n", s, s != 'K' ? ei : -1, ki, level, consensus.substr(ki, K).c_str(), model_m, model_s, posteriors[i]);
+        uint32_t c = cell(matrix, row, col);
+        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
+
+        printf("%c %d %d %.2lf %.2lf %s %.2lf %.2lf %.2lf %.2lf %d %d\n", s, s != 'K' ? ei : -1, ki, level, sd, consensus.substr(ki, K).c_str(), model_m, model_s, posteriors[i], sum, row, col);
     
         if(states[i + 1] == 'M') {
             ei += state.stride;
             ki += 1;
+            row += 1;
+            col += 1;
         } else if(states[i + 1] == 'E') {
             ei += state.stride;
+            row += 1;
         } else {
             ki += 1;
+            col += 1;
         }
     }
 

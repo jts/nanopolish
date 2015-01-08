@@ -34,6 +34,11 @@ class SquiggleRead:
         for s in ('t', 'c'):
             self.event_levels[s] = np.array([x.mean for x in self.events[s]])
             self.event_levels[s].astype(np.float64)
+        
+        self.event_stdvs = {}
+        for s in ('t', 'c'):
+            self.event_stdvs[s] = np.array([x.stdv for x in self.events[s]])
+            self.event_stdvs[s].astype(np.float64)
 
         self.event_map = {}
 

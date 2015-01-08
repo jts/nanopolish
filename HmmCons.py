@@ -33,7 +33,8 @@ class CPoreModelInterface(Structure):
 
 class CEventSequenceInterface(Structure):
     _fields_ = [('n_events', c_int),
-                ('levels', c_double_p)]
+                ('levels', c_double_p),
+                ('stdvs', c_double_p)]
 
 class CSquiggleReadInterface(Structure):
     _fields_ = [('pore_model', CPoreModelInterface * 2),
@@ -79,7 +80,8 @@ for (ri, sr) in enumerate(reads):
         # Events
         n_events = len(sr.event_levels[s])
         levels = sr.event_levels[s].ctypes.data_as(c_double_p)
-        event_params.append(CEventSequenceInterface(n_events, levels))
+        stdvs = sr.event_stdvs[s].ctypes.data_as(c_double_p)
+        event_params.append(CEventSequenceInterface(n_events, levels, stdvs))
 
     #
     params = CSquiggleReadInterface((pm_params[0], pm_params[1]), 
@@ -129,8 +131,8 @@ for (ri, sr) in enumerate(reads):
     c_rs = CReadStateInterface(ri, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
-lib_hmmcons_fast.run_debug()
-#lib_hmmcons_fast.run_mutation()
+#lib_hmmcons_fast.run_debug()
+lib_hmmcons_fast.run_mutation()
 sys.exit(0)
 
 #

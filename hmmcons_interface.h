@@ -25,6 +25,7 @@ struct CEventSequenceInterface
 {
     int n_events;
     double* level;
+    double* stdvs;
 };
 
 // SquiggleRead
