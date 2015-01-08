@@ -23,6 +23,9 @@ const uint8_t NUM_STRANDS = 2;
 const uint8_t K = 5;
 
 const static double LOG_KMER_INSERTION = log(0.1);
+const static double SELF_KMER_TRANSITION = 0.2;
+const static double P_RANDOM_SKIP = 0.1;
+const static double EVENT_DETECTION_THRESHOLD = 1.0;
 
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -45,6 +48,7 @@ static const uint8_t base_rank[256] = {
 
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
+//#define DEBUG_TRANSITION 1
 
 struct CEventSequence
 {
@@ -232,7 +236,7 @@ void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
     memset(matrix.cells, 0, N * sizeof(HMMCell));
 }
 
-void free_matrix(HMMMatrix matrix)
+void free_matrix(HMMMatrix& matrix)
 {
     free(matrix.cells);
     matrix.cells = NULL;
@@ -243,6 +247,78 @@ inline uint32_t cell(const HMMMatrix& matrix, uint32_t row, uint32_t col)
     return row * matrix.n_cols + col;
 }
 
+void print_matrix(const HMMMatrix& matrix)
+{
+    for(uint32_t i = 0; i < matrix.n_rows; ++i) {
+        for(uint32_t j = 0; j < matrix.n_cols; ++j) {
+            uint32_t c = cell(matrix, i, j);
+            printf("%.1lf,%.1lf,%.1f\t", matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
+        }
+        printf("\n");
+    }
+}
+
+//
+// Double Matrix
+//
+struct DoubleMatrix
+{
+    double* cells;
+    uint32_t n_rows;
+    uint32_t n_cols;
+};
+
+void allocate_matrix(DoubleMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
+{
+    matrix.n_rows = n_rows;
+    matrix.n_cols = n_cols;
+    
+    uint32_t N = matrix.n_rows * matrix.n_cols;
+    matrix.cells = (double*)malloc(N * sizeof(double));
+    memset(matrix.cells, 0, N * sizeof(double));
+}
+
+void free_matrix(DoubleMatrix& matrix)
+{
+    assert(matrix.cells != NULL);
+    free(matrix.cells);
+    matrix.cells = NULL;
+}
+
+inline uint32_t cell(const DoubleMatrix& matrix, uint32_t row, uint32_t col)
+{
+    return row * matrix.n_cols + col;
+}
+
+inline double set(const DoubleMatrix& matrix, uint32_t row, uint32_t col, double v)
+{
+    uint32_t c = cell(matrix, row, col);
+    matrix.cells[c] = v;
+}
+
+inline double get(const DoubleMatrix& matrix, uint32_t row, uint32_t col)
+{
+    uint32_t c = cell(matrix, row, col);
+    return matrix.cells[c];
+}
+
+void print_matrix(const DoubleMatrix& matrix, bool do_exp = false)
+{
+    for(uint32_t i = 0; i < matrix.n_rows; ++i) {
+        for(uint32_t j = 0; j < matrix.n_cols; ++j) {
+            uint32_t c = cell(matrix, i, j);
+            double v = matrix.cells[c];
+            if(do_exp)
+                v = exp(v);
+            printf("%.3lf\t", v);
+        }
+        printf("\n");
+    }
+}
+
+//
+// Kmer Ranks
+//
 inline uint32_t kmer_rank(const char* str, uint32_t K)
 {
     uint32_t rank = 0;
@@ -289,6 +365,20 @@ inline double log_normal_pdf(double x, double m, double s)
     return log_inv_sqrt_2pi - log(s) + (-0.5f * a * a);
 }
 
+// The probability that a standard normal RV is <= x
+// from http://stackoverflow.com/questions/2328258/cumulative-normal-distribution-function-in-c-c
+inline double log_standard_normal_cdf(double x)
+{
+    return 0.5 * erfc(-x * M_SQRT1_2);
+}
+
+// The probability that a normal RV is <= x
+inline double log_normal_cdf(double x, double m, double s)
+{
+    double a = (x - m) / s;
+    return log(0.5 * (1 + erf(a * M_SQRT1_2)));
+}
+
 inline double log_probability_match(const CSquiggleRead& read,
                                     uint32_t kmer_rank,
                                     uint32_t event_idx, 
@@ -327,16 +417,6 @@ inline double log_probability_kmer_insert(const CSquiggleRead& read,
     return log_probability_match(read, kmer_rank, event_idx, strand);
 }
 
-void print_matrix(const HMMMatrix& matrix)
-{
-    for(uint32_t i = 0; i < matrix.n_rows; ++i) {
-        for(uint32_t j = 0; j < matrix.n_cols; ++j) {
-            uint32_t c = cell(matrix, i, j);
-            printf("%.1lf,%.1lf,%.1f\t", matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
-        }
-        printf("\n");
-    }
-}
 
 void initialize_forward(HMMMatrix& matrix)
 {
@@ -629,6 +709,399 @@ double score_consensus(const std::string& consensus, const HMMConsReadState& sta
     return sum;
 }
 
+
+void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state)
+{
+    const CPoreModel& pm = state.read->pore_model[state.strand];
+    uint32_t n_kmers = consensus.size() - K + 1;
+    uint32_t n_states = n_kmers + 2;
+    assert(matrix.n_rows == n_states && matrix.n_cols == n_states);
+
+    // Start state transitions -- only allowed to go to k_0
+    for(size_t si = 0; si < n_states; ++si)
+        set(matrix, 0, si, -INFINITY);
+    set(matrix, 0, 1, 0.0f);
+    
+    // TODO: calculate in log space
+    for(size_t si = 1; si < n_states - 1; si++) {
+        size_t ki = si - 1;
+        double sum = 0.0f;
+
+        // Do not allow transition to previous state
+        for(size_t sj = 0; sj < si; ++sj)
+            set(matrix, si, sj, -INFINITY);
+
+        for(size_t sj = si; sj < n_states - 1; ++sj) {
+            
+            size_t kj = sj - 1;
+                        
+            // transition probability
+            double p_i_j = 0.0f;
+
+            if(ki == kj) {
+                p_i_j = SELF_KMER_TRANSITION;
+            } else {
+        
+                uint32_t rank_i = !state.rc ? 
+                    kmer_rank(consensus.c_str() + ki, K) : 
+                    rc_kmer_rank(consensus.c_str() + ki, K);
+                
+                uint32_t rank_j = !state.rc ? 
+                    kmer_rank(consensus.c_str() + kj, K) : 
+                    rc_kmer_rank(consensus.c_str() + kj, K);
+        
+                double level_i = (pm.state[rank_i].mean + pm.shift) * pm.scale;
+                double sd_i = pm.state[rank_i].sd * pm.scale;
+                
+                double level_j = (pm.state[rank_j].mean + pm.shift) * pm.scale;
+                double sd_j = pm.state[rank_j].sd * pm.scale;
+
+                double diff_mean = level_i - level_j;
+                double diff_sd = sqrt(pow(sd_i, 2.0) + pow(sd_j, 2.0));
+
+                double p_within_threshold = exp(log_normal_cdf(EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd)) - 
+                                            exp(log_normal_cdf(-EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd));
+                double p_skip = P_RANDOM_SKIP + (1 - P_RANDOM_SKIP) * p_within_threshold;
+
+                p_i_j = (1 - sum) * (1 - p_skip);
+#ifdef DEBUG_TRANSITION
+                printf("\t\t%.2lf %.2lf %.2lf %.2lf p_within_threshold: %.4lf p_skip: %.4lf\n", level_i, level_j, diff_mean, diff_sd, p_within_threshold, p_skip);
+#endif
+            }
+
+            sum += p_i_j;
+#ifdef DEBUG_TRANSITION
+            printf("\t %zu %.3lf %.3lf\n", kj, p_i_j, sum);
+#endif
+            set(matrix, si, sj, log(p_i_j));
+        }
+    }
+
+    // Transition to end state -- only the last k-mer can go to the end state
+    // TODO: allow the last k-mer to be skipped??
+    for(size_t si = 0; si < n_states; ++si)
+        set(matrix, si, n_states - 1, -INFINITY);
+    for(size_t si = 0; si < n_states; ++si)
+        set(matrix, n_states - 1, si, -INFINITY);
+    set(matrix, n_states - 2, n_states - 1, 0.0f);
+}
+
+void initialize_forward_khmm(DoubleMatrix& fm)
+{
+    // initialize forward calculation
+    for(uint32_t si = 0; si < fm.n_cols; si++)
+        set(fm, 0, si, -INFINITY);
+    for(uint32_t ri = 0; ri < fm.n_rows; ri++)
+        set(fm, ri, 0, -INFINITY);
+
+    set(fm, 0, 0, 0.0f); // probability 1 in the start state for the null row
+}
+
+double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
+                         const DoubleMatrix& tm, //transitions
+                         const char* sequence,
+                         const HMMConsReadState& state,
+                         uint32_t e_start)
+{
+    // Fill in matrix
+    for(uint32_t row = 1; row < fm.n_rows; row++) {
+        for(uint32_t sl = 1; sl < fm.n_cols - 1; sl++) {
+
+            // cell indices
+            //uint32_t c = cell(matrix, row, col);
+            //uint32_t event_i = e_start + (row - 1) * state.stride;
+            //uint32_t kmer_idx = k_start + col - 1;
+
+            // Sum over states for previous row
+            double sum = -INFINITY;
+            for(uint32_t sk = 0; sk < fm.n_cols - 1; sk++) {
+
+                // transition probability from state k to state l
+                double t_kl = get(tm, sk, sl);
+                double fm_k = get(fm, row - 1, sk);
+                sum = log(exp(sum) + exp(t_kl + fm_k));
+#ifdef DEBUG_HMM_UPDATE
+                printf("\t(%d %d %d) t: %.2lf f: %.2lf s: %.2lf\n", row, sl, sk, t_kl, fm_k, sum);
+#endif
+            }
+
+            // Emission probability for event i in state sl
+            uint32_t event_idx = e_start + (row - 1) * state.stride;
+            uint32_t kmer_idx = sl - 1;
+
+            uint32_t rank = !state.rc ? 
+                kmer_rank(sequence + kmer_idx, K) : 
+                rc_kmer_rank(sequence + kmer_idx, K);
+            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            
+            set(fm, row, sl, lp_e + sum);
+
+#ifdef DEBUG_HMM_UPDATE
+            printf("(%d %d) ei: %zu ki: %zu\n", row, sl, event_idx, kmer_idx);
+            printf("(%d %d) sum: %.2lf lp_e: %.2lf fm: %.2lf\n", row, sl, sum, lp_e, get(fm, row, sl));
+#endif
+        }
+    }
+
+    // terminate by summing the last row and transitioning to end state
+    double sum = -INFINITY;
+    uint32_t tcol = fm.n_cols - 1;
+    uint32_t lrow = fm.n_rows - 1;
+    for(uint32_t sk = 0; sk < fm.n_cols - 1; sk++) {
+
+        // transition probability from state k to state l
+        double t_kl = get(tm, sk, tcol);
+        double fm_k = get(fm, lrow, sk);
+        sum = log(exp(sum) + exp(t_kl + fm_k));
+    }
+    return sum;
+}
+
+void initialize_backward_khmm(DoubleMatrix& bm, const DoubleMatrix& tm)
+{
+    // initialize forward calculation
+    uint32_t tcol = tm.n_cols - 1;
+    uint32_t row = bm.n_rows - 1;
+
+    for(uint32_t si = 0; si < bm.n_cols; si++)
+        set(bm, row, si, get(tm, si, tcol));
+}
+
+void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
+                         const DoubleMatrix& tm, //transitions
+                         const char* sequence,
+                         const HMMConsReadState& state,
+                         uint32_t e_start)
+{
+    // Fill in matrix
+    for(uint32_t row = bm.n_rows - 2; row > 0; row--) {
+        for(uint32_t sk = 1; sk < bm.n_cols - 1; sk++) {
+
+            // Sum over states for next row
+            double sum = -INFINITY;
+            for(uint32_t sl = 1; sl < bm.n_cols - 1; sl++) {
+
+                // transition probability from state k to state l
+                double t_kl = get(tm, sk, sl);
+                double bm_l = get(bm, row + 1, sl);
+
+                // Emit E_(i+1) in state sl
+                uint32_t event_idx = e_start + row * state.stride; // for i + 1
+                uint32_t kmer_idx = sl - 1;
+                uint32_t rank = !state.rc ? 
+                    kmer_rank(sequence + kmer_idx, K) : 
+                    rc_kmer_rank(sequence + kmer_idx, K);
+                double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+
+                sum = log(exp(sum) + exp(lp_e + t_kl + bm_l));
+#ifdef DEBUG_HMM_UPDATE
+                printf("\t(%d %d %d) t: %.2lf f: %.2lf e: %.2lf s: %.2lf\n", row, sk, sl, t_kl, fm_l, lp_e, sum);
+#endif
+            }
+            
+            set(bm, row, sk, sum);
+
+#ifdef DEBUG_HMM_UPDATE
+            printf("(%d %d) bm: %.2lf\n", row, sl, sum, lp_e, get(bm, row, sl));
+#endif
+        }
+    }
+}
+
+double score_new_model(const std::string& consensus, const HMMConsReadState& state)
+{
+    uint32_t n_kmers = consensus.size() - K + 1;
+    uint32_t n_states = n_kmers + 2; // one start and one end state
+
+    DoubleMatrix tm;
+    allocate_matrix(tm, n_states, n_states);
+
+    fill_khmm_transitions(tm, consensus, state);
+    
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
+    uint32_t n_rows = n_events + 1;
+
+    // Allocate a matrix to hold the HMM result
+    DoubleMatrix fm;
+    allocate_matrix(fm, n_rows, n_states);
+
+
+    initialize_forward_khmm(fm);
+    double lf = fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+
+    free_matrix(tm);
+    free_matrix(fm);
+    return lf;
+}
+
+void debug_new_model(const std::string& consensus, const HMMConsReadState& state)
+{
+    uint32_t n_kmers = consensus.size() - K + 1;
+    uint32_t n_states = n_kmers + 2; // one start and one end state
+
+    DoubleMatrix tm;
+    allocate_matrix(tm, n_states, n_states);
+
+    fill_khmm_transitions(tm, consensus, state);
+    
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
+    uint32_t n_rows = n_events + 1;
+
+    // Allocate and compute forward matrix
+    DoubleMatrix fm;
+    allocate_matrix(fm, n_rows, n_states);
+
+    initialize_forward_khmm(fm);
+    double lf = fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+
+    // Allocate and compute backward matrix
+    DoubleMatrix bm;
+    allocate_matrix(bm, n_rows, n_states);
+
+    initialize_backward_khmm(bm, tm);
+    fill_backward_khmm(bm, tm, consensus.c_str(), state, e_start);
+
+    //print_matrix(fm);
+    //print_matrix(bm);
+
+    // posterior decode
+    std::vector<uint32_t> matches;
+    std::vector<double> posteriors;
+    
+    uint32_t row = fm.n_rows - 1;
+    uint32_t col = fm.n_cols - 2;
+    while(row > 0) {
+
+        // Calculate posterior probability that e_i is matched to k_j
+        double max_posterior = -INFINITY;
+        uint32_t max_s = 0;
+
+        for(uint32_t si = 1; si < fm.n_cols - 1; ++si) {
+            double lp = get(fm, row, si) + get(bm, row, si) - lf;
+            if(lp > max_posterior) {
+                max_posterior = lp;
+                max_s = si;
+            }
+        }
+        
+        matches.push_back(max_s - 1); // kmer index
+        posteriors.push_back(max_posterior);
+        row -= 1;
+    }
+
+    std::reverse(matches.begin(), matches.end());
+    std::reverse(posteriors.begin(), posteriors.end());
+    
+    printf("Align max value: %.2lf\n", lf);
+
+    const CPoreModel& pm = state.read->pore_model[state.strand];
+    uint32_t prev_ki = -1;
+
+    for(size_t i = 0; i < matches.size(); ++i) {
+
+        uint32_t ei = e_start + i * state.stride;
+        uint32_t ki = matches[i];
+        
+        // Emit kmer skip symbols
+        while(prev_ki != -1 && prev_ki + 1 < ki) {
+            std::string kmer = consensus.substr(prev_ki + 1, K);
+            
+            uint32_t rank = !state.rc ? 
+                kmer_rank(kmer.c_str(), K) : 
+                rc_kmer_rank(kmer.c_str(), K);
+        
+            double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
+            double model_s = pm.state[rank].sd * pm.scale;
+
+            printf("K\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\n", -1, prev_ki + 1, kmer.c_str(), model_m);
+            prev_ki++;
+        }
+
+        char s;
+        if(prev_ki != -1 && ki - prev_ki == 0)
+            s = 'E';
+        else
+            s = 'M';
+        
+        double level = state.read->events[state.strand].level[ei];
+        double sd = state.read->events[state.strand].stdv[ei];
+        
+        uint32_t rank = !state.rc ? 
+            kmer_rank(consensus.c_str() + ki, K) : 
+            rc_kmer_rank(consensus.c_str() + ki, K);
+        
+        const CPoreModel& pm = state.read->pore_model[state.strand];
+        double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
+        double model_s = pm.state[rank].sd * pm.scale;
+
+        std::string kmer = consensus.substr(ki, K);
+        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, (level - model_m) / model_s);
+        prev_ki = ki;
+    }
+
+#if 0
+    row = 1;
+    col = 1;
+
+    uint32_t ei = e_start;
+    uint32_t ki = k_start;
+    for(size_t i = 0; i < states.size(); ++i) {
+        char s = states[i];
+
+        double level = state.read->events[state.strand].level[ei];
+        double sd = state.read->events[state.strand].stdv[ei];
+        uint32_t rank = !state.rc ? 
+            kmer_rank(consensus.c_str() + ki, K) : 
+            rc_kmer_rank(consensus.c_str() + ki, K);
+        
+        const CPoreModel& pm = state.read->pore_model[state.strand];
+        std::string kmer(consensus.c_str(), K);
+        //printf("%s %d %lf %lf %lf\n", kmer.c_str(), rank, pm.state[rank].mean, pm.shift, pm.scale);
+        
+        double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
+        double model_s = pm.state[rank].sd * pm.scale;
+        uint32_t c = cell(matrix, row, col);
+        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
+
+        printf("%c %d %d %.2lf %.2lf %s %.2lf %.2lf %.2lf %.2lf %d %d\n", s, s != 'K' ? ei : -1, ki, level, sd, consensus.substr(ki, K).c_str(), model_m, model_s, posteriors[i], sum, row, col);
+    
+        if(states[i + 1] == 'M') {
+            ei += state.stride;
+            ki += 1;
+            row += 1;
+            col += 1;
+        } else if(states[i + 1] == 'E') {
+            ei += state.stride;
+            row += 1;
+        } else {
+            ki += 1;
+            col += 1;
+        }
+    }
+
+    //print_matrix(fm);
+//    printf("%s %.2lf\n", consensus.c_str(), lf);
+#endif
+    free_matrix(tm);
+    free_matrix(fm);
+    free_matrix(bm);
+}
+
+
 void debug_align(const std::string& consensus, const HMMConsReadState& state)
 {
     printf("\nAligning read to %s\n", consensus.c_str());
@@ -765,8 +1238,8 @@ void run_debug()
     }
 
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_align("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
-        debug_align("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
     }
 }
 
@@ -890,13 +1363,13 @@ void run_mutation()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
             
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                paths[pi].score += (scores[pi] - sum_score);
+                paths[pi].score += (scores[pi]);// - sum_score);
             }
         }
         
@@ -923,7 +1396,7 @@ void run_mutation()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
                     printf("%.1lf ", curr);
                 }
             }

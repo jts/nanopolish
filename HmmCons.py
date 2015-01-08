@@ -131,8 +131,8 @@ for (ri, sr) in enumerate(reads):
     c_rs = CReadStateInterface(ri, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
-#lib_hmmcons_fast.run_debug()
-lib_hmmcons_fast.run_mutation()
+lib_hmmcons_fast.run_debug()
+#lib_hmmcons_fast.run_mutation()
 sys.exit(0)
 
 #
