@@ -30,15 +30,20 @@ class SquiggleRead:
         self.events['c'] = self.fh.get_complement_events()
 
         # Convert events into a numpy array
-        self.event_levels = {}
+        self.event_level = {}
         for s in ('t', 'c'):
-            self.event_levels[s] = np.array([x.mean for x in self.events[s]])
-            self.event_levels[s].astype(np.float64)
+            self.event_level[s] = np.array([x.mean for x in self.events[s]])
+            self.event_level[s].astype(np.float64)
         
-        self.event_stdvs = {}
+        self.event_stdv = {}
         for s in ('t', 'c'):
-            self.event_stdvs[s] = np.array([x.stdv for x in self.events[s]])
-            self.event_stdvs[s].astype(np.float64)
+            self.event_stdv[s] = np.array([x.stdv for x in self.events[s]])
+            self.event_stdv[s].astype(np.float64)
+        
+        self.event_time = {}
+        for s in ('t', 'c'):
+            self.event_time[s] = np.array([x.start for x in self.events[s]])
+            self.event_time[s].astype(np.float64)
 
         self.event_map = {}
 

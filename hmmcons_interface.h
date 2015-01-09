@@ -18,6 +18,8 @@ struct CPoreModelInterface
     double* sd;
     double scale;
     double shift;
+    double drift;
+    double var;
 };
 
 // Events
@@ -25,7 +27,8 @@ struct CEventSequenceInterface
 {
     int n_events;
     double* level;
-    double* stdvs;
+    double* stdv;
+    double* time;
 };
 
 // SquiggleRead

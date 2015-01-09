@@ -24,7 +24,7 @@ const uint8_t K = 5;
 
 const static double LOG_KMER_INSERTION = log(0.1);
 const static double SELF_KMER_TRANSITION = 0.2;
-const static double P_RANDOM_SKIP = 0.001;
+const static double P_RANDOM_SKIP = 0.015; // 0.015 is estimated from the event duration distribution for sample data
 const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 
 static const uint8_t base_rank[256] = {
@@ -49,12 +49,12 @@ static const uint8_t base_rank[256] = {
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
-
 struct CEventSequence
 {
     uint32_t n_events;
     const double* level;
     const double* stdv;
+    const double* time;
 };
 
 struct CSquiggleRead
@@ -170,6 +170,8 @@ void add_read(CSquiggleReadInterface params)
         // Initialize pore model   
         sr.pore_model[i].scale = params.pore_model[i].scale;
         sr.pore_model[i].shift = params.pore_model[i].shift;
+        sr.pore_model[i].drift = params.pore_model[i].drift;
+        sr.pore_model[i].var = params.pore_model[i].var;
         
         assert(params.pore_model[i].n_states == 1024);
         for(uint32_t j = 0; j < params.pore_model[i].n_states; ++j) {
@@ -180,8 +182,11 @@ void add_read(CSquiggleReadInterface params)
         // Initialize events
         sr.events[i].n_events = params.events[i].n_events;
         sr.events[i].level = params.events[i].level;
-        sr.events[i].stdv = params.events[i].stdvs;
-        
+        sr.events[i].stdv = params.events[i].stdv;
+        sr.events[i].time = params.events[i].time;
+
+        printf("Drift: %.4lf var: %.2lf start: %.2lf\n", sr.pore_model[i].drift, sr.pore_model[i].var, sr.events[i].time[0]);
+
         /*
         printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 
                                                                  sr.pore_model[i].shift,
@@ -389,8 +394,13 @@ inline double log_probability_match(const CSquiggleRead& read,
     // Extract event
     double level = read.events[strand].level[event_idx];
     
-    double m = (pm.state[kmer_rank].mean + pm.shift) * pm.scale;
-    double s = pm.state[kmer_rank].sd * pm.scale;
+    // correct level by drift
+    double start = read.events[strand].time[0];
+    double time = read.events[strand].time[event_idx] - start;
+    level -= (time * pm.drift);
+
+    double m = pm.state[kmer_rank].mean * pm.scale + pm.shift;
+    double s = pm.state[kmer_rank].sd * pm.var;
     double lp = log_normal_pdf(level, m, s);
 
 #if DEBUG_HMM_EMISSION
@@ -941,7 +951,7 @@ double score_new_model(const std::string& consensus, const HMMConsReadState& sta
     return lf;
 }
 
-void debug_new_model(const std::string& consensus, const HMMConsReadState& state)
+void debug_new_model(const std::string& name, const std::string& consensus, const HMMConsReadState& state)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -981,6 +991,7 @@ void debug_new_model(const std::string& consensus, const HMMConsReadState& state
     // posterior decode
     std::vector<uint32_t> matches;
     std::vector<double> posteriors;
+    std::vector<double> lpfm;
     
     uint32_t row = fm.n_rows - 1;
     uint32_t col = fm.n_cols - 2;
@@ -1000,13 +1011,15 @@ void debug_new_model(const std::string& consensus, const HMMConsReadState& state
         
         matches.push_back(max_s - 1); // kmer index
         posteriors.push_back(max_posterior);
+        lpfm.push_back(get(fm, row, max_s));
         row -= 1;
     }
 
     std::reverse(matches.begin(), matches.end());
     std::reverse(posteriors.begin(), posteriors.end());
+    std::reverse(lpfm.begin(), lpfm.end());
     
-    printf("Align max value: %.2lf\n", lf);
+    printf("%s align max value: %.2lf\n", name.c_str(), lf);
 
     const CPoreModel& pm = state.read->pore_model[state.strand];
     uint32_t prev_ki = -1;
@@ -1027,7 +1040,7 @@ void debug_new_model(const std::string& consensus, const HMMConsReadState& state
             double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].sd * pm.scale;
 
-            printf("K\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\n", -1, prev_ki + 1, kmer.c_str(), model_m);
+            printf("K\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
             prev_ki++;
         }
 
@@ -1049,53 +1062,13 @@ void debug_new_model(const std::string& consensus, const HMMConsReadState& state
         double model_s = pm.state[rank].sd * pm.scale;
 
         std::string kmer = consensus.substr(ki, K);
-        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, (level - model_m) / model_s);
+        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, (level - model_m) / model_s, lpfm[i]);
         prev_ki = ki;
-    }
-
-#if 0
-    row = 1;
-    col = 1;
-
-    uint32_t ei = e_start;
-    uint32_t ki = k_start;
-    for(size_t i = 0; i < states.size(); ++i) {
-        char s = states[i];
-
-        double level = state.read->events[state.strand].level[ei];
-        double sd = state.read->events[state.strand].stdv[ei];
-        uint32_t rank = !state.rc ? 
-            kmer_rank(consensus.c_str() + ki, K) : 
-            rc_kmer_rank(consensus.c_str() + ki, K);
-        
-        const CPoreModel& pm = state.read->pore_model[state.strand];
-        std::string kmer(consensus.c_str(), K);
-        //printf("%s %d %lf %lf %lf\n", kmer.c_str(), rank, pm.state[rank].mean, pm.shift, pm.scale);
-        
-        double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
-        double model_s = pm.state[rank].sd * pm.scale;
-        uint32_t c = cell(matrix, row, col);
-        double sum = log(exp(matrix.cells[c].M) + exp(matrix.cells[c].E) + exp(matrix.cells[c].K));
-
-        printf("%c %d %d %.2lf %.2lf %s %.2lf %.2lf %.2lf %.2lf %d %d\n", s, s != 'K' ? ei : -1, ki, level, sd, consensus.substr(ki, K).c_str(), model_m, model_s, posteriors[i], sum, row, col);
-    
-        if(states[i + 1] == 'M') {
-            ei += state.stride;
-            ki += 1;
-            row += 1;
-            col += 1;
-        } else if(states[i + 1] == 'E') {
-            ei += state.stride;
-            row += 1;
-        } else {
-            ki += 1;
-            col += 1;
-        }
     }
 
     //print_matrix(fm);
 //    printf("%s %.2lf\n", consensus.c_str(), lf);
-#endif
+
     free_matrix(tm);
     free_matrix(fm);
     free_matrix(bm);
@@ -1238,8 +1211,11 @@ void run_debug()
     }
 
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_new_model("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
-        debug_new_model("AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("input",  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("oldbad", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("final", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
+        //debug_new_model("ATCAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_new_model("truth", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
     }
 }
 
@@ -1293,8 +1269,8 @@ PathConsVector generate_mutations(const std::string& sequence)
         mutations.push_back(pc);
     }
 
-    // Mutate every base
-    for(size_t si = 0; si < sequence.size(); ++si) {
+    // Mutate every base except for in the first/last k-mer
+    for(size_t si = K; si < sequence.size() - K; ++si) {
         
         // All subs
         for(size_t bi = 0; bi < 4; bi++) {
@@ -1351,7 +1327,7 @@ void run_mutation()
     std::string sequence = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG";
 
     int iteration = 0;
-    while(iteration++ < 20) {
+    while(iteration++ < 10) {
 
         // Generate possible sequences
         PathConsVector paths = generate_mutations(sequence);
@@ -1369,7 +1345,7 @@ void run_mutation()
             }
             
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                paths[pi].score += (scores[pi]);// - sum_score);
+                paths[pi].score += (scores[pi] - scores[0]);
             }
         }
         
@@ -1428,7 +1404,7 @@ void run_consensus()
     }
     
     int iteration = 0;
-    while(iteration++ < 1) {
+    while(iteration++ < 10) {
         
         extend_paths(paths);
 
@@ -1439,7 +1415,7 @@ void run_consensus()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1470,7 +1446,7 @@ void run_consensus()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_consensus(paths[pi].path, g_data.read_states[ri]);
+                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
                     printf("%.1lf ", curr);
                 }
             }

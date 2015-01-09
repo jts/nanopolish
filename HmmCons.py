@@ -29,12 +29,15 @@ class CPoreModelInterface(Structure):
                 ('pore_model_mean', c_double_p),
                 ('pore_model_sd', c_double_p),
                 ('pore_model_scale', c_double),
-                ('pore_model_shift', c_double)]
+                ('pore_model_shift', c_double),
+                ('pore_model_drift', c_double),
+                ('pore_model_var', c_double)]
 
 class CEventSequenceInterface(Structure):
     _fields_ = [('n_events', c_int),
-                ('levels', c_double_p),
-                ('stdvs', c_double_p)]
+                ('level', c_double_p),
+                ('stdv', c_double_p),
+                ('time', c_double_p)]
 
 class CSquiggleReadInterface(Structure):
     _fields_ = [('pore_model', CPoreModelInterface * 2),
@@ -75,13 +78,16 @@ for (ri, sr) in enumerate(reads):
         sd = sr.pm[s].model_sd.ctypes.data_as(c_double_p)
         scale = sr.pm[s].scale
         shift = sr.pm[s].shift
-        pm_params.append(CPoreModelInterface(1024, mean, sd, scale, shift))
+        drift = sr.pm[s].drift
+        var = sr.pm[s].var
+        pm_params.append(CPoreModelInterface(1024, mean, sd, scale, shift, drift, var))
 
         # Events
-        n_events = len(sr.event_levels[s])
-        levels = sr.event_levels[s].ctypes.data_as(c_double_p)
-        stdvs = sr.event_stdvs[s].ctypes.data_as(c_double_p)
-        event_params.append(CEventSequenceInterface(n_events, levels, stdvs))
+        n_events = len(sr.event_level[s])
+        level = sr.event_level[s].ctypes.data_as(c_double_p)
+        stdv = sr.event_stdv[s].ctypes.data_as(c_double_p)
+        time = sr.event_time[s].ctypes.data_as(c_double_p)
+        event_params.append(CEventSequenceInterface(n_events, level, stdv, time))
 
     #
     params = CSquiggleReadInterface((pm_params[0], pm_params[1]), 
@@ -131,8 +137,9 @@ for (ri, sr) in enumerate(reads):
     c_rs = CReadStateInterface(ri, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
     lib_hmmcons_fast.add_read_state(c_rs)
 
-#lib_hmmcons_fast.run_debug()
-lib_hmmcons_fast.run_mutation()
+lib_hmmcons_fast.run_debug()
+#lib_hmmcons_fast.run_mutation()
+#lib_hmmcons_fast.run_consensus()
 sys.exit(0)
 
 #

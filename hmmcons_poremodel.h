@@ -18,6 +18,8 @@ struct CPoreModel
 {
     double scale;
     double shift;
+    double drift;
+    double var;
     CPoreModelStateParams state[1024];
 };
 
