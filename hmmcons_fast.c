@@ -24,8 +24,8 @@ const uint8_t K = 5;
 
 const static double LOG_KMER_INSERTION = log(0.1);
 const static double SELF_KMER_TRANSITION = 0.2;
-const static double P_RANDOM_SKIP = 0.1;
-const static double EVENT_DETECTION_THRESHOLD = 1.0;
+const static double P_RANDOM_SKIP = 0.001;
+const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

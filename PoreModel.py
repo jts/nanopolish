@@ -34,9 +34,18 @@ class PoreModel:
         #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
         return (self.model[self.rank_map[kmer]][2] + self.shift) * self.scale
     
+    def get_expected_fixed(self, kmer):
+        # TODO: account for drift?
+        #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
+        return (self.model[self.rank_map[kmer]][2] * self.scale) + self.shift
+    
     def get_sd(self, kmer):
         # TODO: account for drift?
         return self.model[self.rank_map[kmer]][3] * self.scale
+    
+    def get_sd_fixed(self, kmer):
+        # TODO: account for drift?
+        return self.model[self.rank_map[kmer]][3] * self.var
 
     # Get the probability of seeing signal s, given the k-mer in the pore
     def get_probability(self, s, kmer):

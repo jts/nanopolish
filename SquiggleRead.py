@@ -112,6 +112,9 @@ class SquiggleRead:
             event_map[k_idx].append(e_idx)
         return event_map
 
+    def get_event_start_time(self, strand):
+        return self.events[strand][0].start
+
     #
     def get_events_for_kmer(self, k_idx, strand):
 
@@ -168,8 +171,14 @@ class SquiggleRead:
     def get_expected_level(self, k_mer, strand):
         return self.pm[strand].get_expected(k_mer)
     
+    def get_expected_level_fixed(self, k_mer, strand):
+        return self.pm[strand].get_expected_fixed(k_mer)
+    
     def get_expected_sd(self, k_mer, strand):
         return self.pm[strand].get_sd(k_mer)
+    
+    def get_expected_sd_fixed(self, k_mer, strand):
+        return self.pm[strand].get_sd_fixed(k_mer)
 
     def format_kmer_event_pair(self, te, ce, expected_kmer):
         tstr = self.format_kmer_event(te, expected_kmer, 't')
