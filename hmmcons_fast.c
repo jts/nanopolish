@@ -145,8 +145,12 @@ struct HmmConsData
 {
     //
     std::vector<CSquiggleRead> reads;
-    std::vector<HMMConsReadState> read_states;
 
+    //
+    std::vector<HMMConsReadState> read_states;
+    std::vector<std::string> candidate_consensus;
+    std::string consensus_result;
+    
     //
     HMMParameters hmm_params;
 };
@@ -158,6 +162,20 @@ void initialize()
 {
     initialize_hmm(g_data.hmm_params);
     g_initialized = true;
+}
+
+extern "C"
+void clear_state()
+{
+    g_data.read_states.clear();
+    g_data.candidate_consensus.clear();
+    g_data.consensus_result.clear();
+}
+
+extern "C"
+const char* get_consensus_result()
+{
+    return g_data.consensus_result.c_str();
 }
 
 extern "C"
@@ -185,8 +203,6 @@ void add_read(CSquiggleReadInterface params)
         sr.events[i].stdv = params.events[i].stdv;
         sr.events[i].time = params.events[i].time;
 
-        printf("Drift: %.4lf var: %.2lf start: %.2lf\n", sr.pore_model[i].drift, sr.pore_model[i].var, sr.events[i].time[0]);
-
         /*
         printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 
                                                                  sr.pore_model[i].shift,
@@ -212,6 +228,12 @@ void add_read_state(CReadStateInterface params)
     rs.strand = params.strand;
     rs.stride = params.stride;
     rs.rc = params.rc;
+}
+
+extern "C"
+void add_candidate_consensus(char* str)
+{
+    g_data.candidate_consensus.push_back(str);
 }
 
 
@@ -1324,8 +1346,8 @@ void run_mutation()
         exit(EXIT_FAILURE);
     }
 
-    std::string sequence = "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG";
-
+    std::string sequence = g_data.candidate_consensus.back();
+    printf("Initial consensus: %s\n", sequence.c_str());
     int iteration = 0;
     while(iteration++ < 10) {
 
@@ -1378,9 +1400,14 @@ void run_mutation()
             }
             printf("\n");
         }
-
+        
+        // check if no improvement was made
+        if(paths[0].path == sequence)
+            break;
         sequence = paths[0].path;
-    }    
+    }
+    
+    g_data.consensus_result = sequence;
 }
 
 

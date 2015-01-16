@@ -4,7 +4,7 @@ from NanoUtils import *
 from SquiggleRead import *
 from Bio import AlignIO
 
-PoaRead = namedtuple('PoaRead', ['index', 'strand', 'start', 'stop'])
+PoaRead = namedtuple('PoaRead', ['read_id', 'strand', 'start', 'stop'])
 
 # Parse a read id to demangle the meta data encoded within it
 def unpack_poa_id(rid):

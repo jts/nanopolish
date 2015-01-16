@@ -1,7 +1,19 @@
 from SquiggleRead import *
 from NanoUtils import *
+from Clustal import *
 from ctypes import *
-from collections import defaultdict
+from collections import defaultdict, namedtuple
+
+ReadAnchor = namedtuple('ReadAnchor', ['row_id', 'base'])
+
+class Anchor:
+    def __init__(self, column, cons_base):
+        self.column = column
+        self.cons_base = cons_base
+        self.reads = list()
+
+    def add_read(self, ra):
+        self.reads.append(ra)
 
 # Generate all the paths of length (k+1)
 # starting from the given k-mer
@@ -54,19 +66,91 @@ class CReadStateInterface(Structure):
 #
 # Load reads
 # 
-test_data = [ (0,    39,   'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"),
-              (1608, 1650, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5"),
-              (386,  425,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5"),
-              (2747, 2784, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5") ]
-
-reads = []
-for (start, stop, strand, fn) in test_data:
-    reads.append(SquiggleRead(fn))
+test_data = [ (0,    39,   'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5", 32),
+              (1608, 1650, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5", 5106),
+              (386,  425,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5", 198),
+              (2747, 2784, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5", 6852) ]
 
 #
-# Pass reads into C code
+# Old test code
 #
-for (ri, sr) in enumerate(reads):
+
+#reads = []
+#for (start, stop, strand, fn) in test_data:
+#    reads.append(SquiggleRead(fn))
+
+#
+# Build the map from read indices to fast5 files
+#
+fast5_fofn_fn = 'r73.map.fofn'
+fast5_fofn_fh = open(fast5_fofn_fn)
+
+f5_files = []
+for l in fast5_fofn_fh:
+    f5_files.append(l.rstrip())
+
+#
+# Load squiggle reads
+#
+clustal_filename = "clustal-32.out"
+ca = Clustal(clustal_filename)
+cons_row = ca.get_consensus_row()
+read_rows = ca.get_read_rows()
+
+# Initialize traversal
+n_reads = len(read_rows)
+
+# Parse the clustal row names to generate POAReads
+poa_reads = list()
+row_to_poa_read_idx = dict()
+for rr in read_rows:
+    pa = unpack_poa_id(ca.alignment[rr].id)
+
+    # Append read and update map
+    poa_reads.append(pa)
+    
+    idx = len(poa_reads) - 1
+    row_to_poa_read_idx[rr] = idx
+
+sys.stderr.write("Loading squigglereads\n")
+squiggle_reads = list()
+poa_idx_to_sr_idx = dict()
+
+seen_ids = dict()
+
+for (poa_idx, pr) in enumerate(poa_reads):
+
+    #
+    # DEBUG: only load a subset
+    #
+    in_debug_set = False
+    for t in test_data:
+        if pr.read_id == t[4]:
+            in_debug_set = True
+
+    #if not in_debug_set:
+    #    continue
+
+    if pr.read_id in seen_ids:
+        poa_idx_to_sr_idx[poa_idx] = seen_ids[pr.read_id]
+        continue
+
+    print 'Loading', pr.read_id, f5_files[pr.read_id]
+    squiggle_reads.append(SquiggleRead(f5_files[pr.read_id]))
+
+    sr_idx = len(squiggle_reads) - 1
+    poa_idx_to_sr_idx[poa_idx] = sr_idx
+    seen_ids[pr.read_id] = sr_idx
+
+sys.stderr.write("Done loading squigglereads\n")
+
+#
+# Initialize squiggle reads in C code
+#
+for sr in squiggle_reads:
+    if sr is None:
+        continue
+    
     pm_params = []
     event_params = []
 
@@ -94,7 +178,144 @@ for (ri, sr) in enumerate(reads):
                                     (event_params[0], event_params[1]))
     lib_hmmcons_fast.add_read(params)
 
-transition_counts = defaultdict(int)
+# Build anchors
+
+# compute anchor positions
+cons_kidx = 0
+
+# this list stores the number of actual bases seen in each row
+# up to the current column
+n_bases = [0] * n_reads
+anchors = list()
+
+for col in xrange(0, 2000):
+    cons_base = ca.alignment[cons_row][col]
+
+    # Build an anchor here
+    if cons_kidx % 52 == 0 and cons_base != '-':
+        print "Anchor", cons_kidx, cons_base
+        
+        anchor = Anchor(col, cons_kidx)
+
+        for rr in read_rows:
+            b = ca.alignment[rr][col]
+
+            if b != '-':
+                # This read has a base at this consensus position
+                read_kidx = n_bases[rr] + poa_reads[rr].start
+                read_anchor = ReadAnchor(rr, read_kidx)
+                anchor.add_read(read_anchor)
+                print rr, read_kidx
+        anchors.append(anchor)
+
+    #
+    # Update indices
+    #
+    if cons_base != '-':
+        cons_kidx += 1
+
+    # Update base counts
+    for rr in read_rows:
+        b = ca.alignment[rr][col]
+        if b != '-':
+            n_bases[rr] += 1
+
+# Call a consensus between the first two anchors
+original_consensus = ""
+fixed_consensus = ""
+
+for i in xrange(len(anchors) - 1):
+    lib_hmmcons_fast.clear_state()
+
+    a1 = anchors[i]
+    a2 = anchors[i+1]
+
+    # Add the consensus sequence as the initial candidate consensus
+    consensus = ca.alignment[cons_row].seq
+    candidate_sub = str(consensus[a1.column:a2.column+5]).replace('-', '')
+    print candidate_sub
+    lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+
+    # Index the first anchor by read row
+    a1_by_row = dict()
+    for ra_1 in a1.reads:
+        a1_by_row[ra_1.row_id] = ra_1
+
+    for ra_2 in a2.reads:
+        if ra_2.row_id in a1_by_row:
+            
+            # This row is anchored on both ends
+            ra_1 = a1_by_row[ra_2.row_id]
+
+            # Build a ReadState object to pass to C
+            k_start_idx = ra_1.base
+            k_stop_idx = ra_2.base
+            orientation = poa_reads[ra_1.row_id].strand
+            poa_idx = row_to_poa_read_idx[ra_1.row_id]
+            sr_idx = poa_idx_to_sr_idx[poa_idx]
+
+            print ra_1.row_id, poa_idx, sr_idx
+
+            sr = squiggle_reads[sr_idx]
+
+            if orientation == 'n':
+                t_stride = 1
+                c_stride = -1
+                t_rc = 0
+                c_rc = 1
+            else:
+                t_stride = -1
+                c_stride = 1
+                t_rc = 1
+                c_rc = 0
+                k_start_idx = sr.flip_k_idx_strand(k_start_idx, 5)
+                k_stop_idx = sr.flip_k_idx_strand(k_stop_idx, 5)
+
+            k1 = sr.get_2D_kmer_at(k_start_idx, 5)
+            k2 = sr.get_2D_kmer_at(k_stop_idx, 5)
+
+            print ra_1.row_id, sr_idx, orientation, k_start_idx, k_stop_idx, k1, k2, sr.event_map['2D'][k_start_idx], sr.event_map['2D'][k_stop_idx]
+
+            if orientation == 'c':
+                k1 = revcomp(k1)
+                k2 = revcomp(k2)
+
+            t_start_ei = -1
+            c_start_ei = -1
+            t_stop_ei = -1
+            c_stop_ei = -1
+
+            if len(sr.event_map['2D'][k_start_idx]) > 0:
+                (t_start_ei, c_start_ei) = sr.event_map['2D'][k_start_idx][0]
+
+            if len(sr.event_map['2D'][k_stop_idx]) > 0:    
+                (t_stop_ei, c_stop_ei) = sr.event_map['2D'][k_stop_idx][0]
+
+            print ra_1.row_id, sr_idx, orientation, k_start_idx, k_stop_idx, k1, k2, t_start_ei, t_stop_ei, c_start_ei, c_stop_ei, t_stride, c_stride
+
+            if t_start_ei != -1 and t_stop_ei != -1:
+                t_rs = CReadStateInterface(sr_idx, t_start_ei, t_stop_ei, 0, t_stride, t_rc)
+                lib_hmmcons_fast.add_read_state(t_rs)
+            
+            if c_start_ei != -1 and c_stop_ei != -1:
+                c_rs = CReadStateInterface(sr_idx, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
+                lib_hmmcons_fast.add_read_state(c_rs)
+    lib_hmmcons_fast.run_mutation()
+
+    lib_hmmcons_fast.get_consensus_result.restype = c_char_p
+    result = lib_hmmcons_fast.get_consensus_result()
+    print "RESULT: ", result
+
+    if original_consensus == "":
+        original_consensus = candidate_sub
+        fixed_consensus = result
+    else:
+        original_consensus = original_consensus + candidate_sub[5:]
+        fixed_consensus = fixed_consensus + result[5:]
+    
+    print "ORIGINAL: ", original_consensus
+    print "FIXED: ", fixed_consensus
+sys.exit(0)
 
 #
 # Initialize HMM by telling C code where the events
