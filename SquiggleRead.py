@@ -173,18 +173,19 @@ class SquiggleRead:
             ce = self.events['c'][cidx - 1]
         return (te,ce)
 
+    def get_drift_corrected_event_level(self, ei, strand):
+        events_start_time = self.get_event_start_time(strand)
+        level = self.events[strand][ei].mean
+        time = self.events[strand][ei].start - events_start_time
+        drift = self.pm[strand].drift
+        return level - time * drift
+
     def get_expected_level(self, k_mer, strand):
         return self.pm[strand].get_expected(k_mer)
-    
-    def get_expected_level_fixed(self, k_mer, strand):
-        return self.pm[strand].get_expected_fixed(k_mer)
     
     def get_expected_sd(self, k_mer, strand):
         return self.pm[strand].get_sd(k_mer)
     
-    def get_expected_sd_fixed(self, k_mer, strand):
-        return self.pm[strand].get_sd_fixed(k_mer)
-
     def format_kmer_event_pair(self, te, ce, expected_kmer):
         tstr = self.format_kmer_event(te, expected_kmer, 't')
         cstr = self.format_kmer_event(ce, revcomp(expected_kmer), 'c')

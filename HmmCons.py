@@ -27,6 +27,58 @@ def generate_kmer_paths(kmer):
         out.append(str2kmers(kmer + a, k))
     return out
 
+# get the next observed event in the range
+def get_next_event(sr, start, stop, stride, strand):
+    for i in xrange(start, stop, stride):
+
+        events = sr.event_map['2D'][i]
+        if len(events) == 0:
+            continue
+
+        ei = -1
+
+        if strand == 't':
+            ei = events[0][0]
+        else:
+            ei = events[0][1]
+        
+        if ei != -1:
+            return ei
+
+# Get the closest event to the indicated
+# 2D kmer for the given squiggle read
+def get_closest_event_to(sr, kidx, strand):
+    kmer = sr.get_2D_kmer_at(kidx, 5)
+    e_level = sr.get_expected_level(kmer, strand)
+    
+    first_event_before = -1
+    first_event_after = -1
+    m = 1000
+    
+    # before
+    stop = kidx - m
+    if stop < 0:
+        stop = -1 # end is exclusive
+
+    first_event_before = get_next_event(sr, kidx, stop, -1, strand)
+
+    # after
+    stop = kidx + m
+    if stop >= len(sr.event_map['2D']):
+        stop = len(sr.event_map['2D'])
+
+    first_event_after = get_next_event(sr, kidx, stop, 1, strand)
+
+    # evaluate levels
+    b_level = sr.get_drift_corrected_event_level(first_event_before, strand)
+    a_level = sr.get_drift_corrected_event_level(first_event_after, strand)
+    #print 'SEARCH', first_event_before, first_event_after, b_level, a_level, e_level
+
+    if abs(b_level - e_level) < abs(a_level - e_level):
+        return first_event_before
+    else:
+        return first_event_after
+
 #
 # 
 #
@@ -188,26 +240,100 @@ cons_kidx = 0
 n_bases = [0] * n_reads
 anchors = list()
 
+distance_to_last_anchor = 0
+MIN_DISTANCE = 50
+MAX_DISTANCE = 100
+
+consensus_sequence = str(ca.alignment[cons_row].seq)
+
 for col in xrange(0, 2000):
     cons_base = ca.alignment[cons_row][col]
 
-    # Build an anchor here
-    if cons_kidx % 52 == 0 and cons_base != '-':
-        print "Anchor", cons_kidx, cons_base
-        
-        anchor = Anchor(col, cons_kidx)
+    if cons_base != '-' and (len(anchors) == 0 or distance_to_last_anchor >= MIN_DISTANCE):
 
+        # Should we anchor here?
+        use_anchor = False
+
+        #cons_kmer = consensus_sequence[cons_kidx:cons_kidx + 5]
+        cons_kmer = ca.get_kmer(cons_row, col, 5)
+        print 'ANCHOR', cons_kidx, cons_kmer
+
+        max_res = 0
+        n_evidence = 0
         for rr in read_rows:
             b = ca.alignment[rr][col]
 
-            if b != '-':
-                # This read has a base at this consensus position
-                read_kidx = n_bases[rr] + poa_reads[rr].start
-                read_anchor = ReadAnchor(rr, read_kidx)
-                anchor.add_read(read_anchor)
-                print rr, read_kidx
-        anchors.append(anchor)
+            poa_read = poa_reads[rr]
+            read_kidx = n_bases[rr] + poa_reads[rr].start
 
+            # skip reads that are not aligned in this range
+            if not poa_read.is_base and (read_kidx <= poa_read.start or read_kidx >= poa_read.stop):
+                continue
+
+            read_kidx = n_bases[rr] + poa_reads[rr].start
+            poa_idx = row_to_poa_read_idx[rr]
+            sr_idx = poa_idx_to_sr_idx[poa_idx]
+            sr = squiggle_reads[sr_idx]
+            orientation = poa_reads[rr].strand
+
+            print "\tROW", rr, poa_idx, sr_idx, poa_reads[rr].read_id
+
+            do_template_rc = 0
+            do_complement_rc = 1
+
+            if orientation == 'c':
+                read_kidx = sr.flip_k_idx_strand(read_kidx, 5)
+                do_template_rc = 1
+                do_complement_rc = 0
+
+            ti = get_closest_event_to(sr, read_kidx, 't')
+            ci = get_closest_event_to(sr, read_kidx, 'c')
+
+            #print "EVENTS", poa_reads[rr].read_id, ti, ci
+            for (ei, strand, do_rc) in [ (ti, 't', do_template_rc), (ci, 'c', do_complement_rc) ]:
+            
+                if ei == -1:
+                    continue
+
+                # Observed event   
+                level = sr.get_drift_corrected_event_level(ei, strand)
+
+                # Expected event
+                kmer = cons_kmer
+                if do_rc:
+                    kmer = revcomp(cons_kmer)
+
+                k_level = sr.get_expected_level(kmer, strand)
+                k_sd = sr.get_expected_sd(kmer, strand)
+                res = (level - k_level) / k_sd
+
+                print '\t\tRESIDUAL', strand, level, kmer, k_level, res
+                if abs(res) > abs(max_res):
+                    max_res = res
+                n_evidence += 1
+        if abs(max_res) < 3 and n_evidence >= 4:
+            use_anchor = True
+                    
+        # Build an anchor here
+        if use_anchor:
+            print "BUILD", cons_kidx, cons_base
+            
+            anchor = Anchor(col, cons_kidx)
+
+            for rr in read_rows:
+                read_kidx = n_bases[rr] + poa_reads[rr].start
+            
+                poa_read = poa_reads[rr]
+                read_kidx = n_bases[rr] + poa_reads[rr].start
+
+                if poa_read.is_base or (read_kidx > poa_read.start and read_kidx < poa_read.stop):
+                    read_anchor = ReadAnchor(rr, read_kidx)
+                    anchor.add_read(read_anchor)
+    
+            anchors.append(anchor)
+            distance_to_last_anchor = 0
+
+    distance_to_last_anchor += 1
     #
     # Update indices
     #
@@ -233,7 +359,6 @@ for i in xrange(len(anchors) - 1):
     # Add the consensus sequence as the initial candidate consensus
     consensus = ca.alignment[cons_row].seq
     candidate_sub = str(consensus[a1.column:a2.column+5]).replace('-', '')
-    print candidate_sub
     lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
 
     # Index the first anchor by read row
@@ -250,11 +375,14 @@ for i in xrange(len(anchors) - 1):
             # Build a ReadState object to pass to C
             k_start_idx = ra_1.base
             k_stop_idx = ra_2.base
+            read_sub = str(ca.alignment[ra_2.row_id].seq[a1.column:a2.column+5]).replace('-', '')
+            lib_hmmcons_fast.add_candidate_consensus(read_sub)
+            
             orientation = poa_reads[ra_1.row_id].strand
             poa_idx = row_to_poa_read_idx[ra_1.row_id]
             sr_idx = poa_idx_to_sr_idx[poa_idx]
 
-            print ra_1.row_id, poa_idx, sr_idx
+            print 'READ_INDEX', ra_1.row_id, poa_idx, sr_idx
 
             sr = squiggle_reads[sr_idx]
 
@@ -274,37 +402,35 @@ for i in xrange(len(anchors) - 1):
             k1 = sr.get_2D_kmer_at(k_start_idx, 5)
             k2 = sr.get_2D_kmer_at(k_stop_idx, 5)
 
-            print ra_1.row_id, sr_idx, orientation, k_start_idx, k_stop_idx, k1, k2, sr.event_map['2D'][k_start_idx], sr.event_map['2D'][k_stop_idx]
+            print '\tEVENTS', orientation, k_start_idx, k_stop_idx, k1, k2, 'START', sr.event_map['2D'][k_start_idx], 'END', sr.event_map['2D'][k_stop_idx]
 
             if orientation == 'c':
                 k1 = revcomp(k1)
                 k2 = revcomp(k2)
 
-            t_start_ei = -1
-            c_start_ei = -1
-            t_stop_ei = -1
-            c_stop_ei = -1
-
-            if len(sr.event_map['2D'][k_start_idx]) > 0:
-                (t_start_ei, c_start_ei) = sr.event_map['2D'][k_start_idx][0]
-
-            if len(sr.event_map['2D'][k_stop_idx]) > 0:    
-                (t_stop_ei, c_stop_ei) = sr.event_map['2D'][k_stop_idx][0]
-
-            print ra_1.row_id, sr_idx, orientation, k_start_idx, k_stop_idx, k1, k2, t_start_ei, t_stop_ei, c_start_ei, c_stop_ei, t_stride, c_stride
+            t_start_ei = get_closest_event_to(sr, k_start_idx, 't')
+            c_start_ei = get_closest_event_to(sr, k_start_idx, 'c')
+            t_stop_ei = get_closest_event_to(sr, k_stop_idx, 't')
+            c_stop_ei = get_closest_event_to(sr, k_stop_idx, 'c')
 
             if t_start_ei != -1 and t_stop_ei != -1:
+                print '\tT_EVENTS', t_start_ei, t_stop_ei, t_stride
                 t_rs = CReadStateInterface(sr_idx, t_start_ei, t_stop_ei, 0, t_stride, t_rc)
                 lib_hmmcons_fast.add_read_state(t_rs)
             
             if c_start_ei != -1 and c_stop_ei != -1:
+                print '\tC_EVENTS', c_start_ei, c_stop_ei, c_stride
                 c_rs = CReadStateInterface(sr_idx, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
                 lib_hmmcons_fast.add_read_state(c_rs)
+
+    #lib_hmmcons_fast.run_selection()
     lib_hmmcons_fast.run_mutation()
+    #lib_hmmcons_fast.run_consensus()
 
     lib_hmmcons_fast.get_consensus_result.restype = c_char_p
     result = lib_hmmcons_fast.get_consensus_result()
-    print "RESULT: ", result
+    print "POACON[%d]: %s" % (i, candidate_sub)
+    print "RESULT[%d]: %s" % (i, result)
 
     if original_consensus == "":
         original_consensus = candidate_sub

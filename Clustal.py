@@ -4,17 +4,16 @@ from NanoUtils import *
 from SquiggleRead import *
 from Bio import AlignIO
 
-PoaRead = namedtuple('PoaRead', ['read_id', 'strand', 'start', 'stop'])
+PoaRead = namedtuple('PoaRead', ['read_id', 'strand', 'start', 'stop', 'is_base'])
 
 # Parse a read id to demangle the meta data encoded within it
 def unpack_poa_id(rid):
     a = rid.split(':')
     if a[1] == 'poabaseread':
-        
-        return PoaRead(int(a[0]), 'n', 0, -1)
+        return PoaRead(int(a[0]), 'n', 0, -1, 1)
     else:
         c = a[2].split('-')
-    return PoaRead(int(a[0]), a[1], int(c[0]), int(c[1]))
+    return PoaRead(int(a[0]), a[1], int(c[0]), int(c[1]), 0)
 
 class Clustal:
 
@@ -119,32 +118,6 @@ class Clustal:
                 if self.alignment[j][i] != '-':
                     base_indices[j] += 1
 
-    # Get k-mers from the consensus sequence that are supported
-    # by at least min_count reads
-    def get_supported_consensus_kmers(self, min_count):
-
-        row_idx = self.get_consensus_row()
-        read_row_indices = self.get_read_rows()
-        print read_row_indices
-        n_rows = len(self.alignment)
-        n_cols = len(self.alignment[0]) # should be same for all rows
-        n_mers = n_cols - 4
-
-        for i in xrange(0, n_mers):
-
-            # Skip columns that are consensus gaps
-            if self.alignment[row_idx][i] == '-':
-                continue
-
-            mer = self.get_kmer(row_idx, i, 5)
-            stop = i + len(mer)
-            # Count the number of reads that have the same pattern in these columns
-            support = 0
-            for j in read_row_indices:
-               if str(self.alignment[j][i:stop].seq) == mer:
-                   support += 1
-            print i, mer, support
-
     # Get at least k bases starting from a given row and column 
     def get_kmer(self, row, col, k):
         # Extract bases from this column until
@@ -152,11 +125,11 @@ class Clustal:
         # than 5 due to the precense of gaps
         bc = 0
         stop = col
-        while bc < 5 and stop < len(self.alignment[row]):
+        while bc < k and stop < len(self.alignment[row]):
             if self.alignment[row][stop] != '-':
                 bc += 1
             stop += 1
-        return str(self.alignment[row][col:stop].seq)
+        return str(self.alignment[row][col:stop].seq).replace('-', '')
 
     # Count the number of bases seen up to and including the given column
     def count_bases_to_column(self, row, col):
@@ -183,29 +156,6 @@ class Clustal:
             else:
                 out.append((ri, -1))
         return out
-
-    # Compare a pair of consensus rows
-    def compare_consensus_rows(self):
-        con0_idx = self.get_consensus_row()
-        con1_idx = con0_idx + 1
-
-        n_rows = len(self.alignment)
-        n_cols = len(self.alignment[0]) # should be same for all rows
-        n_mers = n_cols - 4
-        
-        matches = []
-        branches = []
-
-        for i in xrange(0, n_mers):
-            k0 = self.get_kmer(con0_idx, i, 5)
-            k1 = self.get_kmer(con1_idx, i, 5)
-
-            if k0 == k1:
-                matches.append(k0)
-            else:
-                branches.append((i - 1, matches[-1], k0, k1))
-
-        return branches
 
     # Returns the indices of reads that have a base (not a gap)
     # in the specified column

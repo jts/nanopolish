@@ -28,22 +28,12 @@ class PoreModel:
 
         self.rank_map = generate_mers_rank_map(dna_alphabet, 5)
 
-    # Get the expected value for the given kmer
     def get_expected(self, kmer):
-        # TODO: account for drift?
-        #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
-        return (self.model[self.rank_map[kmer]][2] + self.shift) * self.scale
-    
-    def get_expected_fixed(self, kmer):
         # TODO: account for drift?
         #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
         return (self.model[self.rank_map[kmer]][2] * self.scale) + self.shift
     
     def get_sd(self, kmer):
-        # TODO: account for drift?
-        return self.model[self.rank_map[kmer]][3] * self.scale
-    
-    def get_sd_fixed(self, kmer):
         # TODO: account for drift?
         return self.model[self.rank_map[kmer]][3] * self.var
 

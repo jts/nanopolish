@@ -46,6 +46,12 @@ static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
+enum AlignmentPolicy
+{
+    AP_GLOBAL,
+    AP_SEMI_KMER
+};
+
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
@@ -760,7 +766,7 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
         double sum = 0.0f;
 
         // Do not allow transition to previous state
-        for(size_t sj = 0; sj < si; ++sj)
+        for(size_t sj = 0; sj < n_states - 1; ++sj)
             set(matrix, si, sj, -INFINITY);
 
         for(size_t sj = si; sj < n_states - 1; ++sj) {
@@ -797,14 +803,11 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
 
                 p_i_j = (1 - sum) * (1 - p_skip);
 #ifdef DEBUG_TRANSITION
-                printf("\t\t%.2lf %.2lf %.2lf %.2lf p_within_threshold: %.4lf p_skip: %.4lf\n", level_i, level_j, diff_mean, diff_sd, p_within_threshold, p_skip);
+                printf("\t\t%zu -> %zu %.2lf %.2lf %.2lf %.2lf p_within_threshold: %.4lf p_skip: %.4lf p: %.2lf\n", ki, kj, level_i, level_j, diff_mean, diff_sd, p_within_threshold, p_skip, p_i_j);
 #endif
             }
 
             sum += p_i_j;
-#ifdef DEBUG_TRANSITION
-            printf("\t %zu %.3lf %.3lf\n", kj, p_i_j, sum);
-#endif
             set(matrix, si, sj, log(p_i_j));
         }
     }
@@ -827,6 +830,24 @@ void initialize_forward_khmm(DoubleMatrix& fm)
         set(fm, ri, 0, -INFINITY);
 
     set(fm, 0, 0, 0.0f); // probability 1 in the start state for the null row
+}
+
+// Terminate the forward algorithm by calculating
+// the probability of transitioning to the end state
+// for all columns and a given row
+double forward_khmm_terminate(const DoubleMatrix& fm,
+                              const DoubleMatrix& tm,
+                              uint32_t row)
+{
+    double sum = -INFINITY;
+    uint32_t tcol = fm.n_cols - 1;
+    for(uint32_t sk = 0; sk < fm.n_cols - 1; sk++) {
+        // transition probability from state k to state l
+        double t_kl = get(tm, sk, tcol);
+        double fm_k = get(fm, row, sk);
+        sum = log(exp(sum) + exp(t_kl + fm_k));
+    }
+    return sum;
 }
 
 double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
@@ -940,7 +961,7 @@ void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
     }
 }
 
-double score_new_model(const std::string& consensus, const HMMConsReadState& state)
+double score_new_model(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -964,13 +985,35 @@ double score_new_model(const std::string& consensus, const HMMConsReadState& sta
     DoubleMatrix fm;
     allocate_matrix(fm, n_rows, n_states);
 
-
     initialize_forward_khmm(fm);
-    double lf = fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+    fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+
+    double score = 0.0f;
+    if(policy == AP_GLOBAL) {
+        // score by the bottom-right cell
+        uint32_t last_row = fm.n_rows - 1;
+        score = forward_khmm_terminate(fm, tm, last_row);
+    } else if(policy == AP_SEMI_KMER) {
+
+        // score by the best cell in the last column
+        double best_score = -INFINITY;
+        uint32_t best_row = 0;
+        for(size_t row = 1; row < fm.n_rows - 1; ++row) {
+            double s = forward_khmm_terminate(fm, tm, row);
+            if(s > best_score) {
+                best_score = s;
+                best_row = row;
+            }
+        }
+
+        score = best_score;
+    } else {
+        assert(false);
+    }
 
     free_matrix(tm);
     free_matrix(fm);
-    return lf;
+    return score;
 }
 
 void debug_new_model(const std::string& name, const std::string& consensus, const HMMConsReadState& state)
@@ -1046,12 +1089,19 @@ void debug_new_model(const std::string& name, const std::string& consensus, cons
     const CPoreModel& pm = state.read->pore_model[state.strand];
     uint32_t prev_ki = -1;
 
+    // summary states
+    double sum_emissions = 0.0f;
+    uint32_t n_matches = 0;
+    uint32_t n_skips = 0;
+    uint32_t n_merges = 0;
+
     for(size_t i = 0; i < matches.size(); ++i) {
 
         uint32_t ei = e_start + i * state.stride;
         uint32_t ki = matches[i];
         
         // Emit kmer skip symbols
+        char s;
         while(prev_ki != -1 && prev_ki + 1 < ki) {
             std::string kmer = consensus.substr(prev_ki + 1, K);
             
@@ -1061,12 +1111,12 @@ void debug_new_model(const std::string& name, const std::string& consensus, cons
         
             double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].sd * pm.scale;
-
-            printf("K\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
+            s = 'K';
+            printf("%c\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", s, -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
+            n_skips += 1;
             prev_ki++;
         }
 
-        char s;
         if(prev_ki != -1 && ki - prev_ki == 0)
             s = 'E';
         else
@@ -1082,12 +1132,19 @@ void debug_new_model(const std::string& name, const std::string& consensus, cons
         const CPoreModel& pm = state.read->pore_model[state.strand];
         double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
         double model_s = pm.state[rank].sd * pm.scale;
-
+        double norm_level = (level - model_m) / model_s;
         std::string kmer = consensus.substr(ki, K);
-        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, (level - model_m) / model_s, lpfm[i]);
+        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, norm_level, lpfm[i]);
+
+        // summary
+        n_matches += (s == 'M');
+        n_merges += (s == 'E');
+        if(s != 'K')
+            sum_emissions += log_probability_match(*state.read, rank, ei, state.strand);
         prev_ki = ki;
     }
 
+    printf("Summary: sum_emission: %.2lf M: %zu E: %zu K: %zu\n", sum_emissions, n_matches, n_merges, n_skips);
     //print_matrix(fm);
 //    printf("%s %.2lf\n", consensus.c_str(), lf);
 
@@ -1346,7 +1403,7 @@ void run_mutation()
         exit(EXIT_FAILURE);
     }
 
-    std::string sequence = g_data.candidate_consensus.back();
+    std::string sequence = g_data.candidate_consensus.front();
     printf("Initial consensus: %s\n", sequence.c_str());
     int iteration = 0;
     while(iteration++ < 10) {
@@ -1361,7 +1418,7 @@ void run_mutation()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
+                double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1394,7 +1451,7 @@ void run_mutation()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
+                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
                     printf("%.1lf ", curr);
                 }
             }
@@ -1410,6 +1467,47 @@ void run_mutation()
     g_data.consensus_result = sequence;
 }
 
+extern "C"
+void run_selection()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+
+    PathConsVector paths;
+
+    for(uint32_t ci = 0; ci < g_data.candidate_consensus.size(); ++ci) {
+        PathCons pc = { g_data.candidate_consensus[ci], 0.0f };
+        paths.push_back(pc);
+
+    }
+
+    // Score all reads
+    for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+        std::vector<double> scores;
+        double sum_score = -INFINITY;
+
+        // Score all paths
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+            double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
+            debug_new_model(paths[pi].path, paths[pi].path, g_data.read_states[ri]);
+            sum_score = log(exp(sum_score) + exp(curr));
+            scores.push_back(curr);
+        }
+
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+            paths[pi].score += scores[pi];
+        }
+    }
+        
+    std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+    for(size_t pi = 0; pi < paths.size(); ++pi) {
+        printf("%zu\t%s\t%.1lf\n", pi, paths[pi].path.c_str(), paths[pi].score);
+    }
+
+    g_data.consensus_result = paths[0].path;
+}
 
 extern "C"
 void run_consensus()
@@ -1419,8 +1517,8 @@ void run_consensus()
         exit(EXIT_FAILURE);
     }
 
-    std::string consensus = "AACAGGCAAG";
-    
+    std::string consensus = "AACAG";
+#if 0
     // Populate initial pathcons vector
     PathConsVector paths;
     PathCons pc = { consensus, 0.0f };
@@ -1442,7 +1540,7 @@ void run_consensus()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
+                double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1473,7 +1571,7 @@ void run_consensus()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri]);
+                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                     printf("%.1lf ", curr);
                 }
             }
@@ -1482,8 +1580,8 @@ void run_consensus()
 
         paths.resize(std::min(paths.size(), (size_t)256));
     }
+#endif
 
-#if 0
     // Populate initial pathcons vector
     PathConsVector paths;
     std::string extension = "AAAAA";
@@ -1513,7 +1611,7 @@ void run_consensus()
 
             // Score all paths
             for(size_t pi = 0; pi < new_paths.size(); ++pi) {
-                double curr = score_consensus(new_paths[pi].path, g_data.read_states[ri], window);
+                double curr = score_new_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1544,7 +1642,7 @@ void run_consensus()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_consensus(new_paths[pi].path, g_data.read_states[ri], window);
+                    double curr = score_new_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                     printf("%.1lf ", curr);
                 }
             }
@@ -1553,7 +1651,6 @@ void run_consensus()
 
         paths.assign(new_paths.begin(), new_paths.begin() + 1024);
     }
-#endif
 }
 
 extern "C"
