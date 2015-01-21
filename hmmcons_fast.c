@@ -11,6 +11,7 @@
 #include <sstream>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
+#include "Profiler.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -29,6 +30,7 @@ const static double LOG_KMER_INSERTION = log(0.1);
 const static double SELF_KMER_TRANSITION = 0.2;
 const static double P_RANDOM_SKIP = 0.015; // 0.015 is estimated from the event duration distribution for sample data
 const static double EVENT_DETECTION_THRESHOLD = 1.0f;
+const static uint32_t KHMM_MAX_JUMP = 5;
 
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -753,14 +755,21 @@ double score_consensus(const std::string& consensus, const HMMConsReadState& sta
 
 void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state)
 {
+    PROFILE_FUNC("fill_khmm_transitions")
+
     const CPoreModel& pm = state.read->pore_model[state.strand];
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2;
+    uint32_t terminal_state = n_states - 1;
+
     assert(matrix.n_rows == n_states && matrix.n_cols == n_states);
 
-    // Start state transitions -- only allowed to go to k_0
+    // Initialize the transition matrix to -INFINITY for all states
     for(size_t si = 0; si < n_states; ++si)
-        set(matrix, 0, si, -INFINITY);
+        for(size_t sj = 0; sj < n_states; ++sj)
+            set(matrix, si, sj, -INFINITY);
+
+    // Start state transitions -- only allowed to go to k_0
     set(matrix, 0, 1, 0.0f);
     
     // TODO: calculate in log space
@@ -768,11 +777,11 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
         size_t ki = si - 1;
         double sum = 0.0f;
 
-        // Do not allow transition to previous state
-        for(size_t sj = 0; sj < n_states - 1; ++sj)
-            set(matrix, si, sj, -INFINITY);
+        uint32_t last_valid_state = si + KHMM_MAX_JUMP;
+        if(last_valid_state >= terminal_state)
+            last_valid_state = terminal_state - 1;
 
-        for(size_t sj = si; sj < n_states - 1; ++sj) {
+        for(size_t sj = si; sj <= last_valid_state; ++sj) {
             
             size_t kj = sj - 1;
                         
@@ -817,10 +826,6 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
 
     // Transition to end state -- only the last k-mer can go to the end state
     // TODO: allow the last k-mer to be skipped??
-    for(size_t si = 0; si < n_states; ++si)
-        set(matrix, si, n_states - 1, -INFINITY);
-    for(size_t si = 0; si < n_states; ++si)
-        set(matrix, n_states - 1, si, -INFINITY);
     set(matrix, n_states - 2, n_states - 1, 0.0f);
 }
 
@@ -859,6 +864,8 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
                          const HMMConsReadState& state,
                          uint32_t e_start)
 {
+    PROFILE_FUNC("fill_forward_khmm")
+
     // Fill in matrix
     for(uint32_t row = 1; row < fm.n_rows; row++) {
         for(uint32_t sl = 1; sl < fm.n_cols - 1; sl++) {
@@ -870,7 +877,13 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
 
             // Sum over states for previous row
             double sum = -INFINITY;
-            for(uint32_t sk = 0; sk < fm.n_cols - 1; sk++) {
+
+            // Only look back as far as the first state that can jump here
+            uint32_t first_possible_state = 0;
+            if(sl >= KHMM_MAX_JUMP)
+                first_possible_state = sl - KHMM_MAX_JUMP;
+
+            for(uint32_t sk = first_possible_state; sk <= sl; sk++) {
 
                 // transition probability from state k to state l
                 double t_kl = get(tm, sk, sl);
