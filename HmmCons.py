@@ -424,7 +424,8 @@ for i in xrange(len(anchors) - 1):
                 lib_hmmcons_fast.add_read_state(c_rs)
 
     #lib_hmmcons_fast.run_selection()
-    lib_hmmcons_fast.run_mutation()
+    #lib_hmmcons_fast.run_mutation()
+    lib_hmmcons_fast.run_rewrite()
     #lib_hmmcons_fast.run_consensus()
 
     lib_hmmcons_fast.get_consensus_result.restype = c_char_p

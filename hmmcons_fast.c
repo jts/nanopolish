@@ -12,6 +12,9 @@
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 
+// Macros
+#define max3(x,y,z) std::max(std::max(x,y), z)
+
 // Constants
 
 // strands
@@ -379,7 +382,7 @@ void lexicographic_next(std::string& str)
         str[i] = "ACGT"[r % 4];
         carry = r / 4;
         i -= 1;
-    } while(carry > 0);
+    } while(carry > 0 && i >= 0);
 }
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
@@ -961,7 +964,7 @@ void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
     }
 }
 
-double score_new_model(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
+double score_khmm_model(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -1016,7 +1019,7 @@ double score_new_model(const std::string& consensus, const HMMConsReadState& sta
     return score;
 }
 
-void debug_new_model(const std::string& name, const std::string& consensus, const HMMConsReadState& state)
+void debug_khmm_model(const std::string& name, const std::string& consensus, const HMMConsReadState& state)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -1153,6 +1156,62 @@ void debug_new_model(const std::string& name, const std::string& consensus, cons
     free_matrix(bm);
 }
 
+double score_emission_dp(const std::string& sequence, const HMMConsReadState& state)
+{
+    uint32_t n_kmers = sequence.size() - K + 1;
+    uint32_t n_cols = n_kmers + 1;
+
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
+    uint32_t n_rows = n_events + 1;
+
+    // Allocate a matrix to hold the HMM result
+    DoubleMatrix m;
+    allocate_matrix(m, n_rows, n_cols);
+
+    // Initialize matrix to -INFINITY except for (0,0)
+    for(uint32_t row = 0; row < m.n_rows; ++row) {
+        for(uint32_t col = 0; col < m.n_cols; ++col) {
+            set(m, row, col, -INFINITY);
+        }
+    }
+    set(m, 0, 0, 0.0f);
+
+    // Fill matrix
+    for(uint32_t row = 1; row < m.n_rows; ++row) {
+        for(uint32_t col = 1; col < m.n_cols; ++col) {
+            
+            // Get the emission probability for matching this event to this kmer
+            uint32_t event_idx = e_start + (row - 1) * state.stride;
+            uint32_t kmer_idx = col - 1;
+
+            uint32_t rank = !state.rc ? 
+                kmer_rank(sequence.c_str() + kmer_idx, K) : 
+                rc_kmer_rank(sequence.c_str() + kmer_idx, K);
+
+            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            
+            // Get the scores for the 3 possible preceding cells           
+            double up = lp_e + get(m, row - 1, col);
+            double diag = lp_e + get(m, row - 1, col - 1);
+            double left = get(m, row, col - 1);
+            double best = max3(up, diag, left);
+
+            set(m, row, col, best);
+        }
+    }
+
+    double score = get(m, m.n_rows - 1, m.n_cols - 1);
+    free_matrix(m);
+    return score;
+}
+
 
 void debug_align(const std::string& consensus, const HMMConsReadState& state)
 {
@@ -1281,6 +1340,21 @@ void debug_align(const std::string& consensus, const HMMConsReadState& state)
     free_matrix(matrix);
 }
 
+// Handy wrappers for scoring/debugging functions
+// The consensus algorithms call into these so we can switch
+// scoring functinos without writing a bunch of code
+double score_sequence(const std::string& sequence, const HMMConsReadState& state)
+{
+    return score_khmm_model(sequence, state, AP_GLOBAL);
+    //return score_emission_dp(sequence, state);
+}
+
+void debug_sequence(const std::string& name, const std::string& sequence, const HMMConsReadState& state)
+{
+    return debug_khmm_model(name, sequence, state);
+}
+
+
 extern "C"
 void run_debug()
 {
@@ -1290,11 +1364,10 @@ void run_debug()
     }
 
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_new_model("input",  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
-        debug_new_model("oldbad", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
-        debug_new_model("final", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
-        //debug_new_model("ATCAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
-        debug_new_model("truth", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("input",  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("oldbad", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("final", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("truth", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
     }
 }
 
@@ -1418,7 +1491,7 @@ void run_mutation()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
+                double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1451,7 +1524,7 @@ void run_mutation()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
+                    double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
                     printf("%.1lf ", curr);
                 }
             }
@@ -1461,6 +1534,106 @@ void run_mutation()
         // check if no improvement was made
         if(paths[0].path == sequence)
             break;
+        sequence = paths[0].path;
+    }
+    
+    g_data.consensus_result = sequence;
+}
+
+PathConsVector generate_rewrites(const std::string& sequence, uint32_t position)
+{
+    PathConsVector rewrites;
+    if(position >= sequence.size() - 5)
+        return rewrites;
+
+    // Add the unmutated sequence
+    {
+        PathCons pc = { sequence, 0.0f };
+        rewrites.push_back(pc);
+    }
+
+    std::string prefix = sequence.substr(0, position);
+    std::string suffix = sequence.substr(position);
+
+    printf("REWRITE -- %zu %s %s\n", position, prefix.c_str(), suffix.c_str());
+
+    // Insert every possible 5-mer at the stated position
+    std::string first(K, 'A'); // AAAAA
+    std::string kmer = first;
+
+    do {
+        for(uint32_t del = 0; del < 5; ++del) {
+            std::string ns = prefix + kmer + suffix.substr(del);
+            PathCons ps = { ns, 0.0f };
+            rewrites.push_back(ps);
+        }
+        lexicographic_next(kmer);
+    } while(kmer != first);
+
+    return rewrites;
+}
+
+extern "C"
+void run_rewrite()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+
+    std::string sequence = g_data.candidate_consensus.front();
+    printf("Initial consensus: %s\n", sequence.c_str());
+
+    uint32_t position = 5;
+
+    while(1) {
+
+        printf("Position %d\n", position);
+        
+        // Generate possible sequences
+        PathConsVector paths = generate_rewrites(sequence, position++);
+
+        if(paths.size() == 0)
+            break;
+
+        // Score all reads
+        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+            std::vector<double> scores;
+            double sum_score = -INFINITY;
+
+            // Score all paths
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
+                sum_score = log(exp(sum_score) + exp(curr));
+                scores.push_back(curr);
+            }
+            
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                paths[pi].score += (scores[pi] - scores[0]);
+            }
+        }
+        
+        // select new sequence
+        std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+        
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+            // Calculate the length of the matching prefix with the truth
+            const std::string& s = paths[pi].path;
+
+            char initial = s == sequence ? 'I' : ' ';
+
+            printf("%zu\t%s\t%.1lf %c %s", pi, paths[pi].path.c_str(), paths[pi].score, initial, paths[pi].mutdesc.c_str());
+            // If this is the truth path or the best path, show the scores for all reads
+            if(pi == 0) {
+                for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                    double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
+                    printf("%.1lf ", curr);
+                }
+            }
+            printf("\n");
+        }
+        
         sequence = paths[0].path;
     }
     
@@ -1490,8 +1663,8 @@ void run_selection()
 
         // Score all paths
         for(size_t pi = 0; pi < paths.size(); ++pi) {
-            double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_GLOBAL);
-            debug_new_model(paths[pi].path, paths[pi].path, g_data.read_states[ri]);
+            double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
+            debug_sequence(paths[pi].path, paths[pi].path, g_data.read_states[ri]);
             sum_score = log(exp(sum_score) + exp(curr));
             scores.push_back(curr);
         }
@@ -1540,7 +1713,7 @@ void run_consensus()
 
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
+                double curr = score_khmm_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1571,7 +1744,7 @@ void run_consensus()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_new_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
+                    double curr = score_khmm_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                     printf("%.1lf ", curr);
                 }
             }
@@ -1611,7 +1784,7 @@ void run_consensus()
 
             // Score all paths
             for(size_t pi = 0; pi < new_paths.size(); ++pi) {
-                double curr = score_new_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
+                double curr = score_khmm_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                 sum_score = log(exp(sum_score) + exp(curr));
                 scores.push_back(curr);
             }
@@ -1642,7 +1815,7 @@ void run_consensus()
             // If this is the truth path or the best path, show the scores for all reads
             if(pi == 0 || match == '*') {
                 for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_new_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
+                    double curr = score_khmm_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
                     printf("%.1lf ", curr);
                 }
             }
