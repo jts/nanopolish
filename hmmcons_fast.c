@@ -297,49 +297,61 @@ void print_matrix(const HMMMatrix& matrix)
 }
 
 //
-// Double Matrix
+// Template Matrix for POD types
 //
-struct DoubleMatrix
+template<typename T>
+struct Matrix
 {
-    double* cells;
+    T* cells;
     uint32_t n_rows;
     uint32_t n_cols;
 };
 
-void allocate_matrix(DoubleMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
+typedef Matrix<double> DoubleMatrix;
+typedef Matrix<uint32_t> UInt32Matrix;
+
+template<typename T>
+void allocate_matrix(Matrix<T>& matrix, uint32_t n_rows, uint32_t n_cols)
 {
     matrix.n_rows = n_rows;
     matrix.n_cols = n_cols;
     
     uint32_t N = matrix.n_rows * matrix.n_cols;
-    matrix.cells = (double*)malloc(N * sizeof(double));
-    memset(matrix.cells, 0, N * sizeof(double));
+    matrix.cells = (T*)malloc(N * sizeof(T));
+    memset(matrix.cells, 0, N * sizeof(T));
 }
 
-void free_matrix(DoubleMatrix& matrix)
+template<typename T>
+void free_matrix(Matrix<T>& matrix)
 {
     assert(matrix.cells != NULL);
     free(matrix.cells);
     matrix.cells = NULL;
 }
 
-inline uint32_t cell(const DoubleMatrix& matrix, uint32_t row, uint32_t col)
+template<typename T>
+inline uint32_t cell(const Matrix<T>& matrix, uint32_t row, uint32_t col)
 {
     return row * matrix.n_cols + col;
 }
 
-inline double set(const DoubleMatrix& matrix, uint32_t row, uint32_t col, double v)
+template<typename T, typename U>
+inline void set(Matrix<T>& matrix, uint32_t row, uint32_t col, U v)
 {
     uint32_t c = cell(matrix, row, col);
     matrix.cells[c] = v;
 }
 
-inline double get(const DoubleMatrix& matrix, uint32_t row, uint32_t col)
+template<typename T>
+inline T get(const Matrix<T>& matrix, uint32_t row, uint32_t col)
 {
     uint32_t c = cell(matrix, row, col);
     return matrix.cells[c];
 }
 
+//
+//
+//
 void print_matrix(const DoubleMatrix& matrix, bool do_exp = false)
 {
     for(uint32_t i = 0; i < matrix.n_rows; ++i) {
@@ -932,6 +944,90 @@ double score_emission_dp(const std::string& sequence, const HMMConsReadState& st
     return score;
 }
 
+// The indices of a k-mer match in a pair of sequences
+struct kLCSPair
+{
+    uint32_t i;
+    uint32_t j;
+};
+typedef std::vector<kLCSPair> kLCSResult;
+
+// Helper to backtrack through the kLCS matrix
+void _kLCSBacktrack(const UInt32Matrix& m,
+                    const std::string& a, 
+                    const std::string& b,
+                    uint32_t row,
+                    uint32_t col,
+                    kLCSResult& result)
+{
+    if(row == 0 || col == 0)
+        return;
+
+    const char* ka = a.c_str() + row - 1;
+    const char* kb = b.c_str() + col - 1;
+
+    if(strncmp(ka, kb, K) == 0) {
+        kLCSPair p = { row - 1, col - 1 };
+        result.push_back(p);
+        return _kLCSBacktrack(m, a, b, row - 1, col - 1, result);
+    } else {
+
+        if(get(m, row - 1, col) > get(m, row, col - 1)) {
+            return _kLCSBacktrack(m, a, b, row - 1, col, result);
+        } else {
+            return _kLCSBacktrack(m, a, b, row, col - 1, result);
+        }
+    }
+}
+
+// Return the longest common subseuqence of k-mers between the two strings
+kLCSResult kLCS(const std::string& a, const std::string& b)
+{
+    uint32_t n_kmers_a = a.size() - K + 1;
+    uint32_t n_kmers_b = a.size() - K + 1;
+
+    uint32_t n_rows = n_kmers_a + 1;
+    uint32_t n_cols = n_kmers_b + 1;
+
+
+    UInt32Matrix m;
+    allocate_matrix(m, n_rows, n_cols);
+
+    // Initialize first row/col to zero
+    for(uint32_t row = 0; row < m.n_rows; ++row)
+        set(m, row, 0, 0);
+    for(uint32_t col = 0; col < m.n_cols; ++col)
+        set(m, 0, col, 0);
+    
+    // Fill matrix
+    for(uint32_t row = 1; row < m.n_rows; ++row) {
+        for(uint32_t col = 1; col < m.n_cols; ++col) {
+    
+            const char* ka = a.c_str() + row - 1;
+            const char* kb = b.c_str() + col - 1;
+
+            uint32_t score = 0;
+            if(strncmp(ka, kb, K) == 0) {
+                uint32_t diag = get(m, row - 1, col - 1);
+                score = diag + 1;
+            } else {
+                uint32_t left = get(m, row, col - 1);
+                uint32_t up = get(m, row - 1, col);
+                score = std::max(left, up);
+            }
+            set(m, row, col, score);
+        }
+    }
+
+    kLCSResult result;
+    _kLCSBacktrack(m, a, b, n_rows - 1, n_cols -  1, result);
+
+    // Backtrack appends from the end to the start, reverse the vector of matches
+    std::reverse(result.begin(), result.end());
+    free_matrix(m);
+    return result;
+}
+
 // Handy wrappers for scoring/debugging functions
 // The consensus algorithms call into these so we can switch
 // scoring functinos without writing a bunch of code
@@ -975,6 +1071,51 @@ typedef std::vector<PathCons> PathConsVector;
 bool sortPathConsAsc(const PathCons& a, const PathCons& b)
 {
     return a.score > b.score;
+}
+
+// This scores each path using the HMM and 
+// sorts the paths into ascending order by score
+void score_paths(PathConsVector& paths)
+{
+    std::string first = paths[0].path;
+
+    // Score all reads
+    for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+        std::vector<double> scores;
+        double sum_score = -INFINITY;
+
+        // Score all paths
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+            double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
+            sum_score = log(exp(sum_score) + exp(curr));
+            scores.push_back(curr);
+        }
+
+        for(size_t pi = 0; pi < paths.size(); ++pi) {
+            paths[pi].score += (scores[pi] - scores[0]);
+        }
+    }
+
+    // select new sequence
+    std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+
+    for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+        // Calculate the length of the matching prefix with the truth
+        const std::string& s = paths[pi].path;
+
+        char initial = s == first ? 'I' : ' ';
+
+        printf("%zu\t%s\t%.1lf %c %s", pi, paths[pi].path.c_str(), paths[pi].score, initial, paths[pi].mutdesc.c_str());
+        // If this is the truth path or the best path, show the scores for all reads
+        if(pi == 0) {
+            for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
+                printf("%.1lf ", curr);
+            }
+        }
+        printf("\n");
+    }
 }
 
 void extend_paths(PathConsVector& paths, int maxk = 2)
@@ -1076,53 +1217,8 @@ void run_mutation()
         // Generate possible sequences
         PathConsVector paths = generate_mutations(sequence);
 
-        // Score all reads
-        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-            std::vector<double> scores;
-            double sum_score = -INFINITY;
+        score_paths(paths);
 
-            // Score all paths
-            for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-                sum_score = log(exp(sum_score) + exp(curr));
-                scores.push_back(curr);
-            }
-            
-            for(size_t pi = 0; pi < paths.size(); ++pi) {
-                paths[pi].score += (scores[pi] - scores[0]);
-            }
-        }
-        
-        // Cull paths
-        std::sort(paths.begin(), paths.end(), sortPathConsAsc);
-        std::string truth = "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAGCTAAAGCCCGGCAGATGATTATCTGTGCCGATATGATCAAACCGCGGTTGAATGAAAC";
-        
-        printf("Iteration %d\n", iteration);
-        for(size_t pi = 0; pi < paths.size(); ++pi) {
-
-            // Calculate the length of the matching prefix with the truth
-            const std::string& s = paths[pi].path;
-
-            uint32_t plen = 0;
-            while(s[plen] == truth[plen] && plen < s.length() && plen < truth.length())
-                plen++;
-
-            // Match info
-            char match = plen == s.length() ? '*' : ' ';
-            
-            char initial = s == sequence ? 'I' : ' ';
-
-            printf("%zu\t%s\t%.1lf %d %c %c %s", pi, paths[pi].path.c_str(), paths[pi].score, plen, match, initial, paths[pi].mutdesc.c_str());
-            // If this is the truth path or the best path, show the scores for all reads
-            if(pi == 0 || match == '*') {
-                for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-                    printf("%.1lf ", curr);
-                }
-            }
-            printf("\n");
-        }
-        
         // check if no improvement was made
         if(paths[0].path == sequence)
             break;
@@ -1187,50 +1283,74 @@ void run_rewrite()
 
         if(paths.size() == 0)
             break;
-
-        // Score all reads
-        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-            std::vector<double> scores;
-            double sum_score = -INFINITY;
-
-            // Score all paths
-            for(size_t pi = 0; pi < paths.size(); ++pi) {
-                double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-                sum_score = log(exp(sum_score) + exp(curr));
-                scores.push_back(curr);
-            }
-            
-            for(size_t pi = 0; pi < paths.size(); ++pi) {
-                paths[pi].score += (scores[pi] - scores[0]);
-            }
-        }
         
-        // select new sequence
-        std::sort(paths.begin(), paths.end(), sortPathConsAsc);
-        
-        for(size_t pi = 0; pi < paths.size(); ++pi) {
+        score_paths(paths);
 
-            // Calculate the length of the matching prefix with the truth
-            const std::string& s = paths[pi].path;
-
-            char initial = s == sequence ? 'I' : ' ';
-
-            printf("%zu\t%s\t%.1lf %c %s", pi, paths[pi].path.c_str(), paths[pi].score, initial, paths[pi].mutdesc.c_str());
-            // If this is the truth path or the best path, show the scores for all reads
-            if(pi == 0) {
-                for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                    double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-                    printf("%.1lf ", curr);
-                }
-            }
-            printf("\n");
-        }
-        
         sequence = paths[0].path;
     }
     
     g_data.consensus_result = sequence;
 }
+
+extern "C"
+void run_splice()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    // initialize 
+    std::string base = g_data.candidate_consensus[0];
+
+    uint32_t num_rounds = 3;
+    uint32_t round = 0;
+    while(round++ < num_rounds) {
+
+        PathConsVector paths;
+        PathCons base_path = { base, 0.0f };
+        paths.push_back(base_path);
+
+        for(uint32_t ci = 1; ci < g_data.candidate_consensus.size(); ++ci) {
+            const std::string& read = g_data.candidate_consensus[ci];
+            kLCSResult result = kLCS(base, read);
+
+            uint32_t match_idx = 0;
+            while(match_idx < result.size()) {
+                uint32_t last_idx = result.size() - 1;
+
+                // advance the match to the next point of divergence
+                while(match_idx != last_idx && result[match_idx].i == result[match_idx + 1].i - 1)
+                    match_idx++;
+
+                // no more divergences to process
+                if(match_idx == last_idx)
+                    break;
+
+                uint32_t bl = result[match_idx + 1].i - result[match_idx].i;
+                uint32_t rl = result[match_idx + 1].j - result[match_idx].j;
+
+                std::string base_subseq = base.substr(result[match_idx].i, bl);
+                std::string read_subseq = read.substr(result[match_idx].j, rl);
+
+                // Perform the splice
+                PathCons new_path = { base, 0.0f };
+                new_path.path.replace(result[match_idx].i, bl, read_subseq);
+                paths.push_back(new_path);
+                
+                //printf("REPLACE: %s %s %s\n", base_subseq.c_str(), read_subseq.c_str(), new_path.path.c_str());
+
+                match_idx += 1;
+            }
+        }
+
+        score_paths(paths);
+        base = paths[0].path;
+    }
+
+    g_data.consensus_result = base;
+}
+
 
 extern "C"
 void run_selection()

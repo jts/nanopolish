@@ -59,7 +59,7 @@ def get_closest_event_to(sr, kidx, strand):
     stop = kidx - m
     if stop < 0:
         stop = -1 # end is exclusive
-
+    
     first_event_before = get_next_event(sr, kidx, stop, -1, strand)
 
     # after
@@ -245,8 +245,9 @@ MIN_DISTANCE = 50
 MAX_DISTANCE = 100
 
 consensus_sequence = str(ca.alignment[cons_row].seq)
+n_cols = len(ca.alignment[cons_row])
 
-for col in xrange(0, 2000):
+for col in xrange(0, n_cols - 5):
     cons_base = ca.alignment[cons_row][col]
 
     if cons_base != '-' and (len(anchors) == 0 or distance_to_last_anchor >= MIN_DISTANCE):
@@ -254,8 +255,12 @@ for col in xrange(0, 2000):
         # Should we anchor here?
         use_anchor = False
 
-        #cons_kmer = consensus_sequence[cons_kidx:cons_kidx + 5]
         cons_kmer = ca.get_kmer(cons_row, col, 5)
+        
+        # Have we reached the end of the consensus sequence?
+        if len(cons_kmer) < 5:
+            break
+
         print 'ANCHOR', cons_kidx, cons_kmer
 
         max_res = 0
@@ -263,20 +268,21 @@ for col in xrange(0, 2000):
         for rr in read_rows:
             b = ca.alignment[rr][col]
 
+            # Read metadata
             poa_read = poa_reads[rr]
-            read_kidx = n_bases[rr] + poa_reads[rr].start
-
-            # skip reads that are not aligned in this range
-            if not poa_read.is_base and (read_kidx <= poa_read.start or read_kidx >= poa_read.stop):
-                continue
-
-            read_kidx = n_bases[rr] + poa_reads[rr].start
             poa_idx = row_to_poa_read_idx[rr]
             sr_idx = poa_idx_to_sr_idx[poa_idx]
             sr = squiggle_reads[sr_idx]
             orientation = poa_reads[rr].strand
 
-            print "\tROW", rr, poa_idx, sr_idx, poa_reads[rr].read_id
+            read_kidx = n_bases[rr] + poa_reads[rr].start
+            last_read_kidx = sr.get_2D_length() - 5
+
+            # skip reads that are not aligned in this range
+            if read_kidx <= poa_read.start or read_kidx > last_read_kidx:
+                continue
+
+            print "\tROW", rr, poa_reads[rr].read_id
 
             do_template_rc = 0
             do_complement_rc = 1
@@ -423,8 +429,9 @@ for i in xrange(len(anchors) - 1):
                 c_rs = CReadStateInterface(sr_idx, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
                 lib_hmmcons_fast.add_read_state(c_rs)
 
+    lib_hmmcons_fast.run_splice()
     #lib_hmmcons_fast.run_selection()
-    lib_hmmcons_fast.run_mutation()
+    #lib_hmmcons_fast.run_mutation()
     #lib_hmmcons_fast.run_rewrite()
     #lib_hmmcons_fast.run_consensus()
 

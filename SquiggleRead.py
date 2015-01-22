@@ -70,6 +70,9 @@ class SquiggleRead:
     
     def get_2D_sequence(self):
         return self.fh.get_fastas('2D')[0].seq
+    
+    def get_2D_length(self):
+        return len(self.fh.get_fastas('2D')[0].seq)
 
     def get_2D_kmer_at(self, k_idx, k):
         return self.fh.get_fastas('2D')[0].seq[k_idx:k_idx+k]
