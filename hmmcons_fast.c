@@ -1303,7 +1303,7 @@ void run_splice()
     // initialize 
     std::string base = g_data.candidate_consensus[0];
 
-    uint32_t num_rounds = 3;
+    uint32_t num_rounds = 4;
     uint32_t round = 0;
     while(round++ < num_rounds) {
 
@@ -1345,6 +1345,10 @@ void run_splice()
         }
 
         score_paths(paths);
+
+        // check for improved sequence
+        if(paths[0].path == base)
+            break;
         base = paths[0].path;
     }
 

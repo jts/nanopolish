@@ -4,16 +4,19 @@ from Clustal import *
 from ctypes import *
 from collections import defaultdict, namedtuple
 
-ReadAnchor = namedtuple('ReadAnchor', ['row_id', 'base'])
+StrandAnchor = namedtuple('StrandAnchor', ['idstr', 'row_id', 'sr_idx', 'strand', 'event_idx', 'rc', 'diff'])
 
 class Anchor:
-    def __init__(self, column, cons_base):
+    def __init__(self, column, cons_kidx):
         self.column = column
-        self.cons_base = cons_base
-        self.reads = list()
+        self.cons_kidx = cons_kidx
+        self.strands = list()
+        self.n_outliers = 0
+        self.n_samples = 0
+        self.sum_diff = 0
 
-    def add_read(self, ra):
-        self.reads.append(ra)
+    def add_strand(self, sa):
+        self.strands.append(sa)
 
 # Generate all the paths of length (k+1)
 # starting from the given k-mer
@@ -79,6 +82,19 @@ def get_closest_event_to(sr, kidx, strand):
     else:
         return first_event_after
 
+
+def calculate_diff_to_expected(sr, kidx, strand, kmer):
+    
+    ei = get_closest_event_to(sr, kidx, strand)
+
+    # Observed event   
+    level = sr.get_drift_corrected_event_level(ei, strand)
+
+    k_level = sr.get_expected_level(kmer, strand)
+    k_sd = sr.get_expected_sd(kmer, strand)
+    res = (level - k_level) / k_sd
+    return (res, ei)
+
 #
 # 
 #
@@ -116,22 +132,6 @@ class CReadStateInterface(Structure):
                 ('rc', c_int)]
 
 #
-# Load reads
-# 
-test_data = [ (0,    39,   'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5", 32),
-              (1608, 1650, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5", 5106),
-              (386,  425,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5", 198),
-              (2747, 2784, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5", 6852) ]
-
-#
-# Old test code
-#
-
-#reads = []
-#for (start, stop, strand, fn) in test_data:
-#    reads.append(SquiggleRead(fn))
-
-#
 # Build the map from read indices to fast5 files
 #
 fast5_fofn_fn = 'r73.map.fofn'
@@ -145,9 +145,9 @@ for l in fast5_fofn_fh:
 # Load squiggle reads
 #
 clustal_filename = "clustal-32.out"
-ca = Clustal(clustal_filename)
-cons_row = ca.get_consensus_row()
-read_rows = ca.get_read_rows()
+clustal = Clustal(clustal_filename)
+cons_row = clustal.get_consensus_row()
+read_rows = clustal.get_read_rows()
 
 # Initialize traversal
 n_reads = len(read_rows)
@@ -156,7 +156,7 @@ n_reads = len(read_rows)
 poa_reads = list()
 row_to_poa_read_idx = dict()
 for rr in read_rows:
-    pa = unpack_poa_id(ca.alignment[rr].id)
+    pa = unpack_poa_id(clustal.alignment[rr].id)
 
     # Append read and update map
     poa_reads.append(pa)
@@ -172,17 +172,9 @@ seen_ids = dict()
 
 for (poa_idx, pr) in enumerate(poa_reads):
 
-    #
-    # DEBUG: only load a subset
-    #
-    in_debug_set = False
-    for t in test_data:
-        if pr.read_id == t[4]:
-            in_debug_set = True
-
-    #if not in_debug_set:
-    #    continue
-
+    # A read may appear in multiple rows of the MA
+    # if the aligner emitted a few local alignments
+    # Only load a squiggleread once
     if pr.read_id in seen_ids:
         poa_idx_to_sr_idx[poa_idx] = seen_ids[pr.read_id]
         continue
@@ -240,194 +232,191 @@ cons_kidx = 0
 n_bases = [0] * n_reads
 anchors = list()
 
+current_position = 0
 distance_to_last_anchor = 0
+
 MIN_DISTANCE = 50
-MAX_DISTANCE = 100
+MAX_DISTANCE = 70
+ANCHOR_BAND = MAX_DISTANCE - MIN_DISTANCE
+OUTLIER_THRESHOLD = 3
 
-consensus_sequence = str(ca.alignment[cons_row].seq)
-n_cols = len(ca.alignment[cons_row])
+consensus_sequence = str(clustal.alignment[cons_row].seq)
+n_cols = len(clustal.alignment[cons_row])
+col = 0
 
-for col in xrange(0, n_cols - 5):
-    cons_base = ca.alignment[cons_row][col]
+#
+while col < n_cols:
 
-    if cons_base != '-' and (len(anchors) == 0 or distance_to_last_anchor >= MIN_DISTANCE):
+    # Calculate a vector of possible anchors for the consensus segment
+    candidate_anchors = list()
+    while col < n_cols and len(candidate_anchors) < ANCHOR_BAND:
 
-        # Should we anchor here?
-        use_anchor = False
-
-        cons_kmer = ca.get_kmer(cons_row, col, 5)
+        # Is there a consensus base in this column?
+        cons_base = clustal.alignment[cons_row][col]
+        cons_kmer = clustal.get_kmer(cons_row, col, 5)
         
-        # Have we reached the end of the consensus sequence?
-        if len(cons_kmer) < 5:
-            break
+        if cons_base != '-' and len(cons_kmer) == 5:
 
-        print 'ANCHOR', cons_kidx, cons_kmer
-
-        max_res = 0
-        n_evidence = 0
-        for rr in read_rows:
-            b = ca.alignment[rr][col]
-
-            # Read metadata
-            poa_read = poa_reads[rr]
-            poa_idx = row_to_poa_read_idx[rr]
-            sr_idx = poa_idx_to_sr_idx[poa_idx]
-            sr = squiggle_reads[sr_idx]
-            orientation = poa_reads[rr].strand
-
-            read_kidx = n_bases[rr] + poa_reads[rr].start
-            last_read_kidx = sr.get_2D_length() - 5
-
-            # skip reads that are not aligned in this range
-            if read_kidx <= poa_read.start or read_kidx > last_read_kidx:
-                continue
-
-            print "\tROW", rr, poa_reads[rr].read_id
-
-            do_template_rc = 0
-            do_complement_rc = 1
-
-            if orientation == 'c':
-                read_kidx = sr.flip_k_idx_strand(read_kidx, 5)
-                do_template_rc = 1
-                do_complement_rc = 0
-
-            ti = get_closest_event_to(sr, read_kidx, 't')
-            ci = get_closest_event_to(sr, read_kidx, 'c')
-
-            #print "EVENTS", poa_reads[rr].read_id, ti, ci
-            for (ei, strand, do_rc) in [ (ti, 't', do_template_rc), (ci, 'c', do_complement_rc) ]:
+            print 'CANDIDATE', col, cons_kmer
             
-                if ei == -1:
+            current_anchor = Anchor(col, cons_kidx)
+
+            # Compute candidate anchor stats
+            for rr in read_rows:
+                b = clustal.alignment[rr][col]
+
+                # Read metadata
+                poa_read = poa_reads[rr]
+                poa_idx = row_to_poa_read_idx[rr]
+                sr_idx = poa_idx_to_sr_idx[poa_idx]
+                sr = squiggle_reads[sr_idx]
+
+                read_kidx = n_bases[rr] + poa_reads[rr].start
+                
+                last_read_kidx = poa_read.stop - 5
+                if poa_read.is_base:
+                    last_read_kidx = sr.get_2D_length() - 5
+
+                print "\tROW", rr, poa_reads[rr].read_id, read_kidx, last_read_kidx
+
+                # skip reads that are not aligned in this range
+                if read_kidx <= poa_read.start or read_kidx >= last_read_kidx:
                     continue
 
-                # Observed event   
-                level = sr.get_drift_corrected_event_level(ei, strand)
+                skmer = cons_kmer
 
-                # Expected event
-                kmer = cons_kmer
-                if do_rc:
-                    kmer = revcomp(cons_kmer)
+                t_rc = 0
+                c_rc = 1
+                if poa_read.strand == 'c':
 
-                k_level = sr.get_expected_level(kmer, strand)
-                k_sd = sr.get_expected_sd(kmer, strand)
-                res = (level - k_level) / k_sd
+                    # switch kmer index and kmer sequence to opposite strand
+                    read_kidx = sr.flip_k_idx_strand(read_kidx, 5)
+                    skmer = revcomp(skmer)
 
-                print '\t\tRESIDUAL', strand, level, kmer, k_level, res
-                if abs(res) > abs(max_res):
-                    max_res = res
-                n_evidence += 1
-        if abs(max_res) < 3 and n_evidence >= 4:
-            use_anchor = True
-                    
-        # Build an anchor here
-        if use_anchor:
-            print "BUILD", cons_kidx, cons_base
-            
-            anchor = Anchor(col, cons_kidx)
+                    t_rc = 1
+                    c_rc = 0
 
-            for rr in read_rows:
-                read_kidx = n_bases[rr] + poa_reads[rr].start
-            
-                poa_read = poa_reads[rr]
-                read_kidx = n_bases[rr] + poa_reads[rr].start
+                # calculate diffs
+                (tdiff, ti) = calculate_diff_to_expected(sr, read_kidx, 't', skmer)
+                (cdiff, ci) = calculate_diff_to_expected(sr, read_kidx, 'c', revcomp(skmer))
+                
+                print '\t\tRESIDUAL', 't', tdiff, ti
+                print '\t\tRESIDUAL', 'c', cdiff, ci
+                
+                for (ei, strand, rc, diff) in ( (ti, 't', t_rc, tdiff), (ci, 'c', c_rc, cdiff)):
+                    strand_anchor = StrandAnchor(str(poa_read.read_id) + "/" + strand, rr, sr_idx, strand, ei, rc, diff)
+                    current_anchor.add_strand(strand_anchor)
+                    current_anchor.n_samples += 1
+                    current_anchor.sum_diff += abs(diff)
+                    if abs(diff) > OUTLIER_THRESHOLD:
+                        current_anchor.n_outliers += 1
 
-                if poa_read.is_base or (read_kidx > poa_read.start and read_kidx < poa_read.stop):
-                    read_anchor = ReadAnchor(rr, read_kidx)
-                    anchor.add_read(read_anchor)
-    
-            anchors.append(anchor)
-            distance_to_last_anchor = 0
+            candidate_anchors.append(current_anchor)
 
-    distance_to_last_anchor += 1
-    #
-    # Update indices
-    #
-    if cons_base != '-':
-        cons_kidx += 1
+        #
+        # Update indices
+        #
+        if cons_base != '-':
+            cons_kidx += 1
 
-    # Update base counts
-    for rr in read_rows:
-        b = ca.alignment[rr][col]
-        if b != '-':
-            n_bases[rr] += 1
+        # Update base counts
+        for rr in read_rows:
+            b = clustal.alignment[rr][col]
+            if b != '-':
+                n_bases[rr] += 1
+
+        col += 1
+
+    # Select best anchor
+    best_idx = 0
+    best_count = 0
+    for (ai, candidate) in enumerate(candidate_anchors):
+
+        c = candidate.n_samples - candidate.n_outliers
+        if c > best_count:
+            best_idx = ai
+            best_count = c
+        print ai, candidate.column, candidate.n_samples, candidate.n_outliers, candidate.sum_diff, len(candidate.strands)
+
+    print "SELECT", best_idx
+    anchors.append(candidate_anchors[best_idx])
+    print "added anchor with strands = ", len(candidate_anchors[best_idx].strands)
+
+    # Advance column until the start of the next segment
+    # We need to keep track of the number of bases seen still
+    while col < n_cols and cons_kidx - anchors[-1].cons_kidx < MIN_DISTANCE:
+
+        #
+        # Update indices
+        #
+        if cons_base != '-':
+            cons_kidx += 1
+
+        # Update base counts
+        for rr in read_rows:
+            b = clustal.alignment[rr][col]
+            if b != '-':
+                n_bases[rr] += 1
+
+        col += 1
 
 # Call a consensus between the first two anchors
 original_consensus = ""
 fixed_consensus = ""
 
-for i in xrange(len(anchors) - 1):
+for i in xrange(0, len(anchors) - 1):
     lib_hmmcons_fast.clear_state()
 
     a1 = anchors[i]
     a2 = anchors[i+1]
 
     # Add the consensus sequence as the initial candidate consensus
-    consensus = ca.alignment[cons_row].seq
+    consensus = clustal.alignment[cons_row].seq
     candidate_sub = str(consensus[a1.column:a2.column+5]).replace('-', '')
     lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
 
-    # Index the first anchor by read row
-    a1_by_row = dict()
-    for ra_1 in a1.reads:
-        a1_by_row[ra_1.row_id] = ra_1
+    print "CONSENSUS -- %d to %d" % (a1.column, a2.column)
 
-    for ra_2 in a2.reads:
-        if ra_2.row_id in a1_by_row:
+    # Set up event sequences
+    anchor_rows = dict()
+
+    # Index the first anchor by ID
+    a1_by_id = dict()
+    for sa_1 in a1.strands:
+        a1_by_id[sa_1.idstr] = sa_1
+    
+    for sa_2 in a2.strands:
+        if sa_2.idstr in a1_by_id:
             
-            # This row is anchored on both ends
-            ra_1 = a1_by_row[ra_2.row_id]
+            # This read strand is anchored on both ends
+            sa_1 = a1_by_id[sa_2.idstr]
 
-            # Build a ReadState object to pass to C
-            k_start_idx = ra_1.base
-            k_stop_idx = ra_2.base
-            read_sub = str(ca.alignment[ra_2.row_id].seq[a1.column:a2.column+5]).replace('-', '')
-            lib_hmmcons_fast.add_candidate_consensus(read_sub)
+            # Only use this strand if it has a decent match
+            # to both anchors
+            if abs(sa_1.diff) > OUTLIER_THRESHOLD or abs(sa_2.diff) > OUTLIER_THRESHOLD:
+                continue
+
+            start_ei = sa_1.event_idx
+            end_ei = sa_2.event_idx
+            stride = 1
+
+            if start_ei > end_ei:
+                stride = -1
             
-            orientation = poa_reads[ra_1.row_id].strand
-            poa_idx = row_to_poa_read_idx[ra_1.row_id]
-            sr_idx = poa_idx_to_sr_idx[poa_idx]
+            strand_idx = 0
+            if sa_1.strand == 'c':
+                strand_idx = 1
 
-            print 'READ_INDEX', ra_1.row_id, poa_idx, sr_idx
+            rs = CReadStateInterface(sa_1.sr_idx, start_ei, end_ei, strand_idx, stride, sa_1.rc)
+            print "EVENTS %s (%d, %d, %d) rc? %d" % ( sa_1.idstr, start_ei, end_ei, stride, sa_1.rc )
+            lib_hmmcons_fast.add_read_state(rs)
+            anchor_rows[sa_1.row_id] = 1
 
-            sr = squiggle_reads[sr_idx]
-
-            if orientation == 'n':
-                t_stride = 1
-                c_stride = -1
-                t_rc = 0
-                c_rc = 1
-            else:
-                t_stride = -1
-                c_stride = 1
-                t_rc = 1
-                c_rc = 0
-                k_start_idx = sr.flip_k_idx_strand(k_start_idx, 5)
-                k_stop_idx = sr.flip_k_idx_strand(k_stop_idx, 5)
-
-            k1 = sr.get_2D_kmer_at(k_start_idx, 5)
-            k2 = sr.get_2D_kmer_at(k_stop_idx, 5)
-
-            print '\tEVENTS', orientation, k_start_idx, k_stop_idx, k1, k2, 'START', sr.event_map['2D'][k_start_idx], 'END', sr.event_map['2D'][k_stop_idx]
-
-            if orientation == 'c':
-                k1 = revcomp(k1)
-                k2 = revcomp(k2)
-
-            t_start_ei = get_closest_event_to(sr, k_start_idx, 't')
-            c_start_ei = get_closest_event_to(sr, k_start_idx, 'c')
-            t_stop_ei = get_closest_event_to(sr, k_stop_idx, 't')
-            c_stop_ei = get_closest_event_to(sr, k_stop_idx, 'c')
-
-            if t_start_ei != -1 and t_stop_ei != -1:
-                print '\tT_EVENTS', t_start_ei, t_stop_ei, t_stride
-                t_rs = CReadStateInterface(sr_idx, t_start_ei, t_stop_ei, 0, t_stride, t_rc)
-                lib_hmmcons_fast.add_read_state(t_rs)
-            
-            if c_start_ei != -1 and c_stop_ei != -1:
-                print '\tC_EVENTS', c_start_ei, c_stop_ei, c_stride
-                c_rs = CReadStateInterface(sr_idx, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
-                lib_hmmcons_fast.add_read_state(c_rs)
+    # 
+    # Add the sequences of each row as alternates
+    for row in anchor_rows:
+        read_sub = str(clustal.alignment[row].seq[a1.column:a2.column+5]).replace('-', '')
+        lib_hmmcons_fast.add_candidate_consensus(read_sub)
 
     lib_hmmcons_fast.run_splice()
     #lib_hmmcons_fast.run_selection()
@@ -449,141 +438,3 @@ for i in xrange(len(anchors) - 1):
     
     print "ORIGINAL: ", original_consensus
     print "FIXED: ", fixed_consensus
-sys.exit(0)
-
-#
-# Initialize HMM by telling C code where the events
-# start and end for each read
-#
-for (ri, sr) in enumerate(reads):
-
-    k_start_idx = test_data[ri][0]
-    k_stop_idx = test_data[ri][1]
-    orientation = test_data[ri][2]
-
-    if orientation == 'n':
-        t_stride = 1
-        c_stride = -1
-        t_rc = 0
-        c_rc = 1
-    else:
-        t_stride = -1
-        c_stride = 1
-        t_rc = 1
-        c_rc = 0
-        k_start_idx = reads[ri].flip_k_idx_strand(k_start_idx, 5)
-        k_stop_idx = reads[ri].flip_k_idx_strand(k_stop_idx, 5)
-
-    k1 = reads[ri].get_2D_kmer_at(k_start_idx, 5)
-    k2 = reads[ri].get_2D_kmer_at(k_stop_idx, 5)
-
-    if orientation == 'c':
-        k1 = revcomp(k1)
-        k2 = revcomp(k2)
-
-    (t_start_ei, c_start_ei) = reads[ri].event_map['2D'][k_start_idx][0]
-    (t_stop_ei, c_stop_ei) = reads[ri].event_map['2D'][k_stop_idx][0]
-    
-    print k1, k2, t_start_ei, t_stop_ei, c_start_ei, c_stop_ei, t_stride, c_stride
-
-    t_rs = CReadStateInterface(ri, t_start_ei, t_stop_ei, 0, t_stride, t_rc)
-    lib_hmmcons_fast.add_read_state(t_rs)
-    
-    c_rs = CReadStateInterface(ri, c_start_ei, c_stop_ei, 1, c_stride, c_rc)
-    lib_hmmcons_fast.add_read_state(c_rs)
-
-lib_hmmcons_fast.run_debug()
-#lib_hmmcons_fast.run_mutation()
-#lib_hmmcons_fast.run_consensus()
-sys.exit(0)
-
-#
-# OLD
-#
-
-test_data = [ (0,    'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch101_file106_strand.fast5"),
-              (1608, 'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch289_file43_strand.fast5"),
-              (386,  'c', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch106_file136_strand.fast5"),
-              (2747, 'n', "../R73_data/downloads/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch364_file36_strand.fast5") ]
-
-reads = []
-for (offset, strand, fn) in test_data:
-    reads.append(SquiggleRead(fn))
-
-kmers = [ "AACAG" ]
-paths = generate_kmer_paths(kmers[-1])
-rc_paths = []
-for p in paths:
-    rc_paths.append(revcomplist(p))
-
-for (p, rc_p) in zip(paths, rc_paths):
-
-    for (ri, r) in enumerate(reads):
-
-        # skip for now
-        if test_data[ri][1] == 'c':
-            continue
-    
-    (t_ei, c_ei) = reads[ri].event_map['2D'][0][0]
-    print t_ei, c_ei
-
-    #    
-    # Read 1 example
-    #
-    
-    # need to handle opposite strand here, tricky
-    if False:
-        ri = 1
-        k_idx = test_data[ri][0]
-        k_idx = reads[ri].flip_k_idx_strand(k_idx, 5)
-        print test_data[ri][0], k_idx
-        (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
-        f_t_1 = reads[ri].hmm2(rc_p, 't', t_ei, -1)
-        f_c_1 = reads[ri].hmm2(p, 'c', c_ei, 1)
-        print 'FINAL', f_t_1, f_c_1, p
-        continue
-
-    #for s in xrange(-3, 3):
-    #    kmer = reads[ri].get_2D_kmer_at(k_idx + s, 5)
-    #    (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx + s][0]
-    #    print s, kmer, revcomp(kmer), t_ei, c_ei, [(shortevent(x), shortevent(y)) for (x,y) in reads[ri].get_events_for_2D_kmer(k_idx + s)]
-    #break
-
-    #
-    # Read 2 example
-    #
-    if False:
-        ri = 2
-        k_idx = test_data[ri][0]
-        (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
-        f_t_2 = reads[ri].hmm2(p, 't', t_ei, 1)
-        f_c_2 = reads[ri].hmm2(rc_p, 'c', c_ei, -1)
-        #print f_t_2, f_c_2, p
-        continue
-
-    #
-    # Read 0 example
-    #
-    if True:
-        ri = 0
-        k_idx = 0
-        (t_ei, c_ei) = reads[ri].event_map['2D'][k_idx][0]
-
-        # template events
-        f_t_0 = reads[ri].hmm2(p, 't', t_ei, 1)
-        f_c_0 = reads[ri].hmm2(rc_p, 'c', c_ei, -1)
-        #print f_t_0 + f_c_0 + f_t_2 + f_c_2, f_t_0, f_c_0, f_t_2, f_c_2, p
-        continue
-
-    #
-    base_index = test_data[2][0]
-    events = reads[2].event_map['2D'][base_index]
-    offset = events[0][0]
-
-    f2 = 0
-    if offset != -1:
-        f2 = reads[2].hmm2(e, 't', offset)
-    
-    s = f1 + f2
-    print s, f1, f2, e
-    #print e, f2
