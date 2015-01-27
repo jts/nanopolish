@@ -47,11 +47,11 @@ def get_next_event(sr, start, stop, stride, strand):
         
         if ei != -1:
             return ei
+    return -1
 
 # Get the closest event to the indicated
 # 2D kmer for the given squiggle read
-def get_closest_event_to(sr, kidx, strand):
-    kmer = sr.get_2D_kmer_at(kidx, 5)
+def get_closest_event_to(sr, kidx, strand, kmer):
     e_level = sr.get_expected_level(kmer, strand)
     
     first_event_before = -1
@@ -72,6 +72,9 @@ def get_closest_event_to(sr, kidx, strand):
 
     first_event_after = get_next_event(sr, kidx, stop, 1, strand)
 
+    if first_event_before is None or first_event_after is None:
+        return -1
+
     # evaluate levels
     b_level = sr.get_drift_corrected_event_level(first_event_before, strand)
     a_level = sr.get_drift_corrected_event_level(first_event_after, strand)
@@ -85,7 +88,9 @@ def get_closest_event_to(sr, kidx, strand):
 
 def calculate_diff_to_expected(sr, kidx, strand, kmer):
     
-    ei = get_closest_event_to(sr, kidx, strand)
+    ei = get_closest_event_to(sr, kidx, strand, kmer)
+    if ei == -1:
+        return (float("-inf"), ei)
 
     # Observed event   
     level = sr.get_drift_corrected_event_level(ei, strand)
@@ -106,8 +111,10 @@ c_double_p = POINTER(c_double)
 
 class CPoreModelInterface(Structure):
     _fields_ = [('n_states', c_int),
-                ('pore_model_mean', c_double_p),
-                ('pore_model_sd', c_double_p),
+                ('pore_model_level_mean', c_double_p),
+                ('pore_model_level_stdv', c_double_p),
+                ('pore_model_sd_mean', c_double_p),
+                ('pore_model_sd_stdv', c_double_p),
                 ('pore_model_scale', c_double),
                 ('pore_model_shift', c_double),
                 ('pore_model_drift', c_double),
@@ -144,9 +151,13 @@ for l in fast5_fofn_fh:
 #
 # Load squiggle reads
 #
-clustal_filename = "clustal-32.out"
+use_poabase_signals = False
+clustal_filename = "clustal-0.out"
 clustal = Clustal(clustal_filename)
-cons_row = clustal.get_consensus_row()
+#cons_row = clustal.get_consensus_row()
+print "!!!!!!!! using first read as consensus row !!!!!!!"
+
+cons_row = 0
 read_rows = clustal.get_read_rows()
 
 # Initialize traversal
@@ -202,13 +213,17 @@ for sr in squiggle_reads:
     for s in ('t', 'c'):
 
         # Pore Model
-        mean = sr.pm[s].model_mean.ctypes.data_as(c_double_p)
-        sd = sr.pm[s].model_sd.ctypes.data_as(c_double_p)
+        level_mean = sr.pm[s].model_level_mean.ctypes.data_as(c_double_p)
+        level_stdv = sr.pm[s].model_level_stdv.ctypes.data_as(c_double_p)
+        sd_mean = sr.pm[s].model_sd_mean.ctypes.data_as(c_double_p)
+        sd_stdv = sr.pm[s].model_sd_stdv.ctypes.data_as(c_double_p)
+        
         scale = sr.pm[s].scale
         shift = sr.pm[s].shift
         drift = sr.pm[s].drift
         var = sr.pm[s].var
-        pm_params.append(CPoreModelInterface(1024, mean, sd, scale, shift, drift, var))
+        
+        pm_params.append(CPoreModelInterface(1024, level_mean, level_stdv, sd_mean, sd_stdv, scale, shift, drift, var))
 
         # Events
         n_events = len(sr.event_level[s])
@@ -235,8 +250,10 @@ anchors = list()
 current_position = 0
 distance_to_last_anchor = 0
 
-MIN_DISTANCE = 50
-MAX_DISTANCE = 70
+DEBUG=False
+
+MIN_DISTANCE = 100
+MAX_DISTANCE = 150
 ANCHOR_BAND = MAX_DISTANCE - MIN_DISTANCE
 OUTLIER_THRESHOLD = 3
 
@@ -267,6 +284,10 @@ while col < n_cols:
 
                 # Read metadata
                 poa_read = poa_reads[rr]
+
+                if poa_read.is_base and not use_poabase_signals:
+                    continue
+
                 poa_idx = row_to_poa_read_idx[rr]
                 sr_idx = poa_idx_to_sr_idx[poa_idx]
                 sr = squiggle_reads[sr_idx]
@@ -300,6 +321,10 @@ while col < n_cols:
                 (tdiff, ti) = calculate_diff_to_expected(sr, read_kidx, 't', skmer)
                 (cdiff, ci) = calculate_diff_to_expected(sr, read_kidx, 'c', revcomp(skmer))
                 
+                # Fail if both events couldn't be found
+                if ti == -1 or ci == -1:
+                    continue
+
                 print '\t\tRESIDUAL', 't', tdiff, ti
                 print '\t\tRESIDUAL', 'c', cdiff, ci
                 
@@ -327,6 +352,10 @@ while col < n_cols:
 
         col += 1
 
+    # If no candidate anchors, stop
+    if len(candidate_anchors) == 0:
+        break
+
     # Select best anchor
     best_idx = 0
     best_count = 0
@@ -337,6 +366,7 @@ while col < n_cols:
             best_idx = ai
             best_count = c
         print ai, candidate.column, candidate.n_samples, candidate.n_outliers, candidate.sum_diff, len(candidate.strands)
+
 
     print "SELECT", best_idx
     anchors.append(candidate_anchors[best_idx])
@@ -370,12 +400,20 @@ for i in xrange(0, len(anchors) - 1):
     a1 = anchors[i]
     a2 = anchors[i+1]
 
-    # Add the consensus sequence as the initial candidate consensus
-    consensus = clustal.alignment[cons_row].seq
-    candidate_sub = str(consensus[a1.column:a2.column+5]).replace('-', '')
-    lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+    if DEBUG:
+        a1 = anchors[3]
+        a2 = anchors[4]
 
-    print "CONSENSUS -- %d to %d" % (a1.column, a2.column)
+    # Add the consensus sequence as the initial candidate consensus
+    candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
+
+    if DEBUG and False:
+        truth = "ATTGCGCGATCAGTTGCCTGCCACCACTGTTCCGGGTCTTGTTCCGACCAGAGTGGATGCGGGCGCGAAACGGTCAGCTTTTCCGTTTGCGCAGC"
+        lib_hmmcons_fast.add_candidate_consensus(truth)
+    else:
+        lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+    
+    print "CONSENSUS -- %d to %d %s" % (a1.column, a2.column, candidate_sub)
 
     # Set up event sequences
     anchor_rows = dict()
@@ -415,7 +453,7 @@ for i in xrange(0, len(anchors) - 1):
     # 
     # Add the sequences of each row as alternates
     for row in anchor_rows:
-        read_sub = str(clustal.alignment[row].seq[a1.column:a2.column+5]).replace('-', '')
+        read_sub = clustal.get_sequence_plus_k(row, a1.column, a2.column, 5)
         lib_hmmcons_fast.add_candidate_consensus(read_sub)
 
     lib_hmmcons_fast.run_splice()
@@ -428,7 +466,7 @@ for i in xrange(0, len(anchors) - 1):
     result = lib_hmmcons_fast.get_consensus_result()
     print "POACON[%d]: %s" % (i, candidate_sub)
     print "RESULT[%d]: %s" % (i, result)
-
+    
     if original_consensus == "":
         original_consensus = candidate_sub
         fixed_consensus = result
@@ -438,3 +476,6 @@ for i in xrange(0, len(anchors) - 1):
     
     print "ORIGINAL: ", original_consensus
     print "FIXED: ", fixed_consensus
+
+    if DEBUG:
+        sys.exit(0)

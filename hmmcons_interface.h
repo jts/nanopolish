@@ -14,8 +14,14 @@ struct CPoreModelInterface
 {
     // Number of k-mers that are modelled
     int n_states;
-    double* mean;
-    double* sd;
+    
+    //
+    double* level_mean;
+    double* level_stdv;
+    double* sd_mean;
+    double* sd_stdv;
+   
+    // transformation parameters
     double scale;
     double shift;
     double drift;

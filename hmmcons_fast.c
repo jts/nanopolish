@@ -28,7 +28,7 @@ const uint8_t K = 5;
 
 const static double LOG_KMER_INSERTION = log(0.1);
 const static double SELF_KMER_TRANSITION = 0.2;
-const static double P_RANDOM_SKIP = 0.015; // 0.015 is estimated from the event duration distribution for sample data
+const static double P_RANDOM_SKIP = 0.05;
 const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 const static uint32_t KHMM_MAX_JUMP = 5;
 
@@ -168,6 +168,23 @@ struct HmmConsData
 HmmConsData g_data;
 bool g_initialized = false;
 
+// 
+// Add the log-scaled values a and b using a transform to avoid
+// precision errors
+inline double add_logs(const double a, const double b)
+{
+    if(a == -INFINITY && b == -INFINITY)
+        return -INFINITY;
+
+    if(a > b) {
+        double diff = b - a;
+        return a + log(1.0 + exp(diff));
+    } else {
+        double diff = a - b;
+        return b + log(1.0 + exp(diff));
+    }
+}
+
 extern "C"
 void initialize()
 {
@@ -204,8 +221,12 @@ void add_read(CSquiggleReadInterface params)
         
         assert(params.pore_model[i].n_states == 1024);
         for(uint32_t j = 0; j < params.pore_model[i].n_states; ++j) {
-            sr.pore_model[i].state[j].mean = params.pore_model[i].mean[j];
-            sr.pore_model[i].state[j].sd = params.pore_model[i].sd[j];
+            
+            sr.pore_model[i].state[j].level_mean = params.pore_model[i].level_mean[j];
+            sr.pore_model[i].state[j].level_stdv = params.pore_model[i].level_stdv[j];
+            
+            sr.pore_model[i].state[j].sd_mean = params.pore_model[i].sd_mean[j];
+            sr.pore_model[i].state[j].sd_stdv = params.pore_model[i].sd_stdv[j];
          }
     
         // Initialize events
@@ -444,8 +465,8 @@ inline double log_probability_match(const CSquiggleRead& read,
     double time = read.events[strand].time[event_idx] - start;
     level -= (time * pm.drift);
 
-    double m = pm.state[kmer_rank].mean * pm.scale + pm.shift;
-    double s = pm.state[kmer_rank].sd * pm.var;
+    double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
+    double s = pm.state[kmer_rank].level_stdv * pm.var;
     double lp = log_normal_pdf(level, m, s);
 
 #if DEBUG_HMM_EMISSION
@@ -519,19 +540,20 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
                     kmer_rank(consensus.c_str() + kj, K) : 
                     rc_kmer_rank(consensus.c_str() + kj, K);
         
-                double level_i = (pm.state[rank_i].mean + pm.shift) * pm.scale;
-                double sd_i = pm.state[rank_i].sd * pm.scale;
+                double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
+                double sd_i = pm.state[rank_i].level_stdv * pm.scale;
                 
-                double level_j = (pm.state[rank_j].mean + pm.shift) * pm.scale;
-                double sd_j = pm.state[rank_j].sd * pm.scale;
+                double level_j = (pm.state[rank_j].level_mean + pm.shift) * pm.scale;
+                double sd_j = pm.state[rank_j].level_stdv * pm.scale;
 
                 double diff_mean = level_i - level_j;
                 double diff_sd = sqrt(pow(sd_i, 2.0) + pow(sd_j, 2.0));
 
                 double p_within_threshold = exp(log_normal_cdf(EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd)) - 
                                             exp(log_normal_cdf(-EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd));
+                
                 double p_skip = P_RANDOM_SKIP + (1 - P_RANDOM_SKIP) * p_within_threshold;
-
+                
                 p_i_j = (1 - sum) * (1 - p_skip);
 #ifdef DEBUG_TRANSITION
                 printf("\t\t%zu -> %zu %.2lf %.2lf %.2lf %.2lf p_within_threshold: %.4lf p_skip: %.4lf p: %.2lf\n", ki, kj, level_i, level_j, diff_mean, diff_sd, p_within_threshold, p_skip, p_i_j);
@@ -572,7 +594,7 @@ double forward_khmm_terminate(const DoubleMatrix& fm,
         // transition probability from state k to state l
         double t_kl = get(tm, sk, tcol);
         double fm_k = get(fm, row, sk);
-        sum = log(exp(sum) + exp(t_kl + fm_k));
+        sum = add_logs(sum, t_kl + fm_k);
     }
     return sum;
 }
@@ -607,7 +629,7 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
                 // transition probability from state k to state l
                 double t_kl = get(tm, sk, sl);
                 double fm_k = get(fm, row - 1, sk);
-                sum = log(exp(sum) + exp(t_kl + fm_k));
+                sum = add_logs(sum, t_kl + fm_k);
 #ifdef DEBUG_HMM_UPDATE
                 printf("\t(%d %d %d) t: %.2lf f: %.2lf s: %.2lf\n", row, sl, sk, t_kl, fm_k, sum);
 #endif
@@ -640,7 +662,7 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
         // transition probability from state k to state l
         double t_kl = get(tm, sk, tcol);
         double fm_k = get(fm, lrow, sk);
-        sum = log(exp(sum) + exp(t_kl + fm_k));
+        sum = add_logs(sum, t_kl + fm_k);
     }
     return sum;
 }
@@ -681,16 +703,16 @@ void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
                     rc_kmer_rank(sequence + kmer_idx, K);
                 double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
 
-                sum = log(exp(sum) + exp(lp_e + t_kl + bm_l));
+                sum = add_logs(sum, lp_e + t_kl + bm_l);
 #ifdef DEBUG_HMM_UPDATE
-                printf("\t(%d %d %d) t: %.2lf f: %.2lf e: %.2lf s: %.2lf\n", row, sk, sl, t_kl, fm_l, lp_e, sum);
+                printf("\t(%d %d %d) t: %.2lf b: %.2lf e: %.2lf s: %.2lf\n", row, sk, sl, t_kl, bm_l, lp_e, sum);
 #endif
             }
             
             set(bm, row, sk, sum);
 
 #ifdef DEBUG_HMM_UPDATE
-            printf("(%d %d) bm: %.2lf\n", row, sl, sum, lp_e, get(bm, row, sl));
+            printf("(%d %d) bm: %.2lf\n", row, sk, get(bm, row, sk));
 #endif
         }
     }
@@ -751,7 +773,7 @@ double score_khmm_model(const std::string& consensus, const HMMConsReadState& st
     return score;
 }
 
-void debug_khmm_model(const std::string& name, const std::string& consensus, const HMMConsReadState& state)
+void debug_khmm_model(const std::string& name, uint32_t id, const std::string& consensus, const HMMConsReadState& state)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -819,7 +841,7 @@ void debug_khmm_model(const std::string& name, const std::string& consensus, con
     std::reverse(posteriors.begin(), posteriors.end());
     std::reverse(lpfm.begin(), lpfm.end());
     
-    printf("%s align max value: %.2lf\n", name.c_str(), lf);
+    printf("%s align max value: %.2lf %s\n", name.c_str(), lf, consensus.c_str());
 
     const CPoreModel& pm = state.read->pore_model[state.strand];
     uint32_t prev_ki = -1;
@@ -844,10 +866,18 @@ void debug_khmm_model(const std::string& name, const std::string& consensus, con
                 kmer_rank(kmer.c_str(), K) : 
                 rc_kmer_rank(kmer.c_str(), K);
         
-            double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
-            double model_s = pm.state[rank].sd * pm.scale;
+            double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
+            double model_s = pm.state[rank].level_stdv * pm.scale;
             s = 'K';
-            printf("%c\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", s, -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
+        
+            printf("DEBUG\t%s\t%d\t", name.c_str(), id);
+            printf("%c\t%zu\t%zu\t", s, 0, prev_ki + 1);
+            printf("%s\t%.3lf\t", kmer.c_str(), 0.0l);
+            printf("(%.1lf, %.1lf, %.1lf)\t", 0.0f, model_m, 0.0F);
+            printf("(%.1lf, %.1lf, %.1lf)\t", 0.0l, 0.0l, 0.0l);
+            printf("%.2lf\t%.2lf\n", exp(posteriors[i]), lpfm[i]);
+            
+            //printf("DEBUG\t%s\t%d\t%c\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", name.c_str(), &state, s, -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
             n_skips += 1;
             prev_ki++;
         }
@@ -859,17 +889,29 @@ void debug_khmm_model(const std::string& name, const std::string& consensus, con
         
         double level = state.read->events[state.strand].level[ei];
         double sd = state.read->events[state.strand].stdv[ei];
-        
+        double duration = state.read->events[state.strand].time[ei];
         uint32_t rank = !state.rc ? 
             kmer_rank(consensus.c_str() + ki, K) : 
             rc_kmer_rank(consensus.c_str() + ki, K);
         
         const CPoreModel& pm = state.read->pore_model[state.strand];
-        double model_m = (pm.state[rank].mean + pm.shift) * pm.scale;
-        double model_s = pm.state[rank].sd * pm.scale;
+        double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
+        double model_s = pm.state[rank].level_stdv * pm.scale;
         double norm_level = (level - model_m) / model_s;
+        
+        double model_sd_mean = pm.state[rank].sd_mean;
+        double model_sd_stdv = pm.state[rank].sd_mean;
+
         std::string kmer = consensus.substr(ki, K);
-        printf("%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, model_m, norm_level, lpfm[i]);
+        
+        printf("DEBUG\t%s\t%d\t", name.c_str(), id);
+        printf("%c\t%zu\t%zu\t", s, ei, ki);
+        printf("%s\t%.3lf\t", kmer.c_str(), duration);
+        printf("(%.1lf, %.1lf, %.1lf)\t", level, model_m, norm_level);
+        printf("(%.1lf, %.1lf, %.1lf)\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
+        printf("%.2lf\t%.2lf\n", exp(posteriors[i]), lpfm[i]);
+
+        //printf("DEBUG\t%s\t%d\t%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.3lf\t%.2lf\t%.2lf\t%.2lf\n", name.c_str(), &state, s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, duration, model_m, norm_level, lpfm[i]);
 
         // summary
         n_matches += (s == 'M');
@@ -1037,9 +1079,9 @@ double score_sequence(const std::string& sequence, const HMMConsReadState& state
     //return score_emission_dp(sequence, state);
 }
 
-void debug_sequence(const std::string& name, const std::string& sequence, const HMMConsReadState& state)
+void debug_sequence(const std::string& name, uint32_t id, const std::string& sequence, const HMMConsReadState& state)
 {
-    return debug_khmm_model(name, sequence, state);
+    return debug_khmm_model(name, id, sequence, state);
 }
 
 
@@ -1052,10 +1094,10 @@ void run_debug()
     }
 
     for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_sequence("input",  "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("oldbad", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("final", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("truth", "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("input",  i, "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("oldbad", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("final", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
+        debug_sequence("truth", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
     }
 }
 
@@ -1087,7 +1129,7 @@ void score_paths(PathConsVector& paths)
         // Score all paths
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-            sum_score = log(exp(sum_score) + exp(curr));
+            sum_score = add_logs(sum_score, curr);
             scores.push_back(curr);
         }
 
@@ -1108,7 +1150,7 @@ void score_paths(PathConsVector& paths)
 
         printf("%zu\t%s\t%.1lf %c %s", pi, paths[pi].path.c_str(), paths[pi].score, initial, paths[pi].mutdesc.c_str());
         // If this is the truth path or the best path, show the scores for all reads
-        if(pi == 0) {
+        if(pi == 0 || initial == 'I') {
             for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
                 double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
                 printf("%.1lf ", curr);
@@ -1116,6 +1158,23 @@ void score_paths(PathConsVector& paths)
         }
         printf("\n");
     }
+
+/*
+    for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+        // Calculate the length of the matching prefix with the truth
+        const std::string& s = paths[pi].path;
+
+        std::string name = (s == first ? "initial" : "best2");
+
+        // If this is the truth path or the best path, show the scores for all reads
+        if(pi == 0 || name == "initial") {
+            for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                debug_sequence(name, ri, s, g_data.read_states[ri]);
+            }
+        }
+    }
+*/
 }
 
 void extend_paths(PathConsVector& paths, int maxk = 2)
@@ -1303,7 +1362,7 @@ void run_splice()
     // initialize 
     std::string base = g_data.candidate_consensus[0];
 
-    uint32_t num_rounds = 4;
+    uint32_t num_rounds = 6;
     uint32_t round = 0;
     while(round++ < num_rounds) {
 
@@ -1345,11 +1404,16 @@ void run_splice()
         }
 
         score_paths(paths);
+        
+        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+            debug_sequence("best", ri, paths[0].path, g_data.read_states[ri]); 
+            debug_sequence("truth", ri, base, g_data.read_states[ri]); 
+        }
 
-        // check for improved sequence
         if(paths[0].path == base)
             break;
         base = paths[0].path;
+    
     }
 
     g_data.consensus_result = base;
@@ -1380,8 +1444,8 @@ void run_selection()
         // Score all paths
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-            debug_sequence(paths[pi].path, paths[pi].path, g_data.read_states[ri]);
-            sum_score = log(exp(sum_score) + exp(curr));
+            debug_sequence(paths[pi].path, ri, paths[pi].path, g_data.read_states[ri]);
+            sum_score = add_logs(sum_score, curr);
             scores.push_back(curr);
         }
 
@@ -1430,7 +1494,7 @@ void run_consensus()
             // Score all paths
             for(size_t pi = 0; pi < paths.size(); ++pi) {
                 double curr = score_khmm_model(paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
-                sum_score = log(exp(sum_score) + exp(curr));
+                sum_score = add_logs(sum_score, curr);
                 scores.push_back(curr);
             }
             
@@ -1501,7 +1565,7 @@ void run_consensus()
             // Score all paths
             for(size_t pi = 0; pi < new_paths.size(); ++pi) {
                 double curr = score_khmm_model(new_paths[pi].path, g_data.read_states[ri], AP_SEMI_KMER);
-                sum_score = log(exp(sum_score) + exp(curr));
+                sum_score = add_logs(sum_score, curr);
                 scores.push_back(curr);
             }
             

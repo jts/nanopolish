@@ -19,12 +19,18 @@ class PoreModel:
 
         self.model = np.array(obj)
 
-        self.model_mean = np.array([x[2] for x in obj])
-        self.model_sd = np.array([x[3] for x in obj])
+        self.model_level_mean = np.array([x[2] for x in obj])
+        self.model_level_stdv = np.array([x[3] for x in obj])
+        
+        self.model_sd_mean = np.array([x[4] for x in obj])
+        self.model_sd_stdv = np.array([x[5] for x in obj])
 
         # coerece data into the right type to pass to the C HMM library
-        self.model_mean = self.model_mean.astype(np.float64)
-        self.model_sd = self.model_sd.astype(np.float64)
+        self.model_level_mean = self.model_level_mean.astype(np.float64)
+        self.model_level_stdv = self.model_level_stdv.astype(np.float64)
+        
+        self.model_sd_mean = self.model_sd_mean.astype(np.float64)
+        self.model_sd_stdv = self.model_sd_stdv.astype(np.float64)
 
         self.rank_map = generate_mers_rank_map(dna_alphabet, 5)
 

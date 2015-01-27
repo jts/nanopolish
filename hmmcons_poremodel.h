@@ -9,8 +9,11 @@
 // Gaussian PDF.
 struct CPoreModelStateParams
 {
-    double mean;
-    double sd;
+    double level_mean;
+    double level_stdv;
+    
+    double sd_mean;
+    double sd_stdv;
 };
 
 //

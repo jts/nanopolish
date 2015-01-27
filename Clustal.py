@@ -5,6 +5,7 @@ from SquiggleRead import *
 from Bio import AlignIO
 
 PoaRead = namedtuple('PoaRead', ['read_id', 'strand', 'start', 'stop', 'is_base'])
+PoaInput = namedtuple('PoaInput', ['read', 'sequence'])
 
 # Parse a read id to demangle the meta data encoded within it
 def unpack_poa_id(rid):
@@ -130,6 +131,15 @@ class Clustal:
                 bc += 1
             stop += 1
         return str(self.alignment[row][col:stop].seq).replace('-', '')
+
+    # Get the sequence in the given row spanning the columns
+    # up to and including the kmer starting in the last column
+    def get_sequence_plus_k(self, row, start_col, end_col, K):
+        
+        # Get the sequence up to the last column
+        # and append the following k-1 bases
+        seq = str(self.alignment[row][start_col:end_col].seq).replace('-', '') + self.get_kmer(row, end_col, K)
+        return seq
 
     # Count the number of bases seen up to and including the given column
     def count_bases_to_column(self, row, col):
