@@ -100,6 +100,49 @@ def calculate_diff_to_expected(sr, kidx, strand, kmer):
     res = (level - k_level) / k_sd
     return (res, ei)
 
+# For the pair of input Anchors, make a list
+# of StrandAnchors thare are anchored at both inputs
+def pair_anchor_strands(a1, a2):
+
+    out = list()
+
+    # Index the first anchor by ID
+    anchor_rows = dict()
+
+    a1_by_id = dict()
+    for sa_1 in a1.strands:
+        a1_by_id[sa_1.idstr] = sa_1
+    
+    for sa_2 in a2.strands:
+        if sa_2.idstr in a1_by_id:
+            
+            # This read strand is anchored on both ends
+            sa_1 = a1_by_id[sa_2.idstr]
+
+            out.append( (sa_1, sa_2) )
+
+    return out
+            
+def add_read_state_from_anchor_strands(lib, sa_1, sa_2):
+    
+    # Only use this strand if it has a decent match to both anchors
+    if abs(sa_1.diff) > OUTLIER_THRESHOLD or abs(sa_2.diff) > OUTLIER_THRESHOLD:
+        return
+
+    start_ei = sa_1.event_idx
+    end_ei = sa_2.event_idx
+    stride = 1
+
+    if start_ei > end_ei:
+        stride = -1
+
+    strand_idx = 0
+    if sa_1.strand == 'c':
+        strand_idx = 1
+
+    rs = CReadStateInterface(sa_1.sr_idx, start_ei, end_ei, strand_idx, stride, sa_1.rc)
+    lib.add_read_state(rs)
+
 #
 # 
 #
@@ -390,6 +433,36 @@ while col < n_cols:
 
         col += 1
 
+#
+# Step 1. Learn parameters of the model
+#
+for i in xrange(0, len(anchors) - 1):
+    lib_hmmcons_fast.clear_state()
+
+    a1 = anchors[i]
+    a2 = anchors[i+1]
+
+    # Add the consensus sequence as the initial candidate consensus
+    candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
+    
+    lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+    
+    # Initialize the c library using the reads that are anchored here
+    anchored_strand_pairs = pair_anchor_strands(a1, a2)
+
+    for (sa_1, sa_2) in anchored_strand_pairs:
+        add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
+    
+    lib_hmmcons_fast.learn_segment()
+
+lib_hmmscons_fast.train()
+
+sys.exit(0)
+
+#
+# Step 2. Call new consensus
+#
+
 # Call a consensus between the first two anchors
 original_consensus = ""
 fixed_consensus = ""
@@ -418,50 +491,20 @@ for i in xrange(0, len(anchors) - 1):
     # Set up event sequences
     anchor_rows = dict()
 
-    # Index the first anchor by ID
-    a1_by_id = dict()
-    for sa_1 in a1.strands:
-        a1_by_id[sa_1.idstr] = sa_1
+    anchored_strand_pairs = pair_anchor_strands(a1, a2)
     
-    for sa_2 in a2.strands:
-        if sa_2.idstr in a1_by_id:
-            
-            # This read strand is anchored on both ends
-            sa_1 = a1_by_id[sa_2.idstr]
+    for (sa_1, sa_2) in anchored_strand_pairs:
+        add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
+        anchor_rows[sa_1.row_id] = 1
 
-            # Only use this strand if it has a decent match
-            # to both anchors
-            if abs(sa_1.diff) > OUTLIER_THRESHOLD or abs(sa_2.diff) > OUTLIER_THRESHOLD:
-                continue
-
-            start_ei = sa_1.event_idx
-            end_ei = sa_2.event_idx
-            stride = 1
-
-            if start_ei > end_ei:
-                stride = -1
-            
-            strand_idx = 0
-            if sa_1.strand == 'c':
-                strand_idx = 1
-
-            rs = CReadStateInterface(sa_1.sr_idx, start_ei, end_ei, strand_idx, stride, sa_1.rc)
-            print "EVENTS %s (%d, %d, %d) rc? %d" % ( sa_1.idstr, start_ei, end_ei, stride, sa_1.rc )
-            lib_hmmcons_fast.add_read_state(rs)
-            anchor_rows[sa_1.row_id] = 1
-
-    # 
     # Add the sequences of each row as alternates
     for row in anchor_rows:
         read_sub = clustal.get_sequence_plus_k(row, a1.column, a2.column, 5)
         lib_hmmcons_fast.add_candidate_consensus(read_sub)
 
     lib_hmmcons_fast.run_splice()
-    #lib_hmmcons_fast.run_selection()
-    #lib_hmmcons_fast.run_mutation()
-    #lib_hmmcons_fast.run_rewrite()
-    #lib_hmmcons_fast.run_consensus()
 
+    # extract results
     lib_hmmcons_fast.get_consensus_result.restype = c_char_p
     result = lib_hmmcons_fast.get_consensus_result()
     print "POACON[%d]: %s" % (i, candidate_sub)

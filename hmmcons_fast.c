@@ -99,6 +99,31 @@ struct ExtensionResult
     double best_path_score;
 };
 
+struct PosteriorState
+{
+    uint32_t event_idx;
+    uint32_t kmer_idx;
+    double l_posterior;
+    double l_fm;
+    char state;
+};
+
+struct TransitionObservation
+{
+    double level_1;
+    double level_2;
+    char state;
+};
+
+struct TrainingData
+{
+    uint32_t n_matches;
+    uint32_t n_merges;
+    uint32_t n_skips;
+
+    std::vector<TransitionObservation> transitions;
+};
+
 //
 //
 //
@@ -164,6 +189,9 @@ struct HmmConsData
     
     //
     HMMParameters hmm_params;
+
+    // one per read_state
+    std::vector<TrainingData> training_data;
 };
 HmmConsData g_data;
 bool g_initialized = false;
@@ -210,8 +238,10 @@ extern "C"
 void add_read(CSquiggleReadInterface params)
 {
     g_data.reads.push_back(CSquiggleRead());
+
     CSquiggleRead& sr = g_data.reads.back();
- 
+    sr.read_id = g_data.reads.size() - 1;
+
     for(uint32_t i = 0; i < NUM_STRANDS; ++i) {
         // Initialize pore model   
         sr.pore_model[i].scale = params.pore_model[i].scale;
@@ -246,20 +276,14 @@ void add_read(CSquiggleReadInterface params)
             printf("%d: %lf\n", j, sr.events[i].level[j]);
         */
     }
-}
 
-extern "C"
-void add_read_state(CReadStateInterface params)
-{
-    g_data.read_states.push_back(HMMConsReadState());
-    HMMConsReadState& rs = g_data.read_states.back();
-    rs.read = &g_data.reads[params.read_idx];
-    rs.event_start_idx = params.event_start_idx;
-    rs.event_stop_idx = params.event_stop_idx;
-    rs.kmer_idx = 0;
-    rs.strand = params.strand;
-    rs.stride = params.stride;
-    rs.rc = params.rc;
+    // Add training data structs for this read
+    TrainingData td;
+    td.n_matches = td.n_skips = td.n_merges = 0;
+    
+    // not a bug, one training data per strand
+    g_data.training_data.push_back(td);
+    g_data.training_data.push_back(td);
 }
 
 extern "C"
@@ -268,6 +292,11 @@ void add_candidate_consensus(char* str)
     g_data.candidate_consensus.push_back(str);
 }
 
+// Make a unique index for the strand this read state represents
+uint32_t get_strand_idx(const HMMConsReadState& rs)
+{
+    return rs.read->read_id + rs.strand;
+}
 
 //
 // HMM matrix
@@ -285,6 +314,21 @@ struct HMMMatrix
     uint32_t n_rows;
     uint32_t n_cols;
 };
+
+extern "C"
+void add_read_state(CReadStateInterface params)
+{
+    // add read state
+    g_data.read_states.push_back(HMMConsReadState());
+    HMMConsReadState& rs = g_data.read_states.back();
+    rs.read = &g_data.reads[params.read_idx];
+    rs.event_start_idx = params.event_start_idx;
+    rs.event_stop_idx = params.event_stop_idx;
+    rs.kmer_idx = 0;
+    rs.strand = params.strand;
+    rs.stride = params.stride;
+    rs.rc = params.rc;
+}
 
 void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
 {
@@ -406,6 +450,12 @@ inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
     return rank;
 }
 
+// wrapper to get the rank for a kmer on the right strand
+inline uint32_t get_rank(const HMMConsReadState& state, const char* s, uint32_t ki)
+{
+    const char* p = s + ki;
+    return !state.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
+}
 
 // Increment the input string to be the next sequence in lexicographic order
 void lexicographic_next(std::string& str)
@@ -532,14 +582,9 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
                 p_i_j = SELF_KMER_TRANSITION;
             } else {
         
-                uint32_t rank_i = !state.rc ? 
-                    kmer_rank(consensus.c_str() + ki, K) : 
-                    rc_kmer_rank(consensus.c_str() + ki, K);
-                
-                uint32_t rank_j = !state.rc ? 
-                    kmer_rank(consensus.c_str() + kj, K) : 
-                    rc_kmer_rank(consensus.c_str() + kj, K);
-        
+                uint32_t rank_i = get_rank(state, consensus.c_str(), ki);
+                uint32_t rank_j = get_rank(state, consensus.c_str(), kj);
+
                 double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
                 double sd_i = pm.state[rank_i].level_stdv * pm.scale;
                 
@@ -638,10 +683,7 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
             // Emission probability for event i in state sl
             uint32_t event_idx = e_start + (row - 1) * state.stride;
             uint32_t kmer_idx = sl - 1;
-
-            uint32_t rank = !state.rc ? 
-                kmer_rank(sequence + kmer_idx, K) : 
-                rc_kmer_rank(sequence + kmer_idx, K);
+            uint32_t rank = get_rank(state, sequence, kmer_idx);
             double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
             
             set(fm, row, sl, lp_e + sum);
@@ -698,9 +740,7 @@ void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
                 // Emit E_(i+1) in state sl
                 uint32_t event_idx = e_start + row * state.stride; // for i + 1
                 uint32_t kmer_idx = sl - 1;
-                uint32_t rank = !state.rc ? 
-                    kmer_rank(sequence + kmer_idx, K) : 
-                    rc_kmer_rank(sequence + kmer_idx, K);
+                uint32_t rank = get_rank(state, sequence, kmer_idx);
                 double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
 
                 sum = add_logs(sum, lp_e + t_kl + bm_l);
@@ -773,15 +813,15 @@ double score_khmm_model(const std::string& consensus, const HMMConsReadState& st
     return score;
 }
 
-void debug_khmm_model(const std::string& name, uint32_t id, const std::string& consensus, const HMMConsReadState& state)
+std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, const HMMConsReadState& state)
 {
-    uint32_t n_kmers = consensus.size() - K + 1;
+    uint32_t n_kmers = sequence.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
 
     DoubleMatrix tm;
     allocate_matrix(tm, n_states, n_states);
 
-    fill_khmm_transitions(tm, consensus, state);
+    fill_khmm_transitions(tm, sequence, state);
     
     uint32_t e_start = state.event_start_idx;
     uint32_t e_end = state.event_stop_idx;
@@ -798,22 +838,17 @@ void debug_khmm_model(const std::string& name, uint32_t id, const std::string& c
     allocate_matrix(fm, n_rows, n_states);
 
     initialize_forward_khmm(fm);
-    double lf = fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+    double lf = fill_forward_khmm(fm, tm, sequence.c_str(), state, e_start);
 
     // Allocate and compute backward matrix
     DoubleMatrix bm;
     allocate_matrix(bm, n_rows, n_states);
 
     initialize_backward_khmm(bm, tm);
-    fill_backward_khmm(bm, tm, consensus.c_str(), state, e_start);
-
-    //print_matrix(fm);
-    //print_matrix(bm);
+    fill_backward_khmm(bm, tm, sequence.c_str(), state, e_start);
 
     // posterior decode
-    std::vector<uint32_t> matches;
-    std::vector<double> posteriors;
-    std::vector<double> lpfm;
+    std::vector<PosteriorState> output;
     
     uint32_t row = fm.n_rows - 1;
     uint32_t col = fm.n_cols - 2;
@@ -830,69 +865,131 @@ void debug_khmm_model(const std::string& name, uint32_t id, const std::string& c
                 max_s = si;
             }
         }
-        
-        matches.push_back(max_s - 1); // kmer index
-        posteriors.push_back(max_posterior);
-        lpfm.push_back(get(fm, row, max_s));
+    
+        uint32_t event_idx = e_start + (row - 1) * state.stride;
+        uint32_t kmer_idx = max_s - 1;
+ 
+        double lpfm = get(fm, row, max_s);
+
+        PosteriorState ps = { event_idx, kmer_idx, max_posterior, lpfm, 'N' };
+        output.push_back(ps);
         row -= 1;
     }
 
-    std::reverse(matches.begin(), matches.end());
-    std::reverse(posteriors.begin(), posteriors.end());
-    std::reverse(lpfm.begin(), lpfm.end());
-    
-    printf("%s align max value: %.2lf %s\n", name.c_str(), lf, consensus.c_str());
+    std::reverse(output.begin(), output.end());
+
+    // First state is always a match
+    output[0].state = 'M';
+    uint32_t prev_ei = output[0].event_idx;
+    uint32_t prev_ki = output[0].kmer_idx;
+
+    for(uint32_t pi = 1; pi < output.size(); ++pi) {
+        uint32_t ei = output[pi].event_idx;
+        uint32_t ki = output[pi].kmer_idx;
+
+        assert(abs(ei - prev_ei) == 1);
+        printf("DECODE %zu %zu\n", prev_ei, ei);
+
+        if(ki == prev_ki) {
+            output[pi].state = 'E';
+        } else if(ki - prev_ki == 1) {
+            output[pi].state = 'M';
+        } else {
+            assert(ki - prev_ki > 1);
+            output[pi].state = 'K';
+        }
+
+        prev_ei = ei;
+        prev_ki = ki;
+    }
+
+    free_matrix(tm);
+    free_matrix(fm);
+    free_matrix(bm);
+    return output;
+}
+
+void update_training_khmm(const std::string& consensus, 
+                          const HMMConsReadState& state, 
+                          TrainingData& training)
+{
+    std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
 
     const CPoreModel& pm = state.read->pore_model[state.strand];
-    uint32_t prev_ki = -1;
+    const uint32_t strand_idx = get_strand_idx(state);
 
-    // summary states
-    double sum_emissions = 0.0f;
-    uint32_t n_matches = 0;
-    uint32_t n_skips = 0;
-    uint32_t n_merges = 0;
+    for(size_t pi = 0; pi < pstates.size(); ++pi) {
 
-    for(size_t i = 0; i < matches.size(); ++i) {
+        uint32_t ei = pstates[pi].event_idx;
+        uint32_t ki = pstates[pi].kmer_idx;
+        char s = pstates[pi].state;
+    
+        // Record transition observations
+        // We do not record observations for merge states as there was no kmer transitions
+        // We also do not record observations for the beginning of the matches as the
+        // alignment may be poor due to edge effects
+        if(pi > 5 && pi < pstates.size() - 5) {
+ 
+            // transition           
+            if(s != 'E') {
+                uint32_t transition_kmer_from = pstates[pi - 1].kmer_idx;
+                uint32_t transition_kmer_to = pstates[pi].kmer_idx;
 
-        uint32_t ei = e_start + i * state.stride;
-        uint32_t ki = matches[i];
-        
-        // Emit kmer skip symbols
-        char s;
-        while(prev_ki != -1 && prev_ki + 1 < ki) {
-            std::string kmer = consensus.substr(prev_ki + 1, K);
+                // Specially handle skips
+                // We only want to record the first k-mer skipped if multiple were skipped
+                if(s == 'K') {
+                    transition_kmer_from = pstates[pi - 1].kmer_idx;
+                    transition_kmer_to = transition_kmer_from + 1;
+                }
+
+                uint32_t rank1 = get_rank(state, consensus.c_str(), transition_kmer_from);
+                uint32_t rank2 = get_rank(state, consensus.c_str(), transition_kmer_to);
             
-            uint32_t rank = !state.rc ? 
-                kmer_rank(kmer.c_str(), K) : 
-                rc_kmer_rank(kmer.c_str(), K);
+                double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
+                double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
+
+                printf("TRAIN_SKIP\t%zu\t%.3lf\t%.3lf\t%c\n", strand_idx, ke1, ke2, s);
+                TransitionObservation to = { ke1, ke2, s };
+                training.transitions.push_back(to);
+            }
+
+            // emission
+            double level = state.read->events[state.strand].level[ei];
+            double sd = state.read->events[state.strand].stdv[ei];
+            double start_time = state.read->events[state.strand].time[ei];
+            double end_time = state.read->events[state.strand].time[ei + 1];
+            uint32_t rank = get_rank(state, consensus.c_str(), ki);
         
             double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].level_stdv * pm.scale;
-            s = 'K';
-        
-            printf("DEBUG\t%s\t%d\t", name.c_str(), id);
-            printf("%c\t%zu\t%zu\t", s, 0, prev_ki + 1);
-            printf("%s\t%.3lf\t", kmer.c_str(), 0.0l);
-            printf("(%.1lf, %.1lf, %.1lf)\t", 0.0f, model_m, 0.0F);
-            printf("(%.1lf, %.1lf, %.1lf)\t", 0.0l, 0.0l, 0.0l);
-            printf("%.2lf\t%.2lf\n", exp(posteriors[i]), lpfm[i]);
-            
-            //printf("DEBUG\t%s\t%d\t%c\t%d\t%d\t0.0\t%s\t0.0\t%.2lf\t%.2lf\n", name.c_str(), &state, s, -1, prev_ki + 1, kmer.c_str(), model_m, lpfm[i]);
-            n_skips += 1;
-            prev_ki++;
+            double norm_level = (level - model_m) / model_s;
+            printf("TRAIN_EMISSION\t%zu\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, level, norm_level, end_time - start_time, s);
         }
 
-        if(prev_ki != -1 && ki - prev_ki == 0)
-            s = 'E';
-        else
-            s = 'M';
-        
+        // summary
+        training.n_matches += (s == 'M');
+        training.n_merges += (s == 'E');
+        training.n_skips += (s == 'K');
+    }
+}
+
+void debug_khmm_model(const std::string& name,
+                      uint32_t id,
+                      const std::string& consensus, 
+                      const HMMConsReadState& state)
+{
+    std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
+
+    for(size_t pi = 0; pi < pstates.size(); ++pi) {
+
+        uint32_t ei = pstates[pi].event_idx;
+        uint32_t ki = pstates[pi].kmer_idx;
+        char s = pstates[pi].state;
+    
         double level = state.read->events[state.strand].level[ei];
         double sd = state.read->events[state.strand].stdv[ei];
         double duration = state.read->events[state.strand].time[ei];
-        uint32_t rank = !state.rc ? 
-            kmer_rank(consensus.c_str() + ki, K) : 
-            rc_kmer_rank(consensus.c_str() + ki, K);
+        uint32_t rank = get_rank(state, consensus.c_str(), ki);
         
         const CPoreModel& pm = state.read->pore_model[state.strand];
         double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
@@ -903,31 +1000,14 @@ void debug_khmm_model(const std::string& name, uint32_t id, const std::string& c
         double model_sd_stdv = pm.state[rank].sd_mean;
 
         std::string kmer = consensus.substr(ki, K);
-        
+ 
         printf("DEBUG\t%s\t%d\t", name.c_str(), id);
         printf("%c\t%zu\t%zu\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("(%.1lf, %.1lf, %.1lf)\t", level, model_m, norm_level);
         printf("(%.1lf, %.1lf, %.1lf)\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
-        printf("%.2lf\t%.2lf\n", exp(posteriors[i]), lpfm[i]);
-
-        //printf("DEBUG\t%s\t%d\t%c\t%d\t%d\t%.2lf\t%s\t%.2lf\t%.3lf\t%.2lf\t%.2lf\t%.2lf\n", name.c_str(), &state, s, ei, ki, exp(posteriors[i]), kmer.c_str(), level, duration, model_m, norm_level, lpfm[i]);
-
-        // summary
-        n_matches += (s == 'M');
-        n_merges += (s == 'E');
-        if(s != 'K')
-            sum_emissions += log_probability_match(*state.read, rank, ei, state.strand);
-        prev_ki = ki;
+        printf("%.2lf\t%.2lf\n", exp(pstates[pi].l_posterior), pstates[pi].l_fm);
     }
-
-    printf("Summary: sum_emission: %.2lf M: %zu E: %zu K: %zu\n", sum_emissions, n_matches, n_merges, n_skips);
-    //print_matrix(fm);
-//    printf("%s %.2lf\n", consensus.c_str(), lf);
-
-    free_matrix(tm);
-    free_matrix(fm);
-    free_matrix(bm);
 }
 
 double score_emission_dp(const std::string& sequence, const HMMConsReadState& state)
@@ -964,11 +1044,7 @@ double score_emission_dp(const std::string& sequence, const HMMConsReadState& st
             // Get the emission probability for matching this event to this kmer
             uint32_t event_idx = e_start + (row - 1) * state.stride;
             uint32_t kmer_idx = col - 1;
-
-            uint32_t rank = !state.rc ? 
-                kmer_rank(sequence.c_str() + kmer_idx, K) : 
-                rc_kmer_rank(sequence.c_str() + kmer_idx, K);
-
+            uint32_t rank = get_rank(state, sequence.c_str(), kmer_idx);
             double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
             
             // Get the scores for the 3 possible preceding cells           
@@ -1084,6 +1160,10 @@ void debug_sequence(const std::string& name, uint32_t id, const std::string& seq
     return debug_khmm_model(name, id, sequence, state);
 }
 
+std::vector<PosteriorState> posterior_decode(const std::string& sequence, const HMMConsReadState& state)
+{
+    return posterior_decode_khmm(sequence, state);
+}
 
 extern "C"
 void run_debug()
@@ -1419,6 +1499,37 @@ void run_splice()
     g_data.consensus_result = base;
 }
 
+// update the training data on the current segment
+extern "C"
+void learn_segment()
+{
+    if(!g_initialized) {
+        printf("ERROR: initialize() not called\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    // initialize 
+    std::string segment = g_data.candidate_consensus[0];
+     
+    for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+
+        std::vector<PosteriorState> decodes = posterior_decode(segment, g_data.read_states[ri]);
+        debug_sequence("training segment", ri, segment, g_data.read_states[ri]);
+        uint32_t strand_idx = get_strand_idx(g_data.read_states[ri]);
+        
+        assert(strand_idx < g_data.training_data.size());
+        update_training_khmm(segment, g_data.read_states[ri], g_data.training_data[strand_idx]);
+    }
+}
+
+extern "C"
+void train()
+{
+    for(uint32_t ri = 0; ri < g_data.training_data.size(); ++ri) {
+        const TrainingData& td = g_data.training_data[ri];
+        printf("train -- %zu M: %zu E: %zu K: %zu\n", ri, td.n_matches, td.n_merges, td.n_skips);
+    }
+}
 
 extern "C"
 void run_selection()
