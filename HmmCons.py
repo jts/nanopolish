@@ -3,6 +3,7 @@ from NanoUtils import *
 from Clustal import *
 from ctypes import *
 from collections import defaultdict, namedtuple
+import random
 
 StrandAnchor = namedtuple('StrandAnchor', ['idstr', 'row_id', 'sr_idx', 'strand', 'event_idx', 'rc', 'diff'])
 
@@ -195,6 +196,8 @@ for l in fast5_fofn_fh:
 # Load squiggle reads
 #
 use_poabase_signals = False
+do_training = True
+
 clustal_filename = "clustal-0.out"
 clustal = Clustal(clustal_filename)
 #cons_row = clustal.get_consensus_row()
@@ -410,6 +413,7 @@ while col < n_cols:
             best_count = c
         print ai, candidate.column, candidate.n_samples, candidate.n_outliers, candidate.sum_diff, len(candidate.strands)
 
+    best_idx = randint(0, len(candidate_anchors) - 1)
 
     print "SELECT", best_idx
     anchors.append(candidate_anchors[best_idx])
@@ -436,28 +440,28 @@ while col < n_cols:
 #
 # Step 1. Learn parameters of the model
 #
-for i in xrange(0, len(anchors) - 1):
-    lib_hmmcons_fast.clear_state()
+if do_training:
+    for i in xrange(0, len(anchors) - 1):
+        lib_hmmcons_fast.clear_state()
 
-    a1 = anchors[i]
-    a2 = anchors[i+1]
+        a1 = anchors[i]
+        a2 = anchors[i+1]
 
-    # Add the consensus sequence as the initial candidate consensus
-    candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
-    
-    lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
-    
-    # Initialize the c library using the reads that are anchored here
-    anchored_strand_pairs = pair_anchor_strands(a1, a2)
+        # Add the consensus sequence as the initial candidate consensus
+        candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
+        
+        lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+        
+        # Initialize the c library using the reads that are anchored here
+        anchored_strand_pairs = pair_anchor_strands(a1, a2)
 
-    for (sa_1, sa_2) in anchored_strand_pairs:
-        add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
-    
-    lib_hmmcons_fast.learn_segment()
+        for (sa_1, sa_2) in anchored_strand_pairs:
+            add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
+        
+        print candidate_sub
+        lib_hmmcons_fast.learn_segment()
 
-lib_hmmscons_fast.train()
-
-sys.exit(0)
+    lib_hmmcons_fast.train()
 
 #
 # Step 2. Call new consensus

@@ -11,6 +11,7 @@
 #include <sstream>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
+#include "hmmcons_khmm_parameters.h"
 #include "Profiler.h"
 
 // Macros
@@ -27,7 +28,6 @@ const uint8_t NUM_STRANDS = 2;
 const uint8_t K = 5;
 
 const static double LOG_KMER_INSERTION = log(0.1);
-const static double SELF_KMER_TRANSITION = 0.2;
 const static double P_RANDOM_SKIP = 0.05;
 const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 const static uint32_t KHMM_MAX_JUMP = 5;
@@ -60,6 +60,8 @@ enum AlignmentPolicy
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
+#define PRINT_TRAINING_MESSAGES
+
 struct CEventSequence
 {
     uint32_t n_events;
@@ -76,9 +78,21 @@ struct CSquiggleRead
     // one model for each strand
     CPoreModel pore_model[2];
 
-    // one event sequence for each strand as well
+    // one event sequence for each strand
     CEventSequence events[2];
+
+    // one set of parameters per strand
+    KHMMParameters parameters[2];
 };
+
+double get_drift_corrected_level(const CSquiggleRead& read, uint32_t event_idx, uint32_t strand)
+{
+    double level = read.events[strand].level[event_idx];
+    // correct level by drift
+    double start = read.events[strand].time[0];
+    double time = read.events[strand].time[event_idx] - start;
+    return level - (time * read.pore_model[strand].drift);
+}
 
 struct HMMConsReadState
 {
@@ -108,74 +122,6 @@ struct PosteriorState
     char state;
 };
 
-struct TransitionObservation
-{
-    double level_1;
-    double level_2;
-    char state;
-};
-
-struct TrainingData
-{
-    uint32_t n_matches;
-    uint32_t n_merges;
-    uint32_t n_skips;
-
-    std::vector<TransitionObservation> transitions;
-};
-
-//
-//
-//
-struct HMMParameters
-{
-    // transition matrix
-    const static uint32_t n_states = 4;
-
-    // The transition matrix is described using pseudocounts, within
-    // the initialize function it is normalized and log_scaled
-    double t[n_states][n_states];
-};
-
-void initialize_hmm(HMMParameters& params)
-{
-    // These values are trained from ONT's 2D alignments
-
-    // transitions from the match state
-    params.t[0][0] = 8980.f; // M
-    params.t[0][1] = 2147.f; // E
-    params.t[0][2] = 1973.f; // K
-    params.t[0][3] =  200.f; // terminal
-    
-    // transitions from the event insertion state
-    params.t[1][0] = 1746.f; // M
-    params.t[1][1] = 1352.f; // E
-    params.t[1][2] =  401.f; // K
-    params.t[1][3] =   35.f; // terminal
-
-    // transitions from the k-mer insertion state
-    params.t[2][0] = 2373.f; // M
-    params.t[2][1] =    0.f; // E
-    params.t[2][2] =  519.f; // K
-    params.t[2][3] =   30.f; // terminal
-
-    // transitions from the terminal state
-    params.t[3][0] = 0.f;  // M
-    params.t[3][1] = 0.f;  // E
-    params.t[3][2] = 0.f;  // K
-    params.t[3][3] = 1.f;  // terminal
-
-    // Row normalize and log scale
-    for(uint32_t i = 0; i < params.n_states; ++i) {
-        double sum = 0.0f;
-        for(uint32_t j = 0; j < params.n_states; ++j)
-            sum += params.t[i][j];
-
-        for(uint32_t j = 0; j < params.n_states; ++j)
-            params.t[i][j] = log(params.t[i][j] / sum);
-    }
-}
-
 // A global vector used to store data we've received from the python code
 struct HmmConsData
 {
@@ -186,12 +132,6 @@ struct HmmConsData
     std::vector<HMMConsReadState> read_states;
     std::vector<std::string> candidate_consensus;
     std::string consensus_result;
-    
-    //
-    HMMParameters hmm_params;
-
-    // one per read_state
-    std::vector<TrainingData> training_data;
 };
 HmmConsData g_data;
 bool g_initialized = false;
@@ -216,7 +156,6 @@ inline double add_logs(const double a, const double b)
 extern "C"
 void initialize()
 {
-    initialize_hmm(g_data.hmm_params);
     g_initialized = true;
 }
 
@@ -277,13 +216,9 @@ void add_read(CSquiggleReadInterface params)
         */
     }
 
-    // Add training data structs for this read
-    TrainingData td;
-    td.n_matches = td.n_skips = td.n_merges = 0;
-    
-    // not a bug, one training data per strand
-    g_data.training_data.push_back(td);
-    g_data.training_data.push_back(td);
+    // Initialize hmm parameters for both strands of the read
+    khmm_parameters_initialize(sr.parameters[0]);
+    khmm_parameters_initialize(sr.parameters[1]);
 }
 
 extern "C"
@@ -508,12 +443,7 @@ inline double log_probability_match(const CSquiggleRead& read,
     const CPoreModel& pm = read.pore_model[strand];
 
     // Extract event
-    double level = read.events[strand].level[event_idx];
-    
-    // correct level by drift
-    double start = read.events[strand].time[0];
-    double time = read.events[strand].time[event_idx] - start;
-    level -= (time * pm.drift);
+    double level = get_drift_corrected_level(read, event_idx, strand);
 
     double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
     double s = pm.state[kmer_rank].level_stdv * pm.var;
@@ -548,6 +478,8 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
     PROFILE_FUNC("fill_khmm_transitions")
 
     const CPoreModel& pm = state.read->pore_model[state.strand];
+    const KHMMParameters& parameters = state.read->parameters[state.strand];
+
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2;
     uint32_t terminal_state = n_states - 1;
@@ -579,29 +511,21 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
             double p_i_j = 0.0f;
 
             if(ki == kj) {
-                p_i_j = SELF_KMER_TRANSITION;
+                p_i_j = parameters.self_transition;
             } else {
         
                 uint32_t rank_i = get_rank(state, consensus.c_str(), ki);
                 uint32_t rank_j = get_rank(state, consensus.c_str(), kj);
 
                 double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
-                double sd_i = pm.state[rank_i].level_stdv * pm.scale;
-                
                 double level_j = (pm.state[rank_j].level_mean + pm.shift) * pm.scale;
-                double sd_j = pm.state[rank_j].level_stdv * pm.scale;
-
-                double diff_mean = level_i - level_j;
-                double diff_sd = sqrt(pow(sd_i, 2.0) + pow(sd_j, 2.0));
-
-                double p_within_threshold = exp(log_normal_cdf(EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd)) - 
-                                            exp(log_normal_cdf(-EVENT_DETECTION_THRESHOLD, diff_mean, diff_sd));
                 
-                double p_skip = P_RANDOM_SKIP + (1 - P_RANDOM_SKIP) * p_within_threshold;
-                
+                double p_skip = get_skip_probability(parameters, level_i, level_j);
                 p_i_j = (1 - sum) * (1 - p_skip);
+                assert(p_i_j >= 0.0f && p_i_j <= 1.0f);
+
 #ifdef DEBUG_TRANSITION
-                printf("\t\t%zu -> %zu %.2lf %.2lf %.2lf %.2lf p_within_threshold: %.4lf p_skip: %.4lf p: %.2lf\n", ki, kj, level_i, level_j, diff_mean, diff_sd, p_within_threshold, p_skip, p_i_j);
+                printf("\t\t%zu -> %zu %.2lf %.2lf p_skip: %.4lf p: %.2lf\n", ki, kj, level_i, level_j, p_skip, p_i_j);
 #endif
             }
 
@@ -888,7 +812,6 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
         uint32_t ki = output[pi].kmer_idx;
 
         assert(abs(ei - prev_ei) == 1);
-        printf("DECODE %zu %zu\n", prev_ei, ei);
 
         if(ki == prev_ki) {
             output[pi].state = 'E';
@@ -910,13 +833,14 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
 }
 
 void update_training_khmm(const std::string& consensus, 
-                          const HMMConsReadState& state, 
-                          TrainingData& training)
+                          const HMMConsReadState& state)
 {
     std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
 
     const CPoreModel& pm = state.read->pore_model[state.strand];
-    const uint32_t strand_idx = get_strand_idx(state);
+    TrainingData& training_data = state.read->parameters[state.strand].training_data;
+    size_t n_kmers = consensus.size() - K + 1;
+    uint32_t strand_idx = get_strand_idx(state);
 
     for(size_t pi = 0; pi < pstates.size(); ++pi) {
 
@@ -941,6 +865,8 @@ void update_training_khmm(const std::string& consensus,
                     transition_kmer_from = pstates[pi - 1].kmer_idx;
                     transition_kmer_to = transition_kmer_from + 1;
                 }
+                
+                assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
                 uint32_t rank1 = get_rank(state, consensus.c_str(), transition_kmer_from);
                 uint32_t rank2 = get_rank(state, consensus.c_str(), transition_kmer_to);
@@ -948,28 +874,40 @@ void update_training_khmm(const std::string& consensus,
                 double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
                 double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
 
+#ifdef PRINT_TRAINING_MESSAGES
                 printf("TRAIN_SKIP\t%zu\t%.3lf\t%.3lf\t%c\n", strand_idx, ke1, ke2, s);
+#endif
                 TransitionObservation to = { ke1, ke2, s };
-                training.transitions.push_back(to);
+                training_data.transitions.push_back(to);
             }
 
             // emission
-            double level = state.read->events[state.strand].level[ei];
+            double level = get_drift_corrected_level(*state.read, ei, state.strand);
             double sd = state.read->events[state.strand].stdv[ei];
             double start_time = state.read->events[state.strand].time[ei];
             double end_time = state.read->events[state.strand].time[ei + 1];
+            if(ki >= n_kmers)
+                printf("%zu %zu %zu %zu %.2lf %c\n", pi, ei, ki, n_kmers, pstates[pi].l_fm, s);
+            
+            assert(ki < n_kmers);
             uint32_t rank = get_rank(state, consensus.c_str(), ki);
         
             double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].level_stdv * pm.scale;
             double norm_level = (level - model_m) / model_s;
-            printf("TRAIN_EMISSION\t%zu\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, level, norm_level, end_time - start_time, s);
+
+            if(s == 'M')
+                training_data.emissions_for_matches.push_back(norm_level);
+
+#ifdef PRINT_TRAINING_MESSAGES
+            printf("TRAIN_EMISSION\t%zu\t%zu\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, end_time - start_time, s);
+#endif
         }
 
         // summary
-        training.n_matches += (s == 'M');
-        training.n_merges += (s == 'E');
-        training.n_skips += (s == 'K');
+        training_data.n_matches += (s == 'M');
+        training_data.n_merges += (s == 'E');
+        training_data.n_skips += (s == 'K');
     }
 }
 
@@ -986,7 +924,7 @@ void debug_khmm_model(const std::string& name,
         uint32_t ki = pstates[pi].kmer_idx;
         char s = pstates[pi].state;
     
-        double level = state.read->events[state.strand].level[ei];
+        double level = get_drift_corrected_level(*state.read, ei, state.strand);
         double sd = state.read->events[state.strand].stdv[ei];
         double duration = state.read->events[state.strand].time[ei];
         uint32_t rank = get_rank(state, consensus.c_str(), ki);
@@ -1200,9 +1138,17 @@ bool sortPathConsAsc(const PathCons& a, const PathCons& b)
 void score_paths(PathConsVector& paths)
 {
     std::string first = paths[0].path;
+    
+    double MIN_FIT = INFINITY;
 
     // Score all reads
     for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+        const HMMConsReadState& read_state = g_data.read_states[ri];
+        const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
+ 
+        if( fabs(parameters.fit_quality) > MIN_FIT)
+            continue;
+
         std::vector<double> scores;
         double sum_score = -INFINITY;
 
@@ -1232,29 +1178,17 @@ void score_paths(PathConsVector& paths)
         // If this is the truth path or the best path, show the scores for all reads
         if(pi == 0 || initial == 'I') {
             for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+                const HMMConsReadState& read_state = g_data.read_states[ri];
+                const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
+                if( fabs(parameters.fit_quality) > MIN_FIT)
+                    continue;
+
                 double curr = score_sequence(paths[pi].path, g_data.read_states[ri]);
-                printf("%.1lf ", curr);
+                printf("%.1lf,%.2lf ", parameters.fit_quality, curr);
             }
         }
         printf("\n");
     }
-
-/*
-    for(size_t pi = 0; pi < paths.size(); ++pi) {
-
-        // Calculate the length of the matching prefix with the truth
-        const std::string& s = paths[pi].path;
-
-        std::string name = (s == first ? "initial" : "best2");
-
-        // If this is the truth path or the best path, show the scores for all reads
-        if(pi == 0 || name == "initial") {
-            for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
-                debug_sequence(name, ri, s, g_data.read_states[ri]);
-            }
-        }
-    }
-*/
 }
 
 void extend_paths(PathConsVector& paths, int maxk = 2)
@@ -1514,20 +1448,17 @@ void learn_segment()
     for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
 
         std::vector<PosteriorState> decodes = posterior_decode(segment, g_data.read_states[ri]);
-        debug_sequence("training segment", ri, segment, g_data.read_states[ri]);
-        uint32_t strand_idx = get_strand_idx(g_data.read_states[ri]);
-        
-        assert(strand_idx < g_data.training_data.size());
-        update_training_khmm(segment, g_data.read_states[ri], g_data.training_data[strand_idx]);
+        //debug_sequence("training segment", ri, segment, g_data.read_states[ri]);
+        update_training_khmm(segment, g_data.read_states[ri]);
     }
 }
 
 extern "C"
 void train()
 {
-    for(uint32_t ri = 0; ri < g_data.training_data.size(); ++ri) {
-        const TrainingData& td = g_data.training_data[ri];
-        printf("train -- %zu M: %zu E: %zu K: %zu\n", ri, td.n_matches, td.n_merges, td.n_skips);
+    for(uint32_t ri = 0; ri < g_data.reads.size(); ++ri) {
+        khmm_parameters_train(g_data.reads[ri].parameters[0]);
+        khmm_parameters_train(g_data.reads[ri].parameters[1]);
     }
 }
 
