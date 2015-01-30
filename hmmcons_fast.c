@@ -85,6 +85,13 @@ struct CSquiggleRead
     KHMMParameters parameters[2];
 };
 
+double get_duration(const CSquiggleRead& read, uint32_t event_idx, uint32_t strand)
+{
+    double e_start = read.events[strand].time[event_idx];
+    double e_end = read.events[strand].time[event_idx + 1];
+    return e_end - e_start;
+}
+
 double get_drift_corrected_level(const CSquiggleRead& read, uint32_t event_idx, uint32_t strand)
 {
     double level = read.events[strand].level[event_idx];
