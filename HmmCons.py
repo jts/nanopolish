@@ -3,7 +3,6 @@ from NanoUtils import *
 from Clustal import *
 from ctypes import *
 from collections import defaultdict, namedtuple
-import random
 
 StrandAnchor = namedtuple('StrandAnchor', ['idstr', 'row_id', 'sr_idx', 'strand', 'event_idx', 'rc', 'diff'])
 
@@ -413,8 +412,6 @@ while col < n_cols:
             best_count = c
         print ai, candidate.column, candidate.n_samples, candidate.n_outliers, candidate.sum_diff, len(candidate.strands)
 
-    best_idx = randint(0, len(candidate_anchors) - 1)
-
     print "SELECT", best_idx
     anchors.append(candidate_anchors[best_idx])
     print "added anchor with strands = ", len(candidate_anchors[best_idx].strands)
@@ -458,7 +455,6 @@ if do_training:
         for (sa_1, sa_2) in anchored_strand_pairs:
             add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
         
-        print candidate_sub
         lib_hmmcons_fast.learn_segment()
 
     lib_hmmcons_fast.train()
