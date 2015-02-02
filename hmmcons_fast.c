@@ -31,6 +31,7 @@ const static double LOG_KMER_INSERTION = log(0.1);
 const static double P_RANDOM_SKIP = 0.05;
 const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 const static uint32_t KHMM_MAX_JUMP = 5;
+const static uint32_t KHMM_MAX_MERGE = 10;
 
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -441,6 +442,73 @@ inline double log_normal_cdf(double x, double m, double s)
     double a = (x - m) / s;
     return log(0.5 * (1 + erf(a * M_SQRT1_2)));
 }
+
+inline double log_probability_range_match(const CSquiggleRead& read,
+                                          uint32_t kmer_rank,
+                                          uint32_t event_start, 
+                                          uint32_t event_end,
+                                          uint32_t event_stride,
+                                          uint8_t strand)
+{
+    const CPoreModel& pm = read.pore_model[strand];
+
+    // Extract event
+
+    // Average the levels for the range of events
+    // Sum durations as well
+    /*
+    double level = 0.0f;
+    double duration = 0.0f;
+    double n_events = 0.0f;
+    for(uint32_t ei = event_start; ei != event_end; ei += event_stride) {
+        double d = get_duration(read, ei, strand);
+        level += (d * get_drift_corrected_level(read, ei, strand));
+        duration += d;
+        n_events += 1.0;
+    }
+
+    level = level / duration;
+    level = level / n_events;
+
+    double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
+    double s = pm.state[kmer_rank].level_stdv * pm.var;
+    double lp = log_normal_pdf(level, m, s);
+
+    double rate = 27.777f;
+    double ld = log(rate) - rate * fabs(duration);
+#if DEBUG_HMM_EMISSION
+    printf("\trange %zu %zu l: %.2lf n: %.2lf m: %.2lf s: %.2lf\n", event_start, event_end, level, n_events, m, s);
+#endif
+
+    return lp + ld;
+    */
+
+    // swap to increasing order
+    if(event_stride == -1) {
+        uint32_t tmp = event_start;
+        event_start = event_end;
+        event_end = tmp;
+    }
+
+    double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
+    double s = pm.state[kmer_rank].level_stdv * pm.var;
+    double duration = 0.0f;
+    double lp = 0.0f;
+
+    for(uint32_t ei = event_start; ei <= event_end; ei += 1) {
+        double d = get_duration(read, ei, strand);
+        double level = get_drift_corrected_level(read, ei, strand);
+        duration += d;
+        lp += (d * log_normal_pdf(level, m, s));
+    }
+    lp /= duration;
+    
+    double rate = 27.777f;
+    double ld = log(rate) - rate * fabs(duration);
+    
+    return lp + ld;
+}
+
 
 inline double log_probability_match(const CSquiggleRead& read,
                                     uint32_t kmer_rank,
@@ -955,6 +1023,121 @@ void debug_khmm_model(const std::string& name,
     }
 }
 
+//
+// NEW MODEL
+//
+double fill_viterbi_skip_merge(DoubleMatrix& m, // score matrix
+                               const DoubleMatrix& tm, //transitions
+                               const char* sequence,
+                               const HMMConsReadState& state,
+                               uint32_t e_start)
+{
+    PROFILE_FUNC("fill_viterbi_skip_merge")
+
+    // Fill in matrix
+    for(uint32_t row = 1; row < m.n_rows; row++) {
+        for(uint32_t col = 1; col < m.n_cols - 1; col++) {
+
+#ifdef DEBUG_HMM_UPDATE
+            printf("[%d %d]\n", row, col);
+#endif
+
+            double max = -INFINITY;
+            
+            uint32_t first_possible_row = 1;
+            if(row > KHMM_MAX_MERGE)
+                first_possible_row = row - KHMM_MAX_MERGE;
+            
+            uint32_t first_possible_col = 0;
+            if(col >= KHMM_MAX_JUMP)
+                first_possible_col = col - KHMM_MAX_JUMP;
+            
+            // Calculate probability of matching starting at particular row/col
+            // for all the possible paths to here
+            for(uint32_t start_row = first_possible_row; start_row <= row; ++start_row) {
+                for(uint32_t start_col = first_possible_col; start_col < col; ++start_col) {
+                    
+                    // score for sr - 1, sc
+                    double m_prev = get(m, start_row - 1, start_col);
+                
+                    // The score of emitting a range of events in this column
+                    uint32_t start_event = e_start + (start_row - 1) * state.stride;
+                    uint32_t end_event = e_start + (row - 1) * state.stride;
+            
+                    uint32_t kmer_idx = col - 1;
+                    uint32_t rank = get_rank(state, sequence, kmer_idx);
+                    
+                    double lp_r_e = log_probability_range_match(*state.read, rank, start_event, end_event, state.stride, state.strand);
+
+                    // probability of transition into this column from start_col
+                    double t_jump = get(tm, start_col, col);
+
+                    // probability of staying in this column n times
+                    uint32_t n_merges = row - start_row;
+                    double t_merge = n_merges * get(tm, col, col);
+
+                    double total = m_prev + lp_r_e + t_jump + t_merge;
+#ifdef DEBUG_HMM_UPDATE
+                    printf("\tstart: [%d %d] e: [%d %d] lp: %.2lf t_jump: %.2lf t_merge: %.2lf t: %.2lf\n", start_row, start_col, start_event, end_event, lp_r_e, t_jump, t_merge, total);
+#endif 
+                    if(total > max)
+                        max = total;
+                }
+            }
+            set(m, row, col, max);
+        }
+    }
+
+    // terminate by returning max in the last row
+    uint32_t tcol = m.n_cols - 1;
+    uint32_t lrow = m.n_rows - 1;
+    double max = -INFINITY;
+    for(uint32_t col = 0; col < m.n_cols - 1; ++col) {
+
+        // transition probability from state k to state l
+        double t_kl = get(tm, col, tcol);
+        double m_k = get(m, lrow, col);
+        double total = t_kl + m_k;
+        if(total > max)
+            max = total;
+    }
+    return max;
+}
+
+
+double score_skip_merge(const std::string& consensus, const HMMConsReadState& state)
+{
+    uint32_t n_kmers = consensus.size() - K + 1;
+    uint32_t n_states = n_kmers + 2; // one start and one end state
+
+    DoubleMatrix tm;
+    allocate_matrix(tm, n_states, n_states);
+
+    fill_khmm_transitions(tm, consensus, state);
+    
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
+    uint32_t n_rows = n_events + 1;
+
+    // Allocate a matrix to hold the HMM result
+    DoubleMatrix fm;
+    allocate_matrix(fm, n_rows, n_states);
+
+    initialize_forward_khmm(fm);
+    double score = fill_viterbi_skip_merge(fm, tm, consensus.c_str(), state, e_start);
+
+    free_matrix(tm);
+    free_matrix(fm);
+    return score;
+}
+
+
 double score_emission_dp(const std::string& sequence, const HMMConsReadState& state)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
@@ -1096,7 +1279,8 @@ kLCSResult kLCS(const std::string& a, const std::string& b)
 // scoring functinos without writing a bunch of code
 double score_sequence(const std::string& sequence, const HMMConsReadState& state)
 {
-    return score_khmm_model(sequence, state, AP_GLOBAL);
+    return score_skip_merge(sequence, state);
+    //return score_khmm_model(sequence, state, AP_GLOBAL);
     //return score_emission_dp(sequence, state);
 }
 
@@ -1150,6 +1334,8 @@ void score_paths(PathConsVector& paths)
 
     // Score all reads
     for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+        printf("Scoring %d\n", ri);
+
         const HMMConsReadState& read_state = g_data.read_states[ri];
         const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
  

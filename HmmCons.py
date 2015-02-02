@@ -195,7 +195,7 @@ for l in fast5_fofn_fh:
 # Load squiggle reads
 #
 use_poabase_signals = False
-do_training = True
+do_training = False
 
 clustal_filename = "clustal-0.out"
 clustal = Clustal(clustal_filename)
