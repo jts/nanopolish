@@ -1137,7 +1137,6 @@ double score_skip_merge(const std::string& consensus, const HMMConsReadState& st
     return score;
 }
 
-
 double score_emission_dp(const std::string& sequence, const HMMConsReadState& state)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
