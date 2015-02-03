@@ -1278,8 +1278,8 @@ kLCSResult kLCS(const std::string& a, const std::string& b)
 // scoring functinos without writing a bunch of code
 double score_sequence(const std::string& sequence, const HMMConsReadState& state)
 {
-    return score_skip_merge(sequence, state);
-    //return score_khmm_model(sequence, state, AP_GLOBAL);
+    //return score_skip_merge(sequence, state);
+    return score_khmm_model(sequence, state, AP_GLOBAL);
     //return score_emission_dp(sequence, state);
 }
 
@@ -1611,11 +1611,12 @@ void run_splice()
 
         score_paths(paths);
         
+        /*
         for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
             debug_sequence("best", ri, paths[0].path, g_data.read_states[ri]); 
             debug_sequence("truth", ri, base, g_data.read_states[ri]); 
         }
-
+        */
         if(paths[0].path == base)
             break;
         base = paths[0].path;
