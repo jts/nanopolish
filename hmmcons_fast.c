@@ -1274,11 +1274,10 @@ void _kLCSBacktrack(const UInt32Matrix& m,
 kLCSResult kLCS(const std::string& a, const std::string& b)
 {
     uint32_t n_kmers_a = a.size() - K + 1;
-    uint32_t n_kmers_b = a.size() - K + 1;
+    uint32_t n_kmers_b = b.size() - K + 1;
 
     uint32_t n_rows = n_kmers_a + 1;
     uint32_t n_cols = n_kmers_b + 1;
-
 
     UInt32Matrix m;
     allocate_matrix(m, n_rows, n_cols);
@@ -1538,6 +1537,41 @@ void run_mutation()
     g_data.consensus_result = sequence;
 }
 
+void generate_alt_paths(PathConsVector& paths, const std::string& base, const std::vector<std::string>& alts)
+{
+    // Generate alternatives
+    for(uint32_t ai = 0; ai < alts.size(); ++ai) {
+        const std::string& alt = alts[ai];
+        kLCSResult result = kLCS(base, alt);
+
+        uint32_t match_idx = 0;
+        while(match_idx < result.size()) {
+            uint32_t last_idx = result.size() - 1;
+
+            // advance the match to the next point of divergence
+            while(match_idx != last_idx && result[match_idx].i == result[match_idx + 1].i - 1)
+                match_idx++;
+
+            // no more divergences to process
+            if(match_idx == last_idx)
+                break;
+
+            uint32_t bl = result[match_idx + 1].i - result[match_idx].i;
+            uint32_t rl = result[match_idx + 1].j - result[match_idx].j;
+
+            std::string base_subseq = base.substr(result[match_idx].i, bl);
+            std::string alt_subseq = alt.substr(result[match_idx].j, rl);
+
+            // Perform the splice
+            PathCons new_path = { base, 0.0f };
+            new_path.path.replace(result[match_idx].i, bl, alt_subseq);
+            paths.push_back(new_path);
+            
+            match_idx += 1;
+        }
+    }
+}
+
 void run_splice_segment(uint32_t segment_id)
 {
     if(!g_initialized) {
@@ -1573,7 +1607,8 @@ void run_splice_segment(uint32_t segment_id)
     assert(s_m_last_kmer == m_e_last_kmer);
 
     // The current consensus sequence, initialized to s_e
-    std::string base = s_m_base + m_e_base.substr(K);
+    std::string original = s_m_base + m_e_base.substr(K);
+    std::string base = original;
     
     // The collection of alternative sequences
     std::vector<std::string> alts;
@@ -1620,38 +1655,7 @@ void run_splice_segment(uint32_t segment_id)
         PathCons base_path = { base, 0.0f };
         paths.push_back(base_path);
         
-        // Generate alternatives
-        for(uint32_t ai = 1; ai < alts.size(); ++ai) {
-            const std::string& alt = alts[ai];
-            kLCSResult result = kLCS(base, alt);
-
-            uint32_t match_idx = 0;
-            while(match_idx < result.size()) {
-                uint32_t last_idx = result.size() - 1;
-
-                // advance the match to the next point of divergence
-                while(match_idx != last_idx && result[match_idx].i == result[match_idx + 1].i - 1)
-                    match_idx++;
-
-                // no more divergences to process
-                if(match_idx == last_idx)
-                    break;
-
-                uint32_t bl = result[match_idx + 1].i - result[match_idx].i;
-                uint32_t rl = result[match_idx + 1].j - result[match_idx].j;
-
-                std::string base_subseq = base.substr(result[match_idx].i, bl);
-                std::string alt_subseq = alt.substr(result[match_idx].j, rl);
-
-                // Perform the splice
-                PathCons new_path = { base, 0.0f };
-                new_path.path.replace(result[match_idx].i, bl, alt_subseq);
-                paths.push_back(new_path);
-                
-                match_idx += 1;
-            }
-        }
-
+        generate_alt_paths(paths, base, alts);
         score_paths(paths, read_states);
 
         /*
@@ -1664,6 +1668,9 @@ void run_splice_segment(uint32_t segment_id)
             break;
         base = paths[0].path;
     }
+
+    printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
+    printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
 }
 
 extern "C"
