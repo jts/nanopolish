@@ -55,5 +55,12 @@ struct CReadStateInterface
     int rc;
 };
 
+// ReadAnchor
+struct CReadAnchorInterface
+{
+    int event_idx;
+    int rc;
+};
+
 #endif
 
