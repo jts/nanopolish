@@ -1511,31 +1511,21 @@ PathConsVector generate_mutations(const std::string& sequence)
     return mutations;
 }
 
-extern "C"
-void run_mutation()
+void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_states)
 {
-    if(!g_initialized) {
-        printf("ERROR: initialize() not called\n");
-        exit(EXIT_FAILURE);
-    }
-
-    std::string sequence = g_data.candidate_consensus.front();
-    printf("Initial consensus: %s\n", sequence.c_str());
     int iteration = 0;
     while(iteration++ < 10) {
 
         // Generate possible sequences
-        PathConsVector paths = generate_mutations(sequence);
+        PathConsVector paths = generate_mutations(base);
 
-        score_paths(paths, g_data.read_states);
+        score_paths(paths, read_states);
 
         // check if no improvement was made
-        if(paths[0].path == sequence)
+        if(paths[0].path == base)
             break;
-        sequence = paths[0].path;
+        base = paths[0].path;
     }
-    
-    g_data.consensus_result = sequence;
 }
 
 void generate_alt_paths(PathConsVector& paths, const std::string& base, const std::vector<std::string>& alts)
@@ -1613,8 +1603,16 @@ void run_splice_segment(uint32_t segment_id)
     
     // The collection of alternative sequences
     std::vector<std::string> alts;
-    alts.insert(alts.end(), start_column.alt_sequences.begin(), start_column.alt_sequences.end());
-    alts.insert(alts.end(), middle_column.alt_sequences.begin(), middle_column.alt_sequences.end());
+
+    for(uint32_t ai = 0; ai < start_column.alt_sequences.size(); ++ai) {
+        // first segment alts plus the base of the middle segment
+        alts.push_back(start_column.alt_sequences[ai] + m_e_base.substr(K));
+    }
+    
+    for(uint32_t ai = 0; ai < middle_column.alt_sequences.size(); ++ai) {
+        // base first segment plus alts of middle segment
+        alts.push_back(s_m_base + middle_column.alt_sequences[ai].substr(K));
+    }
 
     // Set up the HMMReadStates, which are used to calculate
     // the probability of the data given a possible consensus sequence
@@ -1670,6 +1668,8 @@ void run_splice_segment(uint32_t segment_id)
             break;
         base = paths[0].path;
     }
+
+    run_mutation(base, read_states);
 
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
