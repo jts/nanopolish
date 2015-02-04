@@ -118,6 +118,7 @@ struct HMMAnchoredColumn
 struct HMMConsReadState
 {
     CSquiggleRead* read;
+    uint32_t anchor_index;
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;
@@ -1594,9 +1595,9 @@ void run_splice_segment(uint32_t segment_id)
 
     // Get the segments
     assert(segment_id + 2 < g_data.anchored_columns.size());
-    const HMMAnchoredColumn& start_column = g_data.anchored_columns[segment_id];
-    const HMMAnchoredColumn& middle_column = g_data.anchored_columns[segment_id + 1];
-    const HMMAnchoredColumn& end_column = g_data.anchored_columns[segment_id + 2];
+    HMMAnchoredColumn& start_column = g_data.anchored_columns[segment_id];
+    HMMAnchoredColumn& middle_column = g_data.anchored_columns[segment_id + 1];
+    HMMAnchoredColumn& end_column = g_data.anchored_columns[segment_id + 2];
 
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
@@ -1633,6 +1634,7 @@ void run_splice_segment(uint32_t segment_id)
 
         uint32_t read_idx = rsi / 2;
         assert(read_idx < g_data.reads.size());
+        crs.anchor_index = rsi;
         crs.read = &g_data.reads[read_idx];
         crs.strand = rsi % 2;
         crs.event_start_idx = start_ra.event_idx;
@@ -1671,6 +1673,42 @@ void run_splice_segment(uint32_t segment_id)
 
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
+
+    // Update the sequences for the start and middle segments
+    // by cutting the new consensus in the middle
+    // We maintain the k-mer match invariant by requiring the
+    // sequences to overlap by 5bp
+    assert(base.length() >= K);
+    uint32_t midpoint_kmer = (base.length() - K + 1) / 2;
+
+    std::string s_m_fixed = base.substr(0, midpoint_kmer + K);
+    std::string m_e_fixed = base.substr(midpoint_kmer);
+
+    assert(s_m_fixed.substr(s_m_fixed.size() - K) == m_e_fixed.substr(0, K));
+
+    start_column.base_sequence = s_m_fixed;
+    middle_column.base_sequence = m_e_fixed;
+
+    // Update the event indices in the first column to match 
+    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+
+        // Realign to the consensus sequence
+        std::vector<PosteriorState> decodes = posterior_decode(base, read_states[ri]);
+
+        // Get the closest event aligned to the target kmer
+        int32_t min_k_dist = base.length();
+        uint32_t event_idx = 0;
+        for(uint32_t di = 0; di < decodes.size(); ++di) {
+            int32_t dist = abs(decodes[di].kmer_idx - midpoint_kmer);
+            if(dist <= min_k_dist) {
+                min_k_dist = dist;
+                event_idx = decodes[di].event_idx;
+            }
+        }
+
+        printf("Updating event from %zu to %zu\n", middle_column.anchors[read_states[ri].anchor_index].event_idx, event_idx);
+        middle_column.anchors[read_states[ri].anchor_index].event_idx = event_idx;
+    }
 }
 
 extern "C"
@@ -1681,9 +1719,37 @@ void run_splice()
         exit(EXIT_FAILURE);
     }
  
+    std::string uncorrected = "";
+    std::string consensus = "";
+
     uint32_t num_segments = g_data.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
+
+        // Track the original sequence for reference
+        if(uncorrected.empty()) {
+            uncorrected = g_data.anchored_columns[segment_id].base_sequence;
+        } else {
+            uncorrected.append(g_data.anchored_columns[segment_id].base_sequence.substr(K));
+        }
+
+        // run the consensus algorithm for this segment
         run_splice_segment(segment_id);
+
+        // run_splice_segment updates the base_sequence of the current anchor, grab it and append
+        std::string base = g_data.anchored_columns[segment_id].base_sequence;
+
+        if(consensus.empty()) {
+            consensus = base;
+        } else {
+            // The first 5 bases of the incoming sequence must match
+            // the last 5 bases of the growing consensus
+            // run_splice_segment must ensure this
+            assert(consensus.substr(consensus.size() - K) == base.substr(0, K));
+            consensus.append(base.substr(K));
+        }
+
+        printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
+        printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
     }
 }
 
