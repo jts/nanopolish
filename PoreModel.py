@@ -19,11 +19,11 @@ class PoreModel:
 
         self.model = np.array(obj)
 
-        self.model_level_mean = np.array([x[2] for x in obj])
-        self.model_level_stdv = np.array([x[3] for x in obj])
+        self.model_level_mean = np.array([x['level_mean'] for x in obj])
+        self.model_level_stdv = np.array([x['level_stdv'] for x in obj])
         
-        self.model_sd_mean = np.array([x[4] for x in obj])
-        self.model_sd_stdv = np.array([x[5] for x in obj])
+        self.model_sd_mean = np.array([x['sd_mean'] for x in obj])
+        self.model_sd_stdv = np.array([x['sd_stdv'] for x in obj])
 
         # coerece data into the right type to pass to the C HMM library
         self.model_level_mean = self.model_level_mean.astype(np.float64)
@@ -37,11 +37,11 @@ class PoreModel:
     def get_expected(self, kmer):
         # TODO: account for drift?
         #print kmer, self.rank_map[kmer], self.model[self.rank_map[kmer]][2], self.shift, self.scale
-        return (self.model[self.rank_map[kmer]][2] * self.scale) + self.shift
+        return (self.model[self.rank_map[kmer]]['level_mean'] * self.scale) + self.shift
     
     def get_sd(self, kmer):
         # TODO: account for drift?
-        return self.model[self.rank_map[kmer]][3] * self.var
+        return self.model[self.rank_map[kmer]]['level_stdv'] * self.var
 
     # Get the probability of seeing signal s, given the k-mer in the pore
     def get_probability(self, s, kmer):
