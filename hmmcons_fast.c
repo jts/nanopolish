@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <algorithm>
 #include <sstream>
+#include <set>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 #include "hmmcons_khmm_parameters.h"
@@ -133,6 +134,7 @@ struct PosteriorState
     uint32_t kmer_idx;
     double l_posterior;
     double l_fm;
+    double log_transition_probability;
     char state;
 };
 
@@ -858,6 +860,7 @@ double score_khmm_model(const std::string& consensus, const HMMConsReadState& st
     return score;
 }
 
+
 std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, const HMMConsReadState& state)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
@@ -896,14 +899,20 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     std::vector<PosteriorState> output;
     
     uint32_t row = fm.n_rows - 1;
-    uint32_t col = fm.n_cols - 2;
+    uint32_t col = fm.n_cols - 1;
+
     while(row > 0) {
 
         // Calculate posterior probability that e_i is matched to k_j
         double max_posterior = -INFINITY;
         uint32_t max_s = 0;
 
-        for(uint32_t si = 1; si < fm.n_cols - 1; ++si) {
+        // Only check states that are possible to transition given the previous match col
+        uint32_t first_possible_col = 1;
+        if(col >= KHMM_MAX_JUMP)
+            first_possible_col = col - KHMM_MAX_JUMP;
+        
+        for(uint32_t si = first_possible_col; si <= col; ++si) {
             double lp = get(fm, row, si) + get(bm, row, si) - lf;
             if(lp > max_posterior) {
                 max_posterior = lp;
@@ -916,9 +925,12 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
  
         double lpfm = get(fm, row, max_s);
 
-        PosteriorState ps = { event_idx, kmer_idx, max_posterior, lpfm, 'N' };
+        PosteriorState ps = { event_idx, kmer_idx, max_posterior, lpfm, 0.0f, 'N' };
         output.push_back(ps);
+
+        //
         row -= 1;
+        col = max_s;
     }
 
     std::reverse(output.begin(), output.end());
@@ -928,10 +940,15 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     uint32_t prev_ei = output[0].event_idx;
     uint32_t prev_ki = output[0].kmer_idx;
 
+    // store the transition probability to this state
+    // the + 1 is to convert a k-mer index to a column
+    output[0].log_transition_probability = get(tm, 0, output[0].kmer_idx + 1);
+
     for(uint32_t pi = 1; pi < output.size(); ++pi) {
         uint32_t ei = output[pi].event_idx;
         uint32_t ki = output[pi].kmer_idx;
 
+        output[pi].log_transition_probability = get(tm, prev_ki + 1, ki + 1);
         assert(abs(ei - prev_ei) == 1);
 
         if(ki == prev_ki) {
@@ -951,6 +968,55 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     free_matrix(fm);
     free_matrix(bm);
     return output;
+}
+
+double score_khmm_model_postmerge(const std::string& consensus, const HMMConsReadState& state)
+{
+    std::vector<PosteriorState> decode = posterior_decode_khmm(consensus, state);
+    double lp = 0.0f;
+    uint32_t di = 0;
+    while(di < decode.size()) {
+        
+        // Get the range of events that are aligned to the current k-mer
+        uint32_t ki = decode[di].kmer_idx;
+
+        uint32_t start = di;
+
+        while(di < decode.size() && decode[di].kmer_idx == ki) {
+            di += 1;
+        }
+
+        // end is now one past the last event aligned to this kmer
+        for(uint32_t i = start; i < di; ++i)
+            lp += decode[i].log_transition_probability;
+
+        // sum the event emissions and transitions
+
+        /* single model
+        for(uint32_t i = start; i < di; ++i) {
+            
+            uint32_t ei = decode[i].event_idx;
+            uint32_t rank = get_rank(state, consensus.c_str(), ki);
+            double lp_e = log_probability_match(*state.read, rank, ei, state.strand);
+
+            //double lp_r_e = log_probability_range_match(*state.read, rank, start_event, end_event, state.stride, state.strand);
+            lp += lp_e;
+        }
+        */
+
+        // multi model
+        uint32_t start_event = decode[start].event_idx;
+        uint32_t end_event = decode[di - 1].event_idx;
+        uint32_t rank = get_rank(state, consensus.c_str(), ki);
+
+        double lp_e = log_probability_range_match(*state.read, rank, start_event, end_event, state.stride, state.strand);
+        lp += lp_e;
+        
+        // advancing the di index is not necessary
+        // as it was advanced above   
+    }
+
+    return lp;
 }
 
 void update_training_khmm(const std::string& consensus, 
@@ -1324,6 +1390,7 @@ kLCSResult kLCS(const std::string& a, const std::string& b)
 double score_sequence(const std::string& sequence, const HMMConsReadState& state)
 {
     //return score_skip_merge(sequence, state);
+    //return score_khmm_model_postmerge(sequence, state);
     return score_khmm_model(sequence, state, AP_GLOBAL);
     //return score_emission_dp(sequence, state);
 }
@@ -1356,14 +1423,34 @@ void run_debug()
 
 struct PathCons
 {
+    // default constructor
+    PathCons(const std::string& s) : path(s), score(0.0f), sum_rank(0) {}
+
     std::string path;
     double score;
+    size_t sum_rank;
     std::string mutdesc;
     
 };
 typedef std::vector<PathCons> PathConsVector;
 
-bool sortPathConsAsc(const PathCons& a, const PathCons& b)
+bool sortPathConsScoreAsc(const PathCons& a, const PathCons& b)
+{
+    return a.score > b.score;
+}
+
+bool sortPathConsRankAsc(const PathCons& a, const PathCons& b)
+{
+    return a.sum_rank > b.sum_rank;
+}
+
+struct IndexedPathScore
+{
+    double score;
+    uint32_t path_index;
+};
+
+bool sortIndexedPathScoreAsc(const IndexedPathScore& a, const IndexedPathScore& b)
 {
     return a.score > b.score;
 }
@@ -1372,7 +1459,24 @@ bool sortPathConsAsc(const PathCons& a, const PathCons& b)
 // sorts the paths into ascending order by score
 void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& read_states)
 {
+    // cache the initial sequence
     std::string first = paths[0].path;
+    
+    PathConsVector dedup_paths;
+
+    // initialize and deduplicate paths to avoid redundant computation
+    std::set<std::string> path_string_set;
+    for(size_t pi = 0; pi < paths.size(); ++pi) {
+
+        if(path_string_set.find(paths[pi].path) == path_string_set.end()) {
+            paths[pi].score = 0;
+            paths[pi].sum_rank = 0;
+            dedup_paths.push_back(paths[pi]);
+            path_string_set.insert(paths[pi].path);
+        }
+    }
+    paths.clear();
+    paths.swap(dedup_paths);
     
     double MIN_FIT = INFINITY;
 
@@ -1386,23 +1490,31 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         if( fabs(parameters.fit_quality) > MIN_FIT)
             continue;
 
-        std::vector<double> scores;
-        double sum_score = -INFINITY;
+        std::vector<IndexedPathScore> result;
 
         // Score all paths
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, read_states[ri]);
-            sum_score = add_logs(sum_score, curr);
-            scores.push_back(curr);
+            IndexedPathScore ips = { curr, pi };
+            result.push_back(ips);
         }
 
-        for(size_t pi = 0; pi < paths.size(); ++pi) {
-            paths[pi].score += (scores[pi] - scores[0]);
+        // Save score of first path
+        double first_path_score = result[0].score;
+
+        // Sort result by score
+        std::sort(result.begin(), result.end(), sortIndexedPathScoreAsc);
+
+        for(size_t pri = 0; pri < result.size(); ++pri) {
+            size_t pi = result[pri].path_index;
+
+            paths[pi].score += (result[pri].score - first_path_score);
+            paths[pi].sum_rank += pri;
         }
     }
 
     // select new sequence
-    std::sort(paths.begin(), paths.end(), sortPathConsAsc);
+    std::sort(paths.begin(), paths.end(), sortPathConsScoreAsc);
 
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
@@ -1411,7 +1523,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
 
         char initial = s == first ? 'I' : ' ';
 
-        printf("%zu\t%s\t%.1lf %c %s", pi, paths[pi].path.c_str(), paths[pi].score, initial, paths[pi].mutdesc.c_str());
+        printf("%zu\t%s\t%.1lf\t%zu %c %s", pi, paths[pi].path.c_str(), paths[pi].score, paths[pi].sum_rank, initial, paths[pi].mutdesc.c_str());
         // If this is the truth path or the best path, show the scores for all reads
         if(pi == 0 || initial == 'I') {
             for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
@@ -1444,7 +1556,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
             do {
                 std::string current = paths[pi].path;
                 std::string ns = current.insert(current.size() - 5, extension);
-                PathCons ps = { ns, 0.0f };
+                PathCons ps(ns);
                 new_paths.push_back(ps);
                 lexicographic_next(extension);
             } while(extension != first);
@@ -1460,7 +1572,7 @@ PathConsVector generate_mutations(const std::string& sequence)
 
     // Add the unmutated sequence
     {
-        PathCons pc = { sequence, 0.0f };
+        PathCons pc(sequence);
         mutations.push_back(pc);
     }
 
@@ -1472,7 +1584,7 @@ PathConsVector generate_mutations(const std::string& sequence)
             char b = "ACGT"[bi];
             if(sequence[si] == b)
                 continue;
-            PathCons pc = { sequence, 0.0f };
+            PathCons pc(sequence);
             pc.path[si] = b;
             std::stringstream ss;
             ss << "sub-" << si << "-" << b;
@@ -1484,7 +1596,7 @@ PathConsVector generate_mutations(const std::string& sequence)
 
         // 1bp del at this position
         {
-            PathCons pc = { sequence, 0.0f };
+            PathCons pc(sequence);
             pc.path.erase(si, 1);
             
             std::stringstream ss;
@@ -1497,7 +1609,7 @@ PathConsVector generate_mutations(const std::string& sequence)
         // All 1bp ins before this position
         for(size_t bi = 0; bi < 4; bi++) {
             char b = "ACGT"[bi];
-            PathCons pc = { sequence, 0.0f };
+            PathCons pc(sequence);
             pc.path.insert(si, 1, b);
             
             std::stringstream ss;
@@ -1554,7 +1666,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
             std::string alt_subseq = alt.substr(result[match_idx].j, rl);
 
             // Perform the splice
-            PathCons new_path = { base, 0.0f };
+            PathCons new_path(base);
             new_path.path.replace(result[match_idx].i, bl, alt_subseq);
             paths.push_back(new_path);
             
@@ -1652,7 +1764,7 @@ void run_splice_segment(uint32_t segment_id)
     while(round++ < num_rounds) {
         
         PathConsVector paths;
-        PathCons base_path = { base, 0.0f };
+        PathCons base_path(base);
         paths.push_back(base_path);
         
         generate_alt_paths(paths, base, alts);
@@ -1723,7 +1835,7 @@ void run_splice()
     std::string consensus = "";
 
     uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
+    for(uint32_t segment_id = 6; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -1750,6 +1862,8 @@ void run_splice()
 
         printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
         printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
+
+        break;
     }
 }
 

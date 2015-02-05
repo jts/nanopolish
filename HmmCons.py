@@ -18,6 +18,42 @@ class Anchor:
     def add_strand(self, sa):
         self.strands.append(sa)
 
+# Convenience type for working with ctypes
+c_double_p = POINTER(c_double)
+
+class CPoreModelInterface(Structure):
+    _fields_ = [('n_states', c_int),
+                ('pore_model_level_mean', c_double_p),
+                ('pore_model_level_stdv', c_double_p),
+                ('pore_model_sd_mean', c_double_p),
+                ('pore_model_sd_stdv', c_double_p),
+                ('pore_model_scale', c_double),
+                ('pore_model_shift', c_double),
+                ('pore_model_drift', c_double),
+                ('pore_model_var', c_double)]
+
+class CEventSequenceInterface(Structure):
+    _fields_ = [('n_events', c_int),
+                ('level', c_double_p),
+                ('stdv', c_double_p),
+                ('time', c_double_p)]
+
+class CSquiggleReadInterface(Structure):
+    _fields_ = [('pore_model', CPoreModelInterface * 2),
+                ('events', CEventSequenceInterface * 2)]
+
+class CReadStateInterface(Structure):
+    _fields_ = [('read_idx', c_int),
+                ('event_start_idx', c_int),
+                ('event_stop_idx', c_int),
+                ('strand', c_int),
+                ('stride', c_int),
+                ('rc', c_int)]
+
+class CReadAnchorInterface(Structure):
+    _fields_ = [('event_idx', c_int),
+                ('rc', c_int)]
+
 # Generate all the paths of length (k+1)
 # starting from the given k-mer
 def generate_kmer_paths(kmer):
@@ -139,47 +175,44 @@ def add_read_state_from_anchor_strands(lib, sa_1, sa_2):
     rs = CReadStateInterface(sa_1.sr_idx, start_ei, end_ei, strand_idx, stride, sa_1.rc)
     lib.add_read_state(rs)
 
-#
-# 
-#
-lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
-lib_hmmcons_fast.initialize()
+# Import squiggle reads into C code
+def load_reads(lib, squiggle_reads):
 
-# Convenience type for working with ctypes
-c_double_p = POINTER(c_double)
+    for sr in squiggle_reads:
+        if sr is None:
+            continue
+        
+        pm_params = []
+        event_params = []
 
-class CPoreModelInterface(Structure):
-    _fields_ = [('n_states', c_int),
-                ('pore_model_level_mean', c_double_p),
-                ('pore_model_level_stdv', c_double_p),
-                ('pore_model_sd_mean', c_double_p),
-                ('pore_model_sd_stdv', c_double_p),
-                ('pore_model_scale', c_double),
-                ('pore_model_shift', c_double),
-                ('pore_model_drift', c_double),
-                ('pore_model_var', c_double)]
+        # Setup pore model and event sequence data for each strand of the read
+        for s in ('t', 'c'):
 
-class CEventSequenceInterface(Structure):
-    _fields_ = [('n_events', c_int),
-                ('level', c_double_p),
-                ('stdv', c_double_p),
-                ('time', c_double_p)]
+            # Pore Model
+            level_mean = sr.pm[s].model_level_mean.ctypes.data_as(c_double_p)
+            level_stdv = sr.pm[s].model_level_stdv.ctypes.data_as(c_double_p)
+            sd_mean = sr.pm[s].model_sd_mean.ctypes.data_as(c_double_p)
+            sd_stdv = sr.pm[s].model_sd_stdv.ctypes.data_as(c_double_p)
+            
+            scale = sr.pm[s].scale
+            shift = sr.pm[s].shift
+            drift = sr.pm[s].drift
+            var = sr.pm[s].var
+            
+            pm_params.append(CPoreModelInterface(1024, level_mean, level_stdv, sd_mean, sd_stdv, scale, shift, drift, var))
 
-class CSquiggleReadInterface(Structure):
-    _fields_ = [('pore_model', CPoreModelInterface * 2),
-                ('events', CEventSequenceInterface * 2)]
+            # Events
+            n_events = len(sr.event_level[s])
+            level = sr.event_level[s].ctypes.data_as(c_double_p)
+            stdv = sr.event_stdv[s].ctypes.data_as(c_double_p)
+            time = sr.event_time[s].ctypes.data_as(c_double_p)
+            event_params.append(CEventSequenceInterface(n_events, level, stdv, time))
 
-class CReadStateInterface(Structure):
-    _fields_ = [('read_idx', c_int),
-                ('event_start_idx', c_int),
-                ('event_stop_idx', c_int),
-                ('strand', c_int),
-                ('stride', c_int),
-                ('rc', c_int)]
+        #
+        params = CSquiggleReadInterface((pm_params[0], pm_params[1]), 
+                                        (event_params[0], event_params[1]))
+        lib.add_read(params)
 
-class CReadAnchorInterface(Structure):
-    _fields_ = [('event_idx', c_int),
-                ('rc', c_int)]
 
 
 #
@@ -245,43 +278,6 @@ for (poa_idx, pr) in enumerate(poa_reads):
 
 sys.stderr.write("Done loading squigglereads\n")
 
-#
-# Initialize squiggle reads in C code
-#
-for sr in squiggle_reads:
-    if sr is None:
-        continue
-    
-    pm_params = []
-    event_params = []
-
-    # Setup pore model and event sequence data for each strand of the read
-    for s in ('t', 'c'):
-
-        # Pore Model
-        level_mean = sr.pm[s].model_level_mean.ctypes.data_as(c_double_p)
-        level_stdv = sr.pm[s].model_level_stdv.ctypes.data_as(c_double_p)
-        sd_mean = sr.pm[s].model_sd_mean.ctypes.data_as(c_double_p)
-        sd_stdv = sr.pm[s].model_sd_stdv.ctypes.data_as(c_double_p)
-        
-        scale = sr.pm[s].scale
-        shift = sr.pm[s].shift
-        drift = sr.pm[s].drift
-        var = sr.pm[s].var
-        
-        pm_params.append(CPoreModelInterface(1024, level_mean, level_stdv, sd_mean, sd_stdv, scale, shift, drift, var))
-
-        # Events
-        n_events = len(sr.event_level[s])
-        level = sr.event_level[s].ctypes.data_as(c_double_p)
-        stdv = sr.event_stdv[s].ctypes.data_as(c_double_p)
-        time = sr.event_time[s].ctypes.data_as(c_double_p)
-        event_params.append(CEventSequenceInterface(n_events, level, stdv, time))
-
-    #
-    params = CSquiggleReadInterface((pm_params[0], pm_params[1]), 
-                                    (event_params[0], event_params[1]))
-    lib_hmmcons_fast.add_read(params)
 
 #
 # Build anchors
@@ -383,7 +379,20 @@ while col < n_cols:
 
 print "!!!!!!! move last anchor to end of consensus !!!!!!"
 
+#
+# Initialize library
+#
+lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
+lib_hmmcons_fast.initialize()
+
+#
+# Add reads
+#
+load_reads(lib_hmmcons_fast, squiggle_reads)
+
+#
 # Call consensus
+#
 
 # Add anchors to the library
 for i in xrange(0, len(anchors)):
