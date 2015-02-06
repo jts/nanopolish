@@ -437,6 +437,10 @@ for i in xrange(0, len(anchors)):
     # Tell the library we are finished adding data for this segment
     lib_hmmcons_fast.end_anchored_column()
 
+if do_training:
+    lib_hmmcons_fast.train()
+
+# Call consensus
 lib_hmmcons_fast.run_splice()
 
 sys.exit(1)

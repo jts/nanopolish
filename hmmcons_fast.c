@@ -321,6 +321,42 @@ void add_read_state(CReadStateInterface params)
     rs.rc = params.rc;
 }
 
+std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColumn& start_column,  
+                                                          const HMMAnchoredColumn& end_column)
+{
+    assert(start_column.anchors.size() == end_column.anchors.size());
+
+    std::vector<HMMConsReadState> read_states;
+    for(uint32_t rsi = 0; rsi < start_column.anchors.size(); ++rsi) {
+
+        HMMReadAnchor start_ra = start_column.anchors[rsi];
+        HMMReadAnchor end_ra = end_column.anchors[rsi];
+
+        // This read strand does not have events at both anchors
+        if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
+            continue;
+
+        HMMConsReadState crs;
+
+        uint32_t read_idx = rsi / 2;
+        assert(read_idx < g_data.reads.size());
+        crs.anchor_index = rsi;
+        crs.read = &g_data.reads[read_idx];
+        crs.strand = rsi % 2;
+        crs.event_start_idx = start_ra.event_idx;
+        crs.event_stop_idx = end_ra.event_idx;
+        if(crs.event_start_idx < crs.event_stop_idx)
+            crs.stride = 1;
+        else
+            crs.stride = -1;
+        assert(start_ra.rc == end_ra.rc);
+        crs.rc = start_ra.rc;
+
+        read_states.push_back(crs);
+    }
+    return read_states;
+}
+
 void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
 {
     matrix.n_rows = n_rows;
@@ -1132,7 +1168,7 @@ void debug_khmm_model(const std::string& name,
         }
         std::string kmer = consensus.substr(ki, K);
  
-        printf("DEBUG\t%s\t%d\t", name.c_str(), id);
+        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), id, state.rc, state.strand ? 't' : 'c');
         printf("%c\t%zu\t%zu\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
@@ -1665,6 +1701,15 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
     }
 }
 
+std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
+{
+    // These sequences must have a k-mer match at the start/end
+    std::string a_last_kmer = a.substr(a.size() - K);
+    std::string b_last_kmer = b.substr(0, K);
+    assert(a_last_kmer == b_last_kmer);
+    return a + b.substr(K);
+}
+
 void run_splice_segment(uint32_t segment_id)
 {
     if(!g_initialized) {
@@ -1694,13 +1739,8 @@ void run_splice_segment(uint32_t segment_id)
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
 
-    // These sequences must have a k-mer match at the start/end
-    std::string s_m_last_kmer = s_m_base.substr(s_m_base.size() - K);
-    std::string m_e_last_kmer = m_e_base.substr(0, K);
-    assert(s_m_last_kmer == m_e_last_kmer);
-
-    // The current consensus sequence, initialized to s_e
-    std::string original = s_m_base + m_e_base.substr(K);
+    // The current consensus sequence
+    std::string original = join_sequences_at_kmer(s_m_base, m_e_base);
     std::string base = original;
     
     // The collection of alternative sequences
@@ -1718,36 +1758,7 @@ void run_splice_segment(uint32_t segment_id)
 
     // Set up the HMMReadStates, which are used to calculate
     // the probability of the data given a possible consensus sequence
-    std::vector<HMMConsReadState> read_states;
-
-    assert(start_column.anchors.size() == end_column.anchors.size());
-    for(uint32_t rsi = 0; rsi < start_column.anchors.size(); ++rsi) {
-
-        HMMReadAnchor start_ra = start_column.anchors[rsi];
-        HMMReadAnchor end_ra = end_column.anchors[rsi];
-
-        // This read strand does not have events at both anchors
-        if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
-            continue;
-
-        HMMConsReadState crs;
-
-        uint32_t read_idx = rsi / 2;
-        assert(read_idx < g_data.reads.size());
-        crs.anchor_index = rsi;
-        crs.read = &g_data.reads[read_idx];
-        crs.strand = rsi % 2;
-        crs.event_start_idx = start_ra.event_idx;
-        crs.event_stop_idx = end_ra.event_idx;
-        if(crs.event_start_idx < crs.event_stop_idx)
-            crs.stride = 1;
-        else
-            crs.stride = -1;
-        assert(start_ra.rc == end_ra.rc);
-        crs.rc = start_ra.rc;
-
-        read_states.push_back(crs);
-    }
+    std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
 
     uint32_t num_rounds = 6;
     uint32_t round = 0;
@@ -1852,27 +1863,46 @@ void run_splice()
 
 // update the training data on the current segment
 extern "C"
-void learn_segment()
+void train_segment(uint32_t segment_id)
 {
     if(!g_initialized) {
         printf("ERROR: initialize() not called\n");
         exit(EXIT_FAILURE);
     }
-    
-    // initialize 
-    std::string segment = g_data.candidate_consensus[0];
-     
-    for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
 
-        std::vector<PosteriorState> decodes = posterior_decode(segment, g_data.read_states[ri]);
-        //debug_sequence("training segment", ri, segment, g_data.read_states[ri]);
-        update_training_khmm(segment, g_data.read_states[ri]);
+    // Get the segments
+    assert(segment_id + 2 < g_data.anchored_columns.size());
+    HMMAnchoredColumn& start_column = g_data.anchored_columns[segment_id];
+    HMMAnchoredColumn& middle_column = g_data.anchored_columns[segment_id + 1];
+    HMMAnchoredColumn& end_column = g_data.anchored_columns[segment_id + 2];
+
+    std::string s_m_base = start_column.base_sequence;
+    std::string m_e_base = middle_column.base_sequence;
+
+    std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base);
+
+    // Set up the HMMReadStates, which are used to calculate
+    // the probability of the data given a possible consensus sequence
+    std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
+     
+    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+
+        std::vector<PosteriorState> decodes = posterior_decode(segment_sequence, read_states[ri]);
+        update_training_khmm(segment_sequence, read_states[ri]);
     }
 }
 
 extern "C"
 void train()
 {
+    // train on current consensus
+    uint32_t num_segments = g_data.anchored_columns.size();
+    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
+        printf("Training segment %zu\n", segment_id);
+        train_segment(segment_id);
+    }
+
+    // Update model parameters
     for(uint32_t ri = 0; ri < g_data.reads.size(); ++ri) {
         khmm_parameters_train(g_data.reads[ri].parameters[0]);
         khmm_parameters_train(g_data.reads[ri].parameters[1]);
