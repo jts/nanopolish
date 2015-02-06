@@ -1113,7 +1113,7 @@ void debug_khmm_model(const std::string& name,
     
         double level = get_drift_corrected_level(*state.read, ei, state.strand);
         double sd = state.read->events[state.strand].stdv[ei];
-        double duration = state.read->events[state.strand].time[ei];
+        double duration = get_duration(*state.read, ei, state.strand);
         uint32_t rank = get_rank(state, consensus.c_str(), ki);
         
         const CPoreModel& pm = state.read->pore_model[state.strand];
@@ -1124,14 +1124,20 @@ void debug_khmm_model(const std::string& name,
         double model_sd_mean = pm.state[rank].sd_mean;
         double model_sd_stdv = pm.state[rank].sd_mean;
 
+        double lp_diff = 0.0f;
+        if(pi > 0) {
+            lp_diff = pstates[pi].l_fm - pstates[pi - 1].l_fm;
+        } else {
+            lp_diff = pstates[pi].l_fm;
+        }
         std::string kmer = consensus.substr(ki, K);
  
         printf("DEBUG\t%s\t%d\t", name.c_str(), id);
         printf("%c\t%zu\t%zu\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
-        printf("(%.1lf, %.1lf, %.1lf)\t", level, model_m, norm_level);
-        printf("(%.1lf, %.1lf, %.1lf)\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
-        printf("%.2lf\t%.2lf\n", exp(pstates[pi].l_posterior), pstates[pi].l_fm);
+        printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
+        printf("\t%.1lf\t%.1lf\t%.1lf\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
+        printf("%.2lf\t%.2lf\t%.2lf\n", exp(pstates[pi].l_posterior), pstates[pi].l_fm, lp_diff);
     }
 }
 
@@ -1405,22 +1411,6 @@ std::vector<PosteriorState> posterior_decode(const std::string& sequence, const 
     return posterior_decode_khmm(sequence, state);
 }
 
-extern "C"
-void run_debug()
-{
-    if(!g_initialized) {
-        printf("ERROR: initialize() not called\n");
-        exit(EXIT_FAILURE);
-    }
-
-    for(uint32_t i = 0; i < g_data.read_states.size(); ++i) {
-        debug_sequence("input",  i, "AACAGTCCACTATTGGATGGTAAAGCCAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("oldbad", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAATTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("final", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTACGCAAG", g_data.read_states[i]);
-        debug_sequence("truth", i, "AACAGTCCACTATTGGATGGTAAAGCGCTAACAGAAATTTTTACGCAAG", g_data.read_states[i]);
-    }
-}
-
 struct PathCons
 {
     // default constructor
@@ -1518,7 +1508,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
 
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
-        // Calculate the length of the matching prefix with the truth
+        // Calculate the length of the matching prefix with the initial sequence
         const std::string& s = paths[pi].path;
 
         char initial = s == first ? 'I' : ' ';
@@ -1770,12 +1760,6 @@ void run_splice_segment(uint32_t segment_id)
         generate_alt_paths(paths, base, alts);
         score_paths(paths, read_states);
 
-        /*
-        for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-            debug_sequence("best", ri, paths[0].path, g_data.read_states[ri]); 
-            debug_sequence("initial", ri, base, g_data.read_states[ri]); 
-        }
-        */
         if(paths[0].path == base)
             break;
         base = paths[0].path;
@@ -1835,7 +1819,7 @@ void run_splice()
     std::string consensus = "";
 
     uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
+    for(uint32_t segment_id = 6; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -1862,6 +1846,7 @@ void run_splice()
 
         printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
         printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
+        break;
     }
 }
 
