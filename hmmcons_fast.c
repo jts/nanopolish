@@ -225,8 +225,8 @@ void add_read(CSquiggleReadInterface params)
         /*
         printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 
                                                                  sr.pore_model[i].shift,
-                                                                 sr.pore_model[i].state[0].mean, 
-                                                                 sr.pore_model[i].state[0].sd);
+                                                                 sr.pore_model[i].state[0].level_mean, 
+                                                                 sr.pore_model[i].state[0].level_stdv);
     
         printf("First 100 events of %d\n", sr.events[i].n_events);
         for(int j = 0; j < 100; ++j)
@@ -1441,7 +1441,7 @@ bool sortPathConsScoreAsc(const PathCons& a, const PathCons& b)
 
 bool sortPathConsRankAsc(const PathCons& a, const PathCons& b)
 {
-    return a.sum_rank > b.sum_rank;
+    return a.sum_rank < b.sum_rank;
 }
 
 struct IndexedPathScore
@@ -1450,7 +1450,7 @@ struct IndexedPathScore
     uint32_t path_index;
 };
 
-bool sortIndexedPathScoreAsc(const IndexedPathScore& a, const IndexedPathScore& b)
+bool sortIndexedPathScoreDesc(const IndexedPathScore& a, const IndexedPathScore& b)
 {
     return a.score > b.score;
 }
@@ -1503,7 +1503,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         double first_path_score = result[0].score;
 
         // Sort result by score
-        std::sort(result.begin(), result.end(), sortIndexedPathScoreAsc);
+        std::sort(result.begin(), result.end(), sortIndexedPathScoreDesc);
 
         for(size_t pri = 0; pri < result.size(); ++pri) {
             size_t pi = result[pri].path_index;
@@ -1514,7 +1514,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     }
 
     // select new sequence
-    std::sort(paths.begin(), paths.end(), sortPathConsScoreAsc);
+    std::sort(paths.begin(), paths.end(), sortPathConsRankAsc);
 
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
@@ -1771,9 +1771,9 @@ void run_splice_segment(uint32_t segment_id)
         score_paths(paths, read_states);
 
         /*
-        for(uint32_t ri = 0; ri < g_data.read_states.size(); ++ri) {
+        for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
             debug_sequence("best", ri, paths[0].path, g_data.read_states[ri]); 
-            debug_sequence("truth", ri, base, g_data.read_states[ri]); 
+            debug_sequence("initial", ri, base, g_data.read_states[ri]); 
         }
         */
         if(paths[0].path == base)
@@ -1835,7 +1835,7 @@ void run_splice()
     std::string consensus = "";
 
     uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = 6; segment_id < num_segments - 2; ++segment_id) {
+    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -1862,8 +1862,6 @@ void run_splice()
 
         printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
         printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
-
-        break;
     }
 }
 

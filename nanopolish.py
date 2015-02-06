@@ -92,16 +92,6 @@ def run_poa_and_consensus(input_list, segment_idx):
 assembly_fn = sys.argv[1]
 bam_fn = sys.argv[2]
 
-# Build an index from fast5 file names to indices in the map file
-fast5_fofn_fn = 'r73.map.fofn'
-fast5_fofn_fh = open(fast5_fofn_fn)
-
-f5_index_map = dict()
-for (idx, file_path) in enumerate(fast5_fofn_fh):
-    # Strip the leading directories from the name
-    f5_fn = os.path.basename(file_path.rstrip())
-    f5_index_map[f5_fn] = idx
-
 # Open assembly file
 assembly = pysam.Fastafile(assembly_fn)
 
@@ -155,14 +145,9 @@ for (contig_idx, contig_name) in enumerate(bamfile.references):
             orientation = 'n'
             if r.is_reverse:
                 orientation = 'c'
- 
-            # Get the index of the read in the file map
-            # the consensus caller needs this and POA truncates long names
-            f5_fn = os.path.basename(r.query_name)
-            if f5_fn not in f5_index_map:
-                print 'Cannot find filename for', f5_fn
-
-            read_idx = f5_index_map[f5_fn]
+            
+            # Parse the read index out of the query name
+            read_idx = int(r.query_name.split('.')[0])
             poa_read = PoaRead(read_idx, orientation, first_read_base_in_segment, last_read_base_in_segment, False)
             poa_input = PoaInput(poa_read, sequence)
             input_list.append(poa_input)

@@ -218,7 +218,7 @@ def load_reads(lib, squiggle_reads):
 #
 # Build the map from read indices to fast5 files
 #
-fast5_fofn_fn = 'r73.map.fofn'
+fast5_fofn_fn = 'consensus_fast5.fofn'
 fast5_fofn_fh = open(fast5_fofn_fn)
 
 f5_files = []
