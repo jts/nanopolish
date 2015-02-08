@@ -1785,7 +1785,7 @@ void run_splice_segment(uint32_t segment_id)
         base = paths[0].path;
     }
 
-    //run_mutation(base, read_states);
+    run_mutation(base, read_states);
 
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
