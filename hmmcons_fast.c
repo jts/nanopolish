@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <sstream>
 #include <set>
+#include <omp.h>
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 #include "hmmcons_khmm_parameters.h"
@@ -1516,13 +1517,14 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         if( fabs(parameters.fit_quality) > MIN_FIT)
             continue;
 
-        std::vector<IndexedPathScore> result;
+        std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
+        #pragma omp parallel for
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, read_states[ri]);
-            IndexedPathScore ips = { curr, pi };
-            result.push_back(ips);
+            result[pi].score = curr;
+            result[pi].path_index = pi;
         }
 
         // Save score of first path
