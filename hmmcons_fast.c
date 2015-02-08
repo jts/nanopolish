@@ -1757,12 +1757,14 @@ void run_splice_segment(uint32_t segment_id)
 
     for(uint32_t ai = 0; ai < start_column.alt_sequences.size(); ++ai) {
         // first segment alts plus the base of the middle segment
-        alts.push_back(start_column.alt_sequences[ai] + m_e_base.substr(K));
+        if(m_e_base.length() >= K)
+            alts.push_back(start_column.alt_sequences[ai] + m_e_base.substr(K));
     }
     
     for(uint32_t ai = 0; ai < middle_column.alt_sequences.size(); ++ai) {
         // base first segment plus alts of middle segment
-        alts.push_back(s_m_base + middle_column.alt_sequences[ai].substr(K));
+        if(middle_column.alt_sequences[ai].length() >= K)
+            alts.push_back(s_m_base + middle_column.alt_sequences[ai].substr(K));
     }
 
     // Set up the HMMReadStates, which are used to calculate
@@ -1844,7 +1846,7 @@ void run_splice()
 #endif
 
     uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
+    for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
