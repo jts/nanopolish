@@ -3,6 +3,7 @@ import sys
 import re
 import subprocess
 import os
+import random
 from Clustal import *
 from collections import defaultdict
 from Bio import AlignIO

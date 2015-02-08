@@ -1832,7 +1832,7 @@ void run_splice()
     std::string consensus = "";
 
     uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = 6; segment_id < num_segments - 2; ++segment_id) {
+    for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -1859,7 +1859,6 @@ void run_splice()
 
         printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
         printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
-        break;
     }
 }
 

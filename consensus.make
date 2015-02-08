@@ -25,7 +25,7 @@ $(ASSEMBLY).bwt: $(ASSEMBLY)
 # Map reads to the assembly using bwa
 #
 %.pp.bam: %.pp.fa $(ASSEMBLY).bwt
-	$(BWA) mem -x ont2d -t 8 $(ASSEMBLY) $< > $@
+	$(BWA) mem -x ont2d -t 8 $(ASSEMBLY) $< | samtools view -Sb - > $@
 
 #
 # Sort BAM
