@@ -3,6 +3,7 @@ from NanoUtils import *
 from Clustal import *
 from ctypes import *
 from collections import defaultdict, namedtuple
+import sys
 
 StrandAnchor = namedtuple('StrandAnchor', ['idstr', 'row_id', 'sr_idx', 'strand', 'event_idx', 'rc', 'diff'])
 
@@ -213,8 +214,11 @@ def load_reads(lib, squiggle_reads):
                                         (event_params[0], event_params[1]))
         lib.add_read(params)
 
-
-
+#
+num_threads = int(sys.argv[1])
+if num_threads <= 0:
+    sys.stderr.write("Invalid number of threads")
+    sys.exit(1)
 #
 # Build the map from read indices to fast5 files
 #
@@ -383,7 +387,7 @@ print "!!!!!!! move last anchor to end of consensus !!!!!!"
 # Initialize library
 #
 lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
-lib_hmmcons_fast.initialize()
+lib_hmmcons_fast.initialize(num_threads)
 
 #
 # Add reads

@@ -64,6 +64,7 @@ enum AlignmentPolicy
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define PRINT_TRAINING_MESSAGES
+//#define DEBUG_SINGLE_SEGMENT 1
 
 struct CEventSequence
 {
@@ -142,6 +143,8 @@ struct PosteriorState
 // A global vector used to store data we've received from the python code
 struct HmmConsData
 {
+    int num_threads;
+
     //
     std::vector<CSquiggleRead> reads;
     std::vector<HMMAnchoredColumn> anchored_columns;
@@ -152,6 +155,7 @@ struct HmmConsData
     std::vector<std::string> candidate_consensus;
     std::string consensus_result;
 };
+
 HmmConsData g_data;
 bool g_initialized = false;
 
@@ -173,9 +177,11 @@ inline double add_logs(const double a, const double b)
 }
 
 extern "C"
-void initialize()
+void initialize(int num_threads)
 {
     g_initialized = true;
+    g_data.num_threads = num_threads;
+    printf("library threads set to %d\n", g_data.num_threads);
 }
 
 extern "C"
@@ -1520,6 +1526,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
+        omp_set_num_threads(g_data.num_threads);
         #pragma omp parallel for
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, read_states[ri]);
@@ -1778,7 +1785,7 @@ void run_splice_segment(uint32_t segment_id)
         base = paths[0].path;
     }
 
-    run_mutation(base, read_states);
+    //run_mutation(base, read_states);
 
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
@@ -1831,6 +1838,11 @@ void run_splice()
     std::string uncorrected = "";
     std::string consensus = "";
 
+    uint32_t start_segment_id = 0;
+#ifdef DEBUG_SINGLE_SEGMENT
+    start_segment_id = 6;
+#endif
+
     uint32_t num_segments = g_data.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
 
@@ -1859,6 +1871,9 @@ void run_splice()
 
         printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
         printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
+#ifdef DEBUG_SINGLE_SEGMENT
+        break;
+#endif
     }
 }
 
