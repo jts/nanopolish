@@ -1165,7 +1165,7 @@ void debug_khmm_model(const std::string& name,
         double norm_level = (level - model_m) / model_s;
         
         double model_sd_mean = pm.state[rank].sd_mean;
-        double model_sd_stdv = pm.state[rank].sd_mean;
+        double model_sd_stdv = pm.state[rank].sd_stdv;
 
         double lp_diff = 0.0f;
         if(pi > 0) {
@@ -1467,7 +1467,7 @@ struct PathCons
 };
 typedef std::vector<PathCons> PathConsVector;
 
-bool sortPathConsScoreAsc(const PathCons& a, const PathCons& b)
+bool sortPathConsScoreDesc(const PathCons& a, const PathCons& b)
 {
     return a.score > b.score;
 }
@@ -1475,6 +1475,11 @@ bool sortPathConsScoreAsc(const PathCons& a, const PathCons& b)
 bool sortPathConsRankAsc(const PathCons& a, const PathCons& b)
 {
     return a.sum_rank < b.sum_rank;
+}
+
+bool sortPathConsRankDesc(const PathCons& a, const PathCons& b)
+{
+    return a.sum_rank > b.sum_rank;
 }
 
 struct IndexedPathScore
@@ -1544,12 +1549,14 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
             size_t pi = result[pri].path_index;
 
             paths[pi].score += (result[pri].score - first_path_score);
-            paths[pi].sum_rank += pri;
+            uint32_t rank_score = pri;
+            paths[pi].sum_rank += rank_score;
         }
     }
 
     // select new sequence
-    std::sort(paths.begin(), paths.end(), sortPathConsRankAsc);
+    //std::sort(paths.begin(), paths.end(), sortPathConsRankAsc);
+    std::sort(paths.begin(), paths.end(), sortPathConsScoreDesc);
 
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
@@ -1573,6 +1580,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         }
         printf("\n");
     }
+
 }
 
 void extend_paths(PathConsVector& paths, int maxk = 2)
@@ -1682,14 +1690,27 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
         const std::string& alt = alts[ai];
         kLCSResult result = kLCS(base, alt);
 
+        /*
+        printf("Match to alt %s\n", alt.c_str());
+        for(size_t mi = 0; mi < result.size(); ++mi) {
+            std::string extend = "";
+            if(mi < result.size() - 1 && result[mi].j + 1 != result[mi + 1].j) {
+                extend = alt.substr(result[mi].j, result[mi + 1].j - result[mi].j + K);
+            }
+            printf("\t%zu %zu %s %s\n", result[mi].i, result[mi].j, base.substr(result[mi].i, K).c_str(), extend.c_str());
+        }
+        */
+
         uint32_t match_idx = 0;
         while(match_idx < result.size()) {
             uint32_t last_idx = result.size() - 1;
 
             // advance the match to the next point of divergence
-            while(match_idx != last_idx && result[match_idx].i == result[match_idx + 1].i - 1)
+            while(match_idx != last_idx && 
+                  result[match_idx].i == result[match_idx + 1].i - 1 &&
+                  result[match_idx].j == result[match_idx + 1].j - 1) {
                 match_idx++;
-
+            }
             // no more divergences to process
             if(match_idx == last_idx)
                 break;
@@ -1699,7 +1720,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
 
             std::string base_subseq = base.substr(result[match_idx].i, bl);
             std::string alt_subseq = alt.substr(result[match_idx].j, rl);
-
+            
             // Perform the splice
             PathCons new_path(base);
             new_path.path.replace(result[match_idx].i, bl, alt_subseq);
@@ -1708,6 +1729,26 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
             match_idx += 1;
         }
     }
+}
+
+//
+// Outlier filtering
+//
+void filter_outlier_read_states(std::vector<HMMConsReadState>& read_states, const std::string& sequence)
+{
+    std::vector<HMMConsReadState> out_rs;
+    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+        const HMMConsReadState& rs = read_states[ri];
+
+        double curr = score_sequence(sequence, rs);
+        double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
+        double lp_per_event = curr / n_events;
+        printf("OUTLIER_FILTER %zu %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
+        if(abs(lp_per_event) < 3.0f) {
+            out_rs.push_back(rs);
+        }
+    }
+    read_states.swap(out_rs);
 }
 
 std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
@@ -1771,6 +1812,9 @@ void run_splice_segment(uint32_t segment_id)
     // the probability of the data given a possible consensus sequence
     std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
 
+    //
+    filter_outlier_read_states(read_states, base);
+
     uint32_t num_rounds = 6;
     uint32_t round = 0;
     while(round++ < num_rounds) {
@@ -1788,7 +1832,7 @@ void run_splice_segment(uint32_t segment_id)
     }
 
     run_mutation(base, read_states);
-
+    
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
 
@@ -1842,7 +1886,7 @@ void run_splice()
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = 6;
+    start_segment_id = 15;
 #endif
 
     uint32_t num_segments = g_data.anchored_columns.size();
