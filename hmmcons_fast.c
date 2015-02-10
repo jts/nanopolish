@@ -1690,7 +1690,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
         const std::string& alt = alts[ai];
         kLCSResult result = kLCS(base, alt);
 
-        /*
+#ifdef DEBUG_ALT_GENERATION
         printf("Match to alt %s\n", alt.c_str());
         for(size_t mi = 0; mi < result.size(); ++mi) {
             std::string extend = "";
@@ -1699,7 +1699,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
             }
             printf("\t%zu %zu %s %s\n", result[mi].i, result[mi].j, base.substr(result[mi].i, K).c_str(), extend.c_str());
         }
-        */
+#endif
 
         uint32_t match_idx = 0;
         while(match_idx < result.size()) {
@@ -1805,7 +1805,7 @@ void run_splice_segment(uint32_t segment_id)
     for(uint32_t ai = 0; ai < middle_column.alt_sequences.size(); ++ai) {
         // base first segment plus alts of middle segment
         if(middle_column.alt_sequences[ai].length() >= K)
-            alts.push_back(s_m_base + middle_column.alt_sequences[ai].substr(K));
+            alts.push_back(s_m_base.substr(0, s_m_base.size() - K) + middle_column.alt_sequences[ai]);
     }
 
     // Set up the HMMReadStates, which are used to calculate
@@ -1886,7 +1886,7 @@ void run_splice()
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = 15;
+    start_segment_id = 118;
 #endif
 
     uint32_t num_segments = g_data.anchored_columns.size();
