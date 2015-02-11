@@ -183,7 +183,7 @@ void initialize(int num_threads)
 }
 
 extern "C"
-void clear_state()
+void clear_data()
 {
     g_data.reads.clear();
     g_data.anchored_columns.clear();
