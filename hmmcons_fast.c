@@ -150,10 +150,7 @@ struct HmmConsData
     std::vector<CSquiggleRead> reads;
     std::vector<HMMAnchoredColumn> anchored_columns;
     
-    // OLD
     //
-    std::vector<HMMConsReadState> read_states;
-    std::vector<std::string> candidate_consensus;
     std::string consensus_result;
 };
 
@@ -188,8 +185,8 @@ void initialize(int num_threads)
 extern "C"
 void clear_state()
 {
-    g_data.read_states.clear();
-    g_data.candidate_consensus.clear();
+    g_data.reads.clear();
+    g_data.anchored_columns.clear();
     g_data.consensus_result.clear();
 }
 
@@ -245,12 +242,6 @@ void add_read(CSquiggleReadInterface params)
     // Initialize hmm parameters for both strands of the read
     khmm_parameters_initialize(sr.parameters[0]);
     khmm_parameters_initialize(sr.parameters[1]);
-}
-
-extern "C"
-void add_candidate_consensus(char* str)
-{
-    g_data.candidate_consensus.push_back(str);
 }
 
 // This is called by python to tell us we want to start a new anchored column
@@ -314,20 +305,6 @@ struct HMMMatrix
     uint32_t n_rows;
     uint32_t n_cols;
 };
-
-extern "C"
-void add_read_state(CReadStateInterface params)
-{
-    // add read state
-    g_data.read_states.push_back(HMMConsReadState());
-    HMMConsReadState& rs = g_data.read_states.back();
-    rs.read = &g_data.reads[params.read_idx];
-    rs.event_start_idx = params.event_start_idx;
-    rs.event_stop_idx = params.event_stop_idx;
-    rs.strand = params.strand;
-    rs.stride = params.stride;
-    rs.rc = params.rc;
-}
 
 std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColumn& start_column,  
                                                           const HMMAnchoredColumn& end_column)
@@ -1965,6 +1942,8 @@ void run_splice()
         break;
 #endif
     }
+
+    g_data.consensus_result = consensus;
 }
 
 // update the training data on the current segment

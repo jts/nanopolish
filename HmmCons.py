@@ -215,321 +215,244 @@ def load_reads(lib, squiggle_reads):
         lib.add_read(params)
 
 #
-num_threads = int(sys.argv[1])
-if num_threads <= 0:
-    sys.stderr.write("Invalid number of threads")
-    sys.exit(1)
-#
-# Build the map from read indices to fast5 files
-#
-fast5_fofn_fn = 'consensus_fast5.fofn'
-fast5_fofn_fh = open(fast5_fofn_fn)
+def call_consensus_for_file(input_filename, num_threads):
 
-f5_files = []
-for l in fast5_fofn_fh:
-    f5_files.append(l.rstrip())
+    if num_threads <= 0:
+        sys.stderr.write("Invalid number of threads")
+        sys.exit(1)
 
-#
-# Load squiggle reads
-#
-use_poabase_signals = False
-do_training = False
+    #
+    # Build the map from read indices to fast5 files
+    #
+    fast5_fofn_fn = 'consensus_fast5.fofn'
+    fast5_fofn_fh = open(fast5_fofn_fn)
 
-clustal_filename = "clustal-0.out"
-clustal = Clustal(clustal_filename)
-#cons_row = clustal.get_consensus_row()
-print "!!!!!!!! using first read as consensus row !!!!!!!"
+    f5_files = []
+    for l in fast5_fofn_fh:
+        f5_files.append(l.rstrip())
 
-cons_row = 0
-read_rows = clustal.get_read_rows()
+    #
+    # Load squiggle reads
+    #
+    use_poabase_signals = False
+    do_training = False
 
-# Initialize traversal
-n_reads = len(read_rows)
+    clustal = Clustal(input_filename)
 
-# Parse the clustal row names to generate POAReads
-poa_reads = list()
-row_to_poa_read_idx = dict()
-for rr in read_rows:
-    pa = unpack_poa_id(clustal.alignment[rr].id)
+    print "!!!!!!!! using first read as consensus row !!!!!!!"
 
-    # Append read and update map
-    poa_reads.append(pa)
-    
-    idx = len(poa_reads) - 1
-    row_to_poa_read_idx[rr] = idx
+    cons_row = 0
+    read_rows = clustal.get_read_rows()
 
-sys.stderr.write("Loading squigglereads\n")
-squiggle_reads = list()
-poa_idx_to_sr_idx = dict()
+    # Initialize traversal
+    n_reads = len(read_rows)
 
-seen_ids = dict()
+    # Parse the clustal row names to generate POAReads
+    poa_reads = list()
+    row_to_poa_read_idx = dict()
+    for rr in read_rows:
+        pa = unpack_poa_id(clustal.alignment[rr].id)
 
-for (poa_idx, pr) in enumerate(poa_reads):
+        # Append read and update map
+        poa_reads.append(pa)
+        
+        idx = len(poa_reads) - 1
+        row_to_poa_read_idx[rr] = idx
 
-    # A read may appear in multiple rows of the MA
-    # if the aligner emitted a few local alignments
-    # Only load a squiggleread once
-    if pr.read_id in seen_ids:
-        poa_idx_to_sr_idx[poa_idx] = seen_ids[pr.read_id]
-        continue
+    sys.stderr.write("Loading squigglereads\n")
+    squiggle_reads = list()
+    poa_idx_to_sr_idx = dict()
 
-    print 'Loading', pr.read_id, f5_files[pr.read_id]
-    squiggle_reads.append(SquiggleRead(f5_files[pr.read_id]))
+    seen_ids = dict()
 
-    sr_idx = len(squiggle_reads) - 1
-    poa_idx_to_sr_idx[poa_idx] = sr_idx
-    seen_ids[pr.read_id] = sr_idx
+    for (poa_idx, pr) in enumerate(poa_reads):
 
-sys.stderr.write("Done loading squigglereads\n")
+        # A read may appear in multiple rows of the MA
+        # if the aligner emitted a few local alignments
+        # Only load a squiggleread once
+        if pr.read_id in seen_ids:
+            poa_idx_to_sr_idx[poa_idx] = seen_ids[pr.read_id]
+            continue
 
+        print 'Loading', pr.read_id, f5_files[pr.read_id]
+        squiggle_reads.append(SquiggleRead(f5_files[pr.read_id]))
 
-#
-# Build anchors
-#
+        sr_idx = len(squiggle_reads) - 1
+        poa_idx_to_sr_idx[poa_idx] = sr_idx
+        seen_ids[pr.read_id] = sr_idx
 
-DEBUG=False
-ANCHOR_DISTANCE = 50 # in bases along the consensus row
+    sys.stderr.write("Done loading squigglereads\n")
 
-# this list stores the number of actual bases seen in each row up to current column
-n_bases = [0] * n_reads
-anchors = list()
+    #
+    # Build anchors
+    #
 
-cons_kidx = 0
-consensus_sequence = str(clustal.alignment[cons_row].seq)
+    DEBUG=False
+    ANCHOR_DISTANCE = 50 # in bases along the consensus row
 
-n_cols = len(clustal.alignment[cons_row])
-col = 0
+    # this list stores the number of actual bases seen in each row up to current column
+    n_bases = [0] * n_reads
+    anchors = list()
 
-#
-while col < n_cols:
+    cons_kidx = 0
+    consensus_sequence = str(clustal.alignment[cons_row].seq)
 
-    # Is there a consensus base in this column?
-    cons_base = clustal.alignment[cons_row][col]
-    cons_kmer = clustal.get_kmer(cons_row, col, 5)
+    n_cols = len(clustal.alignment[cons_row])
+    col = 0
 
-    # Should we make an anchor here?
-    if cons_kidx % ANCHOR_DISTANCE == 0 and cons_base != '-' and len(cons_kmer) == 5:
+    #
+    while col < n_cols:
 
-        print 'ANCHOR', cons_kidx
-        current_anchor = Anchor(col, cons_kidx)
+        # Is there a consensus base in this column?
+        cons_base = clustal.alignment[cons_row][col]
+        cons_kmer = clustal.get_kmer(cons_row, col, 5)
 
-        # Make anchor
+        # Should we make an anchor here?
+        if cons_kidx % ANCHOR_DISTANCE == 0 and cons_base != '-' and len(cons_kmer) == 5:
+
+            print 'ANCHOR', cons_kidx
+            current_anchor = Anchor(col, cons_kidx)
+
+            # Make anchor
+            for rr in read_rows:
+                b = clustal.alignment[rr][col]
+
+                # Read metadata
+                poa_read = poa_reads[rr]
+
+                if poa_read.is_base and not use_poabase_signals:
+                    continue
+
+                poa_idx = row_to_poa_read_idx[rr]
+                sr_idx = poa_idx_to_sr_idx[poa_idx]
+                sr = squiggle_reads[sr_idx]
+
+                read_kidx = n_bases[rr] + poa_read.start
+                
+                last_read_kidx = poa_read.stop - 5
+                if poa_read.is_base:
+                    last_read_kidx = sr.get_2D_length() - 5
+
+                print "\tROW", rr, poa_reads[rr].read_id, read_kidx, last_read_kidx
+
+                # skip reads that are not aligned in this range
+                if (read_kidx <= poa_read.start and b == '-') or (read_kidx >= last_read_kidx and b == '-'):
+                    continue
+
+                skmer = cons_kmer
+
+                t_rc = 0
+                c_rc = 1
+                if poa_read.strand == 'c':
+
+                    # switch kmer index and kmer sequence to opposite strand
+                    read_kidx = sr.flip_k_idx_strand(read_kidx, 5)
+                    skmer = revcomp(skmer)
+
+                    t_rc = 1
+                    c_rc = 0
+
+                # calculate closest events to this position
+                (tdiff, ti) = calculate_diff_to_expected(sr, read_kidx, 't', skmer)
+                (cdiff, ci) = calculate_diff_to_expected(sr, read_kidx, 'c', revcomp(skmer))
+                
+                # Fail if both events couldn't be found
+                if ti == -1 or ci == -1:
+                    continue
+
+                for (ei, strand, rc, diff) in ( (ti, 't', t_rc, tdiff), (ci, 'c', c_rc, cdiff)):
+                    strand_anchor = StrandAnchor(str(sr_idx) + "/" + strand, rr, sr_idx, strand, ei, rc, diff)
+                    current_anchor.add_strand(strand_anchor)
+                    current_anchor.n_samples += 1
+                    current_anchor.sum_diff += abs(diff)
+
+            anchors.append(current_anchor)
+
+        #
+        # Update indices
+        #
+        if cons_base != '-':
+            cons_kidx += 1
+
+        # Update base counts
         for rr in read_rows:
             b = clustal.alignment[rr][col]
+            if b != '-':
+                n_bases[rr] += 1
+        col += 1
 
-            # Read metadata
-            poa_read = poa_reads[rr]
-
-            if poa_read.is_base and not use_poabase_signals:
-                continue
-
-            poa_idx = row_to_poa_read_idx[rr]
-            sr_idx = poa_idx_to_sr_idx[poa_idx]
-            sr = squiggle_reads[sr_idx]
-
-            read_kidx = n_bases[rr] + poa_read.start
-            
-            last_read_kidx = poa_read.stop - 5
-            if poa_read.is_base:
-                last_read_kidx = sr.get_2D_length() - 5
-
-            print "\tROW", rr, poa_reads[rr].read_id, read_kidx, last_read_kidx
-
-            # skip reads that are not aligned in this range
-            if (read_kidx <= poa_read.start and b == '-') or (read_kidx >= last_read_kidx and b == '-'):
-                continue
-
-            skmer = cons_kmer
-
-            t_rc = 0
-            c_rc = 1
-            if poa_read.strand == 'c':
-
-                # switch kmer index and kmer sequence to opposite strand
-                read_kidx = sr.flip_k_idx_strand(read_kidx, 5)
-                skmer = revcomp(skmer)
-
-                t_rc = 1
-                c_rc = 0
-
-            # calculate closest events to this position
-            (tdiff, ti) = calculate_diff_to_expected(sr, read_kidx, 't', skmer)
-            (cdiff, ci) = calculate_diff_to_expected(sr, read_kidx, 'c', revcomp(skmer))
-            
-            # Fail if both events couldn't be found
-            if ti == -1 or ci == -1:
-                continue
-
-            for (ei, strand, rc, diff) in ( (ti, 't', t_rc, tdiff), (ci, 'c', c_rc, cdiff)):
-                strand_anchor = StrandAnchor(str(sr_idx) + "/" + strand, rr, sr_idx, strand, ei, rc, diff)
-                current_anchor.add_strand(strand_anchor)
-                current_anchor.n_samples += 1
-                current_anchor.sum_diff += abs(diff)
-
-        anchors.append(current_anchor)
+    print "!!!!!!! move last anchor to end of consensus !!!!!!"
 
     #
-    # Update indices
+    # Initialize library
     #
-    if cons_base != '-':
-        cons_kidx += 1
+    lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
+    lib_hmmcons_fast.initialize(num_threads)
 
-    # Update base counts
-    for rr in read_rows:
-        b = clustal.alignment[rr][col]
-        if b != '-':
-            n_bases[rr] += 1
-    col += 1
+    #
+    # Add reads
+    #
+    load_reads(lib_hmmcons_fast, squiggle_reads)
 
-print "!!!!!!! move last anchor to end of consensus !!!!!!"
+    #
+    # Call consensus
+    #
 
-#
-# Initialize library
-#
-lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
-lib_hmmcons_fast.initialize(num_threads)
-
-#
-# Add reads
-#
-load_reads(lib_hmmcons_fast, squiggle_reads)
-
-#
-# Call consensus
-#
-
-# Add anchors to the library
-for i in xrange(0, len(anchors)):
-    
-    a = anchors[i]
-    
-    anchor_rows = dict()
-
-    # Index anchors by squiggle read idx and strand
-    anchors_by_id = dict()
-    for sa in a.strands:
-        anchors_by_id[sa.idstr] = sa
-
-    # Tell the library we are starting to add anchors
-    lib_hmmcons_fast.start_anchored_column()
-
-    # We pass 2 read anchors to the library for every read
-    # event if it doesn't have events here. This must be done
-    # in the same order that we passed reads to the library
-    for (sr_idx, sr) in enumerate(squiggle_reads):
-        for strand in ('t', 'c'):
-            idstr = str(sr_idx) + "/" + strand
-
-            ra = CReadAnchorInterface(-1, 0)
-            if idstr in anchors_by_id:
-                sa = anchors_by_id[idstr]
-                ra = CReadAnchorInterface(sa.event_idx, sa.rc)
-                anchor_rows[sa.row_id] = 1
-
-            lib_hmmcons_fast.add_read_anchor(ra)
-
-    # Add sequences to this segment if its not the last
-    if i != len(anchors) - 1:
-        next_anchor = anchors[i + 1]
-        base_sequence = clustal.get_sequence_plus_k(cons_row, a.column, next_anchor.column, 5)
-        lib_hmmcons_fast.add_base_sequence(base_sequence)
-    
-        for row in anchor_rows:
-            read_sub = clustal.get_sequence_plus_k(row, a.column, next_anchor.column, 5)
-            lib_hmmcons_fast.add_alt_sequence(read_sub)
-
-    # Tell the library we are finished adding data for this segment
-    lib_hmmcons_fast.end_anchored_column()
-
-if do_training:
-    lib_hmmcons_fast.train()
-
-# Call consensus
-lib_hmmcons_fast.run_splice()
-
-sys.exit(1)
-
-#
-# Step 1. Learn parameters of the model
-#
-if do_training:
-    for i in xrange(0, len(anchors) - 1):
-        lib_hmmcons_fast.clear_state()
-
-        a1 = anchors[i]
-        a2 = anchors[i+1]
-
-        # Add the consensus sequence as the initial candidate consensus
-        candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
+    # Add anchors to the library
+    for i in xrange(0, len(anchors)):
         
-        lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
+        a = anchors[i]
         
-        # Initialize the c library using the reads that are anchored here
-        anchored_strand_pairs = pair_anchor_strands(a1, a2)
+        anchor_rows = dict()
 
-        for (sa_1, sa_2) in anchored_strand_pairs:
-            add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
+        # Index anchors by squiggle read idx and strand
+        anchors_by_id = dict()
+        for sa in a.strands:
+            anchors_by_id[sa.idstr] = sa
+
+        # Tell the library we are starting to add anchors
+        lib_hmmcons_fast.start_anchored_column()
+
+        # We pass 2 read anchors to the library for every read
+        # event if it doesn't have events here. This must be done
+        # in the same order that we passed reads to the library
+        for (sr_idx, sr) in enumerate(squiggle_reads):
+            for strand in ('t', 'c'):
+                idstr = str(sr_idx) + "/" + strand
+
+                ra = CReadAnchorInterface(-1, 0)
+                if idstr in anchors_by_id:
+                    sa = anchors_by_id[idstr]
+                    ra = CReadAnchorInterface(sa.event_idx, sa.rc)
+                    anchor_rows[sa.row_id] = 1
+
+                lib_hmmcons_fast.add_read_anchor(ra)
+
+        # Add sequences to this segment if its not the last
+        if i != len(anchors) - 1:
+            next_anchor = anchors[i + 1]
+            base_sequence = clustal.get_sequence_plus_k(cons_row, a.column, next_anchor.column, 5)
+            lib_hmmcons_fast.add_base_sequence(base_sequence)
         
-        lib_hmmcons_fast.learn_segment()
+            for row in anchor_rows:
+                read_sub = clustal.get_sequence_plus_k(row, a.column, next_anchor.column, 5)
+                lib_hmmcons_fast.add_alt_sequence(read_sub)
 
-    lib_hmmcons_fast.train()
+        # Tell the library we are finished adding data for this segment
+        lib_hmmcons_fast.end_anchored_column()
 
-# Call a consensus between the first two anchors
-original_consensus = ""
-fixed_consensus = ""
+    if do_training:
+        lib_hmmcons_fast.train()
 
-for i in xrange(0, len(anchors) - 1):
-    lib_hmmcons_fast.clear_state()
-
-    a1 = anchors[i]
-    a2 = anchors[i+1]
-
-    if DEBUG:
-        a1 = anchors[3]
-        a2 = anchors[4]
-
-    # Add the consensus sequence as the initial candidate consensus
-    candidate_sub = clustal.get_sequence_plus_k(cons_row, a1.column, a2.column, 5)
-
-    if DEBUG and False:
-        truth = "ATTGCGCGATCAGTTGCCTGCCACCACTGTTCCGGGTCTTGTTCCGACCAGAGTGGATGCGGGCGCGAAACGGTCAGCTTTTCCGTTTGCGCAGC"
-        lib_hmmcons_fast.add_candidate_consensus(truth)
-    else:
-        lib_hmmcons_fast.add_candidate_consensus(candidate_sub)
-    
-    print "CONSENSUS -- %d to %d %s" % (a1.column, a2.column, candidate_sub)
-
-    # Set up event sequences
-    anchor_rows = dict()
-
-    anchored_strand_pairs = pair_anchor_strands(a1, a2)
-    
-    for (sa_1, sa_2) in anchored_strand_pairs:
-        add_read_state_from_anchor_strands(lib_hmmcons_fast, sa_1, sa_2)
-        anchor_rows[sa_1.row_id] = 1
-
-    # Add the sequences of each row as alternates
-    for row in anchor_rows:
-        read_sub = clustal.get_sequence_plus_k(row, a1.column, a2.column, 5)
-        lib_hmmcons_fast.add_candidate_consensus(read_sub)
-
+    # Call consensus
     lib_hmmcons_fast.run_splice()
 
-    # extract results
-    lib_hmmcons_fast.get_consensus_result.restype = c_char_p
-    result = lib_hmmcons_fast.get_consensus_result()
-    print "POACON[%d]: %s" % (i, candidate_sub)
-    print "RESULT[%d]: %s" % (i, result)
-    
-    if original_consensus == "":
-        original_consensus = candidate_sub
-        fixed_consensus = result
-    else:
-        original_consensus = original_consensus + candidate_sub[5:]
-        fixed_consensus = fixed_consensus + result[5:]
-    
-    print "ORIGINAL: ", original_consensus
-    print "FIXED: ", fixed_consensus
+    # Cleanup
+    lib_hmmcons_fast.clear_all()
 
-    if DEBUG:
-        sys.exit(0)
+    # Get consensus
+    consensus = libhmm_cons_fast.get_consensus_result()
+    return consensus
+
+if __name__ == '__main__':
+    print call_consensus_for_file("clustal-0.out", int(sys.argv[1]))
