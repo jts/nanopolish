@@ -447,11 +447,12 @@ def call_consensus_for_file(input_filename, num_threads):
     # Call consensus
     lib_hmmcons_fast.run_splice()
 
-    # Cleanup
-    lib_hmmcons_fast.clear_all()
-
     # Get consensus
     consensus = libhmm_cons_fast.get_consensus_result()
+    
+    # Cleanup
+    lib_hmmcons_fast.clear_data()
+
     return consensus
 
 if __name__ == '__main__':
