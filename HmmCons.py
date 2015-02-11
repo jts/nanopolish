@@ -448,7 +448,7 @@ def call_consensus_for_file(input_filename, num_threads):
     lib_hmmcons_fast.run_splice()
 
     # Get consensus
-    consensus = libhmm_cons_fast.get_consensus_result()
+    consensus = lib_hmmcons_fast.get_consensus_result()
     
     # Cleanup
     lib_hmmcons_fast.clear_data()
