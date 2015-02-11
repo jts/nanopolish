@@ -65,6 +65,7 @@ enum AlignmentPolicy
 //#define DEBUG_TRANSITION 1
 #define PRINT_TRAINING_MESSAGES
 //#define DEBUG_SINGLE_SEGMENT 1
+//#define DEBUG_SHOW_TOP_TWO 1
 
 struct CEventSequence
 {
@@ -1142,12 +1143,18 @@ void update_training_khmm(const std::string& consensus,
 }
 
 void debug_khmm_model(const std::string& name,
-                      uint32_t id,
+                      uint32_t seq_id,
+                      uint32_t read_id,
                       const std::string& consensus, 
                       const HMMConsReadState& state)
 {
     std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
-
+    size_t n_matches = 0;
+    size_t n_merges = 0;
+    size_t n_skips = 0;
+    size_t n_mergeskips = 0;
+    
+    char prev_s = '\0';
     for(size_t pi = 0; pi < pstates.size(); ++pi) {
 
         uint32_t ei = pstates[pi].event_idx;
@@ -1167,6 +1174,11 @@ void debug_khmm_model(const std::string& name,
         double model_sd_mean = pm.state[rank].sd_mean;
         double model_sd_stdv = pm.state[rank].sd_stdv;
 
+        n_matches += (s == 'M');
+        n_merges += (s == 'E');
+        n_skips += (s == 'K');
+        n_mergeskips += (s == 'K' && prev_s == 'E');
+
         double lp_diff = 0.0f;
         if(pi > 0) {
             lp_diff = pstates[pi].l_fm - pstates[pi - 1].l_fm;
@@ -1175,13 +1187,35 @@ void debug_khmm_model(const std::string& name,
         }
         std::string kmer = consensus.substr(ki, K);
  
-        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), id, state.rc, state.strand ? 't' : 'c');
+        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, state.rc, state.strand ? 't' : 'c');
         printf("%c\t%zu\t%zu\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
         printf("\t%.1lf\t%.1lf\t%.1lf\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
         printf("%.2lf\t%.2lf\t%.2lf\n", exp(pstates[pi].l_posterior), pstates[pi].l_fm, lp_diff);
+        prev_s = s;
     }
+
+    // Summarize alignment
+    double time_start = state.read->events[state.strand].time[state.event_start_idx];
+    double time_end = state.read->events[state.strand].time[state.event_stop_idx];
+    double total_duration = fabs(time_start - time_end);
+    double num_events = abs(state.event_start_idx - state.event_stop_idx) + 1;
+    double final_lp = pstates[pstates.size() - 1].l_fm;
+    double mean_lp = final_lp / num_events;
+
+    // Print summary header on first entry
+    static int once = 1;
+    if(once) {
+        printf("SUMMARY\tseq_name\tseq_id\tread_id\tis_rc\tstrand\t");
+        printf("lp\tmean_lp\tnum_events\t");
+        printf("n_matches\tn_merges\tn_skips\tn_mergeskips\ttotal_duration\n");
+        once = 0;
+    }
+
+    printf("SUMMARY\t%s\t%d\t%d\t%d\t%c\t", name.c_str(), seq_id, read_id, state.rc, state.strand ? 't' : 'c');
+    printf("%.2lf\t%.2lf\t%.0lf\t", final_lp, mean_lp, num_events);
+    printf("%d\t%d\t%d\t%d\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
 }
 
 //
@@ -1444,9 +1478,9 @@ double score_sequence(const std::string& sequence, const HMMConsReadState& state
     //return score_emission_dp(sequence, state);
 }
 
-void debug_sequence(const std::string& name, uint32_t id, const std::string& sequence, const HMMConsReadState& state)
+void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMConsReadState& state)
 {
-    return debug_khmm_model(name, id, sequence, state);
+    return debug_khmm_model(name, seq_id, read_id, sequence, state);
 }
 
 std::vector<PosteriorState> posterior_decode(const std::string& sequence, const HMMConsReadState& state)
@@ -1666,7 +1700,7 @@ PathConsVector generate_mutations(const std::string& sequence)
     return mutations;
 }
 
-void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_states)
+void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_states, std::string& second_best)
 {
     int iteration = 0;
     while(iteration++ < 10) {
@@ -1676,6 +1710,7 @@ void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_s
 
         score_paths(paths, read_states);
 
+        second_best = paths[1].path;
         // check if no improvement was made
         if(paths[0].path == base)
             break;
@@ -1744,7 +1779,7 @@ void filter_outlier_read_states(std::vector<HMMConsReadState>& read_states, cons
         double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
         double lp_per_event = curr / n_events;
         printf("OUTLIER_FILTER %zu %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
-        if(abs(lp_per_event) < 3.0f) {
+        if(fabs(lp_per_event) < 3.5f) {
             out_rs.push_back(rs);
         }
     }
@@ -1831,8 +1866,17 @@ void run_splice_segment(uint32_t segment_id)
         base = paths[0].path;
     }
 
-    run_mutation(base, read_states);
-    
+    std::string second_best;
+    run_mutation(base, read_states, second_best);
+
+#if DEBUG_SHOW_TOP_TWO
+    assert(!second_best.empty());
+    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+        debug_sequence("best", segment_id, ri, base, read_states[ri]);
+        debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+    }
+#endif
+
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
 
