@@ -179,7 +179,6 @@ void initialize(int num_threads)
 {
     g_initialized = true;
     g_data.num_threads = num_threads;
-    printf("library threads set to %d\n", g_data.num_threads);
 }
 
 extern "C"
