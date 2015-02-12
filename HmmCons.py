@@ -459,4 +459,4 @@ def call_consensus_for_file(input_filename, num_threads):
     return consensus
 
 if __name__ == '__main__':
-    print call_consensus_for_file("clustal-0.out", int(sys.argv[1]))
+    print call_consensus_for_file(sys.argv[1], int(sys.argv[2]))
