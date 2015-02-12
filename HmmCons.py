@@ -310,7 +310,7 @@ def call_consensus_for_file(input_filename, num_threads):
         # Should we make an anchor here?
         if cons_kidx % ANCHOR_DISTANCE == 0 and cons_base != '-' and len(cons_kmer) == 5:
 
-            print 'ANCHOR', cons_kidx
+            #print 'ANCHOR', cons_kidx
             current_anchor = Anchor(col, cons_kidx)
 
             # Make anchor
@@ -333,10 +333,10 @@ def call_consensus_for_file(input_filename, num_threads):
                 if poa_read.is_base:
                     last_read_kidx = sr.get_2D_length() - 5
 
-                print "\tROW", rr, poa_reads[rr].read_id, read_kidx, last_read_kidx
+                #print "\tROW", rr, poa_reads[rr].read_id, read_kidx, last_read_kidx
 
                 # skip reads that are not aligned in this range
-                if (read_kidx <= poa_read.start and b == '-') or (read_kidx >= last_read_kidx and b == '-'):
+                if (read_kidx <= poa_read.start and b == '-') or (read_kidx >= last_read_kidx):
                     continue
 
                 skmer = cons_kmer
