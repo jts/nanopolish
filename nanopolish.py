@@ -61,8 +61,8 @@ def do_regions_overlap(s1, e1, s2, e2):
     return i1 or i2
 
 # write a fasta file for input into POA
-def write_poa_input(input_list, segment_idx):
-    fn = "poa.input.%d.fa" % (segment_idx)
+def write_poa_input(input_list, contig_idx, segment_idx):
+    fn = "poa.input.%d.%d.fa" % (contig_idx, segment_idx)
     fh = open(fn, "w")
 
     n_reads = 0
@@ -79,9 +79,9 @@ def write_poa_input(input_list, segment_idx):
     return (fn, n_reads)
 
 #
-def run_poa_and_consensus(input_list, segment_idx, num_threads):
-    (in_fn, n_reads) = write_poa_input(input_list, segment_idx)
-    out_fn = "clustal-%d.out" % (segment_idx)
+def run_poa_and_consensus(input_list, contig_idx, segment_idx, num_threads):
+    (in_fn, n_reads) = write_poa_input(input_list, contig_idx, segment_idx)
+    out_fn = "clustal.%d.%d.out" % (contig_idx, segment_idx)
     cmd = "poa -read_fasta %s -clustal %s -hb poa-blosum80.mat > /dev/null" % (in_fn, out_fn)
     p = subprocess.Popen(cmd, shell=True)
     p.wait()
@@ -242,7 +242,7 @@ for (contig_idx, contig_name) in enumerate(bamfile.references):
 
         sys.stderr.write("\tcalculating consensus for segment %d:%d\n" % (segment_start, segment_end))
 
-        (segment_consensus, num_reads) = run_poa_and_consensus(input_list, segment_id, args.threads)
+        (segment_consensus, num_reads) = run_poa_and_consensus(input_list, contig_idx, segment_id, args.threads)
 
         # Write segment consensus to file
         segment_consensus_fh.write(">%s:%s\n%s\n" % (contig_name, segment_id, segment_consensus))
