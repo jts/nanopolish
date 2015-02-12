@@ -63,9 +63,10 @@ enum AlignmentPolicy
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
-#define PRINT_TRAINING_MESSAGES
+#define PRINT_TRAINING_MESSAGES 1
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
+#define DEBUG_PATH_SELECTION 1
 
 struct CEventSequence
 {
@@ -1472,6 +1473,7 @@ struct PathCons
     std::string path;
     double score;
     size_t sum_rank;
+    size_t num_improved;
     std::string mutdesc;
     
 };
@@ -1507,6 +1509,11 @@ bool sortIndexedPathScoreDesc(const IndexedPathScore& a, const IndexedPathScore&
 // sorts the paths into ascending order by score
 void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& read_states)
 {
+    PROFILE_FUNC("score_paths")
+    double MIN_FIT = INFINITY;
+    size_t CULL_RATE = 5;
+    double CULL_MIN_SCORE = -20.0f;
+
     // cache the initial sequence
     std::string first = paths[0].path;
     
@@ -1519,6 +1526,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         if(path_string_set.find(paths[pi].path) == path_string_set.end()) {
             paths[pi].score = 0;
             paths[pi].sum_rank = 0;
+            paths[pi].num_improved = 0;
             dedup_paths.push_back(paths[pi]);
             path_string_set.insert(paths[pi].path);
         }
@@ -1526,7 +1534,6 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     paths.clear();
     paths.swap(dedup_paths);
     
-    double MIN_FIT = INFINITY;
 
     // Score all reads
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
@@ -1561,6 +1568,20 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
             paths[pi].score += (result[pri].score - first_path_score);
             uint32_t rank_score = pri;
             paths[pi].sum_rank += rank_score;
+            paths[pi].num_improved += (result[pri].score > first_path_score);
+        }
+
+        // Cull paths
+        if(ri > 0 && ri % CULL_RATE == 0) {
+            PathConsVector retained_paths;
+            for(size_t pi = 0; pi < paths.size(); ++pi) {
+                // keep the original path, any path meeting the minimum score
+                // and any path that improved the score of at least one read
+                if(pi == 0 || paths[pi].score > CULL_MIN_SCORE || paths[pi].num_improved > 0) {
+                    retained_paths.push_back(paths[pi]);
+                }
+            }
+            paths.swap(retained_paths);
         }
     }
 
@@ -1568,6 +1589,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     //std::sort(paths.begin(), paths.end(), sortPathConsRankAsc);
     std::sort(paths.begin(), paths.end(), sortPathConsScoreDesc);
 
+#if DEBUG_PATH_SELECTION
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
         // Calculate the length of the matching prefix with the initial sequence
@@ -1590,6 +1612,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         }
         printf("\n");
     }
+#endif
 
 }
 
@@ -1643,8 +1666,6 @@ PathConsVector generate_mutations(const std::string& sequence)
             ss << "sub-" << si << "-" << b;
             pc.mutdesc = ss.str();
             mutations.push_back(pc);
-
-
         }
 
         // 1bp del at this position
@@ -1678,6 +1699,7 @@ PathConsVector generate_mutations(const std::string& sequence)
 
 void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_states, std::string& second_best)
 {
+    PROFILE_FUNC("run_mutation")
     int iteration = 0;
     while(iteration++ < 10) {
 
@@ -1888,7 +1910,6 @@ void run_splice_segment(uint32_t segment_id)
             }
         }
 
-        printf("Updating event from %zu to %zu\n", middle_column.anchors[read_states[ri].anchor_index].event_idx, event_idx);
         middle_column.anchors[read_states[ri].anchor_index].event_idx = event_idx;
     }
 }
