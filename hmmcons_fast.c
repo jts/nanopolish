@@ -1565,7 +1565,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         double first_path_score = result[0].score;
 
         // Sort result by score
-        std::sort(result.begin(), result.end(), sortIndexedPathScoreDesc);
+        std::stable_sort(result.begin(), result.end(), sortIndexedPathScoreDesc);
 
         for(size_t pri = 0; pri < result.size(); ++pri) {
             size_t pi = result[pri].path_index;
@@ -1598,8 +1598,8 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     }
 
     // select new sequence
-    //std::sort(paths.begin(), paths.end(), sortPathConsRankAsc);
-    std::sort(paths.begin(), paths.end(), sortPathConsScoreDesc);
+    //std::stable_sort(paths.begin(), paths.end(), sortPathConsRankAsc);
+    std::stable_sort(paths.begin(), paths.end(), sortPathConsScoreDesc);
 
 #if DEBUG_PATH_SELECTION
     for(size_t pi = 0; pi < paths.size(); ++pi) {
@@ -1860,32 +1860,35 @@ void run_splice_segment(uint32_t segment_id)
     //
     filter_outlier_read_states(read_states, base);
 
-    uint32_t num_rounds = 6;
-    uint32_t round = 0;
-    while(round++ < num_rounds) {
-        
-        PathConsVector paths;
-        PathCons base_path(base);
-        paths.push_back(base_path);
-        
-        generate_alt_paths(paths, base, alts);
-        score_paths(paths, read_states);
+    // Only attempt correction if there are any reads here
+    if(!read_states.empty()) {
+        uint32_t num_rounds = 6;
+        uint32_t round = 0;
+        while(round++ < num_rounds) {
+            
+            PathConsVector paths;
+            PathCons base_path(base);
+            paths.push_back(base_path);
+            
+            generate_alt_paths(paths, base, alts);
+            score_paths(paths, read_states);
 
-        if(paths[0].path == base)
-            break;
-        base = paths[0].path;
-    }
+            if(paths[0].path == base)
+                break;
+            base = paths[0].path;
+        }
 
-    std::string second_best;
-    run_mutation(base, read_states, second_best);
+        std::string second_best;
+        run_mutation(base, read_states, second_best);
 
 #if DEBUG_SHOW_TOP_TWO
-    assert(!second_best.empty());
-    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-        debug_sequence("best", segment_id, ri, base, read_states[ri]);
-        debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
-    }
+        assert(!second_best.empty());
+        for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+            debug_sequence("best", segment_id, ri, base, read_states[ri]);
+            debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+        }
 #endif
+    }
 
     printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
     printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
