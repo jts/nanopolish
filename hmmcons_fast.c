@@ -1471,9 +1471,12 @@ struct PathCons
     PathCons(const std::string& s) : path(s), score(0.0f), sum_rank(0) {}
 
     std::string path;
+    
     double score;
     size_t sum_rank;
     size_t num_improved;
+    size_t num_scored;
+    
     std::string mutdesc;
     
 };
@@ -1512,7 +1515,8 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     PROFILE_FUNC("score_paths")
     double MIN_FIT = INFINITY;
     size_t CULL_RATE = 5;
-    double CULL_MIN_SCORE = -20.0f;
+    double CULL_MIN_SCORE = -30.0f;
+    double CULL_MIN_IMPROVED_FRACTION = 0.2f;
 
     // cache the initial sequence
     std::string first = paths[0].path;
@@ -1527,6 +1531,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
             paths[pi].score = 0;
             paths[pi].sum_rank = 0;
             paths[pi].num_improved = 0;
+            paths[pi].num_scored = 0;
             dedup_paths.push_back(paths[pi]);
             path_string_set.insert(paths[pi].path);
         }
@@ -1569,15 +1574,22 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
             uint32_t rank_score = pri;
             paths[pi].sum_rank += rank_score;
             paths[pi].num_improved += (result[pri].score > first_path_score);
+            paths[pi].num_scored += 1;
         }
 
         // Cull paths
         if(ri > 0 && ri % CULL_RATE == 0) {
             PathConsVector retained_paths;
             for(size_t pi = 0; pi < paths.size(); ++pi) {
-                // keep the original path, any path meeting the minimum score
-                // and any path that improved the score of at least one read
-                if(pi == 0 || paths[pi].score > CULL_MIN_SCORE || paths[pi].num_improved > 0) {
+                
+                // We keep a path if any of these conditions are met:
+                //  1) it is the original unmodified sequence
+                //  2) its score is greater than CULL_MIN_SCORE
+                //  3) the fraction of reads that score better on this
+                //     path compared to the original sequence is greater
+                //     than CULL_MIN_IMPROVED_FRACTION
+                double f = (double)paths[pi].num_improved / (double)paths[pi].num_scored;
+                if(pi == 0 || paths[pi].score > CULL_MIN_SCORE || f >= CULL_MIN_IMPROVED_FRACTION) {
                     retained_paths.push_back(paths[pi]);
                 }
             }
