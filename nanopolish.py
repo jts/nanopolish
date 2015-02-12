@@ -4,6 +4,7 @@ import re
 import subprocess
 import os
 import random
+import argparse
 from Clustal import *
 from HmmCons import *
 from collections import defaultdict
@@ -17,8 +18,8 @@ def revcomp(seq):
     return reverse_complement
 
 def cleanup_temp(fn):
-    print "Cleanup turned off"
-    #os.remove(fn)
+    #print "Cleanup turned off"
+    os.remove(fn)
 
 # parse an LAshow read index string into a numeric ID
 # the IDs are 1-based and contain commas
@@ -86,6 +87,9 @@ def run_poa_and_consensus(input_list, segment_idx, num_threads):
     p.wait()
     
     consensus = call_consensus_for_file(out_fn, num_threads)
+    
+    # fake a consensus sequence for debugging
+    #consensus = input_list[0].sequence
 
     cleanup_temp(in_fn)
     cleanup_temp(out_fn)
@@ -142,31 +146,60 @@ def merge_into_consensus(consensus, incoming, overlap_length):
     return merged
 
 # Args
-assembly_fn = sys.argv[1]
-bam_fn = sys.argv[2]
-num_threads = int(sys.argv[3])
+parser = argparse.ArgumentParser()
+parser.add_argument("--assembly", help="the filename of the assembly to polish")
+parser.add_argument("--bam", help="the name of the bam containing reads mapped to the assembly")
+parser.add_argument("--threads", help="the number of compute threads to use")
+parser.add_argument("--contig", help="only compute the consensus for the given contig")
+parser.add_argument("--segments", help="only compute the consensus for the given range of segments")
+args = parser.parse_args()
 
 # Open assembly file
-assembly = pysam.Fastafile(assembly_fn)
+assembly = pysam.Fastafile(args.assembly)
 
 # Open bam file
-bamfile = pysam.AlignmentFile(bam_fn, "rb")
+bamfile = pysam.AlignmentFile(args.bam, "rb")
 
 # Open partial output file
-segment_consensus_fh = open("nanopolish_segments.fa", "w")
-final_consensus_fh = open("nanopolish_final.fa", "w")
+#final_consensus_fh = open("nanopolish_final.fa", "w")
+contig_out_name = "all"
+if args.contig is not None:
+    contig_out_name = args.contig
+
+segment_out_name = "all"
+if args.segments is not None:
+    segment_out_name = args.segments
+
+segment_consensus_fh = open("nanopolish_contig_%s_segment_%s.fa" % (contig_out_name, segment_out_name), "w")
 
 # Iterate over contigs
 SEGMENT_LENGTH = 10000
 SEGMENT_OVERLAP = 200
-segment_id = 0
 
 for (contig_idx, contig_name) in enumerate(bamfile.references):
+
+    if args.contig != None and args.contig != contig_name:
+        continue
+
     contig_length = bamfile.lengths[contig_idx]
     print 'Computing consensus for', contig_name, contig_length, 'bp'
     contig_consensus = ""
 
-    for segment_start in xrange(0, contig_length, SEGMENT_LENGTH):
+    num_segments = int(contig_length / SEGMENT_LENGTH) + 1
+    segments_to_process = list()
+    if args.segments == None:
+        # process entire contig
+        segments_to_process = range(0, num_segments)
+    else:
+        # process range of segments
+        (start, end) = [ int(x) for x in args.segments.split(':') ]
+        if end > num_segments:
+            end = num_segments
+
+        segments_to_process = range(start, end)
+
+    for segment_id in segments_to_process:
+        segment_start = segment_id * SEGMENT_LENGTH
         segment_end = segment_start + SEGMENT_LENGTH + SEGMENT_OVERLAP
 
         if segment_end > contig_length:
@@ -209,13 +242,12 @@ for (contig_idx, contig_name) in enumerate(bamfile.references):
 
         sys.stderr.write("\tcalculating consensus for segment %d:%d\n" % (segment_start, segment_end))
 
-        (segment_consensus, num_reads) = run_poa_and_consensus(input_list, segment_id, num_threads)
+        (segment_consensus, num_reads) = run_poa_and_consensus(input_list, segment_id, args.threads)
 
-        # Write partial consensus to file
+        # Write segment consensus to file
         segment_consensus_fh.write(">%s:%s\n%s\n" % (contig_name, segment_id, segment_consensus))
-
-        contig_consensus = merge_into_consensus(contig_consensus, segment_consensus, SEGMENT_OVERLAP)
+        #contig_consensus = merge_into_consensus(contig_consensus, segment_consensus, SEGMENT_OVERLAP)
         segment_id += 1
     
     # Write final consensus to file
-    final_consensus_fh.write(">%s\n%s\n" % (contig_name, contig_consensus))
+    #final_consensus_fh.write(">%s\n%s\n" % (contig_name, contig_consensus))
