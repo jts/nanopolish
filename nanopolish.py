@@ -95,56 +95,6 @@ def run_poa_and_consensus(input_list, contig_idx, segment_idx, num_threads):
     cleanup_temp(out_fn)
     return (consensus, n_reads)
 
-def merge_into_consensus(consensus, incoming, overlap_length):
-
-    # if first segment, no overlapping needs to be done
-    if consensus == "":
-        return incoming
-
-    or_con = consensus[-overlap_length:]
-    or_inc = incoming[0:overlap_length]
-
-    # These parameters are designed to give us the region of highest similarity
-    # between the two sequences
-    alignments = pairwise2.align.localms(or_con, or_inc, 2, -10, -10, -10)
-
-    best = alignments[0]
-    aln_con, aln_inc, score, begin, end = best
-
-    # Calculate the point to merge at
-    m_con = 0
-    m_inc = 0
-
-    for i in xrange(0, begin):
-        a = aln_con[i]
-        b = aln_inc[i]
-
-        if a != '-':
-            m_con += 1
-        if b != '-':
-            m_inc += 1
-
-    m_con += len(consensus) - overlap_length
-    merged = consensus[0:m_con] + incoming[m_inc:]
-    
-    #merged = or_con[0:m_con] + or_inc[m_inc:]
-    debug_segment_merge = False
-    if debug_segment_merge:
-        print 'OR', or_con
-        print 'OR', or_inc
-
-        print 'Before trim'
-        print aln_con
-        print aln_inc
-
-        print 'After trim'
-        print aln_con[begin:end]
-        print aln_inc[begin:end]
-        print score, begin, end, m_con, m_inc
-        print merged
-
-    return merged
-
 # Args
 parser = argparse.ArgumentParser()
 parser.add_argument("--assembly", help="the filename of the assembly to polish")
@@ -249,5 +199,3 @@ for (contig_idx, contig_name) in enumerate(bamfile.references):
         #contig_consensus = merge_into_consensus(contig_consensus, segment_consensus, SEGMENT_OVERLAP)
         segment_id += 1
     
-    # Write final consensus to file
-    #final_consensus_fh.write(">%s\n%s\n" % (contig_name, contig_consensus))
