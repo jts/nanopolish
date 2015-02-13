@@ -149,7 +149,7 @@ def merge_into_consensus(consensus, incoming, overlap_length):
 parser = argparse.ArgumentParser()
 parser.add_argument("--assembly", help="the filename of the assembly to polish")
 parser.add_argument("--bam", help="the name of the bam containing reads mapped to the assembly")
-parser.add_argument("--threads", help="the number of compute threads to use")
+parser.add_argument("--threads", help="the number of compute threads to use", type=int)
 parser.add_argument("--contig", help="only compute the consensus for the given contig")
 parser.add_argument("--segments", help="only compute the consensus for the given range of segments")
 args = parser.parse_args()
