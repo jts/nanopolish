@@ -1720,7 +1720,12 @@ void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_s
 
         score_paths(paths, read_states);
 
-        second_best = paths[1].path;
+        if(paths.size() > 1) {
+            second_best = paths[1].path;
+        } else {
+            second_best = "";   
+        }
+
         // check if no improvement was made
         if(paths[0].path == base)
             break;
@@ -1882,10 +1887,11 @@ void run_splice_segment(uint32_t segment_id)
         run_mutation(base, read_states, second_best);
 
 #if DEBUG_SHOW_TOP_TWO
-        assert(!second_best.empty());
-        for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-            debug_sequence("best", segment_id, ri, base, read_states[ri]);
-            debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+        if(!second_best.empty()) {
+            for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+                debug_sequence("best", segment_id, ri, base, read_states[ri]);
+                debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+            }
         }
 #endif
     }
