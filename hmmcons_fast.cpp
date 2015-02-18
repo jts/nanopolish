@@ -13,10 +13,10 @@
 #ifdef HAVE_OPENMP
 #include <omp.h>
 #endif
-#include "hmmcons_poremodel.h"
-#include "hmmcons_interface.h"
-#include "hmmcons_khmm_parameters.h"
-#include "Profiler.h"
+#include "hmmcons_poremodel.hpp"
+#include "hmmcons_interface.hpp"
+#include "hmmcons_khmm_parameters.hpp"
+#include "Profiler.hpp"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)

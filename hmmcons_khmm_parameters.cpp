@@ -3,7 +3,7 @@
 #include <math.h>
 #include <assert.h>
 #include <stdio.h>
-#include "hmmcons_khmm_parameters.h"
+#include "hmmcons_khmm_parameters.hpp"
 
 void khmm_parameters_initialize(KHMMParameters& parameters)
 {
