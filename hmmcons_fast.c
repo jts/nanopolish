@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <sstream>
 #include <set>
+#ifdef HAVE_OPENMP
 #include <omp.h>
+#endif
 #include "hmmcons_poremodel.h"
 #include "hmmcons_interface.h"
 #include "hmmcons_khmm_parameters.h"
@@ -1083,7 +1085,7 @@ void update_training_khmm(const std::string& consensus,
                 double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
 
 #ifdef PRINT_TRAINING_MESSAGES
-                printf("TRAIN_SKIP\t%zu\t%.3lf\t%.3lf\t%c\n", strand_idx, ke1, ke2, s);
+                printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\n", strand_idx, ke1, ke2, s);
 #endif
                 TransitionObservation to = { ke1, ke2, s };
                 training_data.transitions.push_back(to);
@@ -1095,7 +1097,7 @@ void update_training_khmm(const std::string& consensus,
             double start_time = state.read->events[state.strand].time[ei];
             double end_time = state.read->events[state.strand].time[ei + 1];
             if(ki >= n_kmers)
-                printf("%zu %zu %zu %zu %.2lf %c\n", pi, ei, ki, n_kmers, pstates[pi].l_fm, s);
+                printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, pstates[pi].l_fm, s);
             
             assert(ki < n_kmers);
             uint32_t rank = get_rank(state, consensus.c_str(), ki);
@@ -1108,7 +1110,7 @@ void update_training_khmm(const std::string& consensus,
                 training_data.emissions_for_matches.push_back(norm_level);
 
 #ifdef PRINT_TRAINING_MESSAGES
-            printf("TRAIN_EMISSION\t%zu\t%zu\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, end_time - start_time, s);
+            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, end_time - start_time, s);
 #endif
         }
 
@@ -1165,7 +1167,7 @@ void debug_khmm_model(const std::string& name,
         std::string kmer = consensus.substr(ki, K);
  
         printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, state.rc, state.strand ? 't' : 'c');
-        printf("%c\t%zu\t%zu\t", s, ei, ki);
+        printf("%c\t%d\t%d\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
         printf("\t%.1lf\t%.1lf\t%.1lf\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
@@ -1192,7 +1194,7 @@ void debug_khmm_model(const std::string& name,
 
     printf("SUMMARY\t%s\t%d\t%d\t%d\t%c\t", name.c_str(), seq_id, read_id, state.rc, state.strand ? 't' : 'c');
     printf("%.2lf\t%.2lf\t%.0lf\t", final_lp, mean_lp, num_events);
-    printf("%d\t%d\t%d\t%d\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
+    printf("%zu\t%zu\t%zu\t%zu\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
 }
 
 //
@@ -1553,8 +1555,10 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
+#ifdef HAVE_OPENMP
         omp_set_num_threads(g_data.num_threads);
         #pragma omp parallel for
+#endif
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, read_states[ri]);
             result[pi].score = curr;
@@ -1788,7 +1792,7 @@ void filter_outlier_read_states(std::vector<HMMConsReadState>& read_states, cons
         double curr = score_sequence(sequence, rs);
         double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
         double lp_per_event = curr / n_events;
-        printf("OUTLIER_FILTER %zu %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
+        printf("OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
         if(fabs(lp_per_event) < 3.5f) {
             out_rs.push_back(rs);
         }
@@ -1890,8 +1894,8 @@ void run_splice_segment(uint32_t segment_id)
 #endif
     }
 
-    printf("ORIGINAL[%zu] %s\n", segment_id, original.c_str());
-    printf("RESULT[%zu]   %s\n", segment_id, base.c_str());
+    printf("ORIGINAL[%d] %s\n", segment_id, original.c_str());
+    printf("RESULT[%d]   %s\n", segment_id, base.c_str());
 
     // Update the sequences for the start and middle segments
     // by cutting the new consensus in the middle
@@ -1971,8 +1975,8 @@ void run_splice()
             consensus.append(base.substr(K));
         }
 
-        printf("UNCORRECT[%zu]: %s\n", segment_id, uncorrected.c_str());
-        printf("CONSENSUS[%zu]: %s\n", segment_id, consensus.c_str());
+        printf("UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
+        printf("CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
 #ifdef DEBUG_SINGLE_SEGMENT
         break;
 #endif
@@ -2018,7 +2022,7 @@ void train()
     // train on current consensus
     uint32_t num_segments = g_data.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
-        printf("Training segment %zu\n", segment_id);
+        printf("Training segment %d\n", segment_id);
         train_segment(segment_id);
     }
 

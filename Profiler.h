@@ -12,9 +12,9 @@
 #include <time.h>
 #include <iostream>
 
-#define USE_PROFILER 1
+#define USE_PROFILER 0
 
-#if defined(USE_PROFILER)
+#if USE_PROFILER
 
 // Change this to determine how often the profile should print
 #define PROFILE_TICKS_BEFORE_PRINT 1000

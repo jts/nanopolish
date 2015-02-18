@@ -85,7 +85,7 @@ double get_skip_probability(const KHMMParameters& parameters, double k_level1, d
 void khmm_parameters_train(KHMMParameters& parameters)
 {
     TrainingData& td = parameters.training_data;
-    printf("train -- M: %zu E: %zu K: %zu\n", td.n_matches, td.n_merges, td.n_skips);
+    printf("train -- M: %d E: %d K: %d\n", td.n_matches, td.n_merges, td.n_skips);
 
     size_t sum = td.n_matches + td.n_merges + td.n_skips;
     if(sum > 0)
