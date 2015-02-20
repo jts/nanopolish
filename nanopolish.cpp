@@ -1,3 +1,10 @@
+///--------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Jared Simpson (jared.simpson@oicr.on.ca)
+//---------------------------------------------------------
+//
+// nanopolish.cpp -- entry point to consensus functions
+//
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,13 +17,11 @@
 #include <algorithm>
 #include <sstream>
 #include <set>
-#ifdef HAVE_OPENMP
 #include <omp.h>
-#endif
-#include "hmmcons_poremodel.hpp"
-#include "hmmcons_interface.hpp"
-#include "hmmcons_khmm_parameters.hpp"
-#include "Profiler.hpp"
+#include "nanopolish_poremodel.h"
+#include "nanopolish_interface.h"
+#include "nanopolish_khmm_parameters.h"
+#include "profiler.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -1555,10 +1560,8 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
-#ifdef HAVE_OPENMP
         omp_set_num_threads(g_data.num_threads);
         #pragma omp parallel for
-#endif
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, read_states[ri]);
             result[pi].score = curr;
