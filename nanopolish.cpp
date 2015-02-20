@@ -23,6 +23,7 @@
 #include "nanopolish_khmm_parameters.h"
 #include "nanopolish_utility.h"
 #include "nanopolish_matrix.h"
+#include "nanopolish_klcs.h"
 #include "profiler.h"
 
 // Macros
@@ -1021,89 +1022,6 @@ void debug_khmm_model(const std::string& name,
     printf("%zu\t%zu\t%zu\t%zu\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
 }
 
-// The indices of a k-mer match in a pair of sequences
-struct kLCSPair
-{
-    uint32_t i;
-    uint32_t j;
-};
-typedef std::vector<kLCSPair> kLCSResult;
-
-// Helper to backtrack through the kLCS matrix
-void _kLCSBacktrack(const UInt32Matrix& m,
-                    const std::string& a, 
-                    const std::string& b,
-                    uint32_t row,
-                    uint32_t col,
-                    kLCSResult& result)
-{
-    if(row == 0 || col == 0)
-        return;
-
-    const char* ka = a.c_str() + row - 1;
-    const char* kb = b.c_str() + col - 1;
-
-    if(strncmp(ka, kb, K) == 0) {
-        kLCSPair p = { row - 1, col - 1 };
-        result.push_back(p);
-        return _kLCSBacktrack(m, a, b, row - 1, col - 1, result);
-    } else {
-
-        if(get(m, row - 1, col) > get(m, row, col - 1)) {
-            return _kLCSBacktrack(m, a, b, row - 1, col, result);
-        } else {
-            return _kLCSBacktrack(m, a, b, row, col - 1, result);
-        }
-    }
-}
-
-// Return the longest common subseuqence of k-mers between the two strings
-kLCSResult kLCS(const std::string& a, const std::string& b)
-{
-    uint32_t n_kmers_a = a.size() - K + 1;
-    uint32_t n_kmers_b = b.size() - K + 1;
-
-    uint32_t n_rows = n_kmers_a + 1;
-    uint32_t n_cols = n_kmers_b + 1;
-
-    UInt32Matrix m;
-    allocate_matrix(m, n_rows, n_cols);
-
-    // Initialize first row/col to zero
-    for(uint32_t row = 0; row < m.n_rows; ++row)
-        set(m, row, 0, 0);
-    for(uint32_t col = 0; col < m.n_cols; ++col)
-        set(m, 0, col, 0);
-    
-    // Fill matrix
-    for(uint32_t row = 1; row < m.n_rows; ++row) {
-        for(uint32_t col = 1; col < m.n_cols; ++col) {
-    
-            const char* ka = a.c_str() + row - 1;
-            const char* kb = b.c_str() + col - 1;
-
-            uint32_t score = 0;
-            if(strncmp(ka, kb, K) == 0) {
-                uint32_t diag = get(m, row - 1, col - 1);
-                score = diag + 1;
-            } else {
-                uint32_t left = get(m, row, col - 1);
-                uint32_t up = get(m, row - 1, col);
-                score = std::max(left, up);
-            }
-            set(m, row, col, score);
-        }
-    }
-
-    kLCSResult result;
-    _kLCSBacktrack(m, a, b, n_rows - 1, n_cols -  1, result);
-
-    // Backtrack appends from the end to the start, reverse the vector of matches
-    std::reverse(result.begin(), result.end());
-    free_matrix(m);
-    return result;
-}
-
 // Handy wrappers for scoring/debugging functions
 // The consensus algorithms call into these so we can switch
 // scoring functinos without writing a bunch of code
@@ -1393,7 +1311,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
     // Generate alternatives
     for(uint32_t ai = 0; ai < alts.size(); ++ai) {
         const std::string& alt = alts[ai];
-        kLCSResult result = kLCS(base, alt);
+        kLCSResult result = kLCS(base, alt, K);
 
 #ifdef DEBUG_ALT_GENERATION
         printf("Match to alt %s\n", alt.c_str());

@@ -8,6 +8,13 @@
 #ifndef NANOPOLISH_MATRIX_H
 #define NANOPOLISH_MATRIX_H
 
+#include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <assert.h>
+#include <string.h>
+#include "nanopolish_matrix.h"
+
 //
 // Template Matrix for POD types
 //
@@ -67,7 +74,7 @@ inline T get(const Matrix<T>& matrix, uint32_t row, uint32_t col)
 }
 
 //
-void print_matrix(const DoubleMatrix& matrix, bool do_exp = false)
+inline void print_matrix(const DoubleMatrix& matrix, bool do_exp = false)
 {
     for(uint32_t i = 0; i < matrix.n_rows; ++i) {
         for(uint32_t j = 0; j < matrix.n_cols; ++j) {
