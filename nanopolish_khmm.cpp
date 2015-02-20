@@ -15,7 +15,7 @@
 const static uint32_t KHMM_MAX_JUMP = 5;
 const static uint32_t KHMM_MAX_MERGE = 10;
 
-void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state)
+void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state)
 {
     PROFILE_FUNC("fill_khmm_transitions")
 
@@ -81,7 +81,7 @@ void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, c
     set(matrix, n_states - 2, n_states - 1, 0.0f);
 }
 
-void initialize_forward_khmm(DoubleMatrix& fm)
+void khmm_forward_initialize(DoubleMatrix& fm)
 {
     // initialize forward calculation
     for(uint32_t si = 0; si < fm.n_cols; si++)
@@ -95,7 +95,7 @@ void initialize_forward_khmm(DoubleMatrix& fm)
 // Terminate the forward algorithm by calculating
 // the probability of transitioning to the end state
 // for all columns and a given row
-double forward_khmm_terminate(const DoubleMatrix& fm,
+double khmm_forward_terminate(const DoubleMatrix& fm,
                               const DoubleMatrix& tm,
                               uint32_t row)
 {
@@ -110,7 +110,7 @@ double forward_khmm_terminate(const DoubleMatrix& fm,
     return sum;
 }
 
-double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
+double khmm_forward_fill(DoubleMatrix& fm, // forward matrix
                          const DoubleMatrix& tm, //transitions
                          const char* sequence,
                          const HMMConsReadState& state,
@@ -175,7 +175,7 @@ double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
     return sum;
 }
 
-void initialize_backward_khmm(DoubleMatrix& bm, const DoubleMatrix& tm)
+void khmm_backward_initialize(DoubleMatrix& bm, const DoubleMatrix& tm)
 {
     // initialize forward calculation
     uint32_t tcol = tm.n_cols - 1;
@@ -185,11 +185,11 @@ void initialize_backward_khmm(DoubleMatrix& bm, const DoubleMatrix& tm)
         set(bm, row, si, get(tm, si, tcol));
 }
 
-void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
-                         const DoubleMatrix& tm, //transitions
-                         const char* sequence,
-                         const HMMConsReadState& state,
-                         uint32_t e_start)
+void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
+                        const DoubleMatrix& tm, //transitions
+                        const char* sequence,
+                        const HMMConsReadState& state,
+                        uint32_t e_start)
 {
     // Fill in matrix
     for(uint32_t row = bm.n_rows - 2; row > 0; row--) {
@@ -224,7 +224,7 @@ void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
     }
 }
 
-double score_khmm_model(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
+double khmm_score(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -232,7 +232,7 @@ double score_khmm_model(const std::string& consensus, const HMMConsReadState& st
     DoubleMatrix tm;
     allocate_matrix(tm, n_states, n_states);
 
-    fill_khmm_transitions(tm, consensus, state);
+    khmm_fill_transitions(tm, consensus, state);
     
     uint32_t e_start = state.event_start_idx;
     uint32_t e_end = state.event_stop_idx;
@@ -248,21 +248,21 @@ double score_khmm_model(const std::string& consensus, const HMMConsReadState& st
     DoubleMatrix fm;
     allocate_matrix(fm, n_rows, n_states);
 
-    initialize_forward_khmm(fm);
-    fill_forward_khmm(fm, tm, consensus.c_str(), state, e_start);
+    khmm_forward_initialize(fm);
+    khmm_forward_fill(fm, tm, consensus.c_str(), state, e_start);
 
     double score = 0.0f;
     if(policy == AP_GLOBAL) {
         // score by the bottom-right cell
         uint32_t last_row = fm.n_rows - 1;
-        score = forward_khmm_terminate(fm, tm, last_row);
+        score = khmm_forward_terminate(fm, tm, last_row);
     } else if(policy == AP_SEMI_KMER) {
 
         // score by the best cell in the last column
         double best_score = -INFINITY;
         uint32_t best_row = 0;
         for(size_t row = 1; row < fm.n_rows - 1; ++row) {
-            double s = forward_khmm_terminate(fm, tm, row);
+            double s = khmm_forward_terminate(fm, tm, row);
             if(s > best_score) {
                 best_score = s;
                 best_row = row;
@@ -288,7 +288,7 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     DoubleMatrix tm;
     allocate_matrix(tm, n_states, n_states);
 
-    fill_khmm_transitions(tm, sequence, state);
+    khmm_fill_transitions(tm, sequence, state);
     
     uint32_t e_start = state.event_start_idx;
     uint32_t e_end = state.event_stop_idx;
@@ -304,15 +304,15 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     DoubleMatrix fm;
     allocate_matrix(fm, n_rows, n_states);
 
-    initialize_forward_khmm(fm);
-    double lf = fill_forward_khmm(fm, tm, sequence.c_str(), state, e_start);
+    khmm_forward_initialize(fm);
+    double lf = khmm_forward_fill(fm, tm, sequence.c_str(), state, e_start);
 
     // Allocate and compute backward matrix
     DoubleMatrix bm;
     allocate_matrix(bm, n_rows, n_states);
 
-    initialize_backward_khmm(bm, tm);
-    fill_backward_khmm(bm, tm, sequence.c_str(), state, e_start);
+    khmm_backward_initialize(bm, tm);
+    khmm_backward_fill(bm, tm, sequence.c_str(), state, e_start);
 
     // posterior decode
     std::vector<PosteriorState> output;
@@ -468,11 +468,11 @@ void update_training_khmm(const std::string& consensus,
     }
 }
 
-void debug_khmm_model(const std::string& name,
-                      uint32_t seq_id,
-                      uint32_t read_id,
-                      const std::string& consensus, 
-                      const HMMConsReadState& state)
+void khmm_debug(const std::string& name,
+                uint32_t seq_id,
+                uint32_t read_id,
+                const std::string& consensus, 
+                const HMMConsReadState& state)
 {
     std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
     size_t n_matches = 0;

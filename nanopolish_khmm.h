@@ -16,42 +16,48 @@
 #include "nanopolish_common.h"
 #include "nanopolish_emissions.h"
 
-// TODO: refactor
-struct HMMConsReadState;
+// Fill in the transition matrix for the model
+void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state);
 
-void fill_khmm_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state);
+// Initialize the forward algorithm
+void khmm_forward_initialize(DoubleMatrix& fm);
 
-void initialize_forward_khmm(DoubleMatrix& fm);
+// Terminate the forward algorithm
+double khmm_forward_terminate(const DoubleMatrix& fm, const DoubleMatrix& tm, uint32_t row);
 
-double forward_khmm_terminate(const DoubleMatrix& fm, const DoubleMatrix& tm, uint32_t row);
-
-double fill_forward_khmm(DoubleMatrix& fm, // forward matrix
+// Fill in the forward matrix
+double khmm_forward_fill(DoubleMatrix& fm, // forward matrix
                          const DoubleMatrix& tm, //transitions
                          const char* sequence,
                          const HMMConsReadState& state,
                          uint32_t e_start);
 
-void initialize_backward_khmm(DoubleMatrix& bm, const DoubleMatrix& tm);
+// Initialize the backward algorithm
+void khmm_backward_initialize(DoubleMatrix& bm, const DoubleMatrix& tm);
 
-void fill_backward_khmm(DoubleMatrix& bm, // backward matrix
-                         const DoubleMatrix& tm, //transitions
-                         const char* sequence,
-                         const HMMConsReadState& state,
-                         uint32_t e_start);
+// Fill in the backward matrix
+void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
+                        const DoubleMatrix& tm, //transitions
+                        const char* sequence,
+                        const HMMConsReadState& state,
+                        uint32_t e_start);
 
-double score_khmm_model(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy);
+// Calculate the probability of the nanopore events given the consensus sequence
+double khmm_score(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy);
 
+// Perform posterior decoding of the path through the hidden states
+std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state);
 
-std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, const HMMConsReadState& state);
-
-void update_training_khmm(const std::string& consensus, 
+// Update the training data
+void khmm_update_training(const std::string& consensus, 
                           const HMMConsReadState& state);
 
-void debug_khmm_model(const std::string& name,
-                      uint32_t seq_id,
-                      uint32_t read_id,
-                      const std::string& consensus, 
-                      const HMMConsReadState& state);
+// Debug the model, printing hopefully useful information
+void khmm_debug(const std::string& name,
+                uint32_t seq_id,
+                uint32_t read_id,
+                const std::string& consensus, 
+                const HMMConsReadState& state);
 
 
 #endif

@@ -230,18 +230,18 @@ double score_sequence(const std::string& sequence, const HMMConsReadState& state
 {
     //return score_skip_merge(sequence, state);
     //return score_khmm_model_postmerge(sequence, state);
-    return score_khmm_model(sequence, state, AP_GLOBAL);
+    return khmm_score(sequence, state, AP_GLOBAL);
     //return score_emission_dp(sequence, state);
 }
 
 void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMConsReadState& state)
 {
-    return debug_khmm_model(name, seq_id, read_id, sequence, state);
+    return khmm_debug(name, seq_id, read_id, sequence, state);
 }
 
 std::vector<PosteriorState> posterior_decode(const std::string& sequence, const HMMConsReadState& state)
 {
-    return posterior_decode_khmm(sequence, state);
+    return khmm_posterior_decode(sequence, state);
 }
 
 struct PathCons
@@ -787,7 +787,7 @@ void train_segment(uint32_t segment_id)
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
 
         std::vector<PosteriorState> decodes = posterior_decode(segment_sequence, read_states[ri]);
-        update_training_khmm(segment_sequence, read_states[ri]);
+        khmm_update_training(segment_sequence, read_states[ri]);
     }
 }
 
