@@ -21,6 +21,8 @@
 #include "nanopolish_poremodel.h"
 #include "nanopolish_interface.h"
 #include "nanopolish_khmm_parameters.h"
+#include "nanopolish_utility.h"
+#include "nanopolish_matrix.h"
 #include "profiler.h"
 
 // Macros
@@ -42,30 +44,13 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 const static uint32_t KHMM_MAX_JUMP = 5;
 const static uint32_t KHMM_MAX_MERGE = 10;
 
-static const uint8_t base_rank[256] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,
-    0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-};
-
 enum AlignmentPolicy
 {
     AP_GLOBAL,
     AP_SEMI_KMER
 };
+
+// Flags to turn on/off debugging information
 
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
@@ -164,23 +149,6 @@ struct HmmConsData
 
 HmmConsData g_data;
 bool g_initialized = false;
-
-// 
-// Add the log-scaled values a and b using a transform to avoid
-// precision errors
-inline double add_logs(const double a, const double b)
-{
-    if(a == -INFINITY && b == -INFINITY)
-        return -INFINITY;
-
-    if(a > b) {
-        double diff = b - a;
-        return a + log(1.0 + exp(diff));
-    } else {
-        double diff = a - b;
-        return b + log(1.0 + exp(diff));
-    }
-}
 
 extern "C"
 void initialize(int num_threads)
@@ -296,23 +264,6 @@ uint32_t get_strand_idx(const HMMConsReadState& rs)
     return rs.read->read_id + rs.strand;
 }
 
-//
-// HMM matrix
-//
-struct HMMCell
-{
-    double M;
-    double E;
-    double K;
-};
-
-struct HMMMatrix
-{
-    HMMCell* cells;
-    uint32_t n_rows;
-    uint32_t n_cols;
-};
-
 std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColumn& start_column,  
                                                           const HMMAnchoredColumn& end_column)
 {
@@ -349,144 +300,12 @@ std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColum
     return read_states;
 }
 
-void allocate_matrix(HMMMatrix& matrix, uint32_t n_rows, uint32_t n_cols)
-{
-    matrix.n_rows = n_rows;
-    matrix.n_cols = n_cols;
-    uint32_t N = matrix.n_rows * matrix.n_cols;
-    matrix.cells = (HMMCell*)malloc(N * sizeof(HMMCell));
-    memset(matrix.cells, 0, N * sizeof(HMMCell));
-}
-
-void free_matrix(HMMMatrix& matrix)
-{
-    free(matrix.cells);
-    matrix.cells = NULL;
-}
-
-inline uint32_t cell(const HMMMatrix& matrix, uint32_t row, uint32_t col)
-{
-    return row * matrix.n_cols + col;
-}
-
-void print_matrix(const HMMMatrix& matrix)
-{
-    for(uint32_t i = 0; i < matrix.n_rows; ++i) {
-        for(uint32_t j = 0; j < matrix.n_cols; ++j) {
-            uint32_t c = cell(matrix, i, j);
-            printf("%.1lf,%.1lf,%.1f\t", matrix.cells[c].M, matrix.cells[c].E, matrix.cells[c].K);
-        }
-        printf("\n");
-    }
-}
-
-//
-// Template Matrix for POD types
-//
-template<typename T>
-struct Matrix
-{
-    T* cells;
-    uint32_t n_rows;
-    uint32_t n_cols;
-};
-
-typedef Matrix<double> DoubleMatrix;
-typedef Matrix<uint32_t> UInt32Matrix;
-
-template<typename T>
-void allocate_matrix(Matrix<T>& matrix, uint32_t n_rows, uint32_t n_cols)
-{
-    matrix.n_rows = n_rows;
-    matrix.n_cols = n_cols;
-    
-    uint32_t N = matrix.n_rows * matrix.n_cols;
-    matrix.cells = (T*)malloc(N * sizeof(T));
-    memset(matrix.cells, 0, N * sizeof(T));
-}
-
-template<typename T>
-void free_matrix(Matrix<T>& matrix)
-{
-    assert(matrix.cells != NULL);
-    free(matrix.cells);
-    matrix.cells = NULL;
-}
-
-template<typename T>
-inline uint32_t cell(const Matrix<T>& matrix, uint32_t row, uint32_t col)
-{
-    return row * matrix.n_cols + col;
-}
-
-template<typename T, typename U>
-inline void set(Matrix<T>& matrix, uint32_t row, uint32_t col, U v)
-{
-    uint32_t c = cell(matrix, row, col);
-    matrix.cells[c] = v;
-}
-
-template<typename T>
-inline T get(const Matrix<T>& matrix, uint32_t row, uint32_t col)
-{
-    uint32_t c = cell(matrix, row, col);
-    return matrix.cells[c];
-}
-
-//
-//
-//
-void print_matrix(const DoubleMatrix& matrix, bool do_exp = false)
-{
-    for(uint32_t i = 0; i < matrix.n_rows; ++i) {
-        for(uint32_t j = 0; j < matrix.n_cols; ++j) {
-            uint32_t c = cell(matrix, i, j);
-            double v = matrix.cells[c];
-            if(do_exp)
-                v = exp(v);
-            printf("%.3lf\t", v);
-        }
-        printf("\n");
-    }
-}
-
-//
-// Kmer Ranks
-//
-inline uint32_t kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(uint32_t i = 0; i < K; ++i)
-        rank |= base_rank[str[i]] << 2 * (K - i - 1);
-    return rank;
-}
-
-inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(int32_t i = K - 1; i >= 0; --i)
-        rank |= ((3 - base_rank[str[i]]) << 2 * i);
-    return rank;
-}
 
 // wrapper to get the rank for a kmer on the right strand
 inline uint32_t get_rank(const HMMConsReadState& state, const char* s, uint32_t ki)
 {
     const char* p = s + ki;
     return !state.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
-}
-
-// Increment the input string to be the next sequence in lexicographic order
-void lexicographic_next(std::string& str)
-{
-    int carry = 1;
-    int i = str.size() - 1;
-    do {
-        uint32_t r = base_rank[str[i]] + carry;
-        str[i] = "ACGT"[r % 4];
-        carry = r / 4;
-        i -= 1;
-    } while(carry > 0 && i >= 0);
 }
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
