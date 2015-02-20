@@ -386,7 +386,7 @@ def call_consensus_for_file(input_filename, num_threads):
     #
     # Initialize library
     #
-    lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/hmmcons_fast.so")
+    lib_hmmcons_fast = cdll.LoadLibrary("../nanopolish/libnanopolish.so")
     lib_hmmcons_fast.initialize(num_threads)
 
     #
