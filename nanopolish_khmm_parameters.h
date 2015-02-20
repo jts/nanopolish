@@ -1,9 +1,12 @@
-// TODO: Boilerplate
-// This file implements a data structure and functions
-// for storing and learning transition probabilities
-// for the KHMM model
-#ifndef HMMCONS_KHMM_PARAMETERS
-#define HMMCONS_KHMM_PARAMETERS
+//---------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Jared Simpson (jared.simpson@oicr.on.ca)
+//---------------------------------------------------------
+//
+// nanopolish_khmm_parameters -- parameters for khmm model
+//
+#ifndef NANOPOLISH_KHMM_PARAMETERS
+#define NANOPOLISH_KHMM_PARAMETERS
 
 #include <vector>
 #include <stdint.h>

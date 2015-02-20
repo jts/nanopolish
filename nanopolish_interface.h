@@ -1,7 +1,13 @@
-// TODO: Boilerplate
-
-#ifndef HMMCONS_INTERFACE_H
-#define HMMCONS_INTERFACE_H
+//---------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Jared Simpson (jared.simpson@oicr.on.ca)
+//---------------------------------------------------------
+//
+// nanopolish_interface -- data structures for the 
+// C++/python interface
+//
+#ifndef NANOPOLISH_INTERFACE_H
+#define NANOPOLISH_INTERFACE_H
 
 // These structures are initialized by python
 // and passed into the compiled code to prepare

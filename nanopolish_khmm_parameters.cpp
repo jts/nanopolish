@@ -1,5 +1,10 @@
-// TODO: Boilerplate
-
+//---------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Jared Simpson (jared.simpson@oicr.on.ca)
+//---------------------------------------------------------
+//
+// nanopolish_khmm_parameters -- parameters for khmm model
+//
 #include <math.h>
 #include <assert.h>
 #include <stdio.h>
