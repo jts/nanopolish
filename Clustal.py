@@ -141,6 +141,11 @@ class Clustal:
         seq = str(self.alignment[row][start_col:end_col].seq).replace('-', '') + self.get_kmer(row, end_col, K)
         return seq
 
+    # Convert all sequences to upper case strings
+    def toupper(self):
+        for row in self.alignment:
+            row.seq = str(row.seq).upper()
+    
     # Count the number of bases seen up to and including the given column
     def count_bases_to_column(self, row, col):
         bc = 0

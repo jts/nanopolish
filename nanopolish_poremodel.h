@@ -1,5 +1,11 @@
-// TODO: Boilerplate
-
+//---------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Jared Simpson (jared.simpson@oicr.on.ca)
+//---------------------------------------------------------
+//
+// nanopolish_poremodel -- Representation of the Oxford
+// Nanopore sequencing model, as described in a FAST5 file
+//
 #ifndef NANOPOLISH_POREMODEL_H
 #define NANOPOLISH_POREMODEL_H
 

@@ -280,7 +280,7 @@ double khmm_score(const std::string& consensus, const HMMConsReadState& state, A
 }
 
 
-std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, const HMMConsReadState& state)
+std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -389,10 +389,10 @@ std::vector<PosteriorState> posterior_decode_khmm(const std::string& sequence, c
     return output;
 }
 
-void update_training_khmm(const std::string& consensus, 
+void khmm_update_training(const std::string& consensus, 
                           const HMMConsReadState& state)
 {
-    std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
+    std::vector<PosteriorState> pstates = khmm_posterior_decode(consensus, state);
 
     const PoreModel& pm = state.read->pore_model[state.strand];
     TrainingData& training_data = state.read->parameters[state.strand].training_data;
@@ -474,7 +474,7 @@ void khmm_debug(const std::string& name,
                 const std::string& consensus, 
                 const HMMConsReadState& state)
 {
-    std::vector<PosteriorState> pstates = posterior_decode_khmm(consensus, state);
+    std::vector<PosteriorState> pstates = khmm_posterior_decode(consensus, state);
     size_t n_matches = 0;
     size_t n_merges = 0;
     size_t n_skips = 0;

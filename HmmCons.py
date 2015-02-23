@@ -239,6 +239,9 @@ def call_consensus_for_file(input_filename, num_threads):
 
     clustal = Clustal(input_filename)
 
+    # Make all clustal sequences uppercase
+    clustal.toupper()
+
     print "!!!!!!!! using first read as consensus row !!!!!!!"
 
     cons_row = 0
