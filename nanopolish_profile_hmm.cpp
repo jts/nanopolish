@@ -76,6 +76,24 @@ inline double calculate_skip_probability(const char* sequence,
     return get_skip_probability(parameters, level_i, level_j);
 }
 
+// Pre-computed transitions from the previous block
+// into the current block of states. Log-scaled.
+struct BlockTransitions
+{
+    // Transition from m state
+    double lp_me;
+    double lp_mk;
+    double lp_mm;
+
+    // Transitions from e state
+    double lp_ee;
+    double lp_em;
+    
+    // Transitions from e state
+    double lp_kk;
+    double lp_km;
+};
+
 double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
                                 const char* sequence,
                                 const HMMConsReadState& state,
@@ -90,13 +108,44 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
     // events for one kmer
     uint32_t num_blocks = fm.n_cols / PS_NUM_STATES;
     
-    // Precompute the probability of skipping the next k-mer in the sequence
+    // Precompute the transition probabilites for each kmer block
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
-    std::vector<double> skip_cache(num_kmers, 0.0f);
+
+    std::vector<BlockTransitions> transitions(num_kmers);
     
-    // do not compute skip probability for the last kmer
-    for(uint32_t ki = 0; ki < num_kmers - 1; ++ki)
-        skip_cache[ki] = calculate_skip_probability(sequence, state, ki, ki + 1);
+    for(uint32_t ki = 0; ki < num_kmers; ++ki) {
+
+        // probability of skipping k_i from k_(i - 1)
+        double p_skip = ki > 0 ? calculate_skip_probability(sequence, state, ki - 1, ki) : 0.0f;
+
+        // transitions from match state in previous block
+        double p_me = parameters.self_transition;
+        double p_mk = (1.0f - p_me) * p_skip;
+        double p_mm = 1.0f - p_me - p_mk;
+
+        // transitions from event split state in previous block
+        double p_ee = parameters.self_transition;
+        double p_em = 1.0f - p_ee;
+        // p_ie not allowed
+
+        // transitions from kmer skip state in previous block
+        double p_kk = p_skip;
+        double p_km = 1 - p_skip;
+        // p_ei not allowed    
+
+        // log-transform and store
+        BlockTransitions& bt = transitions[ki];
+
+        bt.lp_me = log(p_me);
+        bt.lp_mk = log(p_mk);
+        bt.lp_mm = log(p_mm);
+
+        bt.lp_ee = log(p_ee);
+        bt.lp_em = log(p_em);
+        
+        bt.lp_kk = log(p_kk);
+        bt.lp_km = log(p_km);
+    }
 
     // Fill in matrix
     for(uint32_t row = 1; row < fm.n_rows; row++) {
@@ -105,38 +154,18 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
         // Similarily skip the last block, which is calculated in the terminate() function
         for(uint32_t block = 1; block < num_blocks - 1; block++) {
 
+            // retrieve transitions
             uint32_t kmer_idx = block - 1;
+            BlockTransitions& bt = transitions[kmer_idx];
 
-            //
-            // Calculate transitions from the previous block into this block
-            //
             uint32_t prev_block = block - 1;
-            
-            // probability of skipping kmer_idx
-            double p_skip = kmer_idx > 0 ? skip_cache[kmer_idx - 1] : 0.0f;
-
-            // transitions from match state in previous block
-            double p_me = parameters.self_transition;
-            double p_mk = (1.0f - p_me) * p_skip;
-            double p_mm = 1.0f - p_me - p_mk;
-
-            // transitions from event split state in previous block
-            double p_ee = parameters.self_transition;
-            double p_em = 1.0f - p_ee;
-            // p_ie not allowed
-
-            // transitions from kmer skip state in previous block
-            double p_kk = p_skip;
-            double p_km = 1 - p_skip;
-            // p_ei not allowed
-
             uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
             uint32_t curr_block_offset = PS_NUM_STATES * block;
             
             // state PS_MATCH
-            double m1 = log(p_mm) + get(fm, row - 1, prev_block_offset + PS_MATCH);
-            double m2 = log(p_em) + get(fm, row - 1, prev_block_offset + PS_EVENT_SPLIT);
-            double m3 = log(p_km) + get(fm, row - 1, prev_block_offset + PS_KMER_SKIP);
+            double m1 = bt.lp_mm + get(fm, row - 1, prev_block_offset + PS_MATCH);
+            double m2 = bt.lp_em + get(fm, row - 1, prev_block_offset + PS_EVENT_SPLIT);
+            double m3 = bt.lp_km + get(fm, row - 1, prev_block_offset + PS_KMER_SKIP);
             double sum_m = add_logs(add_logs(m1, m2), m3);
 
 #ifdef DEBUG_FILL    
@@ -155,8 +184,8 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
 
 
             // state PS_EVENT_SPLIT
-            double e1 = log(p_me) + get(fm, row - 1, curr_block_offset + PS_MATCH);
-            double e2 = log(p_ee) + get(fm, row - 1, curr_block_offset + PS_EVENT_SPLIT);
+            double e1 = bt.lp_me + get(fm, row - 1, curr_block_offset + PS_MATCH);
+            double e2 = bt.lp_ee + get(fm, row - 1, curr_block_offset + PS_EVENT_SPLIT);
             
             double sum_e = add_logs(e1, e2);
 #ifdef DEBUG_FILL    
@@ -169,8 +198,8 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
 
 
             // state PS_KMER_SKIP
-            double k1 = log(p_mk) + get(fm, row, prev_block_offset + PS_MATCH);
-            double k2 = log(p_kk) + get(fm, row, prev_block_offset + PS_KMER_SKIP);
+            double k1 = bt.lp_mk + get(fm, row, prev_block_offset + PS_MATCH);
+            double k2 = bt.lp_kk + get(fm, row, prev_block_offset + PS_KMER_SKIP);
             double sum_k = add_logs(k1, k2);
 
 #ifdef DEBUG_FILL    
@@ -185,6 +214,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             uint32_t event_idx = e_start + (row - 1) * state.stride;
             uint32_t rank = get_rank(state, sequence, kmer_idx);
             double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+
 #ifdef DEBUG_FILL    
             printf("\tEMISSION: %.2lf\n", lp_e);
 #endif
