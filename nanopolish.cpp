@@ -24,6 +24,7 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_klcs.h"
 #include "nanopolish_khmm.h"
+#include "nanopolish_profile_hmm.h"
 #include "profiler.h"
 
 // Macros
@@ -230,7 +231,8 @@ double score_sequence(const std::string& sequence, const HMMConsReadState& state
 {
     //return score_skip_merge(sequence, state);
     //return score_khmm_model_postmerge(sequence, state);
-    return khmm_score(sequence, state, AP_GLOBAL);
+    //return khmm_score(sequence, state, AP_GLOBAL);
+    return profile_hmm_score(sequence, state);
     //return score_emission_dp(sequence, state);
 }
 
