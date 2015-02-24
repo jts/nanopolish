@@ -29,6 +29,8 @@ struct PoreModel
     double shift;
     double drift;
     double var;
+    double scale_sd;
+    double var_sd;
     PoreModelStateParams state[1024];
 };
 

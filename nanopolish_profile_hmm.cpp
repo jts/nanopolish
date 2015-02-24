@@ -94,22 +94,9 @@ struct BlockTransitions
     double lp_km;
 };
 
-double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
-                                const char* sequence,
-                                const HMMConsReadState& state,
-                                uint32_t e_start)
+std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const char* sequence, const HMMConsReadState& state)
 {
-    PROFILE_FUNC("profile_hmm_fill_forward")
-
     const KHMMParameters& parameters = state.read->parameters[state.strand];
-
-    // Calculate number of blocks
-    // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
-    // events for one kmer
-    uint32_t num_blocks = fm.n_cols / PS_NUM_STATES;
-    
-    // Precompute the transition probabilites for each kmer block
-    uint32_t num_kmers = num_blocks - 2; // two terminal blocks
 
     std::vector<BlockTransitions> transitions(num_kmers);
     
@@ -147,6 +134,28 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
         bt.lp_km = log(p_km);
     }
 
+    return transitions;
+}
+
+double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
+                                const char* sequence,
+                                const HMMConsReadState& state,
+                                uint32_t e_start)
+{
+    PROFILE_FUNC("profile_hmm_fill_forward")
+
+    const KHMMParameters& parameters = state.read->parameters[state.strand];
+
+    // Calculate number of blocks
+    // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
+    // events for one kmer
+    uint32_t num_blocks = fm.n_cols / PS_NUM_STATES;
+    
+    // Precompute the transition probabilites for each kmer block
+    uint32_t num_kmers = num_blocks - 2; // two terminal blocks
+
+    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, state);
+    
     // Fill in matrix
     for(uint32_t row = 1; row < fm.n_rows; row++) {
 
@@ -182,7 +191,6 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
                     sum_m);
 #endif
 
-
             // state PS_EVENT_SPLIT
             double e1 = bt.lp_me + get(fm, row - 1, curr_block_offset + PS_MATCH);
             double e2 = bt.lp_ee + get(fm, row - 1, curr_block_offset + PS_EVENT_SPLIT);
@@ -195,7 +203,6 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
                     get(fm, row - 1, curr_block_offset + PS_EVENT_SPLIT),
                     sum_e);
 #endif
-
 
             // state PS_KMER_SKIP
             double k1 = bt.lp_mk + get(fm, row, prev_block_offset + PS_MATCH);

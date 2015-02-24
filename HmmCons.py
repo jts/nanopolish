@@ -31,7 +31,9 @@ class CPoreModelInterface(Structure):
                 ('pore_model_scale', c_double),
                 ('pore_model_shift', c_double),
                 ('pore_model_drift', c_double),
-                ('pore_model_var', c_double)]
+                ('pore_model_var', c_double),
+                ('pore_model_scale_sd', c_double),
+                ('pore_model_var_sd', c_double)]
 
 class CEventSequenceInterface(Structure):
     _fields_ = [('n_events', c_int),
@@ -199,8 +201,10 @@ def load_reads(lib, squiggle_reads):
             shift = sr.pm[s].shift
             drift = sr.pm[s].drift
             var = sr.pm[s].var
+            scale_sd = sr.pm[s].scale_sd
+            var_sd = sr.pm[s].var_sd
             
-            pm_params.append(CPoreModelInterface(1024, level_mean, level_stdv, sd_mean, sd_stdv, scale, shift, drift, var))
+            pm_params.append(CPoreModelInterface(1024, level_mean, level_stdv, sd_mean, sd_stdv, scale, shift, drift, var, scale_sd, var_sd))
 
             # Events
             n_events = len(sr.event_level[s])

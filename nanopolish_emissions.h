@@ -12,6 +12,9 @@
 #include <math.h>
 #include "nanopolish_common.h"
 
+//#define MODEL_STDV
+
+
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
 inline double normal_pdf(double x, double m, double s)
 {
@@ -48,12 +51,19 @@ inline double log_probability_match(const SquiggleRead& read,
 {
     const PoreModel& pm = read.pore_model[strand];
 
-    // Extract event
+    // event level mean
     double level = get_drift_corrected_level(read, event_idx, strand);
-
     double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
     double s = pm.state[kmer_rank].level_stdv * pm.var;
     double lp = log_normal_pdf(level, m, s);
+
+#if MODEL_STDV
+    // event level stdv
+    double stdv = read.events[strand].stdv[event_idx];
+    double model_sd_mean = pm.state[kmer_rank].sd_mean * pm.scale_sd;
+    double model_sd_stdv = pm.state[kmer_rank].sd_stdv * sqrt(pow(pm.scale_sd, 3.0) / pm.var_sd);
+    lp += log_normal_pdf(stdv, model_sd_mean, model_sd_stdv);
+#endif
 
 #if DEBUG_HMM_EMISSION
     printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, m, s, exp(lp), normal_pdf(level, m, s));

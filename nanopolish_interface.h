@@ -32,6 +32,8 @@ struct CPoreModelInterface
     double shift;
     double drift;
     double var;
+    double scale_sd;
+    double var_sd;
 };
 
 // Events

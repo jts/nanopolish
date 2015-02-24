@@ -47,8 +47,8 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define PRINT_TRAINING_MESSAGES 1
-//#define DEBUG_SINGLE_SEGMENT 1
-//#define DEBUG_SHOW_TOP_TWO 1
+#define DEBUG_SINGLE_SEGMENT 1
+#define DEBUG_SHOW_TOP_TWO 1
 #define DEBUG_PATH_SELECTION 1
 
 struct HMMReadAnchor
@@ -115,6 +115,8 @@ void add_read(CSquiggleReadInterface params)
         sr.pore_model[i].shift = params.pore_model[i].shift;
         sr.pore_model[i].drift = params.pore_model[i].drift;
         sr.pore_model[i].var = params.pore_model[i].var;
+        sr.pore_model[i].scale_sd = params.pore_model[i].scale_sd;
+        sr.pore_model[i].var_sd = params.pore_model[i].var_sd;
         
         assert(params.pore_model[i].n_states == 1024);
         for(uint32_t j = 0; j < params.pore_model[i].n_states; ++j) {
@@ -392,7 +394,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
 
         printf("%zu\t%s\t%.1lf\t%zu %c %s", pi, paths[pi].path.c_str(), paths[pi].score, paths[pi].sum_rank, initial, paths[pi].mutdesc.c_str());
         // If this is the truth path or the best path, show the scores for all reads
-        if(pi == 0 || initial == 'I') {
+        if(pi <= 1 || initial == 'I') {
             for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
                 const HMMConsReadState& read_state = read_states[ri];
                 const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
@@ -723,7 +725,7 @@ void run_splice()
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = 118;
+    start_segment_id = 45;
 #endif
 
     uint32_t num_segments = g_data.anchored_columns.size();
