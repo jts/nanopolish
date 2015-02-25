@@ -280,7 +280,7 @@ double khmm_score(const std::string& consensus, const HMMConsReadState& state, A
 }
 
 
-std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state)
+std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -315,7 +315,7 @@ std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, c
     khmm_backward_fill(bm, tm, sequence.c_str(), state, e_start);
 
     // posterior decode
-    std::vector<PosteriorState> output;
+    std::vector<AlignmentState> output;
     
     uint32_t row = fm.n_rows - 1;
     uint32_t col = fm.n_cols - 1;
@@ -344,7 +344,7 @@ std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, c
  
         double lpfm = get(fm, row, max_s);
 
-        PosteriorState ps = { event_idx, kmer_idx, max_posterior, lpfm, 0.0f, 'N' };
+        AlignmentState ps = { event_idx, kmer_idx, max_posterior, lpfm, 0.0f, 'N' };
         output.push_back(ps);
 
         //
@@ -392,7 +392,7 @@ std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, c
 void khmm_update_training(const std::string& consensus, 
                           const HMMConsReadState& state)
 {
-    std::vector<PosteriorState> pstates = khmm_posterior_decode(consensus, state);
+    std::vector<AlignmentState> pstates = khmm_posterior_decode(consensus, state);
 
     const PoreModel& pm = state.read->pore_model[state.strand];
     TrainingData& training_data = state.read->parameters[state.strand].training_data;
@@ -467,80 +467,3 @@ void khmm_update_training(const std::string& consensus,
         training_data.n_skips += (s == 'K');
     }
 }
-
-void khmm_debug(const std::string& name,
-                uint32_t seq_id,
-                uint32_t read_id,
-                const std::string& consensus, 
-                const HMMConsReadState& state)
-{
-    std::vector<PosteriorState> pstates = khmm_posterior_decode(consensus, state);
-    size_t n_matches = 0;
-    size_t n_merges = 0;
-    size_t n_skips = 0;
-    size_t n_mergeskips = 0;
-    
-    char prev_s = '\0';
-    for(size_t pi = 0; pi < pstates.size(); ++pi) {
-
-        uint32_t ei = pstates[pi].event_idx;
-        uint32_t ki = pstates[pi].kmer_idx;
-        char s = pstates[pi].state;
-    
-        double level = get_drift_corrected_level(*state.read, ei, state.strand);
-        double sd = state.read->events[state.strand].stdv[ei];
-        double duration = get_duration(*state.read, ei, state.strand);
-        uint32_t rank = get_rank(state, consensus.c_str(), ki);
-        
-        const PoreModel& pm = state.read->pore_model[state.strand];
-        double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
-        double model_s = pm.state[rank].level_stdv * pm.scale;
-        double norm_level = (level - model_m) / model_s;
-        
-        double model_sd_mean = pm.state[rank].sd_mean;
-        double model_sd_stdv = pm.state[rank].sd_stdv;
-
-        n_matches += (s == 'M');
-        n_merges += (s == 'E');
-        n_skips += (s == 'K');
-        n_mergeskips += (s == 'K' && prev_s == 'E');
-
-        double lp_diff = 0.0f;
-        if(pi > 0) {
-            lp_diff = pstates[pi].l_fm - pstates[pi - 1].l_fm;
-        } else {
-            lp_diff = pstates[pi].l_fm;
-        }
-        std::string kmer = consensus.substr(ki, K);
- 
-        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, state.rc, state.strand ? 't' : 'c');
-        printf("%c\t%d\t%d\t", s, ei, ki);
-        printf("%s\t%.3lf\t", kmer.c_str(), duration);
-        printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
-        printf("\t%.1lf\t%.1lf\t%.1lf\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
-        printf("%.2lf\t%.2lf\t%.2lf\n", exp(pstates[pi].l_posterior), pstates[pi].l_fm, lp_diff);
-        prev_s = s;
-    }
-
-    // Summarize alignment
-    double time_start = state.read->events[state.strand].time[state.event_start_idx];
-    double time_end = state.read->events[state.strand].time[state.event_stop_idx];
-    double total_duration = fabs(time_start - time_end);
-    double num_events = abs(state.event_start_idx - state.event_stop_idx) + 1;
-    double final_lp = pstates[pstates.size() - 1].l_fm;
-    double mean_lp = final_lp / num_events;
-
-    // Print summary header on first entry
-    static int once = 1;
-    if(once) {
-        printf("SUMMARY\tseq_name\tseq_id\tread_id\tis_rc\tstrand\t");
-        printf("lp\tmean_lp\tnum_events\t");
-        printf("n_matches\tn_merges\tn_skips\tn_mergeskips\ttotal_duration\n");
-        once = 0;
-    }
-
-    printf("SUMMARY\t%s\t%d\t%d\t%d\t%c\t", name.c_str(), seq_id, read_id, state.rc, state.strand ? 't' : 'c');
-    printf("%.2lf\t%.2lf\t%.0lf\t", final_lp, mean_lp, num_events);
-    printf("%zu\t%zu\t%zu\t%zu\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
-}
-

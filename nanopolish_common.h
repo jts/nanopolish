@@ -94,7 +94,8 @@ struct HMMConsReadState
     std::string alignment;
 };
 
-struct PosteriorState
+// A representation of an event->kmer alignment
+struct AlignmentState
 {
     uint32_t event_idx;
     uint32_t kmer_idx;
@@ -163,5 +164,13 @@ double get_drift_corrected_level(const SquiggleRead& read, uint32_t event_idx, u
 
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str);
+
+// Print the alignment between the read-strand and a sequence
+void print_alignment(const std::string& name,
+                     uint32_t seq_id,
+                     uint32_t read_id,
+                     const std::string& consensus, 
+                     const HMMConsReadState& state,
+                     const std::vector<AlignmentState>& alignment);
 
 #endif

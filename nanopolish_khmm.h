@@ -46,7 +46,7 @@ void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
 double khmm_score(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy);
 
 // Perform posterior decoding of the path through the hidden states
-std::vector<PosteriorState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state);
+std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state);
 
 // Update the training data
 void khmm_update_training(const std::string& consensus, 

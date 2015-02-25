@@ -18,6 +18,8 @@ enum ProfileState
     PS_NUM_STATES = 3
 };
 
+char ps2char(ProfileState ps) { return "KEMN"[ps]; }
+
 void profile_hmm_forward_initialize(DoubleMatrix& fm)
 {
     // initialize forward calculation
@@ -111,7 +113,7 @@ std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const ch
         double p_mm = 1.0f - p_me - p_mk;
 
         // transitions from event split state in previous block
-        double p_ee = parameters.self_transition;
+        double p_ee = 0.05; //parameters.self_transition;
         double p_em = 1.0f - p_ee;
         // p_ie not allowed
 
@@ -230,9 +232,10 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             set(fm, row, curr_block_offset + PS_KMER_SKIP, sum_k);
         }
     }
-
+    uint32_t last_event_row = fm.n_rows - 1;
     uint32_t last_aligned_block = num_blocks - 2;
-    return get(fm, fm.n_rows - 2, PS_NUM_STATES * last_aligned_block + PS_MATCH);
+    uint32_t match_state_last_block = PS_NUM_STATES * last_aligned_block + PS_MATCH;
+    return get(fm, last_event_row, match_state_last_block);
 }
 
 double profile_hmm_score(const std::string& sequence, const HMMConsReadState& state)
@@ -263,3 +266,188 @@ double profile_hmm_score(const std::string& sequence, const HMMConsReadState& st
     return score;
 }
 
+void profile_hmm_viterbi_initialize(DoubleMatrix& m)
+{
+    // Same as forward initialization
+    profile_hmm_forward_initialize(m);
+}
+
+std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMConsReadState& state)
+{
+    std::vector<AlignmentState> alignment;
+
+    uint32_t n_kmers = sequence.size() - K + 1;
+    uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
+
+    uint32_t e_start = state.event_start_idx;
+    uint32_t e_end = state.event_stop_idx;
+    uint32_t n_events = 0;
+    if(e_end > e_start)
+        n_events = e_end - e_start + 1;
+    else
+        n_events = e_start - e_end + 1;
+
+    uint32_t n_rows = n_events + 1;
+    
+    // Allocate matrices to hold the HMM result
+    DoubleMatrix vm;
+    allocate_matrix(vm, n_rows, n_states);
+    
+    UInt8Matrix bm;
+    allocate_matrix(bm, n_rows, n_states);
+
+    profile_hmm_viterbi_initialize(vm);
+    profile_hmm_viterbi_fill(vm, bm, sequence.c_str(), state, e_start);
+
+    // Traverse the backtrack matrix to compute the results
+    
+    // start from the last event matched to the last kmer
+    uint32_t row = n_rows - 1;
+    uint32_t col = PS_NUM_STATES * n_kmers + PS_MATCH;
+
+    while(row > 0) {
+        
+        uint32_t event_idx = e_start + (row - 1) * state.stride;
+        uint32_t block = col / PS_NUM_STATES;
+        assert(block > 0);
+        assert(get(vm, row, col) != -INFINITY);
+
+        uint32_t kmer_idx = block - 1;
+        
+        ProfileState curr_ps = (ProfileState) (col % PS_NUM_STATES);
+
+        AlignmentState as;
+        as.event_idx = event_idx;
+        as.kmer_idx = kmer_idx;
+        as.l_posterior = -INFINITY; // not computed
+        as.l_fm = get(vm, row, col);
+        as.log_transition_probability = -INFINITY; // not computed
+        as.state = ps2char(curr_ps);
+        alignment.push_back(as);
+
+        // Update the event (row) and k-mer using the current state
+        // The next state is encoded in the backtrack matrix for the current cell
+        ProfileState next_ps = (ProfileState)get(bm, row, col);
+
+#if DEBUG_BACKTRACK
+        printf("Backtrack [%zu %zu] k: %zu block: %zu curr_ps: %c next_ps: %c\n", row, col, kmer_idx, block, ps2char(curr_ps), ps2char(next_ps));
+#endif
+
+        if(curr_ps == PS_MATCH) {
+            row -= 1;
+            kmer_idx -= 1;
+        } else if(curr_ps == PS_EVENT_SPLIT) {
+            row -= 1;
+            // kmer stays the same
+        } else {
+            assert(curr_ps == PS_KMER_SKIP);
+            // row stays the same
+            kmer_idx -= 1;
+        }
+
+        col = PS_NUM_STATES * (kmer_idx + 1) + next_ps;
+    }
+
+    //
+    std::reverse(alignment.begin(), alignment.end());
+
+    //
+    free_matrix(vm);
+    free_matrix(bm);
+
+    return alignment;
+}
+
+void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
+                              UInt8Matrix& bm, // backtrack matrix
+                              const char* sequence,
+                              const HMMConsReadState& state,
+                              uint32_t e_start)
+{
+    PROFILE_FUNC("profile_hmm_viterbi_forward")
+
+    const KHMMParameters& parameters = state.read->parameters[state.strand];
+
+    // Calculate number of blocks
+    // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
+    // events for one kmer
+    uint32_t num_blocks = vm.n_cols / PS_NUM_STATES;
+    
+    // Precompute the transition probabilites for each kmer block
+    uint32_t num_kmers = num_blocks - 2; // two terminal blocks
+
+    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, state);
+    
+    // Fill in matrix
+    for(uint32_t row = 1; row < vm.n_rows; row++) {
+
+        // Skip the first block which is the start state, it was initialized above
+        // Similarily skip the last block, which is calculated in the terminate() function
+        for(uint32_t block = 1; block < num_blocks - 1; block++) {
+
+            // retrieve transitions
+            uint32_t kmer_idx = block - 1;
+            BlockTransitions& bt = transitions[kmer_idx];
+
+            // Emission probabilities
+            uint32_t event_idx = e_start + (row - 1) * state.stride;
+            uint32_t rank = get_rank(state, sequence, kmer_idx);
+            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            
+            uint32_t prev_block = block - 1;
+            uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
+            uint32_t curr_block_offset = PS_NUM_STATES * block;
+            
+            // state PS_MATCH
+            double m1 = bt.lp_mm + get(vm, row - 1, prev_block_offset + PS_MATCH);
+            double m2 = bt.lp_em + get(vm, row - 1, prev_block_offset + PS_EVENT_SPLIT);
+            double m3 = bt.lp_km + get(vm, row - 1, prev_block_offset + PS_KMER_SKIP);
+            double max_m = std::max(std::max(m1, m2), m3);
+            set(vm, row, curr_block_offset + PS_MATCH, max_m + lp_e);
+            
+            ProfileState m_from = PS_NUM_STATES;
+            if(max_m == m1)
+                m_from = PS_MATCH;
+            else if(max_m == m2)
+                m_from = PS_EVENT_SPLIT;
+            else if(max_m == m3)
+                m_from = PS_KMER_SKIP;
+            assert(m_from != PS_NUM_STATES);
+
+            set(bm, row, curr_block_offset + PS_MATCH, m_from);
+            assert(get(bm, row, curr_block_offset + PS_MATCH) == m_from);
+
+            // state PS_EVENT_SPLIT
+            double e1 = bt.lp_me + get(vm, row - 1, curr_block_offset + PS_MATCH);
+            double e2 = bt.lp_ee + get(vm, row - 1, curr_block_offset + PS_EVENT_SPLIT);
+            double max_e = std::max(e1, e2);
+            ProfileState e_from = max_e == e1 ? PS_MATCH : PS_EVENT_SPLIT;
+
+            set(vm, row, curr_block_offset + PS_EVENT_SPLIT, max_e + lp_e);
+            set(bm, row, curr_block_offset + PS_EVENT_SPLIT, e_from);
+
+            // state PS_KMER_SKIP
+            double k1 = bt.lp_mk + get(vm, row, prev_block_offset + PS_MATCH);
+            double k2 = bt.lp_kk + get(vm, row, prev_block_offset + PS_KMER_SKIP);
+            double max_k = std::max(k1, k2);
+            ProfileState k_from = max_k == k1 ? PS_MATCH : PS_KMER_SKIP;
+            set(vm, row, curr_block_offset + PS_KMER_SKIP, max_k);
+            set(bm, row, curr_block_offset + PS_KMER_SKIP, k_from);
+
+#if DEBUG_VITERBI
+            printf("\tM: [%zu %zu] block: %zu [%.2lf %.2lf %.2lf] from: %c v: %.2lf\n", row, curr_block_offset + PS_MATCH, block, m1, m2, m3, ps2char(m_from), max_m + lp_e);
+            printf("\tE: [%zu %zu] block: %zu [%.2lf %.2lf] from: %c v: %.2lf\n", row, curr_block_offset + PS_EVENT_SPLIT, block, e1, e2, ps2char(e_from), max_e + lp_e);
+            printf("\tK: [%zu %zu] block: %zu [%.2lf %.2lf] from: %c v: %.2lf\n", row, curr_block_offset + PS_KMER_SKIP, block, k1, k2, ps2char(k_from), max_k + lp_e);
+#endif
+        }
+    }
+    
+    /*
+    uint32_t last_event_row = vm.n_rows - 1;
+    uint32_t last_aligned_block = num_blocks - 2;
+    uint32_t match_state_last_block = PS_NUM_STATES * last_aligned_block + PS_MATCH;
+
+    // force match -> terminal transition
+    set(bm, last_event_row, match_state_last_block, PS_MATCH);
+    */
+}

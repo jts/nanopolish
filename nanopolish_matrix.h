@@ -28,6 +28,7 @@ struct Matrix
 
 typedef Matrix<double> DoubleMatrix;
 typedef Matrix<uint32_t> UInt32Matrix;
+typedef Matrix<uint8_t> UInt8Matrix;
 
 //
 template<typename T>

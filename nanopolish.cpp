@@ -47,9 +47,10 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define PRINT_TRAINING_MESSAGES 1
-#define DEBUG_SINGLE_SEGMENT 1
-#define DEBUG_SHOW_TOP_TWO 1
-#define DEBUG_PATH_SELECTION 1
+//#define DEBUG_SINGLE_SEGMENT 1
+//#define DEBUG_SHOW_TOP_TWO 1
+//#define DEBUG_PATH_SELECTION 1
+//#define DEBUG_SEGMENT_ID 6
 
 struct HMMReadAnchor
 {
@@ -238,14 +239,17 @@ double score_sequence(const std::string& sequence, const HMMConsReadState& state
     //return score_emission_dp(sequence, state);
 }
 
-void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMConsReadState& state)
+
+std::vector<AlignmentState> hmm_align(const std::string& sequence, const HMMConsReadState& state)
 {
-    return khmm_debug(name, seq_id, read_id, sequence, state);
+    return profile_hmm_align(sequence, state);
+//    return khmm_posterior_decode(sequence, state);
 }
 
-std::vector<PosteriorState> posterior_decode(const std::string& sequence, const HMMConsReadState& state)
+void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMConsReadState& state)
 {
-    return khmm_posterior_decode(sequence, state);
+    std::vector<AlignmentState> alignment = hmm_align(sequence, state);
+    print_alignment(name, seq_id, read_id, sequence, state, alignment);
 }
 
 struct PathCons
@@ -695,7 +699,7 @@ void run_splice_segment(uint32_t segment_id)
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
 
         // Realign to the consensus sequence
-        std::vector<PosteriorState> decodes = posterior_decode(base, read_states[ri]);
+        std::vector<AlignmentState> decodes = hmm_align(base, read_states[ri]);
 
         // Get the closest event aligned to the target kmer
         int32_t min_k_dist = base.length();
@@ -725,7 +729,7 @@ void run_splice()
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = 45;
+    start_segment_id = DEBUG_SEGMENT_ID;
 #endif
 
     uint32_t num_segments = g_data.anchored_columns.size();
@@ -790,7 +794,7 @@ void train_segment(uint32_t segment_id)
      
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
 
-        std::vector<PosteriorState> decodes = posterior_decode(segment_sequence, read_states[ri]);
+        std::vector<AlignmentState> decodes = hmm_align(segment_sequence, read_states[ri]);
         khmm_update_training(segment_sequence, read_states[ri]);
     }
 }
