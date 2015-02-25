@@ -56,4 +56,10 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
                               const HMMConsReadState& state,
                               uint32_t e_start);
 
+//
+// Training
+//
+void profile_hmm_update_training(const std::string& consensus, 
+                                 const HMMConsReadState& state);
+
 #endif

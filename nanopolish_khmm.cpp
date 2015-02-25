@@ -434,8 +434,8 @@ void khmm_update_training(const std::string& consensus,
 #ifdef PRINT_TRAINING_MESSAGES
                 printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\n", strand_idx, ke1, ke2, s);
 #endif
-                TransitionObservation to = { ke1, ke2, s };
-                training_data.transitions.push_back(to);
+                KmerTransitionObservation to = { ke1, ke2, s };
+                training_data.kmer_transitions.push_back(to);
             }
 
             // emission

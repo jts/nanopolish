@@ -239,7 +239,7 @@ def call_consensus_for_file(input_filename, num_threads):
     # Load squiggle reads
     #
     use_poabase_signals = False
-    do_training = False
+    do_training = True
 
     clustal = Clustal(input_filename)
 

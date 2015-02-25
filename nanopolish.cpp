@@ -46,11 +46,10 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
-#define PRINT_TRAINING_MESSAGES 1
+#define DEBUG_PATH_SELECTION 1
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
-//#define DEBUG_PATH_SELECTION 1
-//#define DEBUG_SEGMENT_ID 6
+//#define DEBUG_SEGMENT_ID 97
 
 struct HMMReadAnchor
 {
@@ -250,6 +249,11 @@ void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, 
 {
     std::vector<AlignmentState> alignment = hmm_align(sequence, state);
     print_alignment(name, seq_id, read_id, sequence, state, alignment);
+}
+
+void update_training_with_segment(const std::string& sequence, const HMMConsReadState& state)
+{
+    profile_hmm_update_training(sequence, state);
 }
 
 struct PathCons
@@ -672,7 +676,7 @@ void run_splice_segment(uint32_t segment_id)
         assert(!second_best.empty());
         for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
             debug_sequence("best", segment_id, ri, base, read_states[ri]);
-            debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+            debug_sequence("second", segment_id, ri, second, read_states[ri]);
         }
 #endif
     }
@@ -795,7 +799,7 @@ void train_segment(uint32_t segment_id)
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
 
         std::vector<AlignmentState> decodes = hmm_align(segment_sequence, read_states[ri]);
-        khmm_update_training(segment_sequence, read_states[ri]);
+        update_training_with_segment(segment_sequence, read_states[ri]);
     }
 }
 

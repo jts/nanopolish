@@ -9,6 +9,7 @@
 #include "nanopolish_profile_hmm.h"
 
 //#define DEBUG_FILL
+//#define PRINT_TRAINING_MESSAGES 1
 
 enum ProfileState
 {
@@ -108,12 +109,12 @@ std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const ch
         double p_skip = ki > 0 ? calculate_skip_probability(sequence, state, ki - 1, ki) : 0.0f;
 
         // transitions from match state in previous block
-        double p_me = parameters.self_transition;
-        double p_mk = (1.0f - p_me) * p_skip;
+        double p_mk = p_skip;
+        double p_me = (1 - p_skip) * parameters.trans_m_to_e_not_k;
         double p_mm = 1.0f - p_me - p_mk;
 
         // transitions from event split state in previous block
-        double p_ee = 0.05; //parameters.self_transition;
+        double p_ee = parameters.trans_e_to_e;
         double p_em = 1.0f - p_ee;
         // p_ie not allowed
 
@@ -451,3 +452,89 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
     set(bm, last_event_row, match_state_last_block, PS_MATCH);
     */
 }
+
+void profile_hmm_update_training(const std::string& consensus, 
+                                 const HMMConsReadState& state)
+{
+    std::vector<AlignmentState> alignment = profile_hmm_align(consensus, state);
+
+    const PoreModel& pm = state.read->pore_model[state.strand];
+    TrainingData& training_data = state.read->parameters[state.strand].training_data;
+
+    size_t n_kmers = consensus.size() - K + 1;
+    uint32_t strand_idx = get_strand_idx(state);
+    char prev_s = 'M';
+
+    for(size_t pi = 0; pi < alignment.size(); ++pi) {
+
+        uint32_t ei = alignment[pi].event_idx;
+        uint32_t ki = alignment[pi].kmer_idx;
+        char s = alignment[pi].state;
+    
+        // Record transition observations
+        // We do not record observations for merge states as there was no kmer transitions
+        // We also do not record observations for the beginning of the matches as the
+        // alignment may be poor due to edge effects
+        if(pi > 5 && pi < alignment.size() - 5) {
+ 
+            // skip transition training data
+            // we do not process the E state here as no k-mer move was made
+            if(s != 'E') {
+                uint32_t transition_kmer_from = alignment[pi - 1].kmer_idx;
+                uint32_t transition_kmer_to = alignment[pi].kmer_idx;
+
+                // Specially handle skips
+                // We only want to record the first k-mer skipped if multiple were skipped
+                if(s == 'K') {
+                    transition_kmer_from = alignment[pi - 1].kmer_idx;
+                    transition_kmer_to = transition_kmer_from + 1;
+                }
+                
+                assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
+
+                uint32_t rank1 = get_rank(state, consensus.c_str(), transition_kmer_from);
+                uint32_t rank2 = get_rank(state, consensus.c_str(), transition_kmer_to);
+            
+                double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
+                double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
+
+#ifdef PRINT_TRAINING_MESSAGES
+                printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\t%c\n", strand_idx, ke1, ke2, s, prev_s);
+#endif
+                KmerTransitionObservation to = { ke1, ke2, s };
+                training_data.kmer_transitions.push_back(to);
+            }
+
+            // State-to-state transition
+            add_state_transition(training_data, prev_s, s);
+
+            // emission
+            double level = get_drift_corrected_level(*state.read, ei, state.strand);
+            double sd = state.read->events[state.strand].stdv[ei];
+            double start_time = state.read->events[state.strand].time[ei];
+            double end_time = state.read->events[state.strand].time[ei + 1];
+            if(ki >= n_kmers)
+                printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
+            
+            assert(ki < n_kmers);
+            uint32_t rank = get_rank(state, consensus.c_str(), ki);
+        
+            double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
+            double model_s = pm.state[rank].level_stdv * pm.scale;
+            double norm_level = (level - model_m) / model_s;
+
+            if(s == 'M')
+                training_data.emissions_for_matches.push_back(norm_level);
+            prev_s = s;
+#ifdef PRINT_TRAINING_MESSAGES
+            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, end_time - start_time, s);
+#endif
+        }
+
+        // summary
+        training_data.n_matches += (s == 'M');
+        training_data.n_merges += (s == 'E');
+        training_data.n_skips += (s == 'K');
+    }
+}
+

@@ -10,9 +10,10 @@
 
 #include <vector>
 #include <stdint.h>
+#include "nanopolish_matrix.h"
 
 // 
-struct TransitionObservation
+struct KmerTransitionObservation
 {
     double level_1;
     double level_2;
@@ -26,8 +27,9 @@ struct TrainingData
     uint32_t n_merges;
     uint32_t n_skips;
 
-    std::vector<TransitionObservation> transitions;
+    std::vector<KmerTransitionObservation> kmer_transitions;
     std::vector<double> emissions_for_matches;
+    UInt32Matrix state_transitions;
 };
 
 //
@@ -35,6 +37,9 @@ struct KHMMParameters
 {
     // The probability of staying in the same state in the HMM
     double self_transition;
+    
+    double trans_m_to_e_not_k;
+    double trans_e_to_e;
 
     // This is a vector that maps from discretized absolute difference
     // between expected signals to a probability that the transition
@@ -51,6 +56,9 @@ struct KHMMParameters
 
 // Initialize the parameters to some default values
 void khmm_parameters_initialize(KHMMParameters& parameters);
+
+// add an observation of a state transition
+void add_state_transition(TrainingData& td, char from, char to);
 
 // Train the model
 void khmm_parameters_train(KHMMParameters& parameters);
