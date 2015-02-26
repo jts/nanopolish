@@ -246,8 +246,6 @@ def call_consensus_for_file(input_filename, num_threads):
     # Make all clustal sequences uppercase
     clustal.toupper()
 
-    print "!!!!!!!! using first read as consensus row !!!!!!!"
-
     cons_row = 0
     read_rows = clustal.get_read_rows()
 
@@ -387,8 +385,6 @@ def call_consensus_for_file(input_filename, num_threads):
             if b != '-':
                 n_bases[rr] += 1
         col += 1
-
-    print "!!!!!!! move last anchor to end of consensus !!!!!!"
 
     #
     # Initialize library

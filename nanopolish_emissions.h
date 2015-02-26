@@ -47,7 +47,8 @@ inline double log_normal_cdf(double x, double m, double s)
 inline double log_probability_match(const SquiggleRead& read,
                                     uint32_t kmer_rank,
                                     uint32_t event_idx, 
-                                    uint8_t strand)
+                                    uint8_t strand,
+                                    double state_scale = 1.0f)
 {
     const PoreModel& pm = read.pore_model[strand];
 
@@ -55,7 +56,7 @@ inline double log_probability_match(const SquiggleRead& read,
     double level = get_drift_corrected_level(read, event_idx, strand);
     double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
     double s = pm.state[kmer_rank].level_stdv * pm.var;
-    double lp = log_normal_pdf(level, m, s);
+    double lp = log_normal_pdf(level, m, s * state_scale);
 
 #if MODEL_STDV
     // event level stdv
@@ -77,7 +78,7 @@ inline double log_probability_event_insert(const SquiggleRead& read,
                                            uint32_t event_idx, 
                                            uint8_t strand)
 {
-    return log_probability_match(read, kmer_rank, event_idx, strand);
+    return log_probability_match(read, kmer_rank, event_idx, strand, 1.75f);
 }
 
 inline double log_probability_kmer_insert(const SquiggleRead& read,

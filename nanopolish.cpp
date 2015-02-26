@@ -676,7 +676,7 @@ void run_splice_segment(uint32_t segment_id)
         assert(!second_best.empty());
         for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
             debug_sequence("best", segment_id, ri, base, read_states[ri]);
-            debug_sequence("second", segment_id, ri, second, read_states[ri]);
+            debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
         }
 #endif
     }

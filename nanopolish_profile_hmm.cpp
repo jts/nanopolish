@@ -223,13 +223,14 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * state.stride;
             uint32_t rank = get_rank(state, sequence, kmer_idx);
-            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            double lp_emission_m = log_probability_match(*state.read, rank, event_idx, state.strand);
+            double lp_emission_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
 
 #ifdef DEBUG_FILL    
             printf("\tEMISSION: %.2lf\n", lp_e);
 #endif
-            set(fm, row, curr_block_offset + PS_MATCH, sum_m + lp_e);
-            set(fm, row, curr_block_offset + PS_EVENT_SPLIT, sum_e + lp_e);
+            set(fm, row, curr_block_offset + PS_MATCH, sum_m + lp_emission_m);
+            set(fm, row, curr_block_offset + PS_EVENT_SPLIT, sum_e + lp_emission_e);
             set(fm, row, curr_block_offset + PS_KMER_SKIP, sum_k);
         }
     }
@@ -393,7 +394,9 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * state.stride;
             uint32_t rank = get_rank(state, sequence, kmer_idx);
-            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            
+            double lp_emission_m = log_probability_match(*state.read, rank, event_idx, state.strand);
+            double lp_emission_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
             
             uint32_t prev_block = block - 1;
             uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
@@ -404,7 +407,7 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
             double m2 = bt.lp_em + get(vm, row - 1, prev_block_offset + PS_EVENT_SPLIT);
             double m3 = bt.lp_km + get(vm, row - 1, prev_block_offset + PS_KMER_SKIP);
             double max_m = std::max(std::max(m1, m2), m3);
-            set(vm, row, curr_block_offset + PS_MATCH, max_m + lp_e);
+            set(vm, row, curr_block_offset + PS_MATCH, max_m + lp_emission_m);
             
             ProfileState m_from = PS_NUM_STATES;
             if(max_m == m1)
@@ -424,7 +427,7 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
             double max_e = std::max(e1, e2);
             ProfileState e_from = max_e == e1 ? PS_MATCH : PS_EVENT_SPLIT;
 
-            set(vm, row, curr_block_offset + PS_EVENT_SPLIT, max_e + lp_e);
+            set(vm, row, curr_block_offset + PS_EVENT_SPLIT, max_e + lp_emission_e);
             set(bm, row, curr_block_offset + PS_EVENT_SPLIT, e_from);
 
             // state PS_KMER_SKIP
