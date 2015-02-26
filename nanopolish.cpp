@@ -633,15 +633,7 @@ void run_splice_segment(uint32_t segment_id)
     std::vector<std::string> alts;
 
     for(uint32_t ai = 0; ai < start_column.alt_sequences.size(); ++ai) {
-        // first segment alts plus the base of the middle segment
-        if(m_e_base.length() >= K)
-            alts.push_back(start_column.alt_sequences[ai] + m_e_base.substr(K));
-    }
-    
-    for(uint32_t ai = 0; ai < middle_column.alt_sequences.size(); ++ai) {
-        // base first segment plus alts of middle segment
-        if(middle_column.alt_sequences[ai].length() >= K)
-            alts.push_back(s_m_base.substr(0, s_m_base.size() - K) + middle_column.alt_sequences[ai]);
+        alts.push_back(start_column.alt_sequences[ai]);
     }
 
     // Set up the HMMReadStates, which are used to calculate

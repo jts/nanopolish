@@ -434,11 +434,17 @@ def call_consensus_for_file(input_filename, num_threads):
         # Add sequences to this segment if its not the last
         if i != len(anchors) - 1:
             next_anchor = anchors[i + 1]
+
+            fai = i + 2
+            if i == len(anchors) - 2:
+                fai = i + 1
+            far_anchor = anchors[fai]
+
             base_sequence = clustal.get_sequence_plus_k(cons_row, a.column, next_anchor.column, 5)
             lib_hmmcons_fast.add_base_sequence(base_sequence)
         
             for row in anchor_rows:
-                read_sub = clustal.get_sequence_plus_k(row, a.column, next_anchor.column, 5)
+                read_sub = clustal.get_sequence_plus_k(row, a.column, far_anchor.column, 5)
                 lib_hmmcons_fast.add_alt_sequence(read_sub)
 
         # Tell the library we are finished adding data for this segment
