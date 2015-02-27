@@ -8,6 +8,7 @@ easy_install h5py==2.3.0
 easy_install poretools
 easy_install matplotlib
 easy_install BioPython
+easy_install pysam
 
 # Manually instal yahmm, then:
 
