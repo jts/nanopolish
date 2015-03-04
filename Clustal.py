@@ -142,9 +142,17 @@ class Clustal:
         return seq
 
     # Convert all sequences to upper case strings
-    def toupper(self):
+    # and remove Ns
+    def preprocess(self):
         for row in self.alignment:
             row.seq = str(row.seq).upper()
+            ns = list()
+            for i in xrange(0, len(row.seq)):
+                if row.seq[i] == 'N' or row.seq[i] == 'n':
+                    ns.append(random_base())
+                else:
+                    ns.append(row.seq[i])
+            row.seq = ''.join(ns)
     
     # Count the number of bases seen up to and including the given column
     def count_bases_to_column(self, row, col):

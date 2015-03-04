@@ -243,8 +243,9 @@ def call_consensus_for_file(input_filename, num_threads):
 
     clustal = Clustal(input_filename)
 
-    # Make all clustal sequences uppercase
-    clustal.toupper()
+    # make the clustal sequences upper case
+    # and remove Ns
+    clustal.preprocess()
 
     cons_row = 0
     read_rows = clustal.get_read_rows()

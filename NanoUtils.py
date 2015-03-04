@@ -1,3 +1,4 @@
+import random
 dna_alphabet = ['A', 'C', 'G', 'T']
 
 # Generate a list of all k-mers
@@ -51,3 +52,6 @@ def revcomplist(l):
     for k in l:
         out.append(revcomp(k))
     return out
+
+def random_base():
+    return dna_alphabet[random.randint(0, 3)]
