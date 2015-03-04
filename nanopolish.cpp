@@ -201,12 +201,18 @@ std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColum
         HMMReadAnchor start_ra = start_column.anchors[rsi];
         HMMReadAnchor end_ra = end_column.anchors[rsi];
 
+	// sanity checks
+
         // This read strand does not have events at both anchors
         if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
             continue;
 
         // require a minimum number of events
-        if(abs(start_ra.event_idx - end_ra.event_idx) < 20)
+        uint32_t n_events = abs(start_ra.event_idx - end_ra.event_idx);
+        if(n_events < 20 || n_events > 500)
+            continue;
+
+        if(start_ra.rc != end_ra.rc)
             continue;
 
         HMMConsReadState crs;
@@ -222,7 +228,6 @@ std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColum
             crs.stride = 1;
         else
             crs.stride = -1;
-        assert(start_ra.rc == end_ra.rc);
         crs.rc = start_ra.rc;
 
         read_states.push_back(crs);
