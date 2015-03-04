@@ -205,6 +205,10 @@ std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColum
         if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
             continue;
 
+        // require a minimum number of events
+        if(abs(start_ra.event_idx - end_ra.event_idx) < 20)
+            continue;
+
         HMMConsReadState crs;
 
         uint32_t read_idx = rsi / 2;
@@ -789,7 +793,6 @@ void train_segment(uint32_t segment_id)
     std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
      
     for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-
         std::vector<AlignmentState> decodes = hmm_align(segment_sequence, read_states[ri]);
         update_training_with_segment(segment_sequence, read_states[ri]);
     }

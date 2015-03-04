@@ -182,12 +182,12 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
 
 #ifdef DEBUG_FILL    
             printf("Row %zu block %zu\n", row, block);
-            printf("\tTransitions: p_mx [%.3lf %.3lf %.3lf]\n", p_mm, p_me, p_mk);
-            printf("\t             p_ex [%.3lf %.3lf %.3lf]\n", p_em, p_ee, 0.0f);
-            printf("\t             p_lx [%.3lf %.3lf %.3lf]\n", p_km, 0.0, p_kk);
+            printf("\tTransitions: p_mx [%.3lf %.3lf %.3lf]\n", bt.lp_mm, bt.lp_me, bt.lp_mk);
+            printf("\t             p_ex [%.3lf %.3lf %.3lf]\n", bt.lp_em, bt.lp_ee, 0.0f);
+            printf("\t             p_lx [%.3lf %.3lf %.3lf]\n", bt.lp_km, 0.0, bt.lp_kk);
 
             printf("\tPS_MATCH -- Transitions: [%.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf] sum: %.2lf\n", 
-                    p_mm, p_em, p_km, 
+                    bt.lp_mm, bt.lp_em, bt.lp_km, 
                     get(fm, row - 1, prev_block_offset + PS_MATCH),
                     get(fm, row - 1, prev_block_offset + PS_EVENT_SPLIT),
                     get(fm, row - 1, prev_block_offset + PS_KMER_SKIP),
@@ -201,7 +201,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             double sum_e = add_logs(e1, e2);
 #ifdef DEBUG_FILL    
             printf("\tPS_EVENT_SPLIT -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] sum: %.2lf\n", 
-                    p_me, p_ee,
+                    bt.lp_me, bt.lp_ee,
                     get(fm, row - 1, curr_block_offset + PS_MATCH),
                     get(fm, row - 1, curr_block_offset + PS_EVENT_SPLIT),
                     sum_e);
@@ -214,7 +214,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
 
 #ifdef DEBUG_FILL    
             printf("\tPS_KMER_SKIP -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] sum: %.2lf\n", 
-                    p_mk, p_kk,
+                    bt.lp_mk, bt.lp_kk,
                     get(fm, row, prev_block_offset + PS_MATCH),
                     get(fm, row, prev_block_offset + PS_KMER_SKIP),
                     sum_k);
@@ -227,7 +227,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             double lp_emission_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
 
 #ifdef DEBUG_FILL    
-            printf("\tEMISSION: %.2lf\n", lp_e);
+            printf("\tEMISSION: %.2lf\n", lp_emission_m);
 #endif
             set(fm, row, curr_block_offset + PS_MATCH, sum_m + lp_emission_m);
             set(fm, row, curr_block_offset + PS_EVENT_SPLIT, sum_e + lp_emission_e);
@@ -384,7 +384,6 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
     for(uint32_t row = 1; row < vm.n_rows; row++) {
 
         // Skip the first block which is the start state, it was initialized above
-        // Similarily skip the last block, which is calculated in the terminate() function
         for(uint32_t block = 1; block < num_blocks - 1; block++) {
 
             // retrieve transitions
