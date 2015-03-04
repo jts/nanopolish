@@ -84,7 +84,7 @@ for contig_name in sorted(segments_by_name.keys()):
     for (segment_id, sequence) in enumerate(segments_by_name[contig_name]):
         
         if sequence is "":
-            sys.stderr.write("ERROR, segment %d of contig %s is missing\n" % (segment_id, contig_name))
+            sys.stderr.write("ERROR_MISSING %s %d\n" % (contig_name, segment_id))
             segment_not_found = True
 
 if segment_not_found:            
