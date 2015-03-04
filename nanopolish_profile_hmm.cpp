@@ -288,6 +288,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
         n_events = e_end - e_start + 1;
     else
         n_events = e_start - e_end + 1;
+    assert(n_events >= 2);
 
     uint32_t n_rows = n_events + 1;
     
