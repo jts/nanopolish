@@ -12,8 +12,7 @@
 #include <stdint.h>
 #include <string>
 #include <math.h>
-#include "nanopolish_khmm_parameters.h"
-#include "nanopolish_poremodel.h"
+#include "nanopolish_squiggle_read.h"
 #include "profiler.h"
 
 //
@@ -53,32 +52,6 @@ static const uint8_t base_rank[256] = {
 //
 // Data structures
 //
-
-// The raw event data for a read
-struct EventSequence
-{
-    uint32_t n_events;
-    const double* level;
-    const double* stdv;
-    const double* start;
-    const double* duration;
-};
-
-//
-struct SquiggleRead
-{
-    // unique identifier of the read
-    uint32_t read_id;
-
-    // one model for each strand
-    PoreModel pore_model[2];
-
-    // one event sequence for each strand
-    EventSequence events[2];
-
-    // one set of parameters per strand
-    KHMMParameters parameters[2];
-};
 
 // This struct is used as input into the HMM
 // It tracks where the event stream starts/stops
