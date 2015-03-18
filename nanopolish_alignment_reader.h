@@ -10,7 +10,9 @@
 #define NANOPOLISH_ALIGNMENT_READER_H
 
 #include <string>
+#include "htslib/htslib/sam.h"
 
-void parse_bam(const std::string& filename);
+void sample_bam(const std::string& filename, int ref_id, int start, int end, int stride);
+void sample_read(bam1_t* record, int start, int end, int stride);
 
 #endif

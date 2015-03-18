@@ -25,6 +25,7 @@
 #include "nanopolish_klcs.h"
 #include "nanopolish_khmm.h"
 #include "nanopolish_profile_hmm.h"
+#include "nanopolish_alignment_reader.h"
 #include "profiler.h"
 
 // Macros
@@ -825,5 +826,5 @@ void train()
 int consensus_main(int argc, char** argv)
 {
     std::string bamfile = "reads.pp.sorted.bam";
-    printf("Reading from %s\n", bamfile.c_str());
+    sample_bam(bamfile, 0, 10000, 20000, 50);
 }

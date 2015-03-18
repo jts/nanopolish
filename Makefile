@@ -1,5 +1,6 @@
-LIBS=-lrt
+LIBS=-lrt ./htslib/libhts.a -lz
 CFLAGS=-fopenmp -O3
+
 SRC=nanopolish.cpp \
     nanopolish_consensus.cpp \
     nanopolish_khmm_parameters.cpp \
