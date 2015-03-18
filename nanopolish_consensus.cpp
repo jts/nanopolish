@@ -26,6 +26,7 @@
 #include "nanopolish_khmm.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_alignment_reader.h"
+#include "nanopolish_anchor.h"
 #include "profiler.h"
 
 // Macros
@@ -51,19 +52,6 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 #define DEBUG_SINGLE_SEGMENT 1
 #define DEBUG_SHOW_TOP_TWO 1
 #define DEBUG_SEGMENT_ID 5
-
-struct HMMReadAnchor
-{
-    int32_t event_idx;
-    bool rc; // with respect to consensus
-};
-
-struct HMMAnchoredColumn
-{
-    std::vector<HMMReadAnchor> anchors;
-    std::string base_sequence;
-    std::vector<std::string> alt_sequences;
-};
 
 // A global vector used to store data we've received from the python code
 struct HmmConsData
