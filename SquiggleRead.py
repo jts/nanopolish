@@ -40,11 +40,16 @@ class SquiggleRead:
             self.event_stdv[s] = np.array([x.stdv for x in self.events[s]])
             self.event_stdv[s].astype(np.float64)
         
-        self.event_time = {}
+        self.event_start = {}
         for s in ('t', 'c'):
-            self.event_time[s] = np.array([x.start for x in self.events[s]])
-            self.event_time[s].astype(np.float64)
+            self.event_start[s] = np.array([x.start for x in self.events[s]])
+            self.event_start[s].astype(np.float64)
 
+        self.event_length = {}
+        for s in ('t', 'c'):
+            self.event_length[s] = np.array([x.length for x in self.events[s]])
+            self.event_length[s].astype(np.float64)
+        
         self.event_map = {}
 
         self.event_map['t'] = self.build_1D_event_map('t')

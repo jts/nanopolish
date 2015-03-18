@@ -441,8 +441,7 @@ void khmm_update_training(const std::string& consensus,
             // emission
             double level = get_drift_corrected_level(*state.read, ei, state.strand);
             double sd = state.read->events[state.strand].stdv[ei];
-            double start_time = state.read->events[state.strand].time[ei];
-            double end_time = state.read->events[state.strand].time[ei + 1];
+            double duration = get_duration(*state.read, ei, state.strand);
             if(ki >= n_kmers)
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, pstates[pi].l_fm, s);
             
@@ -457,7 +456,7 @@ void khmm_update_training(const std::string& consensus,
                 training_data.emissions_for_matches.push_back(norm_level);
 
 #ifdef PRINT_TRAINING_MESSAGES
-            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, end_time - start_time, s);
+            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, duration, s);
 #endif
         }
 

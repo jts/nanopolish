@@ -60,7 +60,8 @@ struct EventSequence
     uint32_t n_events;
     const double* level;
     const double* stdv;
-    const double* time;
+    const double* start;
+    const double* duration;
 };
 
 //

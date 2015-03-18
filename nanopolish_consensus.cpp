@@ -47,9 +47,9 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define DEBUG_PATH_SELECTION 1
-//#define DEBUG_SINGLE_SEGMENT 1
-//#define DEBUG_SHOW_TOP_TWO 1
-//#define DEBUG_SEGMENT_ID 97
+#define DEBUG_SINGLE_SEGMENT 1
+#define DEBUG_SHOW_TOP_TWO 1
+#define DEBUG_SEGMENT_ID 5
 
 struct HMMReadAnchor
 {
@@ -130,9 +130,11 @@ void add_read(CSquiggleReadInterface params)
     
         // Initialize events
         sr.events[i].n_events = params.events[i].n_events;
+
         sr.events[i].level = params.events[i].level;
         sr.events[i].stdv = params.events[i].stdv;
-        sr.events[i].time = params.events[i].time;
+        sr.events[i].start = params.events[i].start;
+        sr.events[i].duration = params.events[i].duration;
 
         /*
         printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 

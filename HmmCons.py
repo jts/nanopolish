@@ -39,7 +39,8 @@ class CEventSequenceInterface(Structure):
     _fields_ = [('n_events', c_int),
                 ('level', c_double_p),
                 ('stdv', c_double_p),
-                ('time', c_double_p)]
+                ('time', c_double_p),
+                ('duration', c_double_p)]
 
 class CSquiggleReadInterface(Structure):
     _fields_ = [('pore_model', CPoreModelInterface * 2),
@@ -210,8 +211,9 @@ def load_reads(lib, squiggle_reads):
             n_events = len(sr.event_level[s])
             level = sr.event_level[s].ctypes.data_as(c_double_p)
             stdv = sr.event_stdv[s].ctypes.data_as(c_double_p)
-            time = sr.event_time[s].ctypes.data_as(c_double_p)
-            event_params.append(CEventSequenceInterface(n_events, level, stdv, time))
+            start = sr.event_start[s].ctypes.data_as(c_double_p)
+            duration = sr.event_length[s].ctypes.data_as(c_double_p)
+            event_params.append(CEventSequenceInterface(n_events, level, stdv, start, duration))
 
         #
         params = CSquiggleReadInterface((pm_params[0], pm_params[1]), 

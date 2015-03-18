@@ -14,9 +14,8 @@
 //
 double get_duration(const SquiggleRead& read, uint32_t event_idx, uint32_t strand)
 {
-    double e_start = read.events[strand].time[event_idx];
-    double e_end = read.events[strand].time[event_idx + 1];
-    return e_end - e_start;
+    assert(event_idx < read.events[strand].n_events);
+    return read.events[strand].duration[event_idx];
 }
 
 //
@@ -24,8 +23,8 @@ double get_drift_corrected_level(const SquiggleRead& read, uint32_t event_idx, u
 {
     double level = read.events[strand].level[event_idx];
     // correct level by drift
-    double start = read.events[strand].time[0];
-    double time = read.events[strand].time[event_idx] - start;
+    double read_start = read.events[strand].start[0];
+    double time = read.events[strand].start[event_idx] - read_start;
     return level - (time * read.pore_model[strand].drift);
 }
 
@@ -98,8 +97,8 @@ void print_alignment(const std::string& name,
     }
 
     // Summarize alignment
-    double time_start = state.read->events[state.strand].time[state.event_start_idx];
-    double time_end = state.read->events[state.strand].time[state.event_stop_idx];
+    double time_start = state.read->events[state.strand].start[state.event_start_idx];
+    double time_end = state.read->events[state.strand].start[state.event_stop_idx];
     double total_duration = fabs(time_start - time_end);
     double num_events = abs(state.event_start_idx - state.event_stop_idx) + 1;
     double final_lp = alignment[alignment.size() - 1].l_fm;

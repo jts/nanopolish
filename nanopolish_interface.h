@@ -42,7 +42,8 @@ struct CEventSequenceInterface
     int n_events;
     double* level;
     double* stdv;
-    double* time;
+    double* start;
+    double* duration;
 };
 
 // SquiggleRead
