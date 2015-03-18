@@ -3,7 +3,7 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish.cpp -- entry point to consensus functions
+// nanopolish_consensus.cpp -- entry point to consensus functions
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -822,7 +822,8 @@ void train()
     }
 }
 
-int main(int argc, char** argv)
+int consensus_main(int argc, char** argv)
 {
-
+    std::string bamfile = "reads.pp.sorted.bam";
+    printf("Reading from %s\n", bamfile.c_str());
 }
