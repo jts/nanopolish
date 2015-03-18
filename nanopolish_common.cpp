@@ -46,7 +46,7 @@ void print_alignment(const std::string& name,
                      uint32_t seq_id,
                      uint32_t read_id,
                      const std::string& consensus, 
-                     const HMMConsReadState& state,
+                     const HMMInputData& data,
                      const std::vector<AlignmentState>& alignment)
 {
     size_t n_matches = 0;
@@ -61,12 +61,12 @@ void print_alignment(const std::string& name,
         uint32_t ki = alignment[pi].kmer_idx;
         char s = alignment[pi].state;
     
-        double level = get_drift_corrected_level(*state.read, ei, state.strand);
-        double sd = state.read->events[state.strand].stdv[ei];
-        double duration = get_duration(*state.read, ei, state.strand);
-        uint32_t rank = get_rank(state, consensus.c_str(), ki);
+        double level = get_drift_corrected_level(*data.read, ei, data.strand);
+        double sd = data.read->events[data.strand].stdv[ei];
+        double duration = get_duration(*data.read, ei, data.strand);
+        uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
-        const PoreModel& pm = state.read->pore_model[state.strand];
+        const PoreModel& pm = data.read->pore_model[data.strand];
         double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
         double model_s = pm.state[rank].level_stdv * pm.scale;
         double norm_level = (level - model_m) / model_s;
@@ -87,7 +87,7 @@ void print_alignment(const std::string& name,
         }
         std::string kmer = consensus.substr(ki, K);
  
-        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, state.rc, state.strand ? 't' : 'c');
+        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, data.strand ? 't' : 'c');
         printf("%c\t%d\t%d\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
@@ -97,10 +97,10 @@ void print_alignment(const std::string& name,
     }
 
     // Summarize alignment
-    double time_start = state.read->events[state.strand].start[state.event_start_idx];
-    double time_end = state.read->events[state.strand].start[state.event_stop_idx];
+    double time_start = data.read->events[data.strand].start[data.event_start_idx];
+    double time_end = data.read->events[data.strand].start[data.event_stop_idx];
     double total_duration = fabs(time_start - time_end);
-    double num_events = abs(state.event_start_idx - state.event_stop_idx) + 1;
+    double num_events = abs(data.event_start_idx - data.event_stop_idx) + 1;
     double final_lp = alignment[alignment.size() - 1].l_fm;
     double mean_lp = final_lp / num_events;
 
@@ -113,7 +113,7 @@ void print_alignment(const std::string& name,
         once = 0;
     }
 
-    printf("SUMMARY\t%s\t%d\t%d\t%d\t%c\t", name.c_str(), seq_id, read_id, state.rc, state.strand ? 't' : 'c');
+    printf("SUMMARY\t%s\t%d\t%d\t%d\t%c\t", name.c_str(), seq_id, read_id, data.rc, data.strand ? 't' : 'c');
     printf("%.2lf\t%.2lf\t%.0lf\t", final_lp, mean_lp, num_events);
     printf("%zu\t%zu\t%zu\t%zu\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
 }

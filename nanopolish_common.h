@@ -56,7 +56,7 @@ static const uint8_t base_rank[256] = {
 // This struct is used as input into the HMM
 // It tracks where the event stream starts/stops
 // for the partial consensus sequence under consideration
-struct HMMConsReadState
+struct HMMInputData
 {
     SquiggleRead* read;
     uint32_t anchor_index;
@@ -103,10 +103,10 @@ inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
 }
 
 // wrapper to get the rank for a kmer on the correct strand wrt to the read state
-inline uint32_t get_rank(const HMMConsReadState& state, const char* s, uint32_t ki)
+inline uint32_t get_rank(const HMMInputData& data, const char* s, uint32_t ki)
 {
     const char* p = s + ki;
-    return !state.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
+    return !data.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
 }
 
 // Add the log-scaled values a and b using a transform to avoid precision errors
@@ -125,9 +125,9 @@ inline double add_logs(const double a, const double b)
 }
 
 // Make a unique index for the strand this read state represents
-inline uint32_t get_strand_idx(const HMMConsReadState& rs)
+inline uint32_t get_strand_idx(const HMMInputData& data)
 {
-    return rs.read->read_id + rs.strand;
+    return data.read->read_id + data.strand;
 }
 
 // Get the duration of the given event
@@ -144,7 +144,7 @@ void print_alignment(const std::string& name,
                      uint32_t seq_id,
                      uint32_t read_id,
                      const std::string& consensus, 
-                     const HMMConsReadState& state,
+                     const HMMInputData& data,
                      const std::vector<AlignmentState>& alignment);
 
 #endif

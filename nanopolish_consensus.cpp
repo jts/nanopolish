@@ -173,7 +173,7 @@ void add_alt_sequence(char* str)
     g_data.anchored_columns.back().alt_sequences.push_back(str);
 }
 
-// This is called by python to tell us we want to start a new anchored column
+// This is called by python to tell us we want to end the current anchored column
 extern "C"
 void end_anchored_column()
 {
@@ -181,19 +181,18 @@ void end_anchored_column()
     assert(g_data.anchored_columns.back().anchors.size() == g_data.reads.size() * 2);
 }
 
-std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColumn& start_column,  
-                                                          const HMMAnchoredColumn& end_column)
+std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_column,
+                                                const HMMAnchoredColumn& end_column)
 {
     assert(start_column.anchors.size() == end_column.anchors.size());
 
-    std::vector<HMMConsReadState> read_states;
+    std::vector<HMMInputData> input;
     for(uint32_t rsi = 0; rsi < start_column.anchors.size(); ++rsi) {
 
         HMMReadAnchor start_ra = start_column.anchors[rsi];
         HMMReadAnchor end_ra = end_column.anchors[rsi];
 
-	// sanity checks
-
+        // sanity checks
         // This read strand does not have events at both anchors
         if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
             continue;
@@ -206,54 +205,54 @@ std::vector<HMMConsReadState> get_read_states_for_columns(const HMMAnchoredColum
         if(start_ra.rc != end_ra.rc)
             continue;
 
-        HMMConsReadState crs;
+        HMMInputData data;
 
         uint32_t read_idx = rsi / 2;
         assert(read_idx < g_data.reads.size());
-        crs.anchor_index = rsi;
-        crs.read = &g_data.reads[read_idx];
-        crs.strand = rsi % 2;
-        crs.event_start_idx = start_ra.event_idx;
-        crs.event_stop_idx = end_ra.event_idx;
-        if(crs.event_start_idx < crs.event_stop_idx)
-            crs.stride = 1;
+        data.anchor_index = rsi;
+        data.read = &g_data.reads[read_idx];
+        data.strand = rsi % 2;
+        data.event_start_idx = start_ra.event_idx;
+        data.event_stop_idx = end_ra.event_idx;
+        if(data.event_start_idx < data.event_stop_idx)
+            data.stride = 1;
         else
-            crs.stride = -1;
-        crs.rc = start_ra.rc;
+            data.stride = -1;
+        data.rc = start_ra.rc;
 
-        read_states.push_back(crs);
+        input.push_back(data);
     }
-    return read_states;
+    return input;
 }
 
 // Handy wrappers for scoring/debugging functions
 // The consensus algorithms call into these so we can switch
 // scoring functinos without writing a bunch of code
-double score_sequence(const std::string& sequence, const HMMConsReadState& state)
+double score_sequence(const std::string& sequence, const HMMInputData& data)
 {
     //return score_skip_merge(sequence, state);
     //return score_khmm_model_postmerge(sequence, state);
     //return khmm_score(sequence, state, AP_GLOBAL);
-    return profile_hmm_score(sequence, state);
+    return profile_hmm_score(sequence, data);
     //return score_emission_dp(sequence, state);
 }
 
 
-std::vector<AlignmentState> hmm_align(const std::string& sequence, const HMMConsReadState& state)
+std::vector<AlignmentState> hmm_align(const std::string& sequence, const HMMInputData& data)
 {
-    return profile_hmm_align(sequence, state);
+    return profile_hmm_align(sequence, data);
 //    return khmm_posterior_decode(sequence, state);
 }
 
-void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMConsReadState& state)
+void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = hmm_align(sequence, state);
-    print_alignment(name, seq_id, read_id, sequence, state, alignment);
+    std::vector<AlignmentState> alignment = hmm_align(sequence, data);
+    print_alignment(name, seq_id, read_id, sequence, data, alignment);
 }
 
-void update_training_with_segment(const std::string& sequence, const HMMConsReadState& state)
+void update_training_with_segment(const std::string& sequence, const HMMInputData& data)
 {
-    profile_hmm_update_training(sequence, state);
+    profile_hmm_update_training(sequence, data);
 }
 
 struct PathCons
@@ -301,7 +300,7 @@ bool sortIndexedPathScoreDesc(const IndexedPathScore& a, const IndexedPathScore&
 
 // This scores each path using the HMM and 
 // sorts the paths into ascending order by score
-void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& read_states)
+void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
 {
     PROFILE_FUNC("score_paths")
     double MIN_FIT = INFINITY;
@@ -332,22 +331,17 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
     
 
     // Score all reads
-    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+    for(uint32_t ri = 0; ri < input.size(); ++ri) {
         printf("Scoring %d\n", ri);
 
-        const HMMConsReadState& read_state = read_states[ri];
-        const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
- 
-        if( fabs(parameters.fit_quality) > MIN_FIT)
-            continue;
-
+        const HMMInputData& data = input[ri];
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
         omp_set_num_threads(g_data.num_threads);
         #pragma omp parallel for
         for(size_t pi = 0; pi < paths.size(); ++pi) {
-            double curr = score_sequence(paths[pi].path, read_states[ri]);
+            double curr = score_sequence(paths[pi].path, input[ri]);
             result[pi].score = curr;
             result[pi].path_index = pi;
         }
@@ -403,13 +397,13 @@ void score_paths(PathConsVector& paths, const std::vector<HMMConsReadState>& rea
         printf("%zu\t%s\t%.1lf\t%zu %c %s", pi, paths[pi].path.c_str(), paths[pi].score, paths[pi].sum_rank, initial, paths[pi].mutdesc.c_str());
         // If this is the truth path or the best path, show the scores for all reads
         if(pi <= 1 || initial == 'I') {
-            for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-                const HMMConsReadState& read_state = read_states[ri];
-                const KHMMParameters& parameters = read_state.read->parameters[read_state.strand];
+            for(uint32_t ri = 0; ri < input.size(); ++ri) {
+                const HMMInputData& data = input[ri];
+                const KHMMParameters& parameters = data.read->parameters[data.strand];
                 if( fabs(parameters.fit_quality) > MIN_FIT)
                     continue;
 
-                double curr = score_sequence(paths[pi].path, read_states[ri]);
+                double curr = score_sequence(paths[pi].path, input[ri]);
                 printf("%.1lf,%.2lf ", parameters.fit_quality, curr);
             }
         }
@@ -500,7 +494,7 @@ PathConsVector generate_mutations(const std::string& sequence)
     return mutations;
 }
 
-void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_states, std::string& second_best)
+void run_mutation(std::string& base, const std::vector<HMMInputData>& input, std::string& second_best)
 {
     PROFILE_FUNC("run_mutation")
     int iteration = 0;
@@ -509,7 +503,7 @@ void run_mutation(std::string& base, const std::vector<HMMConsReadState>& read_s
         // Generate possible sequences
         PathConsVector paths = generate_mutations(base);
 
-        score_paths(paths, read_states);
+        score_paths(paths, input);
 
         second_best = paths[1].path;
         // check if no improvement was made
@@ -570,11 +564,11 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
 //
 // Outlier filtering
 //
-void filter_outlier_read_states(std::vector<HMMConsReadState>& read_states, const std::string& sequence)
+void filter_outlier_input(std::vector<HMMInputData>& input, const std::string& sequence)
 {
-    std::vector<HMMConsReadState> out_rs;
-    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-        const HMMConsReadState& rs = read_states[ri];
+    std::vector<HMMInputData> out_rs;
+    for(uint32_t ri = 0; ri < input.size(); ++ri) {
+        const HMMInputData& rs = input[ri];
 
         double curr = score_sequence(sequence, rs);
         double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
@@ -584,7 +578,7 @@ void filter_outlier_read_states(std::vector<HMMConsReadState>& read_states, cons
             out_rs.push_back(rs);
         }
     }
-    read_states.swap(out_rs);
+    input.swap(out_rs);
 }
 
 std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
@@ -638,13 +632,13 @@ void run_splice_segment(uint32_t segment_id)
 
     // Set up the HMMReadStates, which are used to calculate
     // the probability of the data given a possible consensus sequence
-    std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
+    std::vector<HMMInputData> input = get_input_for_columns(start_column, end_column);
 
     //
-    filter_outlier_read_states(read_states, base);
+    filter_outlier_input(input, base);
 
     // Only attempt correction if there are any reads here
-    if(!read_states.empty()) {
+    if(!input.empty()) {
         uint32_t num_rounds = 6;
         uint32_t round = 0;
         while(round++ < num_rounds) {
@@ -654,7 +648,7 @@ void run_splice_segment(uint32_t segment_id)
             paths.push_back(base_path);
             
             generate_alt_paths(paths, base, alts);
-            score_paths(paths, read_states);
+            score_paths(paths, input);
 
             if(paths[0].path == base)
                 break;
@@ -662,13 +656,13 @@ void run_splice_segment(uint32_t segment_id)
         }
 
         std::string second_best;
-        run_mutation(base, read_states, second_best);
+        run_mutation(base, input, second_best);
 
 #if DEBUG_SHOW_TOP_TWO
         assert(!second_best.empty());
-        for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-            debug_sequence("best", segment_id, ri, base, read_states[ri]);
-            debug_sequence("second", segment_id, ri, second_best, read_states[ri]);
+        for(uint32_t ri = 0; ri < input.size(); ++ri) {
+            debug_sequence("best", segment_id, ri, base, input[ri]);
+            debug_sequence("second", segment_id, ri, second_best, input[ri]);
         }
 #endif
     }
@@ -692,10 +686,10 @@ void run_splice_segment(uint32_t segment_id)
     middle_column.base_sequence = m_e_fixed;
 
     // Update the event indices in the first column to match 
-    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
+    for(uint32_t ri = 0; ri < input.size(); ++ri) {
 
         // Realign to the consensus sequence
-        std::vector<AlignmentState> decodes = hmm_align(base, read_states[ri]);
+        std::vector<AlignmentState> decodes = hmm_align(base, input[ri]);
 
         // Get the closest event aligned to the target kmer
         int32_t min_k_dist = base.length();
@@ -708,7 +702,7 @@ void run_splice_segment(uint32_t segment_id)
             }
         }
 
-        middle_column.anchors[read_states[ri].anchor_index].event_idx = event_idx;
+        middle_column.anchors[input[ri].anchor_index].event_idx = event_idx;
     }
 }
 
@@ -784,13 +778,12 @@ void train_segment(uint32_t segment_id)
 
     std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base);
 
-    // Set up the HMMReadStates, which are used to calculate
-    // the probability of the data given a possible consensus sequence
-    std::vector<HMMConsReadState> read_states = get_read_states_for_columns(start_column, end_column);
+    // Set up the the input data for the HMM
+    std::vector<HMMInputData> input = get_input_for_columns(start_column, end_column);
      
-    for(uint32_t ri = 0; ri < read_states.size(); ++ri) {
-        std::vector<AlignmentState> decodes = hmm_align(segment_sequence, read_states[ri]);
-        update_training_with_segment(segment_sequence, read_states[ri]);
+    for(uint32_t ri = 0; ri < input.size(); ++ri) {
+        std::vector<AlignmentState> decodes = hmm_align(segment_sequence, input[ri]);
+        update_training_with_segment(segment_sequence, input[ri]);
     }
 }
 

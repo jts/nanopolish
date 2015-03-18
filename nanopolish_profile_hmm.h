@@ -20,10 +20,10 @@
 //
 
 // Calculate the probability of the nanopore events given the consensus sequence
-double profile_hmm_score(const std::string& consensus, const HMMConsReadState& state);
+double profile_hmm_score(const std::string& consensus, const HMMInputData& data);
 
 // Run viterbi to align events to kmers
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMConsReadState& state);
+std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data);
 
 //
 // Forward algorithm
@@ -38,7 +38,7 @@ double profile_hmm_forward_terminate(const DoubleMatrix& fm, uint32_t row);
 // Fill in the forward matrix
 double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
                                 const char* sequence,
-                                const HMMConsReadState& state,
+                                const HMMInputData& data,
                                 uint32_t e_start);
 
 
@@ -53,13 +53,13 @@ void profile_hmm_viterbi_initialize(DoubleMatrix& m);
 void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
                               UInt8Matrix& bm, // backtrack matrix
                               const char* sequence,
-                              const HMMConsReadState& state,
+                              const HMMInputData& data,
                               uint32_t e_start);
 
 //
 // Training
 //
 void profile_hmm_update_training(const std::string& consensus, 
-                                 const HMMConsReadState& state);
+                                 const HMMInputData& data);
 
 #endif

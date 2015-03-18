@@ -17,7 +17,7 @@
 #include "nanopolish_emissions.h"
 
 // Fill in the transition matrix for the model
-void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state);
+void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMInputData& data);
 
 // Initialize the forward algorithm
 void khmm_forward_initialize(DoubleMatrix& fm);
@@ -29,7 +29,7 @@ double khmm_forward_terminate(const DoubleMatrix& fm, const DoubleMatrix& tm, ui
 double khmm_forward_fill(DoubleMatrix& fm, // forward matrix
                          const DoubleMatrix& tm, //transitions
                          const char* sequence,
-                         const HMMConsReadState& state,
+                         const HMMInputData& data,
                          uint32_t e_start);
 
 // Initialize the backward algorithm
@@ -39,25 +39,25 @@ void khmm_backward_initialize(DoubleMatrix& bm, const DoubleMatrix& tm);
 void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
                         const DoubleMatrix& tm, //transitions
                         const char* sequence,
-                        const HMMConsReadState& state,
+                        const HMMInputData& data,
                         uint32_t e_start);
 
 // Calculate the probability of the nanopore events given the consensus sequence
-double khmm_score(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy);
+double khmm_score(const std::string& consensus, const HMMInputData& data, AlignmentPolicy policy);
 
 // Perform posterior decoding of the path through the hidden states
-std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state);
+std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMInputData& data);
 
 // Update the training data
 void khmm_update_training(const std::string& consensus, 
-                          const HMMConsReadState& state);
+                          const HMMInputData& data);
 
 // Debug the model, printing hopefully useful information
 void khmm_debug(const std::string& name,
                 uint32_t seq_id,
                 uint32_t read_id,
                 const std::string& consensus, 
-                const HMMConsReadState& state);
+                const HMMInputData& data);
 
 
 #endif

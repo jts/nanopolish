@@ -15,12 +15,12 @@
 const static uint32_t KHMM_MAX_JUMP = 5;
 const static uint32_t KHMM_MAX_MERGE = 10;
 
-void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMConsReadState& state)
+void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, const HMMInputData& data)
 {
     PROFILE_FUNC("fill_khmm_transitions")
 
-    const PoreModel& pm = state.read->pore_model[state.strand];
-    const KHMMParameters& parameters = state.read->parameters[state.strand];
+    const PoreModel& pm = data.read->pore_model[data.strand];
+    const KHMMParameters& parameters = data.read->parameters[data.strand];
 
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2;
@@ -56,8 +56,8 @@ void khmm_fill_transitions(DoubleMatrix& matrix, const std::string& consensus, c
                 p_i_j = parameters.self_transition;
             } else {
         
-                uint32_t rank_i = get_rank(state, consensus.c_str(), ki);
-                uint32_t rank_j = get_rank(state, consensus.c_str(), kj);
+                uint32_t rank_i = get_rank(data, consensus.c_str(), ki);
+                uint32_t rank_j = get_rank(data, consensus.c_str(), kj);
 
                 double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
                 double level_j = (pm.state[rank_j].level_mean + pm.shift) * pm.scale;
@@ -113,7 +113,7 @@ double khmm_forward_terminate(const DoubleMatrix& fm,
 double khmm_forward_fill(DoubleMatrix& fm, // forward matrix
                          const DoubleMatrix& tm, //transitions
                          const char* sequence,
-                         const HMMConsReadState& state,
+                         const HMMInputData& data,
                          uint32_t e_start)
 {
     PROFILE_FUNC("fill_forward_khmm")
@@ -147,10 +147,10 @@ double khmm_forward_fill(DoubleMatrix& fm, // forward matrix
             }
 
             // Emission probability for event i in state sl
-            uint32_t event_idx = e_start + (row - 1) * state.stride;
+            uint32_t event_idx = e_start + (row - 1) * data.stride;
             uint32_t kmer_idx = sl - 1;
-            uint32_t rank = get_rank(state, sequence, kmer_idx);
-            double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+            uint32_t rank = get_rank(data, sequence, kmer_idx);
+            double lp_e = log_probability_match(*data.read, rank, event_idx, data.strand);
             
             set(fm, row, sl, lp_e + sum);
 
@@ -188,7 +188,7 @@ void khmm_backward_initialize(DoubleMatrix& bm, const DoubleMatrix& tm)
 void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
                         const DoubleMatrix& tm, //transitions
                         const char* sequence,
-                        const HMMConsReadState& state,
+                        const HMMInputData& data,
                         uint32_t e_start)
 {
     // Fill in matrix
@@ -204,10 +204,10 @@ void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
                 double bm_l = get(bm, row + 1, sl);
 
                 // Emit E_(i+1) in state sl
-                uint32_t event_idx = e_start + row * state.stride; // for i + 1
+                uint32_t event_idx = e_start + row * data.stride; // for i + 1
                 uint32_t kmer_idx = sl - 1;
-                uint32_t rank = get_rank(state, sequence, kmer_idx);
-                double lp_e = log_probability_match(*state.read, rank, event_idx, state.strand);
+                uint32_t rank = get_rank(data, sequence, kmer_idx);
+                double lp_e = log_probability_match(*data.read, rank, event_idx, data.strand);
 
                 sum = add_logs(sum, lp_e + t_kl + bm_l);
 #ifdef DEBUG_HMM_UPDATE
@@ -224,7 +224,7 @@ void khmm_backward_fill(DoubleMatrix& bm, // backward matrix
     }
 }
 
-double khmm_score(const std::string& consensus, const HMMConsReadState& state, AlignmentPolicy policy)
+double khmm_score(const std::string& consensus, const HMMInputData& data, AlignmentPolicy policy)
 {
     uint32_t n_kmers = consensus.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -232,10 +232,10 @@ double khmm_score(const std::string& consensus, const HMMConsReadState& state, A
     DoubleMatrix tm;
     allocate_matrix(tm, n_states, n_states);
 
-    khmm_fill_transitions(tm, consensus, state);
+    khmm_fill_transitions(tm, consensus, data);
     
-    uint32_t e_start = state.event_start_idx;
-    uint32_t e_end = state.event_stop_idx;
+    uint32_t e_start = data.event_start_idx;
+    uint32_t e_end = data.event_stop_idx;
     uint32_t n_events = 0;
     if(e_end > e_start)
         n_events = e_end - e_start + 1;
@@ -249,7 +249,7 @@ double khmm_score(const std::string& consensus, const HMMConsReadState& state, A
     allocate_matrix(fm, n_rows, n_states);
 
     khmm_forward_initialize(fm);
-    khmm_forward_fill(fm, tm, consensus.c_str(), state, e_start);
+    khmm_forward_fill(fm, tm, consensus.c_str(), data, e_start);
 
     double score = 0.0f;
     if(policy == AP_GLOBAL) {
@@ -280,7 +280,7 @@ double khmm_score(const std::string& consensus, const HMMConsReadState& state, A
 }
 
 
-std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMConsReadState& state)
+std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, const HMMInputData& data)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
     uint32_t n_states = n_kmers + 2; // one start and one end state
@@ -288,10 +288,10 @@ std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, c
     DoubleMatrix tm;
     allocate_matrix(tm, n_states, n_states);
 
-    khmm_fill_transitions(tm, sequence, state);
+    khmm_fill_transitions(tm, sequence, data);
     
-    uint32_t e_start = state.event_start_idx;
-    uint32_t e_end = state.event_stop_idx;
+    uint32_t e_start = data.event_start_idx;
+    uint32_t e_end = data.event_stop_idx;
     uint32_t n_events = 0;
     if(e_end > e_start)
         n_events = e_end - e_start + 1;
@@ -305,14 +305,14 @@ std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, c
     allocate_matrix(fm, n_rows, n_states);
 
     khmm_forward_initialize(fm);
-    double lf = khmm_forward_fill(fm, tm, sequence.c_str(), state, e_start);
+    double lf = khmm_forward_fill(fm, tm, sequence.c_str(), data, e_start);
 
     // Allocate and compute backward matrix
     DoubleMatrix bm;
     allocate_matrix(bm, n_rows, n_states);
 
     khmm_backward_initialize(bm, tm);
-    khmm_backward_fill(bm, tm, sequence.c_str(), state, e_start);
+    khmm_backward_fill(bm, tm, sequence.c_str(), data, e_start);
 
     // posterior decode
     std::vector<AlignmentState> output;
@@ -339,7 +339,7 @@ std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, c
             }
         }
     
-        uint32_t event_idx = e_start + (row - 1) * state.stride;
+        uint32_t event_idx = e_start + (row - 1) * data.stride;
         uint32_t kmer_idx = max_s - 1;
  
         double lpfm = get(fm, row, max_s);
@@ -390,14 +390,14 @@ std::vector<AlignmentState> khmm_posterior_decode(const std::string& sequence, c
 }
 
 void khmm_update_training(const std::string& consensus, 
-                          const HMMConsReadState& state)
+                          const HMMInputData& data)
 {
-    std::vector<AlignmentState> pstates = khmm_posterior_decode(consensus, state);
+    std::vector<AlignmentState> pstates = khmm_posterior_decode(consensus, data);
 
-    const PoreModel& pm = state.read->pore_model[state.strand];
-    TrainingData& training_data = state.read->parameters[state.strand].training_data;
+    const PoreModel& pm = data.read->pore_model[data.strand];
+    TrainingData& training_data = data.read->parameters[data.strand].training_data;
     size_t n_kmers = consensus.size() - K + 1;
-    uint32_t strand_idx = get_strand_idx(state);
+    uint32_t strand_idx = get_strand_idx(data);
 
     for(size_t pi = 0; pi < pstates.size(); ++pi) {
 
@@ -425,8 +425,8 @@ void khmm_update_training(const std::string& consensus,
                 
                 assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
-                uint32_t rank1 = get_rank(state, consensus.c_str(), transition_kmer_from);
-                uint32_t rank2 = get_rank(state, consensus.c_str(), transition_kmer_to);
+                uint32_t rank1 = get_rank(data, consensus.c_str(), transition_kmer_from);
+                uint32_t rank2 = get_rank(data, consensus.c_str(), transition_kmer_to);
             
                 double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
                 double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
@@ -439,14 +439,14 @@ void khmm_update_training(const std::string& consensus,
             }
 
             // emission
-            double level = get_drift_corrected_level(*state.read, ei, state.strand);
-            double sd = state.read->events[state.strand].stdv[ei];
-            double duration = get_duration(*state.read, ei, state.strand);
+            double level = get_drift_corrected_level(*data.read, ei, data.strand);
+            double sd = data.read->events[data.strand].stdv[ei];
+            double duration = get_duration(*data.read, ei, data.strand);
             if(ki >= n_kmers)
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, pstates[pi].l_fm, s);
             
             assert(ki < n_kmers);
-            uint32_t rank = get_rank(state, consensus.c_str(), ki);
+            uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
             double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].level_stdv * pm.scale;

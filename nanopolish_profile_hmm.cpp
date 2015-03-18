@@ -62,16 +62,16 @@ double profile_hmm_forward_terminate(const DoubleMatrix& fm,
     */
 }
 
-inline double calculate_skip_probability(const char* sequence, 
-                                         const HMMConsReadState& state, 
-                                         uint32_t ki, 
+inline double calculate_skip_probability(const char* sequence,
+                                         const HMMInputData& data,
+                                         uint32_t ki,
                                          uint32_t kj)
 {
-    const PoreModel& pm = state.read->pore_model[state.strand];
-    const KHMMParameters& parameters = state.read->parameters[state.strand];
+    const PoreModel& pm = data.read->pore_model[data.strand];
+    const KHMMParameters& parameters = data.read->parameters[data.strand];
 
-    uint32_t rank_i = get_rank(state, sequence, ki);
-    uint32_t rank_j = get_rank(state, sequence, kj);
+    uint32_t rank_i = get_rank(data, sequence, ki);
+    uint32_t rank_j = get_rank(data, sequence, kj);
 
     double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
     double level_j = (pm.state[rank_j].level_mean + pm.shift) * pm.scale;
@@ -97,16 +97,16 @@ struct BlockTransitions
     double lp_km;
 };
 
-std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const char* sequence, const HMMConsReadState& state)
+std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const char* sequence, const HMMInputData& data)
 {
-    const KHMMParameters& parameters = state.read->parameters[state.strand];
+    const KHMMParameters& parameters = data.read->parameters[data.strand];
 
     std::vector<BlockTransitions> transitions(num_kmers);
     
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
 
         // probability of skipping k_i from k_(i - 1)
-        double p_skip = ki > 0 ? calculate_skip_probability(sequence, state, ki - 1, ki) : 0.0f;
+        double p_skip = ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
 
         // transitions from match state in previous block
         double p_mk = p_skip;
@@ -142,12 +142,12 @@ std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const ch
 
 double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
                                 const char* sequence,
-                                const HMMConsReadState& state,
+                                const HMMInputData& data,
                                 uint32_t e_start)
 {
     PROFILE_FUNC("profile_hmm_fill_forward")
 
-    const KHMMParameters& parameters = state.read->parameters[state.strand];
+    const KHMMParameters& parameters = data.read->parameters[data.strand];
 
     // Calculate number of blocks
     // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
@@ -157,7 +157,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
     // Precompute the transition probabilites for each kmer block
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
 
-    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, state);
+    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, data);
     
     // Fill in matrix
     for(uint32_t row = 1; row < fm.n_rows; row++) {
@@ -221,10 +221,10 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
 #endif
 
             // Emission probabilities
-            uint32_t event_idx = e_start + (row - 1) * state.stride;
-            uint32_t rank = get_rank(state, sequence, kmer_idx);
-            double lp_emission_m = log_probability_match(*state.read, rank, event_idx, state.strand);
-            double lp_emission_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
+            uint32_t event_idx = e_start + (row - 1) * data.stride;
+            uint32_t rank = get_rank(data, sequence, kmer_idx);
+            double lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
+            double lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
 
 #ifdef DEBUG_FILL    
             printf("\tEMISSION: %.2lf\n", lp_emission_m);
@@ -240,14 +240,14 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
     return get(fm, last_event_row, match_state_last_block);
 }
 
-double profile_hmm_score(const std::string& sequence, const HMMConsReadState& state)
+double profile_hmm_score(const std::string& sequence, const HMMInputData& data)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
 
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
-    uint32_t e_start = state.event_start_idx;
-    uint32_t e_end = state.event_stop_idx;
+    uint32_t e_start = data.event_start_idx;
+    uint32_t e_end = data.event_stop_idx;
     uint32_t n_events = 0;
     if(e_end > e_start)
         n_events = e_end - e_start + 1;
@@ -261,7 +261,7 @@ double profile_hmm_score(const std::string& sequence, const HMMConsReadState& st
     allocate_matrix(fm, n_rows, n_states);
 
     profile_hmm_forward_initialize(fm);
-    double score = profile_hmm_forward_fill(fm, sequence.c_str(), state, e_start);
+    double score = profile_hmm_forward_fill(fm, sequence.c_str(), data, e_start);
 
     // cleanup
     free_matrix(fm);
@@ -274,15 +274,15 @@ void profile_hmm_viterbi_initialize(DoubleMatrix& m)
     profile_hmm_forward_initialize(m);
 }
 
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMConsReadState& state)
+std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data)
 {
     std::vector<AlignmentState> alignment;
 
     uint32_t n_kmers = sequence.size() - K + 1;
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
-    uint32_t e_start = state.event_start_idx;
-    uint32_t e_end = state.event_stop_idx;
+    uint32_t e_start = data.event_start_idx;
+    uint32_t e_end = data.event_stop_idx;
     uint32_t n_events = 0;
     if(e_end > e_start)
         n_events = e_end - e_start + 1;
@@ -300,7 +300,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     allocate_matrix(bm, n_rows, n_states);
 
     profile_hmm_viterbi_initialize(vm);
-    profile_hmm_viterbi_fill(vm, bm, sequence.c_str(), state, e_start);
+    profile_hmm_viterbi_fill(vm, bm, sequence.c_str(), data, e_start);
 
     // Traverse the backtrack matrix to compute the results
     
@@ -310,7 +310,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
 
     while(row > 0) {
         
-        uint32_t event_idx = e_start + (row - 1) * state.stride;
+        uint32_t event_idx = e_start + (row - 1) * data.stride;
         uint32_t block = col / PS_NUM_STATES;
         assert(block > 0);
         assert(get(vm, row, col) != -INFINITY);
@@ -364,12 +364,12 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
 void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
                               UInt8Matrix& bm, // backtrack matrix
                               const char* sequence,
-                              const HMMConsReadState& state,
+                              const HMMInputData& data,
                               uint32_t e_start)
 {
     PROFILE_FUNC("profile_hmm_viterbi_forward")
 
-    const KHMMParameters& parameters = state.read->parameters[state.strand];
+    const KHMMParameters& parameters = data.read->parameters[data.strand];
 
     // Calculate number of blocks
     // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
@@ -379,7 +379,7 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
     // Precompute the transition probabilites for each kmer block
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
 
-    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, state);
+    std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, data);
     
     // Fill in matrix
     for(uint32_t row = 1; row < vm.n_rows; row++) {
@@ -392,11 +392,11 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
             BlockTransitions& bt = transitions[kmer_idx];
 
             // Emission probabilities
-            uint32_t event_idx = e_start + (row - 1) * state.stride;
-            uint32_t rank = get_rank(state, sequence, kmer_idx);
+            uint32_t event_idx = e_start + (row - 1) * data.stride;
+            uint32_t rank = get_rank(data, sequence, kmer_idx);
             
-            double lp_emission_m = log_probability_match(*state.read, rank, event_idx, state.strand);
-            double lp_emission_e = log_probability_event_insert(*state.read, rank, event_idx, state.strand);
+            double lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
+            double lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
             
             uint32_t prev_block = block - 1;
             uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
@@ -457,15 +457,15 @@ void profile_hmm_viterbi_fill(DoubleMatrix& vm, // viterbi matrix
 }
 
 void profile_hmm_update_training(const std::string& consensus, 
-                                 const HMMConsReadState& state)
+                                 const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = profile_hmm_align(consensus, state);
+    std::vector<AlignmentState> alignment = profile_hmm_align(consensus, data);
 
-    const PoreModel& pm = state.read->pore_model[state.strand];
-    TrainingData& training_data = state.read->parameters[state.strand].training_data;
+    const PoreModel& pm = data.read->pore_model[data.strand];
+    TrainingData& training_data = data.read->parameters[data.strand].training_data;
 
     size_t n_kmers = consensus.size() - K + 1;
-    uint32_t strand_idx = get_strand_idx(state);
+    uint32_t strand_idx = get_strand_idx(data);
     char prev_s = 'M';
 
     for(size_t pi = 0; pi < alignment.size(); ++pi) {
@@ -495,8 +495,8 @@ void profile_hmm_update_training(const std::string& consensus,
                 
                 assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
-                uint32_t rank1 = get_rank(state, consensus.c_str(), transition_kmer_from);
-                uint32_t rank2 = get_rank(state, consensus.c_str(), transition_kmer_to);
+                uint32_t rank1 = get_rank(data, consensus.c_str(), transition_kmer_from);
+                uint32_t rank2 = get_rank(data, consensus.c_str(), transition_kmer_to);
             
                 double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
                 double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
@@ -512,14 +512,14 @@ void profile_hmm_update_training(const std::string& consensus,
             add_state_transition(training_data, prev_s, s);
 
             // emission
-            double level = get_drift_corrected_level(*state.read, ei, state.strand);
-            double sd = state.read->events[state.strand].stdv[ei];
-            double duration = get_duration(*state.read, ei, state.strand);
+            double level = get_drift_corrected_level(*data.read, ei, data.strand);
+            double sd = data.read->events[data.strand].stdv[ei];
+            double duration = get_duration(*data.read, ei, data.strand);
             if(ki >= n_kmers)
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
             
             assert(ki < n_kmers);
-            uint32_t rank = get_rank(state, consensus.c_str(), ki);
+            uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
             double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
             double model_s = pm.state[rank].level_stdv * pm.scale;
