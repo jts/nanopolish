@@ -13,7 +13,8 @@ SRC=nanopolish.cpp \
     nanopolish_common.cpp \
     nanopolish_khmm.cpp \
     nanopolish_profile_hmm.cpp \
-    nanopolish_anchor.cpp
+    nanopolish_anchor.cpp \
+    nanopolish_fast5_map.cpp
 
 # Automatically generated object names
 OBJ=$(SRC:.cpp=.o)

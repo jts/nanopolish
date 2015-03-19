@@ -14,10 +14,21 @@
 
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
-struct HMMReadAnchor
+struct HMMStrandAnchor
 {
+    //
+    HMMStrandAnchor(int32_t ei, bool f) : event_idx(ei), rc(f) {}
+
+    //
     int32_t event_idx;
     bool rc; // with respect to consensus
+};
+
+// A pair of vectors containing all of the anchors
+// for both strands of a SquiggleRead
+struct HMMReadAnchorSet
+{
+    std::vector<HMMStrandAnchor> strand_anchors[NUM_STRANDS];
 };
 
 // This data structure represents a column of a 
@@ -28,12 +39,12 @@ struct HMMReadAnchor
 struct HMMAnchoredColumn
 {
     std::string base_sequence;
-    std::vector<HMMReadAnchor> anchors;
+    std::vector<HMMStrandAnchor> anchors;
     std::vector<std::string> alt_sequences;
 };
 
 // functions
-void build_anchors_for_region(const std::string& filename, int ref_id, int start, int end, int stride);
-void build_anchors_for_read(bam1_t* record, int start, int end, int stride);
+void build_input_for_region(const std::string& filename, int ref_id, int start, int end, int stride);
+HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride);
 
 #endif

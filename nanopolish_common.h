@@ -29,6 +29,11 @@ enum AlignmentPolicy
 //
 const uint8_t K = 5;
 
+// strands
+const uint8_t T_IDX = 0;
+const uint8_t C_IDX = 1;
+const uint8_t NUM_STRANDS = 2;
+
 // A table to map { A, C, G, T } => { 0, 1, 2, 3 }
 static const uint8_t base_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

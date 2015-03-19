@@ -10,8 +10,10 @@
 #include <string>
 #include <stdio.h>
 #include <assert.h>
+#include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
-void build_anchors_for_region(const std::string& filename, int ref_id, int start, int end, int stride)
+
+void build_input_for_region(const std::string& filename, int ref_id, int start, int end, int stride)
 {
     // load bam file
     htsFile* bam_fh = sam_open(filename.c_str(), "r");
@@ -30,8 +32,9 @@ void build_anchors_for_region(const std::string& filename, int ref_id, int start
     printf("Iter: %d %d %d\n", itr->tid, itr->beg, itr->end);
     
     int result;
+    std::vector<HMMReadAnchorSet> read_anchors;
     while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
-        build_anchors_for_read(record, start, end, stride);
+        read_anchors.push_back(build_anchors_for_read(record, start, end, stride));
     }
 
     // cleanup
@@ -41,10 +44,11 @@ void build_anchors_for_region(const std::string& filename, int ref_id, int start
     hts_idx_destroy(bam_idx);
 }
 
-void build_anchors_for_read(bam1_t* record, int start, int end, int stride)
+HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride)
 {
-    int endpos = bam_endpos(record);
-    printf("Record start: %d end: %d name: %s\n", record->core.pos, endpos, (char*)record->data);
+    //
+    printf("Record start: %d end: %d name: %s\n", record->core.pos, bam_endpos(record), (char*)record->data);
+    HMMReadAnchorSet out;
 
     // This code is derived from bam_fillmd1_core
     uint8_t *ref = NULL;
@@ -84,13 +88,21 @@ void build_anchors_for_read(bam1_t* record, int start, int end, int stride)
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
             if(ref_pos >= start && ref_pos <= end && ref_pos % stride == 0) {
+
                 printf("Match %d %d\n", ref_pos, read_pos);
+                
+                // Process both strands of the SquiggleRead here and generate strand anchors
+                // mapping from a reference base to a nanopore event
+                // FAKE DATA
+                out.strand_anchors[T_IDX].push_back(HMMStrandAnchor(read_pos, false));
+                out.strand_anchors[C_IDX].push_back(HMMStrandAnchor(10000 - read_pos, true));
             }
 
             // increment
             read_pos += read_inc;
             ref_pos += ref_inc;
         }
-    }    
+    }
+    return out;
 }
 

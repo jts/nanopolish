@@ -26,17 +26,11 @@
 #include "nanopolish_khmm.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
+#include "nanopolish_fast5_map.h"
 #include "profiler.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
-
-// Constants
-
-// strands
-const uint8_t T_IDX = 0;
-const uint8_t C_IDX = 1;
-const uint8_t NUM_STRANDS = 2;
 
 // Flags to turn on/off debugging information
 
@@ -150,8 +144,8 @@ void add_read_anchor(CReadAnchorInterface in_ra)
 {
     assert(!g_data.anchored_columns.empty());
 
-    HMMReadAnchor ra = { in_ra.event_idx, in_ra.rc };
-    g_data.anchored_columns.back().anchors.push_back(ra);
+    HMMStrandAnchor sa(in_ra.event_idx, in_ra.rc );
+    g_data.anchored_columns.back().anchors.push_back(sa);
 }
 
 extern "C"
@@ -184,20 +178,20 @@ std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_c
     std::vector<HMMInputData> input;
     for(uint32_t rsi = 0; rsi < start_column.anchors.size(); ++rsi) {
 
-        HMMReadAnchor start_ra = start_column.anchors[rsi];
-        HMMReadAnchor end_ra = end_column.anchors[rsi];
+        HMMStrandAnchor start_sa = start_column.anchors[rsi];
+        HMMStrandAnchor end_sa = end_column.anchors[rsi];
 
         // sanity checks
         // This read strand does not have events at both anchors
-        if(start_ra.event_idx == -1 || end_ra.event_idx == -1)
+        if(start_sa.event_idx == -1 || end_sa.event_idx == -1)
             continue;
 
         // require a minimum number of events
-        uint32_t n_events = abs(start_ra.event_idx - end_ra.event_idx);
+        uint32_t n_events = abs(start_sa.event_idx - end_sa.event_idx);
         if(n_events < 20 || n_events > 500)
             continue;
 
-        if(start_ra.rc != end_ra.rc)
+        if(start_sa.rc != end_sa.rc)
             continue;
 
         HMMInputData data;
@@ -207,13 +201,13 @@ std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_c
         data.anchor_index = rsi;
         data.read = &g_data.reads[read_idx];
         data.strand = rsi % 2;
-        data.event_start_idx = start_ra.event_idx;
-        data.event_stop_idx = end_ra.event_idx;
+        data.event_start_idx = start_sa.event_idx;
+        data.event_stop_idx = end_sa.event_idx;
         if(data.event_start_idx < data.event_stop_idx)
             data.stride = 1;
         else
             data.stride = -1;
-        data.rc = start_ra.rc;
+        data.rc = start_sa.rc;
 
         input.push_back(data);
     }
@@ -801,6 +795,9 @@ void train()
 
 int consensus_main(int argc, char** argv)
 {
-    std::string bamfile = "reads.pp.sorted.bam";
-    build_anchors_for_region(bamfile, 0, 10000, 20000, 50);
+    std::string reads_file = "reads.pp.fa";
+    std::string bam_file = "reads.pp.sorted.bam";
+
+    Fast5Map name_map(reads_file);
+    build_input_for_region(bam_file, 0, 10000, 20000, 50);
 }
