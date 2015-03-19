@@ -1,6 +1,11 @@
+#
 LIBS=-lrt ./htslib/libhts.a -lz
-CFLAGS=-fopenmp -O3
+CPPFLAGS=-fopenmp -O3
+PROGRAM=nanopolish
 
+default: $(PROGRAM)
+
+# Source files
 SRC=nanopolish.cpp \
     nanopolish_consensus.cpp \
     nanopolish_khmm_parameters.cpp \
@@ -10,8 +15,25 @@ SRC=nanopolish.cpp \
     nanopolish_profile_hmm.cpp \
     nanopolish_anchor.cpp
 
-nanopolish: $(SRC)
-	g++ -o $@ $(CFLAGS) -fPIC $^ $(LIBS)
+# Automatically generated object names
+OBJ=$(SRC:.cpp=.o)
+
+# Generate dependencies
+depend: .depend
+
+.depend: $(SRC)
+	rm -f ./.depend
+	g++ $(CPPFLAGS) -MM $^ > ./.depend;
+
+include .depend
+
+# Compile objects
+.cpp.o:
+	g++ -c $(CPPFLAGS) -fPIC $<
+
+# Link executable
+$(PROGRAM): $(OBJ)
+	g++ -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 clean:
 	rm nanopolish
