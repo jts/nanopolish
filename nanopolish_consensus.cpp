@@ -25,7 +25,6 @@
 #include "nanopolish_klcs.h"
 #include "nanopolish_khmm.h"
 #include "nanopolish_profile_hmm.h"
-#include "nanopolish_alignment_reader.h"
 #include "nanopolish_anchor.h"
 #include "profiler.h"
 
@@ -38,10 +37,6 @@
 const uint8_t T_IDX = 0;
 const uint8_t C_IDX = 1;
 const uint8_t NUM_STRANDS = 2;
-
-const static double LOG_KMER_INSERTION = log(0.1);
-const static double P_RANDOM_SKIP = 0.05;
-const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 
 // Flags to turn on/off debugging information
 
@@ -807,5 +802,5 @@ void train()
 int consensus_main(int argc, char** argv)
 {
     std::string bamfile = "reads.pp.sorted.bam";
-    sample_bam(bamfile, 0, 10000, 20000, 50);
+    build_anchors_for_region(bamfile, 0, 10000, 20000, 50);
 }

@@ -8,7 +8,7 @@ SRC=nanopolish.cpp \
     nanopolish_common.cpp \
     nanopolish_khmm.cpp \
     nanopolish_profile_hmm.cpp \
-    nanopolish_alignment_reader.cpp
+    nanopolish_anchor.cpp
 
 nanopolish: $(SRC)
 	g++ -o $@ $(CFLAGS) -fPIC $^ $(LIBS)

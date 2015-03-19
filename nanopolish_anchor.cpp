@@ -3,15 +3,15 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_alignment_reader -- parse read alignments
-// from a bam file
-//
+// nanopolish_anchor - a collection of data types
+// for representing a set of event-to-sequence
+// mappings.
+#include <vector>
+#include <string>
 #include <stdio.h>
 #include <assert.h>
-#include "nanopolish_alignment_reader.h"
-#include "htslib/htslib/sam.h"
-
-void sample_bam(const std::string& filename, int ref_id, int start, int end, int stride)
+#include "nanopolish_anchor.h"
+void build_anchors_for_region(const std::string& filename, int ref_id, int start, int end, int stride)
 {
     // load bam file
     htsFile* bam_fh = sam_open(filename.c_str(), "r");
@@ -31,7 +31,7 @@ void sample_bam(const std::string& filename, int ref_id, int start, int end, int
     
     int result;
     while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
-        sample_read(record, start, end, stride);
+        build_anchors_for_read(record, start, end, stride);
     }
 
     // cleanup
@@ -41,7 +41,7 @@ void sample_bam(const std::string& filename, int ref_id, int start, int end, int
     hts_idx_destroy(bam_idx);
 }
 
-void sample_read(bam1_t* record, int start, int end, int stride)
+void build_anchors_for_read(bam1_t* record, int start, int end, int stride)
 {
     int endpos = bam_endpos(record);
     printf("Record start: %d end: %d name: %s\n", record->core.pos, endpos, (char*)record->data);
@@ -72,9 +72,12 @@ void sample_read(bam1_t* record, int start, int end, int stride)
             ref_inc = 1;
         } else if(cigar_op == BAM_CDEL || cigar_op == BAM_CREF_SKIP) {
             ref_inc = 1;   
-        } else if (cigar_op == BAM_CINS || cigar_op == BAM_CSOFT_CLIP) {
+        } else if(cigar_op == BAM_CINS || cigar_op == BAM_CSOFT_CLIP) {
             read_inc = 1;
+        } else if(cigar_op == BAM_CHARD_CLIP) {
+            // no increment   
         } else {
+            printf("Cigar: %d\n", cigar_op);
             assert(false && "Unhandled cigar operation");
         }
 

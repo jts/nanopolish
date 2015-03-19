@@ -9,6 +9,9 @@
 #ifndef NANOPOLISH_ANCHOR_H
 #define NANOPOLISH_ANCHOR_H
 
+#include "htslib/htslib/hts.h"
+#include "htslib/htslib/sam.h"
+
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
 struct HMMReadAnchor
@@ -28,5 +31,9 @@ struct HMMAnchoredColumn
     std::vector<HMMReadAnchor> anchors;
     std::vector<std::string> alt_sequences;
 };
+
+// functions
+void build_anchors_for_region(const std::string& filename, int ref_id, int start, int end, int stride);
+void build_anchors_for_read(bam1_t* record, int start, int end, int stride);
 
 #endif
