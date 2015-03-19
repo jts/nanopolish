@@ -13,7 +13,7 @@
 #include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
 
-void build_input_for_region(const std::string& filename, int ref_id, int start, int end, int stride)
+void build_input_for_region(const std::string& filename, const Fast5Map& read_name_map, int ref_id, int start, int end, int stride)
 {
     // load bam file
     htsFile* bam_fh = sam_open(filename.c_str(), "r");
@@ -34,6 +34,10 @@ void build_input_for_region(const std::string& filename, int ref_id, int start, 
     int result;
     std::vector<HMMReadAnchorSet> read_anchors;
     while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
+
+        // Load a squiggle read for the mapped read
+        std::string fast5_path = read_name_map.get_path(bam_get_qname(record));
+        SquiggleRead sr(fast5_path);
         read_anchors.push_back(build_anchors_for_read(record, start, end, stride));
     }
 
@@ -87,7 +91,7 @@ HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int 
 
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
-            if(ref_pos >= start && ref_pos <= end && ref_pos % stride == 0) {
+            if(ref_pos >= start && ref_pos <= end && ref_pos % stride == 0 && ref_inc > 0) {
 
                 printf("Match %d %d\n", ref_pos, read_pos);
                 

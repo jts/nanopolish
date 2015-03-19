@@ -799,5 +799,5 @@ int consensus_main(int argc, char** argv)
     std::string bam_file = "reads.pp.sorted.bam";
 
     Fast5Map name_map(reads_file);
-    build_input_for_region(bam_file, 0, 10000, 20000, 50);
+    build_input_for_region(bam_file, name_map, 0, 10000, 20000, 50);
 }

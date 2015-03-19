@@ -15,6 +15,11 @@ class Fast5Map
 {
     public:
         Fast5Map(const std::string& fasta_filename);
+        
+        // return the path for the given read name
+        // if the read does not exist in the map, emits an error
+        // and exits
+        std::string get_path(const std::string& read_name) const;
 
     private:
 

@@ -1,6 +1,6 @@
 #
-LIBS=-lrt ./htslib/libhts.a -lz
-CPPFLAGS=-fopenmp -O3
+LIBS=-lrt ./htslib/libhts.a -lz -lhdf5
+CPPFLAGS=-fopenmp -O3 -std=c++11
 PROGRAM=nanopolish
 
 default: $(PROGRAM)
@@ -14,7 +14,8 @@ SRC=nanopolish.cpp \
     nanopolish_khmm.cpp \
     nanopolish_profile_hmm.cpp \
     nanopolish_anchor.cpp \
-    nanopolish_fast5_map.cpp
+    nanopolish_fast5_map.cpp \
+    nanopolish_squiggle_read.cpp
 
 # Automatically generated object names
 OBJ=$(SRC:.cpp=.o)

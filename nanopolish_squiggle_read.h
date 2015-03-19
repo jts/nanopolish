@@ -11,6 +11,7 @@
 
 #include "nanopolish_poremodel.h"
 #include "nanopolish_khmm_parameters.h"
+#include <string>
 
 // The raw event data for a read
 struct EventSequence
@@ -26,6 +27,11 @@ struct EventSequence
 class SquiggleRead
 {
     public:
+
+        SquiggleRead() {} // legacy TODO remove
+        SquiggleRead(const std::string& fast5_path);
+
+        void load_from_fast5(const std::string& fast5_path);
 
         // unique identifier of the read
         uint32_t read_id;

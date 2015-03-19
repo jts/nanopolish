@@ -11,6 +11,7 @@
 
 #include "htslib/htslib/hts.h"
 #include "htslib/htslib/sam.h"
+#include "nanopolish_fast5_map.h"
 
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
@@ -44,7 +45,7 @@ struct HMMAnchoredColumn
 };
 
 // functions
-void build_input_for_region(const std::string& filename, int ref_id, int start, int end, int stride);
+void build_input_for_region(const std::string& filename, const Fast5Map& read_name_map, int ref_id, int start, int end, int stride);
 HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride);
 
 #endif

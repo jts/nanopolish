@@ -28,16 +28,29 @@ Fast5Map::Fast5Map(const std::string& fasta_filename)
     struct stat file_s;
     int ret = stat(fofn_filename.c_str(), &file_s);
     if(ret == 0) {
-        load_from_fofn(fofn_filename + FOFN_SUFFIX);
+        load_from_fofn(fofn_filename);
     } else {
         load_from_fasta(fasta_filename);
     }
 }
 
+std::string Fast5Map::get_path(const std::string& read_name) const
+{
+    std::map<std::string, std::string>::const_iterator 
+        iter = read_to_path_map.find(read_name);
+
+    if(iter == read_to_path_map.end()) {
+        fprintf(stderr, "error: could not find fast5 path for %s\n", read_name.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    return iter->second;
+}
+
 //
 void Fast5Map::load_from_fasta(std::string fasta_filename)
 {
-    printf("Loading from %s\n", fasta_filename.c_str());
+    printf("Loading from FASTA %s\n", fasta_filename.c_str());
 
     gzFile gz_fp;
 
@@ -58,6 +71,7 @@ void Fast5Map::load_from_fasta(std::string fasta_filename)
     while(kseq_read(seq) >= 0) {
         if(seq->comment.l == 0) {
             fprintf(stderr, "error: no path associated with read %s\n", seq->name.s);
+            exit(EXIT_FAILURE);
         }
         read_to_path_map[seq->name.s] = seq->comment.s;
     }
@@ -83,7 +97,13 @@ void Fast5Map::write_to_fofn(std::string fofn_filename)
 //
 void Fast5Map::load_from_fofn(std::string fofn_filename)
 {
+    printf("Loading from FOFN %s\n", fofn_filename.c_str());
     std::ifstream infile(fofn_filename.c_str());
+
+    if(infile.bad()) {
+        fprintf(stderr, "error: could not read fofn %s\n", fofn_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
 
     std::string name;
     std::string path;
