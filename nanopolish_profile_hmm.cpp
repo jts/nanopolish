@@ -513,7 +513,7 @@ void profile_hmm_update_training(const std::string& consensus,
 
             // emission
             double level = data.read->get_drift_corrected_level(ei, data.strand);
-            double sd = data.read->events[data.strand].stdv[ei];
+            double sd = data.read->events[data.strand][ei].stdv;
             double duration = data.read->get_duration(ei, data.strand);
             if(ki >= n_kmers)
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);

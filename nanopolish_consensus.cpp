@@ -79,6 +79,7 @@ const char* get_consensus_result()
     return g_data.consensus_result.c_str();
 }
 
+#if 0
 extern "C"
 void add_read(CSquiggleReadInterface params)
 {
@@ -130,6 +131,7 @@ void add_read(CSquiggleReadInterface params)
     khmm_parameters_initialize(sr.parameters[0]);
     khmm_parameters_initialize(sr.parameters[1]);
 }
+#endif
 
 // This is called by python to tell us we want to start a new anchored column
 extern "C"

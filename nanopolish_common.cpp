@@ -45,7 +45,7 @@ void print_alignment(const std::string& name,
         char s = alignment[pi].state;
     
         double level = data.read->get_drift_corrected_level(ei, data.strand);
-        double sd = data.read->events[data.strand].stdv[ei];
+        double sd = data.read->events[data.strand][ei].stdv;
         double duration = data.read->get_duration(ei, data.strand);
         uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
@@ -80,8 +80,8 @@ void print_alignment(const std::string& name,
     }
 
     // Summarize alignment
-    double time_start = data.read->events[data.strand].start[data.event_start_idx];
-    double time_end = data.read->events[data.strand].start[data.event_stop_idx];
+    double time_start = data.read->events[data.strand][data.event_start_idx].start_time;
+    double time_end = data.read->events[data.strand][data.event_stop_idx].start_time;
     double total_duration = fabs(time_start - time_end);
     double num_events = abs(data.event_start_idx - data.event_stop_idx) + 1;
     double final_lp = alignment[alignment.size() - 1].l_fm;

@@ -138,6 +138,7 @@ void build_input_for_region(const std::string& bam_filename,
     sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
     bam_destroy1(record);
+    fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
     free(ref_segment);

@@ -14,13 +14,12 @@
 #include <string>
 
 // The raw event data for a read
-struct EventSequence
+struct SquiggleEvent
 {
-    uint32_t n_events;
-    const double* level;
-    const double* stdv;
-    const double* start;
-    const double* duration;
+    double mean;       // current level mean in picoamps
+    double stdv;       // current level stdv
+    double start_time; // start time of the event in seconds
+    double duration;     // duration of the event in seconds
 };
 
 //
@@ -44,18 +43,18 @@ class SquiggleRead
         // Return the duration of the specified event for one strand
         inline double get_duration(uint32_t event_idx, uint32_t strand) const 
         {
-            assert(event_idx < events[strand].n_events);
-            return events[strand].duration[event_idx];
+            assert(event_idx < events[strand].size());
+            return events[strand][event_idx].duration;
         }
 
         // Return the observed current level after correcting for drift
         inline double get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
         {
-            double level = events[strand].level[event_idx];
+            const SquiggleEvent& event = events[strand][event_idx];
+            
             // correct level by drift
-            double read_start = events[strand].start[0];
-            double time = events[strand].start[event_idx] - read_start;
-            return level - (time * pore_model[strand].drift);
+            double time = event.start_time - events[strand][0].start_time;
+            return event.mean - (time * pore_model[strand].drift);
         }
 
         //
@@ -71,7 +70,7 @@ class SquiggleRead
         PoreModel pore_model[2];
 
         // one event sequence for each strand
-        EventSequence events[2];
+        std::vector<SquiggleEvent> events[2];
 
         // one set of parameters per strand
         KHMMParameters parameters[2];
