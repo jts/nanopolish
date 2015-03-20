@@ -47,9 +47,9 @@ const static double EVENT_DETECTION_THRESHOLD = 1.0f;
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define DEBUG_PATH_SELECTION 1
-#define DEBUG_SINGLE_SEGMENT 1
-#define DEBUG_SHOW_TOP_TWO 1
-#define DEBUG_SEGMENT_ID 5
+//#define DEBUG_SINGLE_SEGMENT 1
+//#define DEBUG_SHOW_TOP_TWO 1
+//#define DEBUG_SEGMENT_ID 5
 
 struct HMMReadAnchor
 {
