@@ -465,7 +465,7 @@ void profile_hmm_update_training(const std::string& consensus,
     TrainingData& training_data = data.read->parameters[data.strand].training_data;
 
     size_t n_kmers = consensus.size() - K + 1;
-    uint32_t strand_idx = get_strand_idx(data);
+    uint32_t strand_idx = 0;
     char prev_s = 'M';
 
     for(size_t pi = 0; pi < alignment.size(); ++pi) {

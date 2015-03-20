@@ -131,7 +131,6 @@ void add_read(CSquiggleReadInterface params)
     khmm_parameters_initialize(sr.parameters[0]);
     khmm_parameters_initialize(sr.parameters[1]);
 }
-#endif
 
 // This is called by python to tell us we want to start a new anchored column
 extern "C"
@@ -171,6 +170,7 @@ void end_anchored_column()
     // Validate that we received two read anchors per read
     assert(g_data.anchored_columns.back().anchors.size() == g_data.reads.size() * 2);
 }
+#endif
 
 std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_column,
                                                 const HMMAnchoredColumn& end_column)

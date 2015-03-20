@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "nanopolish_common.h"
+#include "nanopolish_squiggle_read.h"
 
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str)

@@ -11,8 +11,8 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 #include <math.h>
-#include "nanopolish_squiggle_read.h"
 #include "profiler.h"
 
 //
@@ -57,6 +57,8 @@ static const uint8_t base_rank[256] = {
 //
 // Data structures
 //
+
+class SquiggleRead;
 
 // This struct is used as input into the HMM
 // It tracks where the event stream starts/stops
@@ -127,12 +129,6 @@ inline double add_logs(const double a, const double b)
         double diff = a - b;
         return b + log(1.0 + exp(diff));
     }
-}
-
-// Make a unique index for the strand this read state represents
-inline uint32_t get_strand_idx(const HMMInputData& data)
-{
-    return data.read->read_id + data.strand;
 }
 
 // Increment the input string to be the next DNA sequence in lexicographic order

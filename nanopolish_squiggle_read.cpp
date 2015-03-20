@@ -17,6 +17,34 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
     load_from_fast5(path);
 }
 
+// helper for get_closest_event_to
+int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t strand) const
+{
+    while(start != stop) {
+        
+        int ei = base_to_event_map[start].indices[strand].start;
+        if(ei != -1)
+            return ei;
+        start += stride;
+    }
+    return -1;
+}
+
+//
+int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
+{
+    int stop_before = std::max(0, k_idx - 1000);
+    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - K + 1);
+    
+    int event_before = get_next_event(k_idx, stop_before, -1, strand);
+    int event_after = get_next_event(k_idx, stop_after, 1, strand);
+
+    // TODO: better selection of "best" event to return
+    if(event_before == -1)
+        return event_after;
+    return event_before;
+}
+
 //
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
@@ -25,12 +53,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     fast5::File* f_p;
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
-
-    //
-    std::cout << "file_version=" << f_p->file_version() << std::endl;
-    std::cout << "basecall_version=" << f_p->basecall_version() << std::endl;
-    std::cout << "eventdetection_version=" << f_p->eventdetection_version() << std::endl;
-    std::cout << "sequences_version=" << f_p->sequences_version() << std::endl;
 
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
@@ -57,9 +79,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
     }
     
-    printf("Template AAAAA: %.2lf %.2lf\n",  pore_model[0].state[0].level_mean, pore_model[0].state[0].level_stdv);
-    printf("Complemt AAAAA: %.2lf %.2lf\n",  pore_model[1].state[0].level_mean, pore_model[1].state[0].level_stdv);
-
     // Load events for both strands
     for (size_t si = 0; si < 2; ++si) {
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
@@ -74,6 +93,9 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
     printf("Loaded %zu template and %zu complement events\n", events[0].size(), events[1].size());
 
+    //
+    // Load basecalled sequence
+    //
     read_sequence = f_p->basecalled_2D();
     
     //
@@ -113,8 +135,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
             end_ea_idx += 1;
         }
 
-        printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, K).c_str(), start_ea_idx, end_ea_idx);
-        EventRangeForBase erfb =  base_to_event_map[read_kidx];
+        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, K).c_str(), start_ea_idx, end_ea_idx);
+        EventRangeForBase& erfb =  base_to_event_map[read_kidx];
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 
             fast5::Event_Alignment_Entry& eae = event_alignments[i];
@@ -132,7 +154,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
                 erfb.indices[si].stop = incoming_idx;        
             }
         }
-        printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);
+        //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);
         start_ea_idx = end_ea_idx;
     }
 

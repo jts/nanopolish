@@ -18,12 +18,11 @@
 struct HMMStrandAnchor
 {
     //
-    HMMStrandAnchor() : base_idx(-1), event_idx(-1), rc(false) {}
-    HMMStrandAnchor(int32_t bi, int32_t ei, bool f) : base_idx(bi), event_idx(ei), rc(f) {}
+    HMMStrandAnchor() : event_idx(-1), rc(false) {}
+    HMMStrandAnchor(int ei, bool f) : event_idx(ei), rc(f) {}
 
     //
-    int32_t base_idx;
-    int32_t event_idx;
+    int event_idx;
     bool rc; // with respect to consensus
 };
 
@@ -56,6 +55,6 @@ void build_input_for_region(const std::string& bam_filename,
                             int stride);
 
 
-HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride);
+std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride);
 
 #endif

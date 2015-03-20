@@ -397,7 +397,7 @@ void khmm_update_training(const std::string& consensus,
     const PoreModel& pm = data.read->pore_model[data.strand];
     TrainingData& training_data = data.read->parameters[data.strand].training_data;
     size_t n_kmers = consensus.size() - K + 1;
-    uint32_t strand_idx = get_strand_idx(data);
+    uint32_t strand_idx = 0;
 
     for(size_t pi = 0; pi < pstates.size(); ++pi) {
 

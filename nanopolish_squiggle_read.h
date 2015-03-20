@@ -9,6 +9,7 @@
 #ifndef NANOPOLISH_SQUIGGLE_READ_H
 #define NANOPOLISH_SQUIGGLE_READ_H
 
+#include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_khmm_parameters.h"
 #include <string>
@@ -71,6 +72,16 @@ class SquiggleRead
             return event.mean - (time * pore_model[strand].drift);
         }
         
+        // Calculate the index of this k-mer on the other strand
+        inline int32_t flip_k_strand(int32_t k_idx) const
+        {
+            assert(!read_sequence.empty());
+            return read_sequence.size() - k_idx - K;
+        }
+
+        // get the index of the event tht is nearest to the given kmer 
+        int get_closest_event_to(int k_idx, uint32_t strand) const;
+
         //
         // Data
         //
@@ -91,6 +102,11 @@ class SquiggleRead
 
         // one set of parameters per strand
         KHMMParameters parameters[2];
+
+    private:
+
+        // helper for get_closest_event_to
+        int get_next_event(int start, int stop, int stride, uint32_t strand) const;
 };
 
 #endif

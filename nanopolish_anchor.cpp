@@ -13,6 +13,7 @@
 #include "htslib/htslib/faidx.h"
 #include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
+#include "nanopolish_squiggle_read.h"
 
 void build_input_for_region(const std::string& bam_filename, 
                             const std::string& ref_filename, 
@@ -63,6 +64,7 @@ void build_input_for_region(const std::string& bam_filename,
 
         // load read
         squiggle_reads.push_back(SquiggleRead(read_name, fast5_path));
+        const SquiggleRead& sr = squiggle_reads.back();
 
         // TODO: just read this from the fast5
         int read_len = record->core.l_qseq;
@@ -75,7 +77,40 @@ void build_input_for_region(const std::string& bam_filename,
         }
 
         // parse alignments to reference
-        read_anchors.push_back(build_anchors_for_read(record, start, end, stride));
+        std::vector<int> read_bases_for_anchors = 
+            match_read_to_reference_anchors(record, start, end, stride);
+
+        // Convert the read base positions into event indices for both strands
+        HMMReadAnchorSet event_anchors;
+        event_anchors.strand_anchors[T_IDX].resize(read_bases_for_anchors.size());
+        event_anchors.strand_anchors[C_IDX].resize(read_bases_for_anchors.size());
+
+        bool do_base_rc = bam_is_rev(record);
+        bool template_rc = !do_base_rc;
+        bool complement_rc = do_base_rc;
+
+        for(size_t ai = 0; ai < read_bases_for_anchors.size(); ++ai) {
+
+            int read_kidx = read_bases_for_anchors[ai];
+            if(read_kidx == -1) {
+                printf("\tai: %zu skip\n", ai);
+                continue;
+            }
+
+            if(do_base_rc)
+                read_kidx = sr.flip_k_strand(read_kidx);
+
+            int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
+            int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
+            assert(template_idx != -1 && complement_idx != -1);
+
+            printf("\tai: %zu base: %d template: %d complement: %d\n", ai, read_kidx, template_idx, complement_idx);
+
+            event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
+            event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
+        }
+
+        read_anchors.push_back(event_anchors);
     }
 
     // The HMMReadAnchorSet contains anchors for each strand of a read
@@ -111,6 +146,7 @@ void build_input_for_region(const std::string& bam_filename,
             printf("Base: %s\n", column.base_sequence.c_str());
 
             // alts
+            /*
             for(size_t rai = 0; rai < read_anchors.size(); ++rai) {
                 HMMReadAnchorSet& ras = read_anchors[rai];
                 int32_t b1 = ras.strand_anchors[T_IDX][ai].base_idx;
@@ -120,6 +156,7 @@ void build_input_for_region(const std::string& bam_filename,
                     //printf("Alt[%zu]:  %s\n", rai, column.alt_sequences.back().c_str());
                 }
             }
+            */
         }
 
     }
@@ -142,7 +179,7 @@ void build_input_for_region(const std::string& bam_filename,
     free(ref_segment);
 }
 
-HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride)
+std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride)
 {
     //
     printf("Record start: %d end: %d name: %s\n", record->core.pos, bam_endpos(record), (char*)record->data);
@@ -151,9 +188,7 @@ HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int 
     // The missing anchors will be flagged as -1
     uint32_t num_anchors = ((end - start) / stride) + 1;
 
-    HMMReadAnchorSet out;
-    out.strand_anchors[T_IDX].resize(num_anchors);
-    out.strand_anchors[C_IDX].resize(num_anchors);
+    std::vector<int> out(num_anchors, -1);
 
     // This code is derived from bam_fillmd1_core
     uint8_t *ref = NULL;
@@ -162,7 +197,13 @@ HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int 
     bam1_core_t *c = &record->core;
     kstring_t *str;
 
+    // read pos is an index into the original sequence that is present in the FASTQ
     int read_pos = 0;
+
+    // query pos is an index in the query string that is recorded in the bam
+    // we record this as a sanity check
+    int query_pos = 0;
+    
     int ref_pos = c->pos;
 
     for (int ci = 0; ci < c->n_cigar && ref_pos <= end; ++ci) {
@@ -184,7 +225,7 @@ HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int 
         } else if(cigar_op == BAM_CINS || cigar_op == BAM_CSOFT_CLIP) {
             read_inc = 1;
         } else if(cigar_op == BAM_CHARD_CLIP) {
-            // no increment   
+            read_inc = 1;
         } else {
             printf("Cigar: %d\n", cigar_op);
             assert(false && "Unhandled cigar operation");
@@ -193,16 +234,9 @@ HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int 
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
             if(ref_pos >= start && ref_pos <= end && ref_pos % stride == 0 && ref_inc > 0) {
-
-                //printf("Match %d %d\n", ref_pos, read_pos);
                 uint32_t anchor_id = (ref_pos - start) / stride;
                 assert(anchor_id < num_anchors);
-
-                // Process both strands of the SquiggleRead here and generate strand anchors
-                // mapping from a reference base to a nanopore event
-                // FAKE DATA
-                out.strand_anchors[T_IDX][anchor_id] = HMMStrandAnchor(read_pos, read_pos, false);
-                out.strand_anchors[C_IDX][anchor_id] = HMMStrandAnchor(10000 - read_pos, 10000 - read_pos, true);
+                out[anchor_id] = read_pos;
             }
 
             // increment

@@ -11,6 +11,7 @@
 
 #include <math.h>
 #include "nanopolish_common.h"
+#include "nanopolish_squiggle_read.h"
 
 //#define MODEL_STDV
 
