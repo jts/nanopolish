@@ -53,7 +53,7 @@ inline double log_probability_match(const SquiggleRead& read,
     const PoreModel& pm = read.pore_model[strand];
 
     // event level mean
-    double level = get_drift_corrected_level(read, event_idx, strand);
+    double level = read.get_drift_corrected_level(event_idx, strand);
     double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
     double s = pm.state[kmer_rank].level_stdv * pm.var;
     double lp = log_normal_pdf(level, m, s * state_scale);

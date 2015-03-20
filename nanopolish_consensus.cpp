@@ -144,7 +144,7 @@ void add_read_anchor(CReadAnchorInterface in_ra)
 {
     assert(!g_data.anchored_columns.empty());
 
-    HMMStrandAnchor sa(in_ra.event_idx, in_ra.rc );
+    HMMStrandAnchor sa(-1, in_ra.event_idx, in_ra.rc );
     g_data.anchored_columns.back().anchors.push_back(sa);
 }
 
@@ -796,8 +796,9 @@ void train()
 int consensus_main(int argc, char** argv)
 {
     std::string reads_file = "reads.pp.fa";
+    std::string reference_file = "circular.fa";
     std::string bam_file = "reads.pp.sorted.bam";
 
     Fast5Map name_map(reads_file);
-    build_input_for_region(bam_file, name_map, 0, 10000, 20000, 50);
+    build_input_for_region(bam_file, reference_file, name_map, "1", 10000, 20000, 50);
 }

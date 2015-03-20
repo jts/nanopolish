@@ -10,9 +10,10 @@
 #include "fast5/src/fast5.hpp"
 
 //
-SquiggleRead::SquiggleRead(const std::string& fast5_path)
+SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
+    read_name(name)
 {
-    load_from_fast5(fast5_path);
+    load_from_fast5(path);
 }
 
 //

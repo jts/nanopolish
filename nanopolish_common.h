@@ -135,12 +135,6 @@ inline uint32_t get_strand_idx(const HMMInputData& data)
     return data.read->read_id + data.strand;
 }
 
-// Get the duration of the given event
-double get_duration(const SquiggleRead& read, uint32_t event_idx, uint32_t strand);
-
-// Correct the current level observed for the given event by the drift factor
-double get_drift_corrected_level(const SquiggleRead& read, uint32_t event_idx, uint32_t strand);
-
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str);
 

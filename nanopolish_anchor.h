@@ -18,9 +18,11 @@
 struct HMMStrandAnchor
 {
     //
-    HMMStrandAnchor(int32_t ei, bool f) : event_idx(ei), rc(f) {}
+    HMMStrandAnchor() : base_idx(-1), event_idx(-1), rc(false) {}
+    HMMStrandAnchor(int32_t bi, int32_t ei, bool f) : base_idx(bi), event_idx(ei), rc(f) {}
 
     //
+    int32_t base_idx;
     int32_t event_idx;
     bool rc; // with respect to consensus
 };
@@ -45,7 +47,15 @@ struct HMMAnchoredColumn
 };
 
 // functions
-void build_input_for_region(const std::string& filename, const Fast5Map& read_name_map, int ref_id, int start, int end, int stride);
+void build_input_for_region(const std::string& bam_filename, 
+                            const std::string& ref_filename, 
+                            const Fast5Map& read_name_map, 
+                            const std::string& contig_name,
+                            int start, 
+                            int end, 
+                            int stride);
+
+
 HMMReadAnchorSet build_anchors_for_read(bam1_t* record, int start, int end, int stride);
 
 #endif

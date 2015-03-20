@@ -11,23 +11,6 @@
 #include <math.h>
 #include "nanopolish_common.h"
 
-//
-double get_duration(const SquiggleRead& read, uint32_t event_idx, uint32_t strand)
-{
-    assert(event_idx < read.events[strand].n_events);
-    return read.events[strand].duration[event_idx];
-}
-
-//
-double get_drift_corrected_level(const SquiggleRead& read, uint32_t event_idx, uint32_t strand)
-{
-    double level = read.events[strand].level[event_idx];
-    // correct level by drift
-    double read_start = read.events[strand].start[0];
-    double time = read.events[strand].start[event_idx] - read_start;
-    return level - (time * read.pore_model[strand].drift);
-}
-
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str)
 {
@@ -61,9 +44,9 @@ void print_alignment(const std::string& name,
         uint32_t ki = alignment[pi].kmer_idx;
         char s = alignment[pi].state;
     
-        double level = get_drift_corrected_level(*data.read, ei, data.strand);
+        double level = data.read->get_drift_corrected_level(ei, data.strand);
         double sd = data.read->events[data.strand].stdv[ei];
-        double duration = get_duration(*data.read, ei, data.strand);
+        double duration = data.read->get_duration(ei, data.strand);
         uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
         const PoreModel& pm = data.read->pore_model[data.strand];

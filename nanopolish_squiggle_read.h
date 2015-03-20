@@ -29,12 +29,43 @@ class SquiggleRead
     public:
 
         SquiggleRead() {} // legacy TODO remove
-        SquiggleRead(const std::string& fast5_path);
+        SquiggleRead(const std::string& name, const std::string& path);
+
+        //
+        // I/O
+        // 
 
         void load_from_fast5(const std::string& fast5_path);
 
+        //
+        // Access to data
+        //
+
+        // Return the duration of the specified event for one strand
+        inline double get_duration(uint32_t event_idx, uint32_t strand) const 
+        {
+            assert(event_idx < events[strand].n_events);
+            return events[strand].duration[event_idx];
+        }
+
+        // Return the observed current level after correcting for drift
+        inline double get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
+        {
+            double level = events[strand].level[event_idx];
+            // correct level by drift
+            double read_start = events[strand].start[0];
+            double time = events[strand].start[event_idx] - read_start;
+            return level - (time * pore_model[strand].drift);
+        }
+
+        //
+        // Data
+        //
+
         // unique identifier of the read
+        std::string read_name;
         uint32_t read_id;
+        std::string twod_sequence;
 
         // one model for each strand
         PoreModel pore_model[2];
