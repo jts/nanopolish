@@ -23,6 +23,7 @@ class SquiggleRead:
         self.fh = Fast5File(filename)
         self.load_events()
         self.load_poremodel()
+        self.fh.close()
 
     def load_events(self):
         self.events = {}
