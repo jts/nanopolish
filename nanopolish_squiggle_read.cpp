@@ -6,6 +6,7 @@
 // nanopolish_squiggle_read -- Class holding a squiggle (event)
 // space nanopore read
 //
+#include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 #include "fast5/src/fast5.hpp"
 
@@ -72,5 +73,68 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     }
 
     printf("Loaded %zu template and %zu complement events\n", events[0].size(), events[1].size());
+
+    read_sequence = f_p->basecalled_2D();
+    
+    //
+    // Build the map from read k-mers to events
+    //
+    std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_event_alignments();
+    assert(!read_sequence.empty());
+
+    uint32_t n_read_kmers = read_sequence.size() - K + 1;
+    base_to_event_map.resize(n_read_kmers);
+
+    uint32_t read_kidx = 0;
+
+    // The alignment format in the fast5 file is slightly bizarre in that it is
+    // (template_idx, complement_idx, kmer) tuples. Some read kmers may not have a
+    // tuple and some might have multiple tuples. We need to use the read kmer
+    // sequences to work out which read base each entry is referring to
+    uint32_t start_ea_idx = 0;
+    uint32_t end_ea_idx = 0;
+
+    while(start_ea_idx < event_alignments.size()) {
+        
+        // Advance the kmer index until we have found the read kmer
+        // this tuple refers to
+        while(read_kidx < n_read_kmers && 
+              strncmp(event_alignments[start_ea_idx].kmer, 
+                     read_sequence.c_str() + read_kidx, K) != 0) {
+            read_kidx += 1;
+        }
+
+        // Advance the event alignment end index to the last tuple
+        // with the same kmer as the start of this range
+        end_ea_idx = start_ea_idx;
+        while(end_ea_idx < event_alignments.size() &&
+              strcmp(event_alignments[start_ea_idx].kmer, 
+                     event_alignments[end_ea_idx].kmer) == 0) {
+            end_ea_idx += 1;
+        }
+
+        printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, K).c_str(), start_ea_idx, end_ea_idx);
+        EventRangeForBase erfb =  base_to_event_map[read_kidx];
+        for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
+
+            fast5::Event_Alignment_Entry& eae = event_alignments[i];
+            
+            for(uint32_t si = 0; si <= 1; ++si) {
+                uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
+                
+                // no event for this strand, nothing to update
+                if(incoming_idx == -1)
+                    continue;
+
+                if(erfb.indices[si].start == -1) {
+                    erfb.indices[si].start = incoming_idx;        
+                }
+                erfb.indices[si].stop = incoming_idx;        
+            }
+        }
+        printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);
+        start_ea_idx = end_ea_idx;
+    }
+
     delete f_p;
 }

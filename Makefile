@@ -38,4 +38,4 @@ $(PROGRAM): $(OBJ)
 	g++ -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 clean:
-	rm nanopolish
+	rm nanopolish *.o

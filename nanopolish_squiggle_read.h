@@ -22,6 +22,20 @@ struct SquiggleEvent
     double duration;     // duration of the event in seconds
 };
 
+struct IndexPair
+{
+    IndexPair() : start(-1), stop(-1) {}
+    int32_t start;
+    int32_t stop; // inclusive
+};
+
+// This struct maps from base-space k-mers to the range of template/complement
+// events used to call it. 
+struct EventRangeForBase
+{
+    IndexPair indices[2]; // one per strand
+};
+
 //
 class SquiggleRead
 {
@@ -56,7 +70,7 @@ class SquiggleRead
             double time = event.start_time - events[strand][0].start_time;
             return event.mean - (time * pore_model[strand].drift);
         }
-
+        
         //
         // Data
         //
@@ -64,13 +78,16 @@ class SquiggleRead
         // unique identifier of the read
         std::string read_name;
         uint32_t read_id;
-        std::string twod_sequence;
+        std::string read_sequence;
 
         // one model for each strand
         PoreModel pore_model[2];
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
+
+        //
+        std::vector<EventRangeForBase> base_to_event_map;
 
         // one set of parameters per strand
         KHMMParameters parameters[2];

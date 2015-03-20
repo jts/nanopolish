@@ -74,8 +74,6 @@ void build_input_for_region(const std::string& bam_filename,
             read_seq[i] = seq_nt16_str[bam_seqi(packed_seq, i)];
         }
 
-        squiggle_reads.back().twod_sequence = read_seq;
-
         // parse alignments to reference
         read_anchors.push_back(build_anchors_for_read(record, start, end, stride));
     }
@@ -118,8 +116,8 @@ void build_input_for_region(const std::string& bam_filename,
                 int32_t b1 = ras.strand_anchors[T_IDX][ai].base_idx;
                 int32_t b2 = ras.strand_anchors[T_IDX][ai + 1].base_idx;
                 if(b1 >= 0 && b2 >= 0)  {
-                    column.alt_sequences.push_back(squiggle_reads[rai].twod_sequence.substr(b1, b2 - b1 + 1));
-                    printf("Alt[%zu]:  %s\n", rai, column.alt_sequences.back().c_str());
+                    //column.alt_sequences.push_back(squiggle_reads[rai].twod_sequence.substr(b1, b2 - b1 + 1));
+                    //printf("Alt[%zu]:  %s\n", rai, column.alt_sequences.back().c_str());
                 }
             }
         }
