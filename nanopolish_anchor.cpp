@@ -54,6 +54,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     printf("Iter: %d %d %d\n", itr->tid, itr->beg, itr->end);
 
     std::vector<HMMReadAnchorSet> read_anchors;
+    std::vector<std::vector<std::string>> read_substrings;
 
     // Load the SquiggleReads aligned to this region and the bases
     // that are mapped to our reference anchoring positions
@@ -67,16 +68,6 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         // load read
         ret.reads.push_back(SquiggleRead(read_name, fast5_path));
         const SquiggleRead& sr = ret.reads.back();
-
-        // TODO: just read this from the fast5
-        int read_len = record->core.l_qseq;
-        std::string read_seq(read_len, '\0');
-        uint8_t* packed_seq = bam_get_seq(record);
-        
-        // unpack
-        for(int i = 0; i < read_len; ++i) {
-            read_seq[i] = seq_nt16_str[bam_seqi(packed_seq, i)];
-        }
 
         // parse alignments to reference
         std::vector<int> read_bases_for_anchors = 
@@ -111,6 +102,35 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
+            
+            // If this is not the last anchor, extract the sequence of the read
+            // from this anchor to the next anchor as an alternative assembly
+            if(ai < read_bases_for_anchors.size() - 1) {
+                int start_kidx = read_bases_for_anchors[ai];
+                int end_kidx = read_bases_for_anchors[ai + 1];
+
+                // flip
+                if(do_base_rc) {
+                    start_kidx = sr.flip_k_strand(start_kidx);
+                    end_kidx = sr.flip_k_strand(end_kidx);
+                    
+                    // swap
+                    int tmp = end_kidx;
+                    end_kidx = start_kidx;
+                    start_kidx = tmp;
+                }
+                
+                std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + K);
+
+                if(do_base_rc) {
+                    s = reverse_complement(s);
+                }
+
+                if(ai >= read_substrings.size())
+                    read_substrings.resize(ai + 1);
+
+                read_substrings[ai].push_back(s);
+            }
         }
 
         read_anchors.push_back(event_anchors);
@@ -150,30 +170,14 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             printf("Base: %s\n", column.base_sequence.c_str());
 
             // alts
-            /*
-            for(size_t rai = 0; rai < read_anchors.size(); ++rai) {
-                HMMReadAnchorSet& ras = read_anchors[rai];
-                int32_t b1 = ras.strand_anchors[T_IDX][ai].base_idx;
-                int32_t b2 = ras.strand_anchors[T_IDX][ai + 1].base_idx;
-                if(b1 >= 0 && b2 >= 0)  {
-                    //column.alt_sequences.push_back(squiggle_reads[rai].twod_sequence.substr(b1, b2 - b1 + 1));
-                    //printf("Alt[%zu]:  %s\n", rai, column.alt_sequences.back().c_str());
-                }
+            column.alt_sequences = read_substrings[ai];
+            
+            printf("Alt[%d]\n", ai);
+            for(size_t asi = 0; asi < column.alt_sequences.size(); ++asi) {
+                printf("Alt[%zu]:  %s\n", asi, column.alt_sequences[asi].c_str());
             }
-            */
         }
-
     }
-
-    /*
-    for(size_t rai = 0; rai < read_anchors.size(); ++rai) {
-        printf("T\t");
-        for(size_t sai = 0; sai < read_anchors[rai].strand_anchors[T_IDX].size(); ++sai) {
-            printf("%d\t", read_anchors[rai].strand_anchors[T_IDX][sai].event_idx);
-        }
-        printf("\n");
-    }
-    */
 
     // cleanup
     sam_itr_destroy(itr);

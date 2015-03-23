@@ -617,7 +617,6 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     // Only attempt correction if there are any reads here
     if(!data.empty()) {
         
-        /*
         uint32_t num_rounds = 6;
         uint32_t round = 0;
         while(round++ < num_rounds) {
@@ -633,7 +632,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
                 break;
             base = paths[0].path;
         }
-        */
+        
         std::string second_best;
         run_mutation(base, data, second_best);
 

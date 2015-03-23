@@ -131,6 +131,23 @@ inline double add_logs(const double a, const double b)
     }
 }
 
+// Complement a base
+inline char complement(char b)
+{
+    return "ACGT"[3 - base_rank[b]];
+}
+
+// Reverse-complement a string
+inline std::string reverse_complement(const std::string& seq)
+{
+    std::string out(seq.length(), 'A');
+    size_t last_pos = seq.length() - 1;
+    for(int i = last_pos; i >= 0; --i) {
+        out[last_pos - i] = complement(seq[i]);
+    }
+    return out;
+}
+
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str);
 
