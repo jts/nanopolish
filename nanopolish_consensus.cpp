@@ -38,9 +38,9 @@
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
 #define DEBUG_PATH_SELECTION 1
-#define DEBUG_SINGLE_SEGMENT 1
-#define DEBUG_SHOW_TOP_TWO 1
-#define DEBUG_SEGMENT_ID 5
+//#define DEBUG_SINGLE_SEGMENT 1
+//#define DEBUG_SHOW_TOP_TWO 1
+//#define DEBUG_SEGMENT_ID 5
 
 // A global vector used to store data we've received from the python code
 struct HmmConsData
@@ -63,20 +63,6 @@ void initialize(int num_threads)
 {
     g_initialized = true;
     g_data.num_threads = num_threads;
-}
-
-extern "C"
-void clear_data()
-{
-    g_data.reads.clear();
-    g_data.anchored_columns.clear();
-    g_data.consensus_result.clear();
-}
-
-extern "C"
-const char* get_consensus_result()
-{
-    return g_data.consensus_result.c_str();
 }
 
 #if 0
@@ -172,7 +158,8 @@ void end_anchored_column()
 }
 #endif
 
-std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_column,
+std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
+                                                const HMMAnchoredColumn& start_column,
                                                 const HMMAnchoredColumn& end_column)
 {
     assert(start_column.anchors.size() == end_column.anchors.size());
@@ -199,9 +186,9 @@ std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_c
         HMMInputData data;
 
         uint32_t read_idx = rsi / 2;
-        assert(read_idx < g_data.reads.size());
+        assert(read_idx < window.reads.size());
         data.anchor_index = rsi;
-        data.read = &g_data.reads[read_idx];
+        data.read = &window.reads[read_idx];
         data.strand = rsi % 2;
         data.event_start_idx = start_sa.event_idx;
         data.event_stop_idx = end_sa.event_idx;
@@ -218,7 +205,7 @@ std::vector<HMMInputData> get_input_for_columns(const HMMAnchoredColumn& start_c
 
 // Handy wrappers for scoring/debugging functions
 // The consensus algorithms call into these so we can switch
-// scoring functinos without writing a bunch of code
+// scoring functions without writing a bunch of code
 double score_sequence(const std::string& sequence, const HMMInputData& data)
 {
     //return score_skip_merge(sequence, state);
@@ -555,7 +542,7 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
 //
 // Outlier filtering
 //
-void filter_outlier_input(std::vector<HMMInputData>& input, const std::string& sequence)
+void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& sequence)
 {
     std::vector<HMMInputData> out_rs;
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
@@ -581,7 +568,7 @@ std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
     return a + b.substr(K);
 }
 
-void run_splice_segment(uint32_t segment_id)
+void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 {
     if(!g_initialized) {
         printf("ERROR: initialize() not called\n");
@@ -602,10 +589,10 @@ void run_splice_segment(uint32_t segment_id)
     // the middle anchor.
 
     // Get the segments
-    assert(segment_id + 2 < g_data.anchored_columns.size());
-    HMMAnchoredColumn& start_column = g_data.anchored_columns[segment_id];
-    HMMAnchoredColumn& middle_column = g_data.anchored_columns[segment_id + 1];
-    HMMAnchoredColumn& end_column = g_data.anchored_columns[segment_id + 2];
+    assert(segment_id + 2 < window.anchored_columns.size());
+    HMMAnchoredColumn& start_column = window.anchored_columns[segment_id];
+    HMMAnchoredColumn& middle_column = window.anchored_columns[segment_id + 1];
+    HMMAnchoredColumn& end_column = window.anchored_columns[segment_id + 2];
 
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
@@ -623,13 +610,14 @@ void run_splice_segment(uint32_t segment_id)
 
     // Set up the HMMReadStates, which are used to calculate
     // the probability of the data given a possible consensus sequence
-    std::vector<HMMInputData> input = get_input_for_columns(start_column, end_column);
+    std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
 
-    //
-    filter_outlier_input(input, base);
+    filter_outlier_data(data, base);
 
     // Only attempt correction if there are any reads here
-    if(!input.empty()) {
+    if(!data.empty()) {
+        
+        /*
         uint32_t num_rounds = 6;
         uint32_t round = 0;
         while(round++ < num_rounds) {
@@ -639,21 +627,21 @@ void run_splice_segment(uint32_t segment_id)
             paths.push_back(base_path);
             
             generate_alt_paths(paths, base, alts);
-            score_paths(paths, input);
+            score_paths(paths, data);
 
             if(paths[0].path == base)
                 break;
             base = paths[0].path;
         }
-
+        */
         std::string second_best;
-        run_mutation(base, input, second_best);
+        run_mutation(base, data, second_best);
 
 #if DEBUG_SHOW_TOP_TWO
         assert(!second_best.empty());
-        for(uint32_t ri = 0; ri < input.size(); ++ri) {
-            debug_sequence("best", segment_id, ri, base, input[ri]);
-            debug_sequence("second", segment_id, ri, second_best, input[ri]);
+        for(uint32_t ri = 0; ri < data.size(); ++ri) {
+            debug_sequence("best", segment_id, ri, base, data[ri]);
+            debug_sequence("second", segment_id, ri, second_best, data[ri]);
         }
 #endif
     }
@@ -677,10 +665,10 @@ void run_splice_segment(uint32_t segment_id)
     middle_column.base_sequence = m_e_fixed;
 
     // Update the event indices in the first column to match 
-    for(uint32_t ri = 0; ri < input.size(); ++ri) {
+    for(uint32_t ri = 0; ri < data.size(); ++ri) {
 
         // Realign to the consensus sequence
-        std::vector<AlignmentState> decodes = hmm_align(base, input[ri]);
+        std::vector<AlignmentState> decodes = hmm_align(base, data[ri]);
 
         // Get the closest event aligned to the target kmer
         int32_t min_k_dist = base.length();
@@ -693,10 +681,11 @@ void run_splice_segment(uint32_t segment_id)
             }
         }
 
-        middle_column.anchors[input[ri].anchor_index].event_idx = event_idx;
+        middle_column.anchors[data[ri].anchor_index].event_idx = event_idx;
     }
 }
 
+#if 0
 extern "C"
 void run_splice()
 {
@@ -748,10 +737,11 @@ void run_splice()
 
     g_data.consensus_result = consensus;
 }
+#endif
 
 // update the training data on the current segment
 extern "C"
-void train_segment(uint32_t segment_id)
+void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
 {
     if(!g_initialized) {
         printf("ERROR: initialize() not called\n");
@@ -759,10 +749,10 @@ void train_segment(uint32_t segment_id)
     }
 
     // Get the segments
-    assert(segment_id + 2 < g_data.anchored_columns.size());
-    HMMAnchoredColumn& start_column = g_data.anchored_columns[segment_id];
-    HMMAnchoredColumn& middle_column = g_data.anchored_columns[segment_id + 1];
-    HMMAnchoredColumn& end_column = g_data.anchored_columns[segment_id + 2];
+    assert(segment_id + 2 < window.anchored_columns.size());
+    HMMAnchoredColumn& start_column = window.anchored_columns[segment_id];
+    HMMAnchoredColumn& middle_column = window.anchored_columns[segment_id + 1];
+    HMMAnchoredColumn& end_column = window.anchored_columns[segment_id + 2];
 
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
@@ -770,7 +760,7 @@ void train_segment(uint32_t segment_id)
     std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base);
 
     // Set up the the input data for the HMM
-    std::vector<HMMInputData> input = get_input_for_columns(start_column, end_column);
+    std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
      
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
         std::vector<AlignmentState> decodes = hmm_align(segment_sequence, input[ri]);
@@ -779,19 +769,19 @@ void train_segment(uint32_t segment_id)
 }
 
 extern "C"
-void train()
+void train(HMMRealignmentInput& window)
 {
     // train on current consensus
-    uint32_t num_segments = g_data.anchored_columns.size();
+    uint32_t num_segments = window.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
         printf("Training segment %d\n", segment_id);
-        train_segment(segment_id);
+        train_segment(window, segment_id);
     }
 
     // Update model parameters
-    for(uint32_t ri = 0; ri < g_data.reads.size(); ++ri) {
-        khmm_parameters_train(g_data.reads[ri].parameters[0]);
-        khmm_parameters_train(g_data.reads[ri].parameters[1]);
+    for(uint32_t ri = 0; ri < window.reads.size(); ++ri) {
+        khmm_parameters_train(window.reads[ri].parameters[0]);
+        khmm_parameters_train(window.reads[ri].parameters[1]);
     }
 }
 
@@ -802,5 +792,49 @@ int consensus_main(int argc, char** argv)
     std::string bam_file = "reads.pp.sorted.bam";
 
     Fast5Map name_map(reads_file);
-    build_input_for_region(bam_file, reference_file, name_map, "1", 10000, 20000, 50);
+    HMMRealignmentInput window = build_input_for_region(bam_file, reference_file, name_map, "1", 0, 10000, 50);
+
+    std::string uncorrected = "";
+    std::string consensus = "";
+
+    initialize(1);
+
+    uint32_t start_segment_id = 0;
+#ifdef DEBUG_SINGLE_SEGMENT
+    start_segment_id = DEBUG_SEGMENT_ID;
+#endif
+
+    uint32_t num_segments = window.anchored_columns.size();
+    printf("NUM SEGMENTS: %d\n", num_segments);
+    for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
+
+        // Track the original sequence for reference
+        if(uncorrected.empty()) {
+            uncorrected = window.anchored_columns[segment_id].base_sequence;
+        } else {
+            uncorrected.append(window.anchored_columns[segment_id].base_sequence.substr(K));
+        }
+
+        // run the consensus algorithm for this segment
+        run_splice_segment(window, segment_id);
+
+        // run_splice_segment updates the base_sequence of the current anchor, grab it and append
+        std::string base = window.anchored_columns[segment_id].base_sequence;
+
+        if(consensus.empty()) {
+            consensus = base;
+        } else {
+            // The first 5 bases of the incoming sequence must match
+            // the last 5 bases of the growing consensus
+            // run_splice_segment must ensure this
+            assert(consensus.substr(consensus.size() - K) == base.substr(0, K));
+            consensus.append(base.substr(K));
+        }
+
+        printf("UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
+        printf("CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
+#ifdef DEBUG_SINGLE_SEGMENT
+        break;
+#endif
+    }    
 }

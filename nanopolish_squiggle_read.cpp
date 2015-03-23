@@ -15,6 +15,10 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
     read_name(name)
 {
     load_from_fast5(path);
+
+    // TODO: refactor
+    khmm_parameters_initialize(parameters[0]);
+    khmm_parameters_initialize(parameters[1]);
 }
 
 // helper for get_closest_event_to

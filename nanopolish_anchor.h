@@ -45,15 +45,21 @@ struct HMMAnchoredColumn
     std::vector<std::string> alt_sequences;
 };
 
-// functions
-void build_input_for_region(const std::string& bam_filename, 
-                            const std::string& ref_filename, 
-                            const Fast5Map& read_name_map, 
-                            const std::string& contig_name,
-                            int start, 
-                            int end, 
-                            int stride);
+//
+struct HMMRealignmentInput
+{
+    std::vector<SquiggleRead> reads;
+    std::vector<HMMAnchoredColumn> anchored_columns;
+};
 
+// functions
+HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
+                                           const std::string& ref_filename, 
+                                           const Fast5Map& read_name_map, 
+                                           const std::string& contig_name,
+                                           int start, 
+                                           int end, 
+                                           int stride);
 
 std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride);
 

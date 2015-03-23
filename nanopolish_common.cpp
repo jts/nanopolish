@@ -71,7 +71,7 @@ void print_alignment(const std::string& name,
         }
         std::string kmer = consensus.substr(ki, K);
  
-        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, data.strand ? 't' : 'c');
+        printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, "tc"[data.strand]);
         printf("%c\t%d\t%d\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
         printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);

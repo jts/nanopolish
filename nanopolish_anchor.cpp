@@ -15,14 +15,17 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_squiggle_read.h"
 
-void build_input_for_region(const std::string& bam_filename, 
-                            const std::string& ref_filename, 
-                            const Fast5Map& read_name_map, 
-                            const std::string& contig_name,
-                            int start, 
-                            int end, 
-                            int stride)
+HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
+                                           const std::string& ref_filename, 
+                                           const Fast5Map& read_name_map, 
+                                           const std::string& contig_name,
+                                           int start, 
+                                           int end, 
+                                           int stride)
 {
+    // Initialize return data
+    HMMRealignmentInput ret;
+
     // load bam file
     htsFile* bam_fh = sam_open(bam_filename.c_str(), "r");
     assert(bam_fh != NULL);
@@ -49,10 +52,9 @@ void build_input_for_region(const std::string& bam_filename,
     
     // Iterate over reads aligned here
     printf("Iter: %d %d %d\n", itr->tid, itr->beg, itr->end);
-    
-    std::vector<SquiggleRead> squiggle_reads;
+
     std::vector<HMMReadAnchorSet> read_anchors;
-    
+
     // Load the SquiggleReads aligned to this region and the bases
     // that are mapped to our reference anchoring positions
     int result;
@@ -63,8 +65,8 @@ void build_input_for_region(const std::string& bam_filename,
         std::string fast5_path = read_name_map.get_path(read_name);
 
         // load read
-        squiggle_reads.push_back(SquiggleRead(read_name, fast5_path));
-        const SquiggleRead& sr = squiggle_reads.back();
+        ret.reads.push_back(SquiggleRead(read_name, fast5_path));
+        const SquiggleRead& sr = ret.reads.back();
 
         // TODO: just read this from the fast5
         int read_len = record->core.l_qseq;
@@ -86,14 +88,15 @@ void build_input_for_region(const std::string& bam_filename,
         event_anchors.strand_anchors[C_IDX].resize(read_bases_for_anchors.size());
 
         bool do_base_rc = bam_is_rev(record);
-        bool template_rc = !do_base_rc;
-        bool complement_rc = do_base_rc;
+        bool template_rc = do_base_rc;
+        bool complement_rc = !do_base_rc;
 
         for(size_t ai = 0; ai < read_bases_for_anchors.size(); ++ai) {
 
             int read_kidx = read_bases_for_anchors[ai];
+
+            // read not aligned to this reference position
             if(read_kidx == -1) {
-                printf("\tai: %zu skip\n", ai);
                 continue;
             }
 
@@ -124,10 +127,10 @@ void build_input_for_region(const std::string& bam_filename,
     size_t num_anchors = read_anchors.front().strand_anchors[T_IDX].size(); 
     size_t num_strands = read_anchors.size() * 2;
     
-    std::vector<HMMAnchoredColumn> columns(num_anchors);
+    ret.anchored_columns.resize(num_anchors);
     for(size_t ai = 0; ai < num_anchors; ++ai) {
         
-        HMMAnchoredColumn& column = columns[ai];
+        HMMAnchoredColumn& column = ret.anchored_columns[ai];
 
         for(size_t rai = 0; rai < read_anchors.size(); ++rai) {
             HMMReadAnchorSet& ras = read_anchors[rai];
@@ -137,12 +140,13 @@ void build_input_for_region(const std::string& bam_filename,
             column.anchors.push_back(ras.strand_anchors[T_IDX][ai]);
             column.anchors.push_back(ras.strand_anchors[C_IDX][ai]);
         }
+        assert(column.anchors.size() == num_strands);
 
         // Add sequences except for last anchor
         if(ai != num_anchors - 1) {
             
-            // base
-            column.base_sequence = std::string(ref_segment + ai * stride, stride);
+            // base, these sequences need to overlap by K - 1 bases
+            column.base_sequence = std::string(ref_segment + ai * stride, stride + K);
             printf("Base: %s\n", column.base_sequence.c_str());
 
             // alts
@@ -161,6 +165,7 @@ void build_input_for_region(const std::string& bam_filename,
 
     }
 
+    /*
     for(size_t rai = 0; rai < read_anchors.size(); ++rai) {
         printf("T\t");
         for(size_t sai = 0; sai < read_anchors[rai].strand_anchors[T_IDX].size(); ++sai) {
@@ -168,6 +173,7 @@ void build_input_for_region(const std::string& bam_filename,
         }
         printf("\n");
     }
+    */
 
     // cleanup
     sam_itr_destroy(itr);
@@ -177,6 +183,8 @@ void build_input_for_region(const std::string& bam_filename,
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
     free(ref_segment);
+
+    return ret;
 }
 
 std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride)
