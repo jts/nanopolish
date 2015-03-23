@@ -1,6 +1,6 @@
 #
 LIBS=-lrt ./htslib/libhts.a -lz -lhdf5
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g
+CPPFLAGS=-fopenmp -O3 -std=c++11
 PROGRAM=nanopolish
 
 default: $(PROGRAM)

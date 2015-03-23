@@ -41,6 +41,7 @@
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 5
+//#define DEBUG_BENCHMARK 1
 
 // A global vector used to store data we've received from the python code
 struct HmmConsData
@@ -64,99 +65,6 @@ void initialize(int num_threads)
     g_initialized = true;
     g_data.num_threads = num_threads;
 }
-
-#if 0
-extern "C"
-void add_read(CSquiggleReadInterface params)
-{
-    g_data.reads.push_back(SquiggleRead());
-
-    SquiggleRead& sr = g_data.reads.back();
-    sr.read_id = g_data.reads.size() - 1;
-
-    for(uint32_t i = 0; i < NUM_STRANDS; ++i) {
-        // Initialize pore model   
-        sr.pore_model[i].scale = params.pore_model[i].scale;
-        sr.pore_model[i].shift = params.pore_model[i].shift;
-        sr.pore_model[i].drift = params.pore_model[i].drift;
-        sr.pore_model[i].var = params.pore_model[i].var;
-        sr.pore_model[i].scale_sd = params.pore_model[i].scale_sd;
-        sr.pore_model[i].var_sd = params.pore_model[i].var_sd;
-        
-        assert(params.pore_model[i].n_states == 1024);
-        for(uint32_t j = 0; j < params.pore_model[i].n_states; ++j) {
-            
-            sr.pore_model[i].state[j].level_mean = params.pore_model[i].level_mean[j];
-            sr.pore_model[i].state[j].level_stdv = params.pore_model[i].level_stdv[j];
-            
-            sr.pore_model[i].state[j].sd_mean = params.pore_model[i].sd_mean[j];
-            sr.pore_model[i].state[j].sd_stdv = params.pore_model[i].sd_stdv[j];
-         }
-    
-        // Initialize events
-        sr.events[i].n_events = params.events[i].n_events;
-
-        sr.events[i].level = params.events[i].level;
-        sr.events[i].stdv = params.events[i].stdv;
-        sr.events[i].start = params.events[i].start;
-        sr.events[i].duration = params.events[i].duration;
-
-        /*
-        printf("Model[%zu] scale: %lf shift: %lf %lf %lf\n", i, sr.pore_model[i].scale, 
-                                                                 sr.pore_model[i].shift,
-                                                                 sr.pore_model[i].state[0].level_mean, 
-                                                                 sr.pore_model[i].state[0].level_stdv);
-    
-        printf("First 100 events of %d\n", sr.events[i].n_events);
-        for(int j = 0; j < 100; ++j)
-            printf("%d: %lf\n", j, sr.events[i].level[j]);
-        */
-    }
-
-    // Initialize hmm parameters for both strands of the read
-    khmm_parameters_initialize(sr.parameters[0]);
-    khmm_parameters_initialize(sr.parameters[1]);
-}
-
-// This is called by python to tell us we want to start a new anchored column
-extern "C"
-void start_anchored_column()
-{
-    HMMAnchoredColumn ac;
-    g_data.anchored_columns.push_back(ac);
-}
-
-extern "C"
-void add_read_anchor(CReadAnchorInterface in_ra)
-{
-    assert(!g_data.anchored_columns.empty());
-
-    HMMStrandAnchor sa(-1, in_ra.event_idx, in_ra.rc );
-    g_data.anchored_columns.back().anchors.push_back(sa);
-}
-
-extern "C"
-void add_base_sequence(char* str)
-{
-    assert(!g_data.anchored_columns.empty());
-    g_data.anchored_columns.back().base_sequence = str;
-}
-
-extern "C"
-void add_alt_sequence(char* str)
-{
-    assert(!g_data.anchored_columns.empty());
-    g_data.anchored_columns.back().alt_sequences.push_back(str);
-}
-
-// This is called by python to tell us we want to end the current anchored column
-extern "C"
-void end_anchored_column()
-{
-    // Validate that we received two read anchors per read
-    assert(g_data.anchored_columns.back().anchors.size() == g_data.reads.size() * 2);
-}
-#endif
 
 std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
                                                 const HMMAnchoredColumn& start_column,
@@ -684,62 +592,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     }
 }
 
-#if 0
-extern "C"
-void run_splice()
-{
-    if(!g_initialized) {
-        printf("ERROR: initialize() not called\n");
-        exit(EXIT_FAILURE);
-    }
- 
-    std::string uncorrected = "";
-    std::string consensus = "";
-
-    uint32_t start_segment_id = 0;
-#ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = DEBUG_SEGMENT_ID;
-#endif
-
-    uint32_t num_segments = g_data.anchored_columns.size();
-    for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
-
-        // Track the original sequence for reference
-        if(uncorrected.empty()) {
-            uncorrected = g_data.anchored_columns[segment_id].base_sequence;
-        } else {
-            uncorrected.append(g_data.anchored_columns[segment_id].base_sequence.substr(K));
-        }
-
-        // run the consensus algorithm for this segment
-        run_splice_segment(segment_id);
-
-        // run_splice_segment updates the base_sequence of the current anchor, grab it and append
-        std::string base = g_data.anchored_columns[segment_id].base_sequence;
-
-        if(consensus.empty()) {
-            consensus = base;
-        } else {
-            // The first 5 bases of the incoming sequence must match
-            // the last 5 bases of the growing consensus
-            // run_splice_segment must ensure this
-            assert(consensus.substr(consensus.size() - K) == base.substr(0, K));
-            consensus.append(base.substr(K));
-        }
-
-        printf("UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
-        printf("CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
-#ifdef DEBUG_SINGLE_SEGMENT
-        break;
-#endif
-    }
-
-    g_data.consensus_result = consensus;
-}
-#endif
-
 // update the training data on the current segment
-extern "C"
 void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
 {
     if(!g_initialized) {
@@ -767,7 +620,6 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     }
 }
 
-extern "C"
 void train(HMMRealignmentInput& window)
 {
     // train on current consensus
@@ -804,7 +656,6 @@ int consensus_main(int argc, char** argv)
 #endif
 
     uint32_t num_segments = window.anchored_columns.size();
-    printf("NUM SEGMENTS: %d\n", num_segments);
     for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
 
         // Track the original sequence for reference
@@ -834,6 +685,11 @@ int consensus_main(int argc, char** argv)
         printf("CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
 #ifdef DEBUG_SINGLE_SEGMENT
         break;
+#endif
+
+#ifdef DEBUG_BENCHMARK
+        if(segment_id >= 10)
+            break;
 #endif
     }    
 }
