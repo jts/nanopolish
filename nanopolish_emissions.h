@@ -14,21 +14,21 @@
 #include "nanopolish_squiggle_read.h"
 
 //#define MODEL_STDV
-
+//#define DEBUG_HMM_EMISSION 1
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
-inline double normal_pdf(double x, double m, double s)
+inline double normal_pdf(double x, const GaussianParameters& g)
 {
     static const float inv_sqrt_2pi = 0.3989422804014327;
-    double a = (x - m) / s;
-    return inv_sqrt_2pi / s * exp(-0.5f * a * a);
+    double a = (x - g.mean) / g.stdv;
+    return inv_sqrt_2pi / g.stdv * exp(-0.5f * a * a);
 }
 
-inline double log_normal_pdf(double x, double m, double s)
+inline double log_normal_pdf(double x, const GaussianParameters& g)
 {
     static const double log_inv_sqrt_2pi = log(0.3989422804014327);
-    double a = (x - m) / s;
-    return log_inv_sqrt_2pi - log(s) + (-0.5f * a * a);
+    double a = (x - g.mean) / g.stdv;
+    return log_inv_sqrt_2pi - log(g.stdv) + (-0.5f * a * a);
 }
 
 // The probability that a standard normal RV is <= x
@@ -39,9 +39,9 @@ inline double log_standard_normal_cdf(double x)
 }
 
 // The probability that a normal RV is <= x
-inline double log_normal_cdf(double x, double m, double s)
+inline double log_normal_cdf(double x, const GaussianParameters& g)
 {
-    double a = (x - m) / s;
+    double a = (x - g.mean) / g.stdv;
     return log(0.5 * (1 + erf(a * M_SQRT1_2)));
 }
 
@@ -55,9 +55,10 @@ inline double log_probability_match(const SquiggleRead& read,
 
     // event level mean
     double level = read.get_drift_corrected_level(event_idx, strand);
-    double m = pm.state[kmer_rank].level_mean * pm.scale + pm.shift;
-    double s = pm.state[kmer_rank].level_stdv * pm.var;
-    double lp = log_normal_pdf(level, m, s * state_scale);
+
+    GaussianParameters model = pm.get_scaled_parameters(kmer_rank);
+    model.stdv *= state_scale;
+    double lp = log_normal_pdf(level, model);
 
 #if MODEL_STDV
     // event level stdv
@@ -68,7 +69,7 @@ inline double log_probability_match(const SquiggleRead& read,
 #endif
 
 #if DEBUG_HMM_EMISSION
-    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, m, s, exp(lp), normal_pdf(level, m, s));
+    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, model.mean, model.stdv, exp(lp), normal_pdf(level, model));
 #endif
 
     return lp;

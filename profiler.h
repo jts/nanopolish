@@ -53,11 +53,11 @@ class TimeTracker
 #define PROFILE_FUNC(x) static std::string __profile_name = x; \
                         static size_t __profile_iterations = 0; \
                         static size_t __profile_total_nanoseconds = 0; \
-                        double milli_seconds = (double)__profile_total_nanoseconds / 1000000.0f; \
-                        double avg_per_iteration = milli_seconds / __profile_iterations; \
+                        double micro_seconds = (double)__profile_total_nanoseconds / 1000.0f; \
+                        double avg_per_iteration = micro_seconds / __profile_iterations; \
                         while(!__sync_bool_compare_and_swap(&__profile_iterations, __profile_iterations, __profile_iterations + 1)) { } \
                         if(__profile_iterations % PROFILE_TICKS_BEFORE_PRINT == 0) \
-                            printf("[Profile] count: %zu time: %.0lf ms avg: %.0lf ms func: %s\n", __profile_iterations, milli_seconds, avg_per_iteration, __profile_name.c_str()); \
+                            printf("[Profile] count: %zu time: %.0lf ms avg: %.0lf us func: %s\n", __profile_iterations, micro_seconds / 1000, avg_per_iteration, __profile_name.c_str()); \
                         TimeTracker __profile_timer(__profile_total_nanoseconds);
                          
 #else

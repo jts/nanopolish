@@ -86,6 +86,13 @@ struct AlignmentState
     char state;
 };
 
+// The parameters of a gaussian distribution
+struct GaussianParameters
+{
+    double mean;
+    double stdv;
+};
+
 //
 // Functions
 //

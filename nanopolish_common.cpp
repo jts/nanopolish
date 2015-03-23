@@ -51,12 +51,12 @@ void print_alignment(const std::string& name,
         uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
         const PoreModel& pm = data.read->pore_model[data.strand];
-        double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
-        double model_s = pm.state[rank].level_stdv * pm.scale;
-        double norm_level = (level - model_m) / model_s;
+        GaussianParameters model = pm.get_scaled_parameters(rank);
+
+        double norm_level = (level - model.mean) / model.stdv;
         
-        double model_sd_mean = pm.state[rank].sd_mean;
-        double model_sd_stdv = pm.state[rank].sd_stdv;
+        double model_sd_mean = 0.0f;
+        double model_sd_stdv = 0.0f;
 
         n_matches += (s == 'M');
         n_merges += (s == 'E');
@@ -74,7 +74,7 @@ void print_alignment(const std::string& name,
         printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, "tc"[data.strand]);
         printf("%c\t%d\t%d\t", s, ei, ki);
         printf("%s\t%.3lf\t", kmer.c_str(), duration);
-        printf("%.1lf\t%.1lf\t%.1lf\t", level, model_m, norm_level);
+        printf("%.1lf\t%.1lf\t%.1lf\t", level, model.mean, norm_level);
         printf("\t%.1lf\t%.1lf\t%.1lf\t", sd, model_sd_mean, (sd - model_sd_mean) / model_sd_stdv);
         printf("%.2lf\t%.2lf\t%.2lf\n", exp(alignment[pi].l_posterior), alignment[pi].l_fm, lp_diff);
         prev_s = s;

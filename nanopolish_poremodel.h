@@ -9,6 +9,8 @@
 #ifndef NANOPOLISH_POREMODEL_H
 #define NANOPOLISH_POREMODEL_H
 
+#include "nanopolish_common.h"
+
 //
 // The pore model is defined by global scale/shift parameters
 // and a mean/stddev per k-mer. These are parameterize the
@@ -23,15 +25,30 @@ struct PoreModelStateParams
 };
 
 //
-struct PoreModel
+class PoreModel
 {
-    double scale;
-    double shift;
-    double drift;
-    double var;
-    double scale_sd;
-    double var_sd;
-    PoreModelStateParams state[1024];
+    public:
+        PoreModel() {}
+
+        inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
+        {
+            GaussianParameters ret;
+            ret.mean = state[kmer_rank].level_mean * scale + shift;
+            ret.stdv = state[kmer_rank].level_stdv * var;
+            return ret;
+        }
+    
+    friend SquiggleRead;
+
+    private:
+
+        double scale;
+        double shift;
+        double drift;
+        double var;
+        double scale_sd;
+        double var_sd;
+        PoreModelStateParams state[1024];
 };
 
 #endif

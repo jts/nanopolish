@@ -73,10 +73,10 @@ inline double calculate_skip_probability(const char* sequence,
     uint32_t rank_i = get_rank(data, sequence, ki);
     uint32_t rank_j = get_rank(data, sequence, kj);
 
-    double level_i = (pm.state[rank_i].level_mean + pm.shift) * pm.scale;
-    double level_j = (pm.state[rank_j].level_mean + pm.shift) * pm.scale;
-    
-    return get_skip_probability(parameters, level_i, level_j);
+    GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
+    GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
+
+    return get_skip_probability(parameters, level_i.mean, level_j.mean);
 }
 
 // Pre-computed transitions from the previous block
@@ -227,7 +227,7 @@ double profile_hmm_forward_fill(DoubleMatrix& fm, // forward matrix
             double lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
 
 #ifdef DEBUG_FILL    
-            printf("\tEMISSION: %.2lf\n", lp_emission_m);
+            printf("\tEMISSION: %.2lf %.2lf\n", lp_emission_m, lp_emission_e);
 #endif
             set(fm, row, curr_block_offset + PS_MATCH, sum_m + lp_emission_m);
             set(fm, row, curr_block_offset + PS_EVENT_SPLIT, sum_e + lp_emission_e);
@@ -495,16 +495,16 @@ void profile_hmm_update_training(const std::string& consensus,
                 
                 assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
-                uint32_t rank1 = get_rank(data, consensus.c_str(), transition_kmer_from);
-                uint32_t rank2 = get_rank(data, consensus.c_str(), transition_kmer_to);
+                uint32_t rank_1 = get_rank(data, consensus.c_str(), transition_kmer_from);
+                uint32_t rank_2 = get_rank(data, consensus.c_str(), transition_kmer_to);
             
-                double ke1 = (pm.state[rank1].level_mean + pm.shift) * pm.scale;
-                double ke2 = (pm.state[rank2].level_mean + pm.shift) * pm.scale;
-
+                GaussianParameters level_1 = pm.get_scaled_parameters(rank_1);
+                GaussianParameters level_2 = pm.get_scaled_parameters(rank_2);
+            
 #ifdef PRINT_TRAINING_MESSAGES
-                printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\t%c\n", strand_idx, ke1, ke2, s, prev_s);
+                printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\n", strand_idx, level_1.mean, level_2.mean, s);
 #endif
-                KmerTransitionObservation to = { ke1, ke2, s };
+                KmerTransitionObservation to = { level_1.mean, level_2.mean, s };
                 training_data.kmer_transitions.push_back(to);
             }
 
@@ -521,15 +521,15 @@ void profile_hmm_update_training(const std::string& consensus,
             assert(ki < n_kmers);
             uint32_t rank = get_rank(data, consensus.c_str(), ki);
         
-            double model_m = (pm.state[rank].level_mean + pm.shift) * pm.scale;
-            double model_s = pm.state[rank].level_stdv * pm.scale;
-            double norm_level = (level - model_m) / model_s;
+            GaussianParameters model = pm.get_scaled_parameters(rank);
+            double norm_level = (level - model.mean) / model.stdv;
 
             if(s == 'M')
                 training_data.emissions_for_matches.push_back(norm_level);
             prev_s = s;
+
 #ifdef PRINT_TRAINING_MESSAGES
-            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model_m, model_s, norm_level, duration, s);
+            printf("TRAIN_EMISSION\t%d\t%d\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\t%c\n", strand_idx, ei, level, sd, model.mean, model.stdv, norm_level, duration, s);
 #endif
         }
 
