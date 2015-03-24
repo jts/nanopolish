@@ -42,7 +42,7 @@ class SquiggleRead
 {
     public:
 
-        SquiggleRead() {} // legacy TODO remove
+        SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
         SquiggleRead(const std::string& name, const std::string& path);
 
         //
@@ -62,14 +62,12 @@ class SquiggleRead
             return events[strand][event_idx].duration;
         }
 
+
         // Return the observed current level after correcting for drift
         inline double get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
         {
-            const SquiggleEvent& event = events[strand][event_idx];
-            
-            // correct level by drift
-            double time = event.start_time - events[strand][0].start_time;
-            return event.mean - (time * pore_model[strand].drift);
+            assert(drift_correction_performed);
+            return events[strand][event_idx].mean;
         }
         
         // Calculate the index of this k-mer on the other strand
@@ -78,6 +76,9 @@ class SquiggleRead
             assert(!read_sequence.empty());
             return read_sequence.size() - k_idx - K;
         }
+
+        // Transform each event by correcting for current drift
+        void transform();
 
         // get the index of the event tht is nearest to the given kmer 
         int get_closest_event_to(int k_idx, uint32_t strand) const;
@@ -90,6 +91,7 @@ class SquiggleRead
         std::string read_name;
         uint32_t read_id;
         std::string read_sequence;
+        bool drift_correction_performed;
 
         // one model for each strand
         PoreModel pore_model[2];

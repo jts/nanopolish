@@ -15,6 +15,7 @@ SRC=nanopolish.cpp \
     nanopolish_profile_hmm.cpp \
     nanopolish_anchor.cpp \
     nanopolish_fast5_map.cpp \
+    nanopolish_poremodel.cpp \
     nanopolish_squiggle_read.cpp
 
 # Automatically generated object names

@@ -12,9 +12,13 @@
 
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
-    read_name(name)
+    read_name(name),
+    drift_correction_performed(false)
 {
     load_from_fast5(path);
+
+    // perform drift correction
+    transform();
 
     // TODO: refactor
     khmm_parameters_initialize(parameters[0]);
@@ -50,6 +54,23 @@ int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 }
 
 //
+void SquiggleRead::transform()
+{
+    for (size_t si = 0; si < 2; ++si) {
+        for(size_t ei = 0; ei < events[si].size(); ++ei) {
+
+            SquiggleEvent& event = events[si][ei];
+
+            // correct level by drift
+            double time = event.start_time - events[si][0].start_time;
+            event.mean -= (time * pore_model[si].drift);
+        }
+    }
+
+    drift_correction_performed = true;
+}
+
+//
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
     printf("Loading %s\n", fast5_path.c_str());
@@ -62,9 +83,9 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     for (size_t si = 0; si < 2; ++si) {
 
         std::vector<fast5::Model_Entry> model = f_p->get_model(si);
-        assert(model.size() == 1024);
+        assert(model.size() == PORE_MODEL_STATES);
         assert(strcmp(model[0].kmer, "AAAAA") == 0);
-        assert(strcmp(model[1023].kmer, "TTTTT") == 0);
+        assert(strcmp(model[PORE_MODEL_STATES - 1].kmer, "TTTTT") == 0);
 
         // Copy into the pore model for this read
         for(size_t mi = 0; mi < model.size(); ++mi) {
@@ -81,6 +102,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         pore_model[si].var = params.var;
         pore_model[si].var_sd = params.var_sd;
 
+        // apply shift/scale transformation to the pore model states
+        pore_model[si].transform();
     }
     
     // Load events for both strands
