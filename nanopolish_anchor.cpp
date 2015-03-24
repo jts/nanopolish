@@ -172,7 +172,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             // alts
             column.alt_sequences = read_substrings[ai];
             
-            printf("Alt[%d]\n", ai);
+            printf("Alt[%zu]\n", ai);
             for(size_t asi = 0; asi < column.alt_sequences.size(); ++asi) {
                 printf("Alt[%zu]:  %s\n", asi, column.alt_sequences[asi].c_str());
             }

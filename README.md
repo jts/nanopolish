@@ -58,3 +58,7 @@ python nanopolish_merge.py circular.fa nanopolish_contig* > polished.fa
 ## Known Issues
 
 If you have extremely high depth (for example you sequenced a virus) then ```poa``` and the hmm will take a very long time to run. I suggest downsampling to reasonable coverage before trying to call the consensus sequence.
+
+## Credits and Thanks
+
+The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/).

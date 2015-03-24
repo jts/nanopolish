@@ -14,6 +14,7 @@
 #include <vector>
 #include <math.h>
 #include "profiler.h"
+#include "logsum.h"
 
 //
 // Enumerated types
@@ -123,9 +124,14 @@ inline uint32_t get_rank(const HMMInputData& data, const char* s, uint32_t ki)
     return !data.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
 }
 
+#define ESL_LOG_SUM 1
+
 // Add the log-scaled values a and b using a transform to avoid precision errors
 inline double add_logs(const double a, const double b)
 {
+#if ESL_LOG_SUM
+    return p7_FLogsum(a, b);
+#else
     if(a == -INFINITY && b == -INFINITY)
         return -INFINITY;
 
@@ -136,6 +142,7 @@ inline double add_logs(const double a, const double b)
         double diff = a - b;
         return b + log(1.0 + exp(diff));
     }
+#endif
 }
 
 // Complement a base

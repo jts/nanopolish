@@ -28,6 +28,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "profiler.h"
+#include "logsum.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -64,6 +65,7 @@ void initialize(int num_threads)
 {
     g_initialized = true;
     g_data.num_threads = num_threads;
+    p7_FLogsumInit();
 }
 
 std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
