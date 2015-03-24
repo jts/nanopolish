@@ -92,6 +92,7 @@ struct GaussianParameters
 {
     double mean;
     double stdv;
+    double log_stdv; // == log(stdv), pre-computed for efficiency
 };
 
 //

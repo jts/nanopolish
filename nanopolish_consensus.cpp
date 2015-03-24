@@ -42,7 +42,7 @@
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 5
-//#define DEBUG_BENCHMARK 1
+#define DEBUG_BENCHMARK 1
 
 // A global vector used to store data we've received from the python code
 struct HmmConsData

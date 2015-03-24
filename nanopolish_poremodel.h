@@ -37,14 +37,12 @@ class PoreModel
         inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
         {
             assert(is_scaled);
-            GaussianParameters ret = { scaled_state[kmer_rank].level_mean,
-                                       scaled_state[kmer_rank].level_stdv };
-            return ret;
+            return scaled_params[kmer_rank];
         }
-
-        // Pre-compute the scaled and shifted pore model states
-        // to avoid doing it in the loop of the HMM
-        void transform();
+        
+        // Pre-compute the GaussianParameters to avoid
+        // taking numerous logs in the emission calculations
+        void bake_gaussian_parameters();
     
     friend SquiggleRead;
 
@@ -60,7 +58,7 @@ class PoreModel
 
         //
         PoreModelStateParams state[PORE_MODEL_STATES];
-        PoreModelStateParams scaled_state[PORE_MODEL_STATES];
+        GaussianParameters scaled_params[PORE_MODEL_STATES];
 };
 
 #endif

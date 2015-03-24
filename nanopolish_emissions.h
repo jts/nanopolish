@@ -28,7 +28,7 @@ inline double log_normal_pdf(double x, const GaussianParameters& g)
 {
     static const double log_inv_sqrt_2pi = log(0.3989422804014327);
     double a = (x - g.mean) / g.stdv;
-    return log_inv_sqrt_2pi - log(g.stdv) + (-0.5f * a * a);
+    return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
 }
 
 // The probability that a standard normal RV is <= x
@@ -49,7 +49,8 @@ inline double log_probability_match(const SquiggleRead& read,
                                     uint32_t kmer_rank,
                                     uint32_t event_idx, 
                                     uint8_t strand,
-                                    double state_scale = 1.0f)
+                                    double state_scale = 1.0f,
+                                    double log_state_scale = 0.0f)
 {
     const PoreModel& pm = read.pore_model[strand];
 
@@ -57,7 +58,12 @@ inline double log_probability_match(const SquiggleRead& read,
     double level = read.get_drift_corrected_level(event_idx, strand);
 
     GaussianParameters model = pm.get_scaled_parameters(kmer_rank);
+
+    // we go to great lengths to avoid calling log() in the inner loop of the HMM
+    // for this reason we duplicate data here and require the caller to pass
+    // in the scale and log(scale), presumably these are cached
     model.stdv *= state_scale;
+    model.log_stdv += log_state_scale;
     double lp = log_normal_pdf(level, model);
 
 #if MODEL_STDV
@@ -80,7 +86,10 @@ inline double log_probability_event_insert(const SquiggleRead& read,
                                            uint32_t event_idx, 
                                            uint8_t strand)
 {
-    return log_probability_match(read, kmer_rank, event_idx, strand, 1.75f);
+    static const double scale = 1.75f;
+    static const double log_scale = log(scale);
+
+    return log_probability_match(read, kmer_rank, event_idx, strand, scale, log_scale);
 }
 
 inline double log_probability_kmer_insert(const SquiggleRead& read,

@@ -103,7 +103,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         pore_model[si].var_sd = params.var_sd;
 
         // apply shift/scale transformation to the pore model states
-        pore_model[si].transform();
+        pore_model[si].bake_gaussian_parameters();
     }
     
     // Load events for both strands
