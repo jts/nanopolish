@@ -16,6 +16,10 @@
 #include "profiler.h"
 #include "logsum.h"
 
+#define PACKAGE_NAME "nanopolish"
+#define PACKAGE_VERSION "0.1.0"
+#define PACKAGE_BUGREPORT "https://github.com/jts/nanopolish/issues"
+
 //
 // Enumerated types
 //

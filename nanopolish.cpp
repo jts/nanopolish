@@ -36,7 +36,7 @@ int main(int argc, char** argv)
             print_usage();
             return 0;
         } else if(command == "consensus") {
-            consensus_main(argc, argv);
+            consensus_main(argc - 1, argv + 1);
             return 0;
         }
     }

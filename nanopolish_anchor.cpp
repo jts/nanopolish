@@ -98,8 +98,6 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
             assert(template_idx != -1 && complement_idx != -1);
 
-            printf("\tai: %zu base: %d template: %d complement: %d\n", ai, read_kidx, template_idx, complement_idx);
-
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
             
@@ -108,6 +106,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             if(ai < read_bases_for_anchors.size() - 1) {
                 int start_kidx = read_bases_for_anchors[ai];
                 int end_kidx = read_bases_for_anchors[ai + 1];
+                int max_kidx = sr.read_sequence.size() - K;
 
                 // flip
                 if(do_base_rc) {
@@ -119,6 +118,10 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                     end_kidx = start_kidx;
                     start_kidx = tmp;
                 }
+
+                // clamp values within range
+                start_kidx = start_kidx >= 0 ? start_kidx : 0;
+                end_kidx = end_kidx <= max_kidx ? end_kidx : max_kidx;
                 
                 std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + K);
 
@@ -167,15 +170,9 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             
             // base, these sequences need to overlap by K - 1 bases
             column.base_sequence = std::string(ref_segment + ai * stride, stride + K);
-            printf("Base: %s\n", column.base_sequence.c_str());
 
             // alts
             column.alt_sequences = read_substrings[ai];
-            
-            printf("Alt[%zu]\n", ai);
-            for(size_t asi = 0; asi < column.alt_sequences.size(); ++asi) {
-                printf("Alt[%zu]:  %s\n", asi, column.alt_sequences[asi].c_str());
-            }
         }
     }
 

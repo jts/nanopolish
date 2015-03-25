@@ -18,6 +18,7 @@
 #include <sstream>
 #include <set>
 #include <omp.h>
+#include <getopt.h>
 #include "nanopolish_poremodel.h"
 #include "nanopolish_interface.h"
 #include "nanopolish_khmm_parameters.h"
@@ -42,6 +43,57 @@
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 5
 //#define DEBUG_BENCHMARK 1
+
+//
+// Getopt
+//
+#define SUBPROGRAM "consensus"
+
+static const char *CONSENSUS_VERSION_MESSAGE =
+SUBPROGRAM " Version " PACKAGE_VERSION "\n"
+"Written by Jared Simpson.\n"
+"\n"
+"Copyright 2015 Ontario Institute for Cancer Research\n";
+
+static const char *CONSENSUS_USAGE_MESSAGE =
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
+"Compute a new consensus sequence for an assembly using a signal-level HMM\n"
+"\n"
+"  -v, --verbose                        display verbose output\n"
+"      --version                        display version\n"
+"      --help                           display this help and exit\n"
+"  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
+"  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
+"  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
+"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
+
+namespace opt
+{
+    static unsigned int verbose;
+    static std::string reads_file;
+    static std::string bam_file;
+    static std::string genome_file;
+    static std::string window;
+    static int num_threads = 1;
+}
+
+static const char* shortopts = "r:b:g:t:w:v";
+
+enum { OPT_HELP = 1, OPT_VERSION };
+
+static const struct option longopts[] = {
+    { "verbose",     no_argument,       NULL, 'v' },
+    { "reads",       required_argument, NULL, 'r' },
+    { "bam",         required_argument, NULL, 'b' },
+    { "genome",      required_argument, NULL, 'g' },
+    { "window",      required_argument, NULL, 'w' },
+    { "threads",     required_argument, NULL, 't' },
+    { "help",        no_argument,       NULL, OPT_HELP },
+    { "version",     no_argument,       NULL, OPT_VERSION },
+    { NULL, 0, NULL, 0 }
+};
 
 std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
                                                 const HMMAnchoredColumn& start_column,
@@ -602,19 +654,13 @@ void train(HMMRealignmentInput& window)
     }
 }
 
-int consensus_main(int argc, char** argv)
+std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
-    std::string reads_file = "reads.pp.fa";
-    std::string reference_file = "circular.fa";
-    std::string bam_file = "reads.pp.sorted.bam";
-
-    Fast5Map name_map(reads_file);
-    HMMRealignmentInput window = build_input_for_region(bam_file, reference_file, name_map, "1", 0, 10000, 50);
+    const int minor_segment_stride = 50;
+    HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
 
     std::string uncorrected = "";
     std::string consensus = "";
-
-    omp_set_num_threads(1);
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT
@@ -657,5 +703,95 @@ int consensus_main(int argc, char** argv)
         if(segment_id >= 10)
             break;
 #endif
-    }    
+    }
+
+    return consensus;
+}
+
+void parse_consensus_options(int argc, char** argv)
+{
+    bool die = false;
+    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
+        std::istringstream arg(optarg != NULL ? optarg : "");
+        switch (c) {
+            case 'r': arg >> opt::reads_file; break;
+            case 'g': arg >> opt::genome_file; break;
+            case 'b': arg >> opt::bam_file; break;
+            case 'w': arg >> opt::window; break;
+            case '?': die = true; break;
+            case 't': arg >> opt::num_threads; break;
+            case 'v': opt::verbose++; break;
+            case OPT_HELP:
+                std::cout << CONSENSUS_USAGE_MESSAGE;
+                exit(EXIT_SUCCESS);
+            case OPT_VERSION:
+                std::cout << CONSENSUS_VERSION_MESSAGE;
+                exit(EXIT_SUCCESS);
+        }
+    }
+
+    if (argc - optind < 0) {
+        std::cerr << SUBPROGRAM ": missing arguments\n";
+        die = true;
+    } else if (argc - optind > 0) {
+        std::cerr << SUBPROGRAM ": too many arguments\n";
+        die = true;
+    }
+
+    if(opt::num_threads <= 0) {
+        std::cerr << SUBPROGRAM ": invalid number of threads: " << opt::num_threads << "\n";
+        die = true;
+    }
+
+    if(opt::reads_file.empty()) {
+        std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
+        die = true;
+    }
+    
+    if(opt::genome_file.empty()) {
+        std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
+        die = true;
+    }
+
+    if(opt::bam_file.empty()) {
+        std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
+        die = true;
+    }
+
+    if (die) 
+    {
+        std::cout << "\n" << CONSENSUS_USAGE_MESSAGE;
+        exit(EXIT_FAILURE);
+    }
+}
+
+int consensus_main(int argc, char** argv)
+{
+    parse_consensus_options(argc, argv);
+    omp_set_num_threads(opt::num_threads);
+
+    Fast5Map name_map(opt::reads_file);
+
+    // Parse the window string
+    // Replace ":" and "-" with spaces to make it parseable with stringstream
+    std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
+    std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
+
+    const int WINDOW_LENGTH = 10000;
+    const int WINDOW_OVERLAP = 200;
+
+    std::stringstream parser(opt::window);
+    std::string contig;
+    int start_window_id;
+    int end_window_id;
+    
+    parser >> contig >> start_window_id >> end_window_id;
+
+    for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
+        int start_base = window_id * WINDOW_LENGTH;
+        int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
+        printf("Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
+        std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
+        printf(">contig_%s_window_%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
+    }
 }
