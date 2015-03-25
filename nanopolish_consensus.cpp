@@ -28,7 +28,6 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "profiler.h"
-#include "logsum.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -43,30 +42,6 @@
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 5
 //#define DEBUG_BENCHMARK 1
-
-// A global vector used to store data we've received from the python code
-struct HmmConsData
-{
-    int num_threads;
-
-    //
-    std::vector<SquiggleRead> reads;
-    std::vector<HMMAnchoredColumn> anchored_columns;
-    
-    //
-    std::string consensus_result;
-};
-
-HmmConsData g_data;
-bool g_initialized = false;
-
-extern "C"
-void initialize(int num_threads)
-{
-    g_initialized = true;
-    g_data.num_threads = num_threads;
-    p7_FLogsumInit();
-}
 
 std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
                                                 const HMMAnchoredColumn& start_column,
@@ -226,7 +201,6 @@ void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
-        omp_set_num_threads(g_data.num_threads);
         #pragma omp parallel for
         for(size_t pi = 0; pi < paths.size(); ++pi) {
             double curr = score_sequence(paths[pi].path, input[ri]);
@@ -480,11 +454,6 @@ std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
 
 void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 {
-    if(!g_initialized) {
-        printf("ERROR: initialize() not called\n");
-        exit(EXIT_FAILURE);
-    }
-
     // The structure of the data looks like this:
 
     // --------------------------------------------------------
@@ -597,11 +566,6 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 // update the training data on the current segment
 void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
 {
-    if(!g_initialized) {
-        printf("ERROR: initialize() not called\n");
-        exit(EXIT_FAILURE);
-    }
-
     // Get the segments
     assert(segment_id + 2 < window.anchored_columns.size());
     HMMAnchoredColumn& start_column = window.anchored_columns[segment_id];
@@ -650,7 +614,7 @@ int consensus_main(int argc, char** argv)
     std::string uncorrected = "";
     std::string consensus = "";
 
-    initialize(1);
+    omp_set_num_threads(1);
 
     uint32_t start_segment_id = 0;
 #ifdef DEBUG_SINGLE_SEGMENT

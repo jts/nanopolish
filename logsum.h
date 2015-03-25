@@ -7,6 +7,7 @@
 #define LOGSUM_H
 #include <assert.h>
 #include <stdio.h>
+#include <cmath>
 
 /* p7_LOGSUM_SCALE defines the precision of the calculation; the
  * default of 1000.0 means rounding differences to the nearest 0.001

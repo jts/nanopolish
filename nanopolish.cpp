@@ -7,7 +7,15 @@
 //
 #include <stdio.h>
 #include <string>
+#include "logsum.h"
 #include "nanopolish_consensus.h"
+
+// This code needs to be run before any of the program logic
+// It sets up pre-computed values and caches
+void initialize()
+{
+    p7_FLogsumInit();
+}
 
 void print_usage()
 {
@@ -16,6 +24,8 @@ void print_usage()
 
 int main(int argc, char** argv)
 {
+    initialize();
+
     if(argc <= 1) {
         printf("error: no command provided\n");
         print_usage();
