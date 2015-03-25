@@ -27,6 +27,7 @@ struct Matrix
 };
 
 typedef Matrix<double> DoubleMatrix;
+typedef Matrix<float> FloatMatrix;
 typedef Matrix<uint32_t> UInt32Matrix;
 typedef Matrix<uint8_t> UInt8Matrix;
 

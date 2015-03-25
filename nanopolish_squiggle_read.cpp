@@ -90,7 +90,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         // Copy into the pore model for this read
         for(size_t mi = 0; mi < model.size(); ++mi) {
             const fast5::Model_Entry& curr = model[mi];
-            pore_model[si].state[mi] = { curr.level_mean, curr.level_stdv, curr.sd_mean, curr.sd_stdv };
+            pore_model[si].state[mi] = { static_cast<float>(curr.level_mean), 
+                                         static_cast<float>(curr.level_stdv), 
+                                         static_cast<float>(curr.sd_mean),
+                                         static_cast<float>(curr.sd_stdv) };
         }
 
         // Load the scaling parameters for the pore model
@@ -114,7 +117,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         events[si].resize(f5_events.size());
         for(size_t ei = 0; ei < f5_events.size(); ++ei) {
             const fast5::Event_Entry& f5_event = f5_events[ei];
-            events[si][ei] = { f5_event.mean, f5_event.stdv, f5_event.start, f5_event.length }; 
+            events[si][ei] = { static_cast<float>(f5_event.mean), 
+                               static_cast<float>(f5_event.stdv), 
+                               static_cast<float>(f5_event.start), 
+                               static_cast<float>(f5_event.length) }; 
         }
     }
 

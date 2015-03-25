@@ -17,10 +17,10 @@
 // The raw event data for a read
 struct SquiggleEvent
 {
-    double mean;       // current level mean in picoamps
-    double stdv;       // current level stdv
-    double start_time; // start time of the event in seconds
-    double duration;     // duration of the event in seconds
+    float mean;       // current level mean in picoamps
+    float stdv;       // current level stdv
+    float start_time; // start time of the event in seconds
+    float duration;     // duration of the event in seconds
 };
 
 struct IndexPair
@@ -56,7 +56,7 @@ class SquiggleRead
         //
 
         // Return the duration of the specified event for one strand
-        inline double get_duration(uint32_t event_idx, uint32_t strand) const 
+        inline float get_duration(uint32_t event_idx, uint32_t strand) const
         {
             assert(event_idx < events[strand].size());
             return events[strand][event_idx].duration;
@@ -64,7 +64,7 @@ class SquiggleRead
 
 
         // Return the observed current level after correcting for drift
-        inline double get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
+        inline float get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
         {
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
