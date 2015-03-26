@@ -191,11 +191,11 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     return ret;
 }
 
-std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride)
+std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, int ref_end, int stride)
 {
     // We want an anchor for every stride-th base, even if this read is not aligned there
     // The missing anchors will be flagged as -1
-    uint32_t num_anchors = ((end - start) / stride) + 1;
+    uint32_t num_anchors = ((ref_end - ref_start) / stride) + 1;
 
     std::vector<int> out(num_anchors, -1);
 
@@ -215,7 +215,7 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int 
     
     int ref_pos = c->pos;
 
-    for (int ci = 0; ci < c->n_cigar && ref_pos <= end; ++ci) {
+    for (int ci = 0; ci < c->n_cigar && ref_pos <= ref_end; ++ci) {
         
         int cigar_len = cigar[ci] >> 4;
         int cigar_op = cigar[ci] & 0xf;
@@ -242,8 +242,8 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int 
 
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
-            if(ref_pos >= start && ref_pos <= end && ref_pos % stride == 0 && ref_inc > 0) {
-                uint32_t anchor_id = (ref_pos - start) / stride;
+            if(ref_pos >= ref_start && ref_pos <= ref_end && ref_pos % stride == 0 && ref_inc > 0) {
+                uint32_t anchor_id = (ref_pos - ref_start) / stride;
                 assert(anchor_id < num_anchors);
                 out[anchor_id] = read_pos;
             }

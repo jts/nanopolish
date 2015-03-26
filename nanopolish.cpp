@@ -9,6 +9,7 @@
 #include <string>
 #include "logsum.h"
 #include "nanopolish_consensus.h"
+#include "nanopolish_eventalign.h"
 
 // This code needs to be run before any of the program logic
 // It sets up pre-computed values and caches
@@ -37,6 +38,9 @@ int main(int argc, char** argv)
             return 0;
         } else if(command == "consensus") {
             consensus_main(argc - 1, argv + 1);
+            return 0;
+        } else if(command == "eventalign") {
+            eventalign_main(argc - 1, argv + 1);
             return 0;
         }
     }
