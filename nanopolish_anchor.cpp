@@ -46,7 +46,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     int fetched_len = 0;
     char* ref_segment = faidx_fetch_seq(fai, contig_name.c_str(), start, end, &fetched_len);
 
-    // Initialize iteration    
+    // Initialize iteration
     bam1_t* record = bam_init1();
     hts_itr_t* itr = sam_itr_queryi(bam_idx, contig_id, start, end);
     
@@ -167,7 +167,12 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         if(ai != num_anchors - 1) {
             
             // base, these sequences need to overlap by K - 1 bases
-            column.base_sequence = std::string(ref_segment + ai * stride, stride + K);
+            int base_length = stride + K;
+            if(ai * stride + base_length > fetched_len)
+                base_length = fetched_len - ai * stride;
+
+            column.base_sequence = std::string(ref_segment + ai * stride, base_length);
+            assert(column.base_sequence.back() != '\0');
 
             // alts
             column.alt_sequences = read_substrings[ai];
