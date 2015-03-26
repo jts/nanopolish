@@ -73,8 +73,6 @@ void SquiggleRead::transform()
 //
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
-    printf("Loading %s\n", fast5_path.c_str());
-
     fast5::File* f_p;
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
@@ -123,8 +121,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
                                static_cast<float>(f5_event.length) }; 
         }
     }
-
-    printf("Loaded %zu template and %zu complement events\n", events[0].size(), events[1].size());
 
     //
     // Load basecalled sequence

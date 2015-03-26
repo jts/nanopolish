@@ -51,8 +51,6 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     hts_itr_t* itr = sam_itr_queryi(bam_idx, contig_id, start, end);
     
     // Iterate over reads aligned here
-    printf("Iter: %d %d %d\n", itr->tid, itr->beg, itr->end);
-
     std::vector<HMMReadAnchorSet> read_anchors;
     std::vector<std::vector<std::string>> read_substrings;
 
@@ -190,9 +188,6 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
 std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride)
 {
-    //
-    printf("Record start: %d end: %d name: %s\n", record->core.pos, bam_endpos(record), (char*)record->data);
-
     // We want an anchor for every stride-th base, even if this read is not aligned there
     // The missing anchors will be flagged as -1
     uint32_t num_anchors = ((end - start) / stride) + 1;

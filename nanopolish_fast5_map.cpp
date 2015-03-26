@@ -50,8 +50,6 @@ std::string Fast5Map::get_path(const std::string& read_name) const
 //
 void Fast5Map::load_from_fasta(std::string fasta_filename)
 {
-    printf("Loading from FASTA %s\n", fasta_filename.c_str());
-
     gzFile gz_fp;
 
     FILE* fp = fopen(fasta_filename.c_str(), "r");
@@ -97,7 +95,6 @@ void Fast5Map::write_to_fofn(std::string fofn_filename)
 //
 void Fast5Map::load_from_fofn(std::string fofn_filename)
 {
-    printf("Loading from FOFN %s\n", fofn_filename.c_str());
     std::ifstream infile(fofn_filename.c_str());
 
     if(infile.bad()) {

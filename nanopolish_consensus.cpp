@@ -38,7 +38,7 @@
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
-#define DEBUG_PATH_SELECTION 1
+//#define DEBUG_PATH_SELECTION 1
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 5
@@ -247,7 +247,10 @@ void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
 
     // Score all reads
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
-        printf("Scoring %d\n", ri);
+
+        if(opt::verbose > 2) {
+            fprintf(stderr, "Scoring %d\n", ri);
+        }
 
         const HMMInputData& data = input[ri];
         std::vector<IndexedPathScore> result(paths.size());
@@ -487,7 +490,11 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
         double curr = score_sequence(sequence, rs);
         double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
         double lp_per_event = curr / n_events;
-        printf("OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
+
+        if(opt::verbose >= 1) {
+            fprintf(stderr, "OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
+        }
+
         if(fabs(lp_per_event) < 3.5f) {
             out_rs.push_back(rs);
         }
@@ -576,8 +583,10 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 #endif
     }
 
-    printf("ORIGINAL[%d] %s\n", segment_id, original.c_str());
-    printf("RESULT[%d]   %s\n", segment_id, base.c_str());
+    if(opt::verbose > 0) {
+        fprintf(stderr, "ORIGINAL[%d] %s\n", segment_id, original.c_str());
+        fprintf(stderr, "RESULT[%d]   %s\n", segment_id, base.c_str());
+    }
 
     // Update the sequences for the start and middle segments
     // by cutting the new consensus in the middle
@@ -643,7 +652,7 @@ void train(HMMRealignmentInput& window)
     // train on current consensus
     uint32_t num_segments = window.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
-        printf("Training segment %d\n", segment_id);
+        fprintf(stderr, "Training segment %d\n", segment_id);
         train_segment(window, segment_id);
     }
 
@@ -693,8 +702,8 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
             consensus.append(base.substr(K));
         }
 
-        printf("UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
-        printf("CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
+        fprintf(stderr, "UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
+        fprintf(stderr, "CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
 #ifdef DEBUG_SINGLE_SEGMENT
         break;
 #endif
@@ -790,7 +799,7 @@ int consensus_main(int argc, char** argv)
     for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
-        printf("Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
+        fprintf(stderr, "Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         printf(">contig_%s_window_%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
     }

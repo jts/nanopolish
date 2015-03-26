@@ -57,7 +57,7 @@ class TimeTracker
                         double avg_per_iteration = micro_seconds / __profile_iterations; \
                         while(!__sync_bool_compare_and_swap(&__profile_iterations, __profile_iterations, __profile_iterations + 1)) { } \
                         if(__profile_iterations % PROFILE_TICKS_BEFORE_PRINT == 0) \
-                            printf("[Profile] count: %zu time: %.0lf ms avg: %.0lf us func: %s\n", __profile_iterations, micro_seconds / 1000, avg_per_iteration, __profile_name.c_str()); \
+                            fprintf(stderr, "[Profile] count: %zu time: %.0lf ms avg: %.0lf us func: %s\n", __profile_iterations, micro_seconds / 1000, avg_per_iteration, __profile_name.c_str()); \
                         TimeTracker __profile_timer(__profile_total_nanoseconds);
                          
 #else
