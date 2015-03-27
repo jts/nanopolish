@@ -79,8 +79,35 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+// Modify the aligned_pairs vector to ensure the highest read position
+// does not exceed max_kmer
+void trim_aligned_pairs_to_kmer(std::vector<AlignedPair>& aligned_pairs, int max_kmer_idx)
+{
+    int idx = aligned_pairs.size() - 1;
+    while(idx >= 0 && aligned_pairs[idx].read_pos > max_kmer_idx)
+        idx -= 1;
+
+    if(idx < 0)
+        aligned_pairs.clear(); // no valid data
+    else
+        aligned_pairs.resize(idx + 1);
+}
+
+// Returns the index into the aligned_pairs vector that has the highest ref_pos
+// that is not greater than ref_pos_max. It starts the search at pair_idx
+int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max, int pair_idx)
+{
+    while(pair_idx < aligned_pairs.size()) {
+        if(aligned_pairs[pair_idx].ref_pos > ref_pos_max)
+            return pair_idx - 1;
+        pair_idx += 1;
+    }
+    
+    return aligned_pairs.size() - 1;
+}
+
 // Realign the read in event space
-void realign_read(const Fast5Map& name_map, const bam1_t* record)
+void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t* hdr, const bam1_t* record)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -89,6 +116,115 @@ void realign_read(const Fast5Map& name_map, const bam1_t* record)
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
+
+    // Extract the reference subsequence for the entire alignment
+    int fetched_len = 0;
+    int ref_offset = record->core.pos;
+    char* cref_seq = faidx_fetch_seq(fai, hdr->target_name[record->core.tid], ref_offset, bam_endpos(record), &fetched_len);
+    std::string ref_seq(cref_seq);
+    free(cref_seq);
+
+    if(ref_offset == 0)
+        return;
+
+    // Make a vector of aligned (ref_pos, read_pos) pairs
+    std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
+
+    // Trim the aligned pairs to be within the range of the maximum kmer index
+    int max_kmer_idx = sr.read_sequence.size() - K;
+    trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
+
+    if(aligned_pairs.empty())
+        return;
+
+    bool do_base_rc = bam_is_rev(record);
+    bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
+    const int align_stride = 100; // approximately how many reference bases to align to at once
+    const int output_stride = 50; // approximately how many event alignments to output at once
+    size_t event_output_start = 0;
+
+    for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
+
+        // get the event range of the read to re-align
+        int read_kidx_start = aligned_pairs.front().read_pos;
+        int read_kidx_end = aligned_pairs.back().read_pos;
+        
+        if(do_base_rc) {
+            read_kidx_start = sr.flip_k_strand(read_kidx_start);
+            read_kidx_end = sr.flip_k_strand(read_kidx_end);
+        }
+        
+        assert(read_kidx_start >= 0);
+        assert(read_kidx_end >= 0);
+
+        int first_event = sr.get_closest_event_to(read_kidx_start, strand_idx);
+        int last_event = sr.get_closest_event_to(read_kidx_end, strand_idx);
+        int last_event_output = -1;
+
+        int curr_start_event = first_event;
+        int curr_start_ref = aligned_pairs.front().ref_pos;
+        int curr_pair_idx = 0;
+
+        while(curr_start_event < last_event) {
+
+            // Get the index of the aligned pair approximately align_stride away
+            int end_pair_idx = get_end_pair(aligned_pairs, curr_start_ref + align_stride, curr_pair_idx);
+        
+            int curr_end_ref = aligned_pairs[end_pair_idx].ref_pos;
+            int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
+
+            if(do_base_rc) {
+                curr_end_read = sr.flip_k_strand(curr_end_read);
+            }
+            assert(curr_end_read >= 0);
+
+            std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, curr_end_ref - curr_start_ref + 1);
+            
+            // Set up HMM input
+            HMMInputData input;
+            input.read = &sr;
+            input.anchor_index = 0; // not used here
+            input.event_start_idx = curr_start_event;
+            input.event_stop_idx = sr.get_closest_event_to(curr_end_read, strand_idx);
+            input.strand = strand_idx;
+            input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
+            input.rc = rc_flags[strand_idx];
+            
+            printf("offset: %d ref: [%d %d] read: [- %d] event: [%d %d]\n", 
+                ref_offset,
+                curr_start_ref, curr_end_ref, curr_end_read, 
+                input.event_start_idx, input.event_stop_idx);
+
+            std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
+            //print_alignment("test", 0, 0, ref_subseq, input, event_alignment);
+            
+            // Output alignment
+            size_t num_output = 0;
+            size_t event_align_idx = 0;
+
+            // If we aligned to the last event, output everything and stop
+            bool last_section = end_pair_idx == aligned_pairs.size() - 1;
+
+            int last_event_output = 0;
+            int last_ref_kmer_output = 0;
+            for(; event_align_idx < event_alignment.size() && (num_output < output_stride || last_section); event_align_idx++) {
+                AlignmentState& as = event_alignment[event_align_idx];
+                if(as.state != 'K' && as.event_idx > curr_start_event) {
+                    //printf("Outputting event %d aligned to k: %d pos: %d\n", as.event_idx, as.kmer_idx, curr_start_ref + as.kmer_idx);
+                    last_event_output = as.event_idx;
+                    last_ref_kmer_output = curr_start_ref + as.kmer_idx;
+                    num_output += 1;
+                }
+            }
+
+            // Advance the pair iterator to the ref base
+            curr_start_event = last_event_output;
+            curr_start_ref = last_ref_kmer_output;
+            curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
+        }
+    }
+
+        
 }
 
 void parse_eventalign_options(int argc, char** argv)
@@ -195,7 +331,7 @@ int eventalign_main(int argc, char** argv)
     int result;
     while((result = sam_read1(bam_fh, hdr, record)) >= 0) {
 
-        realign_read(name_map, record);
+        realign_read(name_map, fai, hdr, record);
 
         /*
         // parse alignments to reference

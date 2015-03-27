@@ -57,6 +57,9 @@ struct KHMMParameters
 // Initialize the parameters to some default values
 void khmm_parameters_initialize(KHMMParameters& parameters);
 
+// Clean up parameters
+void khmm_parameters_destroy(KHMMParameters& parameters);
+
 // add an observation of a state transition
 void add_state_transition(TrainingData& td, char from, char to);
 

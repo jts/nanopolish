@@ -70,7 +70,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
 
 // Return a vector specifying pairs of bases that have been aligned to each other
-std::vector<AlignedPair> get_aligned_pairs(bam1_t* record);
+std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record);
 
 std::vector<int> uniformally_sample_read_positions(const std::vector<AlignedPair>& aligned_pairs,
                                                    int ref_start,

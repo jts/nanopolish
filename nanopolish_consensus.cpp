@@ -24,7 +24,6 @@
 #include "nanopolish_khmm_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_klcs.h"
-#include "nanopolish_khmm.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
@@ -130,9 +129,9 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
         data.event_start_idx = start_sa.event_idx;
         data.event_stop_idx = end_sa.event_idx;
         if(data.event_start_idx < data.event_stop_idx)
-            data.stride = 1;
+            data.event_stride = 1;
         else
-            data.stride = -1;
+            data.event_stride = -1;
         data.rc = start_sa.rc;
 
         input.push_back(data);

@@ -199,7 +199,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     return ret;
 }
 
-std::vector<AlignedPair> get_aligned_pairs(bam1_t* record)
+std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record)
 {
     std::vector<AlignedPair> out;
 
@@ -207,7 +207,7 @@ std::vector<AlignedPair> get_aligned_pairs(bam1_t* record)
     uint8_t *ref = NULL;
     uint8_t *seq = bam_get_seq(record);
     uint32_t *cigar = bam_get_cigar(record);
-    bam1_core_t *c = &record->core;
+    const bam1_core_t *c = &record->core;
 
     // read pos is an index into the original sequence that is present in the FASTQ
     // on the strand matching the reference

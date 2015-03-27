@@ -75,9 +75,8 @@ struct HMMInputData
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;
-    int8_t stride;
+    int8_t event_stride;
     uint8_t rc;
-    std::string alignment;
 };
 
 // A representation of an event->kmer alignment

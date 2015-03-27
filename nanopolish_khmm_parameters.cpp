@@ -83,6 +83,11 @@ void khmm_parameters_initialize(KHMMParameters& parameters)
     parameters.fit_quality = 0.0f;
 }
 
+void khmm_parameters_destroy(KHMMParameters& parameters)
+{
+    free_matrix(parameters.training_data.state_transitions);
+}
+
 inline size_t get_bin(const KHMMParameters& parameters, double k_level1, double k_level2)
 {
     assert(!parameters.skip_probabilities.empty());

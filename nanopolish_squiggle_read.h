@@ -44,6 +44,7 @@ class SquiggleRead
 
         SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
         SquiggleRead(const std::string& name, const std::string& path);
+        ~SquiggleRead();
 
         //
         // I/O

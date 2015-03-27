@@ -226,7 +226,7 @@ float profile_hmm_forward_fill(FloatMatrix& fm, // forward matrix
 #endif
 
             // Emission probabilities
-            uint32_t event_idx = e_start + (row - 1) * data.stride;
+            uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
             float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
             float lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
@@ -315,7 +315,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
 
     while(row > 0) {
         
-        uint32_t event_idx = e_start + (row - 1) * data.stride;
+        uint32_t event_idx = e_start + (row - 1) * data.event_stride;
         uint32_t block = col / PS_NUM_STATES;
         assert(block > 0);
         assert(get(vm, row, col) != -INFINITY);
@@ -397,7 +397,7 @@ void profile_hmm_viterbi_fill(FloatMatrix& vm, // viterbi matrix
             BlockTransitions& bt = transitions[kmer_idx];
 
             // Emission probabilities
-            uint32_t event_idx = e_start + (row - 1) * data.stride;
+            uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = get_rank(data, sequence, kmer_idx);
             
             float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
