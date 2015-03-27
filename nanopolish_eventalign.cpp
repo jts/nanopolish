@@ -79,6 +79,18 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+// Realign the read in event space
+void realign_read(const Fast5Map& name_map, const bam1_t* record)
+{
+    // Load a squiggle read for the mapped read
+    std::string read_name = bam_get_qname(record);
+    std::string fast5_path = name_map.get_path(read_name);
+    fprintf(stderr, "Realigning %s\n", read_name.c_str());
+
+    // load read
+    SquiggleRead sr(read_name, fast5_path);
+}
+
 void parse_eventalign_options(int argc, char** argv)
 {
     bool die = false;
@@ -183,13 +195,7 @@ int eventalign_main(int argc, char** argv)
     int result;
     while((result = sam_read1(bam_fh, hdr, record)) >= 0) {
 
-        // Load a squiggle read for the mapped read
-        std::string read_name = bam_get_qname(record);
-        std::string fast5_path = name_map.get_path(read_name);
-        fprintf(stderr, "Realigning %s\n", read_name.c_str());
-
-        // load read
-        SquiggleRead sr(read_name, fast5_path);
+        realign_read(name_map, record);
 
         /*
         // parse alignments to reference

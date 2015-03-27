@@ -68,8 +68,16 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         const SquiggleRead& sr = ret.reads.back();
 
         // parse alignments to reference
+        std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
         std::vector<int> read_bases_for_anchors = 
-            match_read_to_reference_anchors(record, start, end, stride);
+            uniformally_sample_read_positions(aligned_pairs, start, end, stride);
+
+        /*
+        for(size_t i = 0; i < read_bases_for_anchors.size(); ++i) {
+            printf("%d ", read_bases_for_anchors[i]);
+        }
+        printf("\n");
+        */
 
         // Convert the read base positions into event indices for both strands
         HMMReadAnchorSet event_anchors;
@@ -191,22 +199,18 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     return ret;
 }
 
-std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, int ref_end, int stride)
+std::vector<AlignedPair> get_aligned_pairs(bam1_t* record)
 {
-    // We want an anchor for every stride-th base, even if this read is not aligned there
-    // The missing anchors will be flagged as -1
-    uint32_t num_anchors = ((ref_end - ref_start) / stride) + 1;
-
-    std::vector<int> out(num_anchors, -1);
+    std::vector<AlignedPair> out;
 
     // This code is derived from bam_fillmd1_core
     uint8_t *ref = NULL;
     uint8_t *seq = bam_get_seq(record);
     uint32_t *cigar = bam_get_cigar(record);
     bam1_core_t *c = &record->core;
-    kstring_t *str;
 
     // read pos is an index into the original sequence that is present in the FASTQ
+    // on the strand matching the reference
     int read_pos = 0;
 
     // query pos is an index in the query string that is recorded in the bam
@@ -215,7 +219,7 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, 
     
     int ref_pos = c->pos;
 
-    for (int ci = 0; ci < c->n_cigar && ref_pos <= ref_end; ++ci) {
+    for (int ci = 0; ci < c->n_cigar; ++ci) {
         
         int cigar_len = cigar[ci] >> 4;
         int cigar_op = cigar[ci] & 0xf;
@@ -226,7 +230,9 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, 
         int ref_inc = 0;
         
         // Process match between the read and the reference
+        bool is_aligned = false;
         if(cigar_op == BAM_CMATCH || cigar_op == BAM_CEQUAL || cigar_op == BAM_CDIFF) {
+            is_aligned = true;
             read_inc = 1;
             ref_inc = 1;
         } else if(cigar_op == BAM_CDEL || cigar_op == BAM_CREF_SKIP) {
@@ -242,10 +248,8 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, 
 
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
-            if(ref_pos >= ref_start && ref_pos <= ref_end && ref_pos % stride == 0 && ref_inc > 0) {
-                uint32_t anchor_id = (ref_pos - ref_start) / stride;
-                assert(anchor_id < num_anchors);
-                out[anchor_id] = read_pos;
+            if(is_aligned) {
+                out.push_back({ref_pos, read_pos});
             }
 
             // increment
@@ -256,3 +260,30 @@ std::vector<int> match_read_to_reference_anchors(bam1_t* record, int ref_start, 
     return out;
 }
 
+std::vector<int> uniformally_sample_read_positions(const std::vector<AlignedPair>& aligned_pairs,
+                                                   int ref_start,
+                                                   int ref_end,
+                                                   int ref_stride)
+{
+    uint32_t num_anchors = ((ref_end - ref_start) / ref_stride) + 1;
+    std::vector<int> out(num_anchors, -1);
+
+    for(size_t pair_idx = 0; pair_idx < aligned_pairs.size(); ++pair_idx) {
+
+        // We use a loop here in case there is no read base
+        // aligned to one of the anchor positions we are interested in.
+        // In this situation the loop will catch it and emit the last seen
+        // read position
+        int ref_pos = aligned_pairs[pair_idx].ref_pos;
+        int end_pos = pair_idx + 1 != aligned_pairs.size() ? aligned_pairs[pair_idx + 1].ref_pos : ref_pos + 1;
+
+        for(; ref_pos < end_pos; ++ref_pos) {
+            if(ref_pos >= ref_start && ref_pos <= ref_end && ref_pos % ref_stride == 0) {
+                uint32_t anchor_id = (ref_pos - ref_start) / ref_stride;
+                assert(anchor_id < num_anchors);
+                out[anchor_id] = aligned_pairs[pair_idx].read_pos;
+            }
+        }
+    }
+    return out;
+}

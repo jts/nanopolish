@@ -13,6 +13,12 @@
 #include "htslib/htslib/sam.h"
 #include "nanopolish_fast5_map.h"
 
+struct AlignedPair
+{
+    int ref_pos;
+    int read_pos;
+};
+
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
 struct HMMStrandAnchor
@@ -61,6 +67,14 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            int end, 
                                            int stride);
 
-std::vector<int> match_read_to_reference_anchors(bam1_t* record, int start, int end, int stride);
+
+
+// Return a vector specifying pairs of bases that have been aligned to each other
+std::vector<AlignedPair> get_aligned_pairs(bam1_t* record);
+
+std::vector<int> uniformally_sample_read_positions(const std::vector<AlignedPair>& aligned_pairs,
+                                                   int ref_start,
+                                                   int ref_end,
+                                                   int ref_stride);
 
 #endif
