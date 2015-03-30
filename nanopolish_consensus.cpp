@@ -40,7 +40,7 @@
 //#define DEBUG_PATH_SELECTION 1
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
-//#define DEBUG_SEGMENT_ID 5
+//#define DEBUG_SEGMENT_ID 193
 //#define DEBUG_BENCHMARK 1
 
 //
@@ -437,6 +437,10 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
     // Generate alternatives
     for(uint32_t ai = 0; ai < alts.size(); ++ai) {
         const std::string& alt = alts[ai];
+
+        if(alt.size() < K)
+            continue;
+
         kLCSResult result = kLCS(base, alt, K);
 
 #ifdef DEBUG_ALT_GENERATION
