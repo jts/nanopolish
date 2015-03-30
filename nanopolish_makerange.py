@@ -14,6 +14,6 @@ for name, length in recs:
 
     for n in xrange(0, n_segments, SEGMENTS_PER_BATCH):
         if ( n + SEGMENTS_PER_BATCH) > n_segments:
-            print "%s %d:%d" % (name, n, n_segments)
+            print "%s:%d-%d" % (name, n, n_segments)
         else:
-            print "%s %d:%d" % (name, n, n + SEGMENTS_PER_BATCH)
+            print "%s:%d-%d" % (name, n, n + SEGMENTS_PER_BATCH)

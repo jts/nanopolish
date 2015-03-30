@@ -821,7 +821,7 @@ int consensus_main(int argc, char** argv)
         
         fprintf(stderr, "Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
-        fprintf(out_fp, ">contig_%s_window_%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
+        fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
     }
 
     if(out_fp != stdout) {
