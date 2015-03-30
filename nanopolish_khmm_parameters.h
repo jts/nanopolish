@@ -44,10 +44,6 @@ class KHMMParameters
         void train();
 
         // data
-
-        // The probability of staying in the same state in the HMM
-        double self_transition;
-        
         double trans_m_to_e_not_k;
         double trans_e_to_e;
 

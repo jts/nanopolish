@@ -17,9 +17,6 @@ KHMMParameters::KHMMParameters()
 
     // These default values are learned from a set of e.coli reads
     // trained on a de novo assembly
-    
-    // for khmm model
-    self_transition = 0.2f;
 
     // for profile model
     trans_m_to_e_not_k = 0.15f;
@@ -130,16 +127,6 @@ void KHMMParameters::train()
     TrainingData& td = training_data;
 
     //
-    // KHMM Self transition
-    //
-    fprintf(stderr, "TRAIN -- M: %d E: %d K: %d\n", td.n_matches, td.n_merges, td.n_skips);
-
-    size_t sum = td.n_matches + td.n_merges + td.n_skips;
-    if(sum > 0)
-        self_transition = (double)td.n_merges / sum;
-    fprintf(stderr, "SKIPLEARN -- self %.3lf\n", self_transition);
-    
-    //
     // Profile HMM transitions
     //
     fprintf(stderr, "TRANSITIONS\n");
@@ -166,6 +153,11 @@ void KHMMParameters::train()
             fprintf(stderr, "%d ", get(td.state_transitions, i, j));
         }
         fprintf(stderr, "\n");
+    }
+
+    if(sum_e == 0 || sum_m_not_k == 0) {
+        // insufficient data to train, use defaults
+        return;
     }
 
     trans_m_to_e_not_k = p_me_not_k;
