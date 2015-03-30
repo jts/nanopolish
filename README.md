@@ -41,10 +41,10 @@ make -f consensus.make READS=reads.fa ASSEMBLY=draft.fa
 
 This will map the reads to the assembly with ```bwa mem -x ont2d``` and export a file mapping read names to fast5 files.
 
-You can then run ```nanopolish```. It is highly recommended that you run this in parallel.
+You can then run ```nanopolish consensus```. It is recommended that you run this in parallel.
 
 ```
-python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 nanopolish consensus -o nanopolish.{1}.fa --r reads.pp.fa -b reads.pp.sorted.bam -g draft.fa -t 4
+python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 nanopolish consensus -o nanopolish.{1}.fa -w {1} --r reads.pp.fa -b reads.pp.sorted.bam -g draft.fa -t 4
 ```
 
 This command will run the consensus algorithm on eight 100kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.

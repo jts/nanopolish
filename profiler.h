@@ -12,7 +12,7 @@
 #include <time.h>
 #include <iostream>
 
-#define USE_PROFILER 1
+//#define USE_PROFILER 1
 
 #if USE_PROFILER
 
