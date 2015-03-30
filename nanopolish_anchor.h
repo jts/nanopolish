@@ -9,6 +9,7 @@
 #ifndef NANOPOLISH_ANCHOR_H
 #define NANOPOLISH_ANCHOR_H
 
+#include <memory>
 #include "htslib/htslib/hts.h"
 #include "htslib/htslib/sam.h"
 #include "nanopolish_fast5_map.h"
@@ -54,7 +55,7 @@ struct HMMAnchoredColumn
 //
 struct HMMRealignmentInput
 {
-    std::vector<SquiggleRead> reads;
+    std::vector<std::unique_ptr<SquiggleRead> > reads;
     std::vector<HMMAnchoredColumn> anchored_columns;
 };
 

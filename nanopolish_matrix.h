@@ -52,6 +52,15 @@ void free_matrix(Matrix<T>& matrix)
     matrix.cells = NULL;
 }
 
+// Copy a matrix and its contents
+template<typename T>
+void copy_matrix(Matrix<T>& new_matrix, const Matrix<T>& old_matrix)
+{
+    allocate_matrix(new_matrix, old_matrix.n_rows, old_matrix.n_cols);
+    uint32_t bytes = sizeof(T) * new_matrix.n_rows * new_matrix.n_cols;
+    memcpy(new_matrix.cells, old_matrix.cells, bytes);
+}
+
 //
 template<typename T>
 inline uint32_t cell(const Matrix<T>& matrix, uint32_t row, uint32_t col)

@@ -19,16 +19,10 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
 
     // perform drift correction
     transform();
-
-    // TODO: refactor
-    khmm_parameters_initialize(parameters[0]);
-    khmm_parameters_initialize(parameters[1]);
 }
 
 SquiggleRead::~SquiggleRead()
 {
-    khmm_parameters_destroy(parameters[0]);
-    khmm_parameters_destroy(parameters[1]);
 }
 
 // helper for get_closest_event_to

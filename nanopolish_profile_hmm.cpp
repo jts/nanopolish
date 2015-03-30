@@ -9,7 +9,7 @@
 #include "nanopolish_profile_hmm.h"
 
 //#define DEBUG_FILL
-#define PRINT_TRAINING_MESSAGES 1
+//#define PRINT_TRAINING_MESSAGES 1
 
 enum ProfileState
 {

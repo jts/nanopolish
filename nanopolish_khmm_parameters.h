@@ -33,38 +33,40 @@ struct TrainingData
 };
 
 //
-struct KHMMParameters
+class KHMMParameters
 {
-    // The probability of staying in the same state in the HMM
-    double self_transition;
-    
-    double trans_m_to_e_not_k;
-    double trans_e_to_e;
+    public:
 
-    // This is a vector that maps from discretized absolute difference
-    // between expected signals to a probability that the transition
-    // will be observed by the pore. Access to the skip probabilities
-    // for a pair of k-mer levels is through get_skip_probability()
-    std::vector<double> skip_probabilities;
-    double skip_bin_width;
+        // functions
+        KHMMParameters();
+        ~KHMMParameters();
 
-    // Data used to train the model
-    TrainingData training_data;
+        void train();
 
-    double fit_quality;
+        // data
+
+        // The probability of staying in the same state in the HMM
+        double self_transition;
+        
+        double trans_m_to_e_not_k;
+        double trans_e_to_e;
+
+        // This is a vector that maps from discretized absolute difference
+        // between expected signals to a probability that the transition
+        // will be observed by the pore. Access to the skip probabilities
+        // for a pair of k-mer levels is through get_skip_probability()
+        std::vector<double> skip_probabilities;
+        double skip_bin_width;
+
+        // Data used to train the model
+        TrainingData training_data;
+
+    private:
+        KHMMParameters(const KHMMParameters& other) {}
 };
-
-// Initialize the parameters to some default values
-void khmm_parameters_initialize(KHMMParameters& parameters);
-
-// Clean up parameters
-void khmm_parameters_destroy(KHMMParameters& parameters);
 
 // add an observation of a state transition
 void add_state_transition(TrainingData& td, char from, char to);
-
-// Train the model
-void khmm_parameters_train(KHMMParameters& parameters);
 
 // Get the probability of skipping a kmer observation given the expected signal level
 double get_skip_probability(const KHMMParameters& parameters, double k_level1, double k_level2);

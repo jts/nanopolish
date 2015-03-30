@@ -107,6 +107,8 @@ class SquiggleRead
         KHMMParameters parameters[2];
 
     private:
+        
+        SquiggleRead(const SquiggleRead& other) {}
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;

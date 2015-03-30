@@ -65,6 +65,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -74,11 +75,12 @@ namespace opt
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
+    static std::string output_file;
     static std::string window;
     static int num_threads = 1;
 }
 
-static const char* shortopts = "r:b:g:t:w:v";
+static const char* shortopts = "r:b:g:t:w:o:v";
 
 enum { OPT_HELP = 1, OPT_VERSION };
 
@@ -88,6 +90,7 @@ static const struct option longopts[] = {
     { "bam",         required_argument, NULL, 'b' },
     { "genome",      required_argument, NULL, 'g' },
     { "window",      required_argument, NULL, 'w' },
+    { "outfile",     required_argument, NULL, 'o' },
     { "threads",     required_argument, NULL, 't' },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -124,7 +127,7 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
         uint32_t read_idx = rsi / 2;
         assert(read_idx < window.reads.size());
         data.anchor_index = rsi;
-        data.read = &window.reads[read_idx];
+        data.read = window.reads[read_idx].get();
         data.strand = rsi % 2;
         data.event_start_idx = start_sa.event_idx;
         data.event_stop_idx = end_sa.event_idx;
@@ -657,8 +660,8 @@ void train(HMMRealignmentInput& window)
 
     // Update model parameters
     for(uint32_t ri = 0; ri < window.reads.size(); ++ri) {
-        khmm_parameters_train(window.reads[ri].parameters[0]);
-        khmm_parameters_train(window.reads[ri].parameters[1]);
+        window.reads[ri]->parameters[0].train();
+        window.reads[ri]->parameters[1].train();
     }
 }
 
@@ -667,6 +670,14 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     const int minor_segment_stride = 50;
     HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
 
+    //
+    // Train the HMM
+    //
+    train(window);
+
+    //
+    // Compute the new consensus sequence
+    //
     std::string uncorrected = "";
     std::string consensus = "";
 
@@ -726,6 +737,7 @@ void parse_consensus_options(int argc, char** argv)
             case 'g': arg >> opt::genome_file; break;
             case 'b': arg >> opt::bam_file; break;
             case 'w': arg >> opt::window; break;
+            case 'o': arg >> opt::output_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
@@ -795,11 +807,24 @@ int consensus_main(int argc, char** argv)
     
     parser >> contig >> start_window_id >> end_window_id;
 
+    FILE* out_fp = NULL;
+
+    if(!opt::output_file.empty()) {
+        out_fp = fopen(opt::output_file.c_str(), "w");
+    } else {
+        out_fp = stdout;
+    }
+
     for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
+        
         fprintf(stderr, "Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
-        printf(">contig_%s_window_%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
+        fprintf(out_fp, ">contig_%s_window_%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
+    }
+
+    if(out_fp != stdout) {
+        fclose(out_fp);
     }
 }

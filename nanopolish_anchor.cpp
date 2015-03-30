@@ -64,8 +64,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         std::string fast5_path = read_name_map.get_path(read_name);
 
         // load read
-        ret.reads.push_back(SquiggleRead(read_name, fast5_path));
-        const SquiggleRead& sr = ret.reads.back();
+        ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
+        const SquiggleRead& sr = *ret.reads.back();
 
         // parse alignments to reference
         std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
