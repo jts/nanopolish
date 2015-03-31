@@ -2,30 +2,16 @@
 
 A nanopore consensus algorithm using a signal-level hidden Markov model.
 
-## Dependencies
+# Dependencies
 
-The `poa` multiple aligner must be present on your ```$PATH```. You also need a recent version of ```bwa``` that supports the ```mem -x ont2d``` option.
+The FAST5 parsing library requires [libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). This can be found in nearly every linux package manager.
 
 ## Installation instructions
 
-First, initialize a virtual environment and install the required Python dependencies for the driver program:
+You will need to run ```git clone --recursive https://github.com/jts/nanopolish.git``` to grab the source code and the submodules. You can then compile nanopolish by running:
 
 ```
-virtualenv venv
-source venv/bin/activate
-easy_install cython
-easy_install numpy==1.8.1
-easy_install h5py==2.3.0
-easy_install poretools
-easy_install matplotlib
-easy_install BioPython
-easy_install pysam
-easy_install scipy
-```
-
-Then compile the C++ library that implements the HMM:
-
-```
+./build.sh
 make
 ```
 
