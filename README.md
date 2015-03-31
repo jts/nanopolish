@@ -2,7 +2,7 @@
 
 A nanopore consensus algorithm using a signal-level hidden Markov model.
 
-# Dependencies
+## Dependencies
 
 The FAST5 parsing library requires [libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). This can be found in nearly every linux package manager.
 
