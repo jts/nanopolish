@@ -42,6 +42,9 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // load reference fai file
     faidx_t *fai = fai_load(ref_filename.c_str());
 
+    // Adjust end position to make sure we don't go out-of-range
+    end = std::min(end, faidx_seq_len(fai, contig_name.c_str()));
+
     // load the reference sequence for this region
     int fetched_len = 0;
     char* ref_segment = faidx_fetch_seq(fai, contig_name.c_str(), start, end, &fetched_len);
@@ -100,9 +103,17 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             if(do_base_rc)
                 read_kidx = sr.flip_k_strand(read_kidx);
 
+            // If the aligned base is beyong the start of the last k-mer of the read, skip
+            if(read_kidx >= sr.read_sequence.size() - K + 1) {
+                continue;
+            }
+
             int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
             int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
+
             assert(template_idx != -1 && complement_idx != -1);
+            assert(template_idx < sr.events[T_IDX].size());
+            assert(complement_idx < sr.events[C_IDX].size());
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };

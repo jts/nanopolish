@@ -180,7 +180,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
                 if(erfb.indices[si].start == -1) {
                     erfb.indices[si].start = incoming_idx;        
                 }
-                erfb.indices[si].stop = incoming_idx;        
+                erfb.indices[si].stop = incoming_idx;
+
+                assert(erfb.indices[si].start < events[si].size());
+                assert(erfb.indices[si].stop < events[si].size());
             }
         }
         //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);

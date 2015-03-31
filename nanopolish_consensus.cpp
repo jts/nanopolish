@@ -716,8 +716,10 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
             consensus.append(base.substr(K));
         }
 
-        fprintf(stderr, "UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
-        fprintf(stderr, "CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
+        if(opt::verbose > 0) {
+            fprintf(stderr, "UNCORRECT[%d]: %s\n", segment_id, uncorrected.c_str());
+            fprintf(stderr, "CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
+        }
 #ifdef DEBUG_SINGLE_SEGMENT
         break;
 #endif
