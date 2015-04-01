@@ -41,7 +41,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 
 static const char *EVENTALIGN_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Compute a new consensus sequence for an assembly using a signal-level HMM\n"
+"Align nanopore events to reference k-mers\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
@@ -93,6 +93,21 @@ void trim_aligned_pairs_to_kmer(std::vector<AlignedPair>& aligned_pairs, int max
         aligned_pairs.resize(idx + 1);
 }
 
+// Modify the aligned_pairs vector to ensure there are no alignments
+// outside of the given reference coordinates
+void trim_aligned_pairs_to_ref_region(std::vector<AlignedPair>& aligned_pairs, int ref_start, int ref_end)
+{
+    std::vector<AlignedPair> trimmed;
+    for(size_t i = 0; i < aligned_pairs.size(); ++i) {
+        if(aligned_pairs[i].ref_pos >= ref_start && 
+           aligned_pairs[i].ref_pos <= ref_end) {
+            trimmed.push_back(aligned_pairs[i]);
+        }
+    }
+    
+    aligned_pairs.swap(trimmed);
+}
+
 // Returns the index into the aligned_pairs vector that has the highest ref_pos
 // that is not greater than ref_pos_max. It starts the search at pair_idx
 int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max, int pair_idx)
@@ -106,21 +121,73 @@ int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max,
     return aligned_pairs.size() - 1;
 }
 
+struct EventAlignment
+{
+    // ref data
+    std::string ref_name;
+    std::string ref_kmer;
+    int ref_position;
+
+    // event data
+    size_t read_idx;
+    int strand_idx;
+    int event_idx;
+    bool rc;
+};
+
+void emit_header(FILE* fp)
+{
+    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer", "read_index", "strand");
+    fprintf(fp, "%s\t%s\t%s\t", "event_index", "event_level_mean", "event_length");
+    fprintf(fp, "%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
+
+}
+
+void emit_event_alignment(FILE* fp,
+                          const SquiggleRead& sr,
+                          const EventAlignment& ea)
+{
+    // basic information
+    fprintf(fp, "%s\t%d\t%s\t%zu\t%c\t", ea.ref_name.c_str(), ea.ref_position, ea.ref_kmer.c_str(), ea.read_idx, "tc"[ea.strand_idx]);
+
+    // event information
+    float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+    float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+    fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+
+    // model information
+    std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+
+    uint32_t rank = kmer_rank(model_kmer.c_str(), K);
+    GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+    fprintf(fp, "%s\t%.2lf\t%.2lf\n", model_kmer.c_str(), model.mean, model.stdv);
+}
+
 // Realign the read in event space
-void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t* hdr, const bam1_t* record)
+void realign_read(FILE* fp, 
+                  const Fast5Map& name_map, 
+                  const faidx_t* fai, 
+                  const bam_hdr_t* hdr, 
+                  const bam1_t* record, 
+                  size_t read_idx,
+                  int region_start,
+                  int region_end)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     std::string fast5_path = name_map.get_path(read_name);
-    fprintf(stderr, "Realigning %s\n", read_name.c_str());
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
+    
+    fprintf(stderr, "Realigning %s [%zu %zu]\n", read_name.c_str(), sr.events[0].size(), sr.events[1].size());
 
     // Extract the reference subsequence for the entire alignment
     int fetched_len = 0;
     int ref_offset = record->core.pos;
-    char* cref_seq = faidx_fetch_seq(fai, hdr->target_name[record->core.tid], ref_offset, bam_endpos(record), &fetched_len);
+    std::string ref_name(hdr->target_name[record->core.tid]);
+
+    char* cref_seq = faidx_fetch_seq(fai, ref_name.c_str(), ref_offset, bam_endpos(record), &fetched_len);
     std::string ref_seq(cref_seq);
     free(cref_seq);
 
@@ -129,6 +196,10 @@ void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t*
 
     // Make a vector of aligned (ref_pos, read_pos) pairs
     std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
+
+    if(region_start != -1 && region_end != -1) {
+        trim_aligned_pairs_to_ref_region(aligned_pairs, region_start, region_end);
+    }
 
     // Trim the aligned pairs to be within the range of the maximum kmer index
     int max_kmer_idx = sr.read_sequence.size() - K;
@@ -186,15 +257,11 @@ void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t*
             input.anchor_index = 0; // not used here
             input.event_start_idx = curr_start_event;
             input.event_stop_idx = sr.get_closest_event_to(curr_end_read, strand_idx);
+
             input.strand = strand_idx;
             input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
             input.rc = rc_flags[strand_idx];
             
-            printf("offset: %d ref: [%d %d] read: [- %d] event: [%d %d]\n", 
-                ref_offset,
-                curr_start_ref, curr_end_ref, curr_end_read, 
-                input.event_start_idx, input.event_stop_idx);
-
             std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
             //print_alignment("test", 0, 0, ref_subseq, input, event_alignment);
             
@@ -210,7 +277,27 @@ void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t*
             for(; event_align_idx < event_alignment.size() && (num_output < output_stride || last_section); event_align_idx++) {
                 AlignmentState& as = event_alignment[event_align_idx];
                 if(as.state != 'K' && as.event_idx > curr_start_event) {
+
+                    assert(as.event_idx >= input.event_start_idx);
+                    assert(as.event_idx <= input.event_stop_idx);
+
                     //printf("Outputting event %d aligned to k: %d pos: %d\n", as.event_idx, as.kmer_idx, curr_start_ref + as.kmer_idx);
+                    EventAlignment ea;
+                    
+                    // ref
+                    ea.ref_name = ref_name;
+                    ea.ref_position = curr_start_ref + as.kmer_idx;
+                    ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, K);
+
+                    // event
+                    ea.read_idx = read_idx;
+                    ea.strand_idx = strand_idx;
+                    ea.event_idx = as.event_idx;
+                    ea.rc = input.rc;
+
+                    emit_event_alignment(fp, sr, ea);
+
+                    // update
                     last_event_output = as.event_idx;
                     last_ref_kmer_output = curr_start_ref + as.kmer_idx;
                     num_output += 1;
@@ -223,8 +310,6 @@ void realign_read(const Fast5Map& name_map, const faidx_t* fai, const bam_hdr_t*
             curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
         }
     }
-
-        
 }
 
 void parse_eventalign_options(int argc, char** argv)
@@ -248,10 +333,11 @@ void parse_eventalign_options(int argc, char** argv)
         }
     }
 
-    if (argc - optind < 0) {
-        std::cerr << SUBPROGRAM ": missing arguments\n";
-        die = true;
-    } else if (argc - optind > 0) {
+    if(argc - optind > 0) {
+        opt::region = argv[optind++];
+    }
+
+    if (argc - optind > 0) {
         std::cerr << SUBPROGRAM ": too many arguments\n";
         die = true;
     }
@@ -290,23 +376,6 @@ int eventalign_main(int argc, char** argv)
 
     Fast5Map name_map(opt::reads_file);
 
-    /*
-    // Parse the region string
-    // Replace ":" and "-" with spaces to make it parseable with stringstream
-    std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
-    std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
-
-    const int WINDOW_LENGTH = 10000;
-    const int WINDOW_OVERLAP = 200;
-
-    std::stringstream parser(opt::window);
-    std::string contig;
-    int start_window_id;
-    int end_window_id;
-    
-    parser >> contig >> start_window_id >> end_window_id;
-    */
-
     // Open the BAM and iterate over reads
 
     // load bam file
@@ -320,7 +389,6 @@ int eventalign_main(int argc, char** argv)
 
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    //int contig_id = bam_name2id(hdr, contig_name.c_str());
     
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -328,83 +396,36 @@ int eventalign_main(int argc, char** argv)
     // Initialize iteration
     bam1_t* record = bam_init1();
     
+    hts_itr_t* itr;
+
+    // If processing a region of the genome, only emit events aligned to this window
+    int clip_start = -1;
+    int clip_end = -1;
+
+    if(opt::region.empty()) {
+        // TODO: is this valid?
+        itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
+    } else {
+
+        fprintf(stderr, "Region: %s\n", opt::region.c_str());
+        itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
+        hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
+
+    }
+
+    // Write the header
+    emit_header(stdout);
+
     int result;
-    while((result = sam_read1(bam_fh, hdr, record)) >= 0) {
+    size_t read_idx = 0;
+    while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
 
-        realign_read(name_map, fai, hdr, record);
-
-        /*
-        // parse alignments to reference
-        std::vector<int> read_bases_for_anchors = 
-            match_read_to_reference_anchors(record, start, end, stride);
-
-        // Convert the read base positions into event indices for both strands
-        HMMReadAnchorSet event_anchors;
-        event_anchors.strand_anchors[T_IDX].resize(read_bases_for_anchors.size());
-        event_anchors.strand_anchors[C_IDX].resize(read_bases_for_anchors.size());
-
-        bool do_base_rc = bam_is_rev(record);
-        bool template_rc = do_base_rc;
-        bool complement_rc = !do_base_rc;
-
-        for(size_t ai = 0; ai < read_bases_for_anchors.size(); ++ai) {
-
-            int read_kidx = read_bases_for_anchors[ai];
-
-            // read not aligned to this reference position
-            if(read_kidx == -1) {
-                continue;
-            }
-
-            if(do_base_rc)
-                read_kidx = sr.flip_k_strand(read_kidx);
-
-            int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
-            int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
-            assert(template_idx != -1 && complement_idx != -1);
-
-            event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
-            event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
-            
-            // If this is not the last anchor, extract the sequence of the read
-            // from this anchor to the next anchor as an alternative assembly
-            if(ai < read_bases_for_anchors.size() - 1) {
-                int start_kidx = read_bases_for_anchors[ai];
-                int end_kidx = read_bases_for_anchors[ai + 1];
-                int max_kidx = sr.read_sequence.size() - K;
-
-                // flip
-                if(do_base_rc) {
-                    start_kidx = sr.flip_k_strand(start_kidx);
-                    end_kidx = sr.flip_k_strand(end_kidx);
-                    
-                    // swap
-                    int tmp = end_kidx;
-                    end_kidx = start_kidx;
-                    start_kidx = tmp;
-                }
-
-                // clamp values within range
-                start_kidx = start_kidx >= 0 ? start_kidx : 0;
-                end_kidx = end_kidx <= max_kidx ? end_kidx : max_kidx;
-                
-                std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + K);
-
-                if(do_base_rc) {
-                    s = reverse_complement(s);
-                }
-
-                if(ai >= read_substrings.size())
-                    read_substrings.resize(ai + 1);
-
-                read_substrings[ai].push_back(s);
-            }
-        }
-        */
+        realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+        read_idx += 1;
     }
 
     // cleanup
-    //sam_itr_destroy(itr);
+    sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
     bam_destroy1(record);
     fai_destroy(fai);
