@@ -96,6 +96,7 @@ class SquiggleRead
 
         // one model for each strand
         PoreModel pore_model[2];
+        std::string model_name[2];
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];

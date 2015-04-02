@@ -105,6 +105,23 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
         // apply shift/scale transformation to the pore model states
         pore_model[si].bake_gaussian_parameters();
+
+        // Read and shorten the model name
+        std::string temp_name = f_p->get_model_file(si);
+        std::string leader = si == 0 ? "template_" : "complement_";
+        std::string trailer = ".model";
+
+        size_t lp = temp_name.find(leader);
+        // leader not found
+        if(lp == std::string::npos) {
+            lp = 0;
+        } 
+
+        size_t tp = temp_name.find(trailer);
+        if(tp == std::string::npos)
+            tp = temp_name.size();
+
+        model_name[si] = temp_name.substr(lp, tp - lp);
     }
     
     // Load events for both strands

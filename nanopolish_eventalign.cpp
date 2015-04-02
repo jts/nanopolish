@@ -139,7 +139,7 @@ void emit_header(FILE* fp)
 {
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer", "read_index", "strand");
     fprintf(fp, "%s\t%s\t%s\t", "event_index", "event_level_mean", "event_length");
-    fprintf(fp, "%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
+    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "model_name");
 
 }
 
@@ -160,7 +160,7 @@ void emit_event_alignment(FILE* fp,
 
     uint32_t rank = kmer_rank(model_kmer.c_str(), K);
     GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-    fprintf(fp, "%s\t%.2lf\t%.2lf\n", model_kmer.c_str(), model.mean, model.stdv);
+    fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), model.mean, model.stdv, sr.model_name[ea.strand_idx].c_str());
 }
 
 // Realign the read in event space
@@ -212,7 +212,6 @@ void realign_read(FILE* fp,
     bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
     const int align_stride = 100; // approximately how many reference bases to align to at once
     const int output_stride = 50; // approximately how many event alignments to output at once
-    size_t event_output_start = 0;
 
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
 
@@ -230,13 +229,15 @@ void realign_read(FILE* fp,
 
         int first_event = sr.get_closest_event_to(read_kidx_start, strand_idx);
         int last_event = sr.get_closest_event_to(read_kidx_end, strand_idx);
-        int last_event_output = -1;
+        bool forward = first_event < last_event;
 
+        int last_event_output = -1;
         int curr_start_event = first_event;
         int curr_start_ref = aligned_pairs.front().ref_pos;
         int curr_pair_idx = 0;
 
-        while(curr_start_event < last_event) {
+        while( (forward && curr_start_event < last_event) ||
+               (!forward && curr_start_event > last_event)) {
 
             // Get the index of the aligned pair approximately align_stride away
             int end_pair_idx = get_end_pair(aligned_pairs, curr_start_ref + align_stride, curr_pair_idx);
@@ -274,12 +275,11 @@ void realign_read(FILE* fp,
 
             int last_event_output = 0;
             int last_ref_kmer_output = 0;
-            for(; event_align_idx < event_alignment.size() && (num_output < output_stride || last_section); event_align_idx++) {
-                AlignmentState& as = event_alignment[event_align_idx];
-                if(as.state != 'K' && as.event_idx > curr_start_event) {
 
-                    assert(as.event_idx >= input.event_start_idx);
-                    assert(as.event_idx <= input.event_stop_idx);
+            for(; event_align_idx < event_alignment.size() && (num_output < output_stride || last_section); event_align_idx++) {
+
+                AlignmentState& as = event_alignment[event_align_idx];
+                if(as.state != 'K' && as.event_idx != curr_start_event) {
 
                     //printf("Outputting event %d aligned to k: %d pos: %d\n", as.event_idx, as.kmer_idx, curr_start_ref + as.kmer_idx);
                     EventAlignment ea;
