@@ -2,6 +2,7 @@
 LIBS=-lrt ./htslib/libhts.a -lz -lhdf5
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g
 PROGRAM=nanopolish
+CXX=g++
 
 default: $(PROGRAM)
 
@@ -27,17 +28,17 @@ depend: .depend
 
 .depend: $(SRC)
 	rm -f ./.depend
-	g++ $(CPPFLAGS) -MM $^ > ./.depend;
+	$(CXX) $(CPPFLAGS) -MM $^ > ./.depend;
 
 include .depend
 
 # Compile objects
 .cpp.o:
-	g++ -c $(CPPFLAGS) -fPIC $<
+	$(CXX) -c $(CPPFLAGS) -fPIC $<
 
 # Link executable
 $(PROGRAM): $(OBJ)
-	g++ -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
+	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 clean:
 	rm nanopolish *.o
