@@ -1,10 +1,39 @@
 #
-LIBS=-lrt ./htslib/libhts.a -lz -lhdf5
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g
+
+#
+# Set up libraries and paths
+#
+
+# Default to using the system-wide libhdf
+H5_LIB=-lhdf5
+H5_INCLUDE=
+
+LIBS=-lrt ./htslib/libhts.a -lz $(H5_LIB)
+CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE)
 PROGRAM=nanopolish
 CXX=g++
 
-default: $(PROGRAM)
+all: $(PROGRAM)
+
+#
+# Build libhts
+#
+htslib/libhts.a:
+	cd htslib; make
+
+#
+# Automatically install HDF5 dependency if requested by user
+#
+lib/libhdf5.a:
+	wget http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.8.14.tar.gz
+	tar -xzf hdf5-1.8.14.tar.gz
+	cd hdf5-1.8.14; ./configure --prefix=`pwd`/..; make; make install
+
+# Overwrite H5 variables to put to local version
+.PHONY: libhdf5.install
+libhdf5.install: lib/libhdf5.a
+	$(eval H5_LIB=-ldl ./lib/libhdf5.a)
+	$(eval H5_INCLUDE=-I./include)
 
 # Source files
 SRC=nanopolish.cpp \
@@ -37,7 +66,7 @@ include .depend
 	$(CXX) -c $(CPPFLAGS) -fPIC $<
 
 # Link executable
-$(PROGRAM): $(OBJ)
+$(PROGRAM): $(OBJ) htslib/libhts.a
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 clean:
