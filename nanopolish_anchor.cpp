@@ -194,7 +194,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             assert(column.base_sequence.back() != '\0');
 
             // alts
-            column.alt_sequences = read_substrings[ai];
+            if(ai < read_substrings.size())
+                column.alt_sequences = read_substrings[ai];
         }
     }
 
