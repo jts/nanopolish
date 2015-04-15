@@ -48,6 +48,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // load the reference sequence for this region
     int fetched_len = 0;
     char* ref_segment = faidx_fetch_seq(fai, contig_name.c_str(), start, end, &fetched_len);
+    ret.original_sequence = ref_segment;
 
     // Initialize iteration
     bam1_t* record = bam_init1();
@@ -156,10 +157,14 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         read_anchors.push_back(event_anchors);
     }
 
+    // If there are no reads aligned to this segment return empty data
+    if(read_anchors.empty()) {
+        return ret;
+    }
+
     // The HMMReadAnchorSet contains anchors for each strand of a read
     // laid out in a vector. Transpose this data so we have one anchor
     // for every read column-wise.
-    assert(!read_anchors.empty());
     assert(read_anchors.front().strand_anchors[T_IDX].size() == 
            read_anchors.back().strand_anchors[T_IDX].size());
 

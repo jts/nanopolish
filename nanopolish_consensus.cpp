@@ -673,6 +673,12 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     const int minor_segment_stride = 50;
     HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
 
+    if(window.reads.empty()) {
+        // No data for this window, just return the original sequence as the consensus
+        assert(!window.original_sequence.empty());
+        return window.original_sequence;
+    }
+
     //
     // Train the HMM
     //

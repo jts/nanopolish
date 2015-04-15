@@ -57,6 +57,7 @@ struct HMMRealignmentInput
 {
     std::vector<std::unique_ptr<SquiggleRead> > reads;
     std::vector<HMMAnchoredColumn> anchored_columns;
+    std::string original_sequence;
 };
 
 // functions
