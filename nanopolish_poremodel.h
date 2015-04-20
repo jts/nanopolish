@@ -14,9 +14,7 @@
 
 #define PORE_MODEL_STATES 1024
 
-// The pore model is defined by global scale/shift parameters
-// and a mean/stddev per k-mer. These are parameterize the
-// Gaussian PDF.
+//
 struct PoreModelStateParams
 {
     double level_mean;
@@ -38,6 +36,11 @@ class PoreModel
         {
             assert(is_scaled);
             return scaled_params[kmer_rank];
+        }
+
+        inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const
+        {
+            return state[kmer_rank];
         }
         
         // Pre-compute the GaussianParameters to avoid

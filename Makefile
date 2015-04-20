@@ -47,6 +47,7 @@ SRC=nanopolish.cpp \
     nanopolish_poremodel.cpp \
     nanopolish_squiggle_read.cpp \
     nanopolish_eventalign.cpp \
+    nanopolish_getmodel.cpp \
     logsum.cpp
 
 # Automatically generated object names
