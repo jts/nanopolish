@@ -32,7 +32,7 @@ lib/libhdf5.a:
 # Overwrite H5 variables to put to local version
 .PHONY: libhdf5.install
 libhdf5.install: lib/libhdf5.a
-	$(eval H5_LIB=-ldl ./lib/libhdf5.a)
+	$(eval H5_LIB=./lib/libhdf5.a -ldl)
 	$(eval H5_INCLUDE=-I./include)
 
 # Source files

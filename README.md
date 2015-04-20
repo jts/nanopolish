@@ -4,15 +4,20 @@ A nanopore consensus algorithm using a signal-level hidden Markov model.
 
 ## Dependencies
 
-The program requires [libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) and a compiler that supports C++11. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
+The program requires [libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) and a compiler that supports C++11. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/). libhdf5 can be automatically installed by the Makefile if you do not have it already (see below).
 
 ## Installation instructions
 
-You will need to run ```git clone --recursive https://github.com/jts/nanopolish.git``` to grab the source code and the submodules. You can then compile nanopolish by running:
+You will need to run ```git clone --recursive https://github.com/jts/nanopolish.git``` to get the source code and submodules. You can then compile nanopolish by running:
 
 ```
-./build.sh
 make
+```
+
+If you do not already have libhdf5, you can tell nanopolish to download and build it locally in the source tree:
+
+```
+make libhdf5.install nanopolish
 ```
 
 ## Brief usage instructions
