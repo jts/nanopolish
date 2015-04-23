@@ -52,7 +52,8 @@ $(ASSEMBLY)-%.pp.bam: %.pp.fa $(ASSEMBLY).bwt
 	python nanopolish_makerange.py $^ > $@.tmp && mv $@.tmp $@
 
 nanopolish-$(ASSEMBLY)-$(READS).results : $(ASSEMBLY).ranges $(ASSEMBLY)-$(READS).pp.sorted.bam $(ASSEMBLY)-$(READS).pp.sorted.bam.bai $(ASSEMBLY) $(READS).pp.fa $(READS).pp.fa.fast5.fofn
-	 parallel --results $@.tmp -P 8 ./nanopolish consensus -o nanopolish-$(ASSEMBLY}-$(READS).{1}.fa -w {1} --r $(READS).pp.fa -b $(ASSEMBLY)-$(READS).pp.sorted.bam -g $(ASSEMBLY) -t 4 < $(ASSEMBLY).ranges && mv $@.tmp $@
+	parallel --results $@.tmp -P $(THREADS) ./nanopolish consensus -o nanopolish-$(ASSEMBLY)-$(READS).{1}.fa -w {1} --r $(READS).pp.fa -b $(ASSEMBLY)-$(READS).pp.sorted.bam -g $(ASSEMBLY) -t 4 < $(ASSEMBLY).ranges \
+	&& mv $@.tmp $@
 
 nanopolish-$(ASSEMBLY)-$(READS).polished.fa  : nanopolish-$(ASSEMBLY)-$(READS).results
 	python nanopolish_merge.py $(ASSEMBLY) nanopolish-$(ASSEMBLY)-$(READS).*.fa > $@.tmp && mv $@.tmp $@
