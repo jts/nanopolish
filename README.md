@@ -31,7 +31,11 @@ make -f consensus.make READS=reads.fa ASSEMBLY=draft.fa
 ```
 
 This will map the reads to the assembly with ```bwa mem -x ont2d``` and export a file mapping read names to fast5 files.
+Then it will run ```nanopolish consensus``` (see example below)
+Then it will merge all the 100kbp segements into one file:
+```nanopolish-draft.fa-reads.fa.polished.fa```
 
+If you choose to run the steps more manually:
 You can then run ```nanopolish consensus```. It is recommended that you run this in parallel.
 
 ```
