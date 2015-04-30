@@ -46,6 +46,19 @@ After all polishing jobs are complete, you can merge the individual segments tog
 python nanopolish_merge.py draft.fa nanopolish.*.fa > polished.fa
 ```
 
+## To run using docker
+
+First build the image from the dockerfile:
+```
+docker build .
+```
+Note the uuid given upon successful build. 
+Then you can run nanopolish from the image:
+```
+docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
+```
+
+
 ## Known Issues
 
 If you have extremely high depth (for example you sequenced a virus) then ```poa``` and the hmm will take a very long time to run. I suggest downsampling to reasonable coverage before trying to call the consensus sequence.
@@ -53,3 +66,5 @@ If you have extremely high depth (for example you sequenced a virus) then ```poa
 ## Credits and Thanks
 
 The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/).
+
+
