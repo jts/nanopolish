@@ -55,8 +55,9 @@ docker build .
 Note the uuid given upon successful build. 
 Then you can run nanopolish from the image:
 ```
-docker run -it :imageid ./nanopolish 
+docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
 ```
+
 
 ## Known Issues
 
