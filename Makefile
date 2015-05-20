@@ -25,7 +25,7 @@ htslib/libhts.a:
 # Automatically install HDF5 dependency if requested by user
 #
 lib/libhdf5.a:
-	wget http://www.hdfgroup.org/ftp/HDF5/current/src/hdf5-1.8.14.tar.gz
+	wget https://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz
 	tar -xzf hdf5-1.8.14.tar.gz
 	cd hdf5-1.8.14; ./configure --prefix=`pwd`/..; make; make install
 
