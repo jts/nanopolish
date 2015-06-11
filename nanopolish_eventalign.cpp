@@ -20,6 +20,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include "htslib/htslib/faidx.h"
+#include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_khmm_parameters.h"
 #include "nanopolish_matrix.h"
@@ -191,6 +192,9 @@ void realign_read(FILE* fp,
     std::string ref_seq(cref_seq);
     free(cref_seq);
 
+    // If the reference sequence contains ambiguity codes, switch them to the lexicographically lowest base
+    ref_seq = IUPAC::disambiguate_to_lowest(ref_seq);
+
     if(ref_offset == 0)
         return;
 
@@ -252,6 +256,10 @@ void realign_read(FILE* fp,
 
             std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, curr_end_ref - curr_start_ref + 1);
             
+            // Nothing to align to
+            if(ref_subseq.length() < K)
+                break;
+
             // Set up HMM input
             HMMInputData input;
             input.read = &sr;
@@ -410,7 +418,6 @@ int eventalign_main(int argc, char** argv)
         fprintf(stderr, "Region: %s\n", opt::region.c_str());
         itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
         hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
-
     }
 
     // Write the header
