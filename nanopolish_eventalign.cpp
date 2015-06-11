@@ -267,6 +267,13 @@ void realign_read(FILE* fp,
             input.event_start_idx = curr_start_event;
             input.event_stop_idx = sr.get_closest_event_to(curr_end_read, strand_idx);
 
+            // A limitation of the segment-by-segment alignment is that we can't jump
+            // over very large deletions wrt to the reference. The effect of this
+            // is that we can get segments that have very few alignable events. We
+            // just stop processing them for now
+            if(abs(input.event_start_idx - input.event_stop_idx) < 2)
+                break;
+
             input.strand = strand_idx;
             input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
             input.rc = rc_flags[strand_idx];
