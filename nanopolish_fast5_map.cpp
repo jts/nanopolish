@@ -71,11 +71,28 @@ void Fast5Map::load_from_fasta(std::string fasta_filename)
             fprintf(stderr, "error: no path associated with read %s\n", seq->name.s);
             exit(EXIT_FAILURE);
         }
+
+        printf("Comment: %s\n", seq->comment.s);
         read_to_path_map[seq->name.s] = seq->comment.s;
     }
+
+
     kseq_destroy(seq);
     gzclose(gz_fp);
     fclose(fp);
+    
+    // Sanity check that the first path actually points to a file
+    if(read_to_path_map.size() > 0) {
+        std::string first_read = read_to_path_map.begin()->first;
+        std::string first_path = read_to_path_map.begin()->second;
+        struct stat file_s;
+        int ret = stat(first_path.c_str(), &file_s);
+        if(ret != 0) {
+            fprintf(stderr, "Error: could not find path to FAST5 for read %s\n", first_read.c_str());
+            fprintf(stderr, "Please make sure that this path is accessible: %s\n", first_path.c_str());
+            exit(EXIT_FAILURE);
+        }
+    }
 
     // Write the map as a fofn file so next time we don't have to parse
     // the entire fasta
