@@ -13,6 +13,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_common.h"
 #include "htslib/htslib/kseq.h"
 
 //
@@ -76,10 +77,12 @@ void Fast5Map::load_from_fasta(std::string fasta_filename)
             exit(EXIT_FAILURE);
         }
 
-        printf("Comment: %s\n", seq->comment.s);
-        read_to_path_map[seq->name.s] = seq->comment.s;
+        // This splitting code implicitly handles both the 2 and 3 field
+        // fasta format that poretools will output. The FAST5 path
+        // is always the last field.
+        std::vector<std::string> fields = split(seq->comment.s, ' ');
+        read_to_path_map[seq->name.s] = fields.back();
     }
-
 
     kseq_destroy(seq);
     gzclose(gz_fp);

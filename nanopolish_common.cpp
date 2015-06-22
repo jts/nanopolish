@@ -102,3 +102,19 @@ void print_alignment(const std::string& name,
     printf("%zu\t%zu\t%zu\t%zu\t%.2lf\n", n_matches, n_merges, n_skips, n_mergeskips, total_duration);
 }
 
+// Split a string into parts based on the delimiter
+std::vector<std::string> split(std::string in, char delimiter)
+{
+    std::vector<std::string> out;
+    size_t lastPos = 0;
+    size_t pos = in.find_first_of(delimiter);
+
+    while(pos != std::string::npos)
+    {
+        out.push_back(in.substr(lastPos, pos - lastPos));
+        lastPos = pos + 1;
+        pos = in.find_first_of(delimiter, lastPos);
+    }
+    out.push_back(in.substr(lastPos));
+    return out;
+}

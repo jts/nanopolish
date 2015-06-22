@@ -169,6 +169,9 @@ inline std::string reverse_complement(const std::string& seq)
 // Increment the input string to be the next DNA sequence in lexicographic order
 void lexicographic_next(std::string& str);
 
+// split a string based on a delimiter
+std::vector<std::string> split(std::string in, char delimiter);
+
 // Print the alignment between the read-strand and a sequence
 void print_alignment(const std::string& name,
                      uint32_t seq_id,
