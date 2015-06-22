@@ -181,7 +181,10 @@ void realign_read(FILE* fp,
     // load read
     SquiggleRead sr(read_name, fast5_path);
     
-    fprintf(stderr, "Realigning %s [%zu %zu]\n", read_name.c_str(), sr.events[0].size(), sr.events[1].size());
+    if(opt::verbose > 0) {
+        fprintf(stderr, "Realigning %s [%zu %zu]\n", 
+                read_name.c_str(), sr.events[0].size(), sr.events[1].size());
+    }
 
     // Extract the reference subsequence for the entire alignment
     int fetched_len = 0;
