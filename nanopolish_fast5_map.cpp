@@ -25,9 +25,13 @@ Fast5Map::Fast5Map(const std::string& fasta_filename)
     // If the fofn file exists, load from it
     // otherwise parse the entire fasta file
     std::string fofn_filename = fasta_filename + FOFN_SUFFIX;
-    struct stat file_s;
-    int ret = stat(fofn_filename.c_str(), &file_s);
-    if(ret == 0) {
+    struct stat fofn_file_s;
+    struct stat fasta_file_s;
+    int fofn_ret = stat(fofn_filename.c_str(), &fofn_file_s);
+    int fasta_ret = stat(fasta_filename.c_str(), &fasta_file_s);
+
+    // Use the stored fofn if its available and newer than the fasta
+    if(fofn_ret == 0 && fofn_file_s.st_mtime > fasta_file_s.st_mtime) {
         load_from_fofn(fofn_filename);
     } else {
         load_from_fasta(fasta_filename);
