@@ -437,7 +437,10 @@ int eventalign_main(int argc, char** argv)
     size_t read_idx = 0;
     while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
 
-        realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+        // do not try to realign unmapped reads
+        if( (record->core.flag & BAM_FUNMAP) == 0) {
+            realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+        }
         read_idx += 1;
     }
 
