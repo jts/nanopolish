@@ -27,6 +27,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "H5pubconf.h"
 #include "profiler.h"
 
 //
@@ -349,8 +350,10 @@ void realign_read(FILE* fp,
         } // for segment
 
         // write to disk
-        emit_event_alignments(fp, sr, alignment_output);
-
+        #pragma omp critical
+        {
+            emit_event_alignments(fp, sr, alignment_output);
+        }
     } // for strands
 }
 
@@ -435,7 +438,6 @@ int eventalign_main(int argc, char** argv)
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
-    
     hts_itr_t* itr;
 
     // If processing a region of the genome, only emit events aligned to this window
@@ -451,6 +453,14 @@ int eventalign_main(int argc, char** argv)
         itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
         hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
     }
+
+#ifndef H5_HAVE_THREADSAFE
+    if(opt::threads > 1) {
+        fprintf(stderr, "You enabled multi-threading but you do not have a threadsafe HDF5\n");
+        fprintf(stderr, "Please recompile nanopolish's built-in libhdf5 or run with -t 1\n");
+        exit(1);
+    }
+#endif
 
     // Write the header
     emit_header(stdout);
@@ -473,7 +483,8 @@ int eventalign_main(int argc, char** argv)
 
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
-            
+
+            #pragma omp parallel for            
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;

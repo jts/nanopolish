@@ -27,7 +27,7 @@ htslib/libhts.a:
 lib/libhdf5.a:
 	wget https://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz
 	tar -xzf hdf5-1.8.14.tar.gz
-	cd hdf5-1.8.14; ./configure --prefix=`pwd`/..; make; make install
+	cd hdf5-1.8.14; ./configure --enable-threadsafe --prefix=`pwd`/..; make; make install
 
 # Overwrite H5 variables to put to local version
 .PHONY: libhdf5.install
