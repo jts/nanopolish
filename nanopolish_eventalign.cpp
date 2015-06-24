@@ -62,6 +62,7 @@ namespace opt
     static std::string genome_file;
     static std::string region;
     static int num_threads = 1;
+    static int batch_size = 128;
 }
 
 static const char* shortopts = "r:b:g:t:w:v";
@@ -144,24 +145,36 @@ void emit_header(FILE* fp)
 
 }
 
-void emit_event_alignment(FILE* fp,
-                          const SquiggleRead& sr,
-                          const EventAlignment& ea)
+void emit_event_alignments(FILE* fp,
+                           const SquiggleRead& sr,
+                           const std::vector<EventAlignment>& alignments)
 {
-    // basic information
-    fprintf(fp, "%s\t%d\t%s\t%zu\t%c\t", ea.ref_name.c_str(), ea.ref_position, ea.ref_kmer.c_str(), ea.read_idx, "tc"[ea.strand_idx]);
+    for(size_t i = 0; i < alignments.size(); ++i) {
 
-    // event information
-    float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
-    float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-    fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+        const EventAlignment& ea = alignments[i];
 
-    // model information
-    std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+        // basic information
+        fprintf(fp, "%s\t%d\t%s\t%zu\t%c\t", ea.ref_name.c_str(), 
+                                             ea.ref_position, 
+                                             ea.ref_kmer.c_str(), 
+                                             ea.read_idx, 
+                                             "tc"[ea.strand_idx]);
 
-    uint32_t rank = kmer_rank(model_kmer.c_str(), K);
-    GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-    fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), model.mean, model.stdv, sr.model_name[ea.strand_idx].c_str());
+        // event information
+        float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+        float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+        fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+
+        // model information
+        std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+
+        uint32_t rank = kmer_rank(model_kmer.c_str(), K);
+        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), 
+                                              model.mean, 
+                                              model.stdv, 
+                                              sr.model_name[ea.strand_idx].c_str());
+    }
 }
 
 // Realign the read in event space
@@ -191,11 +204,14 @@ void realign_read(FILE* fp,
     int ref_offset = record->core.pos;
     std::string ref_name(hdr->target_name[record->core.tid]);
 
-    char* cref_seq = faidx_fetch_seq(fai, ref_name.c_str(), ref_offset, bam_endpos(record), &fetched_len);
+    char* cref_seq = faidx_fetch_seq(fai, ref_name.c_str(), ref_offset, 
+                                     bam_endpos(record), &fetched_len);
+
     std::string ref_seq(cref_seq);
     free(cref_seq);
 
-    // If the reference sequence contains ambiguity codes, switch them to the lexicographically lowest base
+    // If the reference sequence contains ambiguity codes
+    // switch them to the lexicographically lowest base
     ref_seq = IUPAC::disambiguate_to_lowest(ref_seq);
 
     if(ref_offset == 0)
@@ -242,6 +258,8 @@ void realign_read(FILE* fp,
         int curr_start_event = first_event;
         int curr_start_ref = aligned_pairs.front().ref_pos;
         int curr_pair_idx = 0;
+        
+        std::vector<EventAlignment> alignment_output;
 
         while( (forward && curr_start_event < last_event) ||
                (!forward && curr_start_event > last_event)) {
@@ -257,7 +275,8 @@ void realign_read(FILE* fp,
             }
             assert(curr_end_read >= 0);
 
-            std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, curr_end_ref - curr_start_ref + 1);
+            std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, 
+                                                    curr_end_ref - curr_start_ref + 1);
             
             // Nothing to align to
             if(ref_subseq.length() < K)
@@ -294,12 +313,12 @@ void realign_read(FILE* fp,
             int last_event_output = 0;
             int last_ref_kmer_output = 0;
 
-            for(; event_align_idx < event_alignment.size() && (num_output < output_stride || last_section); event_align_idx++) {
+            for(; event_align_idx < event_alignment.size() && 
+                  (num_output < output_stride || last_section); event_align_idx++) {
 
                 AlignmentState& as = event_alignment[event_align_idx];
                 if(as.state != 'K' && as.event_idx != curr_start_event) {
 
-                    //printf("Outputting event %d aligned to k: %d pos: %d\n", as.event_idx, as.kmer_idx, curr_start_ref + as.kmer_idx);
                     EventAlignment ea;
                     
                     // ref
@@ -313,7 +332,8 @@ void realign_read(FILE* fp,
                     ea.event_idx = as.event_idx;
                     ea.rc = input.rc;
 
-                    emit_event_alignment(fp, sr, ea);
+                    // store
+                    alignment_output.push_back(ea);
 
                     // update
                     last_event_output = as.event_idx;
@@ -326,8 +346,12 @@ void realign_read(FILE* fp,
             curr_start_event = last_event_output;
             curr_start_ref = last_ref_kmer_output;
             curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
-        }
-    }
+        } // for segment
+
+        // write to disk
+        emit_event_alignments(fp, sr, alignment_output);
+
+    } // for strands
 }
 
 void parse_eventalign_options(int argc, char** argv)
@@ -411,8 +435,6 @@ int eventalign_main(int argc, char** argv)
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
-    // Initialize iteration
-    bam1_t* record = bam_init1();
     
     hts_itr_t* itr;
 
@@ -432,22 +454,49 @@ int eventalign_main(int argc, char** argv)
 
     // Write the header
     emit_header(stdout);
+    
+    // Initialize iteration
+    std::vector<bam1_t*> records(opt::batch_size, NULL);
+    for(size_t i = 0; i < records.size(); ++i) {
+        records[i] = bam_init1();
+    }
 
     int result;
-    size_t read_idx = 0;
-    while((result = sam_itr_next(bam_fh, itr, record)) >= 0) {
+    size_t num_reads_realigned = 0;
+    size_t num_records_buffered = 0;
+    
+    do {
+        assert(num_records_buffered < records.size());
+        
+        // read a record into the next slot in the buffer
+        result = sam_itr_next(bam_fh, itr, records[num_records_buffered++]);
 
-        // do not try to realign unmapped reads
-        if( (record->core.flag & BAM_FUNMAP) == 0) {
-            realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+        // realign if we've hit the max buffer size or reached the end of file
+        if(num_records_buffered == records.size() || result < 0) {
+            
+            for(size_t i = 0; i < num_records_buffered; ++i) {
+                bam1_t* record = records[i];
+                size_t read_idx = num_reads_realigned + i;
+                if( (record->core.flag & BAM_FUNMAP) == 0) {
+                    realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+                }
+            }
+
+            num_reads_realigned += num_records_buffered;
+            num_records_buffered = 0;
         }
-        read_idx += 1;
+    } while(result >= 0);
+    
+    assert(num_records_buffered == 0);
+
+    // cleanup records
+    for(size_t i = 0; i < records.size(); ++i) {
+        bam_destroy1(records[i]);
     }
 
     // cleanup
     sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
-    bam_destroy1(record);
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
