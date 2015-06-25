@@ -1,0 +1,12 @@
+# travis.yml for github.com/jts/nanopolish
+
+language: cpp
+
+# Install and export newer gcc
+before_install:
+    - sudo apt-add-repository -y ubuntu-toolchain-r-test
+    - sudo apt-get update -qq
+    - [ "$CXX" = "g++" ] && sudo apt-get install -qq g++-4.8
+    - [ "$CXX" = "g++" ] && export CXX="g++-4.8" CC="gcc-4.8"
+
+script: make libhdf5.install nanopolish
