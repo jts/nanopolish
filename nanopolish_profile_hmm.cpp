@@ -92,7 +92,7 @@ struct BlockTransitions
     float lp_ee;
     float lp_em;
     
-    // Transitions from e state
+    // Transitions from k state
     float lp_kk;
     float lp_km;
 };
