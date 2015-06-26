@@ -31,20 +31,6 @@ inline float log_normal_pdf(float x, const GaussianParameters& g)
     return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
 }
 
-// The probability that a standard normal RV is <= x
-// from http://stackoverflow.com/questions/2328258/cumulative-normal-distribution-function-in-c-c
-inline float log_standard_normal_cdf(float x)
-{
-    return 0.5 * erfc(-x * M_SQRT1_2);
-}
-
-// The probability that a normal RV is <= x
-inline float log_normal_cdf(float x, const GaussianParameters& g)
-{
-    float a = (x - g.mean) / g.stdv;
-    return log(0.5 * (1 + erf(a * M_SQRT1_2)));
-}
-
 inline float log_probability_match(const SquiggleRead& read,
                                    uint32_t kmer_rank,
                                    uint32_t event_idx,
