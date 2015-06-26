@@ -7,13 +7,16 @@
 # Default to automatically installing hdf5
 H5_LIB=./lib/libhdf5.a -ldl
 H5_INCLUDE=-I./include
+HTS_LIB=./htslib/libhts.a
 
-LIBS=-lrt ./htslib/libhts.a -lz $(H5_LIB)
+LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE)
 PROGRAM=nanopolish
+TEST_PROGRAM=nanopolish_test
+
 CXX=g++
 
-all: $(PROGRAM)
+all: $(PROGRAM) $(TEST_PROGRAM)
 
 #
 # Build libhts
@@ -35,9 +38,8 @@ libhdf5.system:
 	$(eval H5_LIB=-lhdf5)
 	$(eval H5_INCLUDE=)
 
-# Source files
-SRC=nanopolish.cpp \
-    nanopolish_consensus.cpp \
+# Source files, except for the main programs
+SRC=nanopolish_consensus.cpp \
     nanopolish_khmm_parameters.cpp \
     nanopolish_klcs.cpp \
     nanopolish_common.cpp \
@@ -51,6 +53,8 @@ SRC=nanopolish.cpp \
     nanopolish_iupac.cpp \
     logsum.cpp
 
+EXE_SRC=nanopolish.cpp nanopolish_test.cpp
+
 # Automatically generated object names
 OBJ=$(SRC:.cpp=.o)
 
@@ -58,7 +62,7 @@ OBJ=$(SRC:.cpp=.o)
 PHONY=depend
 depend: .depend
 
-.depend: $(SRC) $(H5_LIB)
+.depend: $(SRC) $(EXE_SRC) $(H5_LIB)
 	rm -f ./.depend
 	$(CXX) $(CPPFLAGS) -MM $(SRC) > ./.depend;
 
@@ -68,9 +72,16 @@ include .depend
 .cpp.o:
 	$(CXX) -c $(CPPFLAGS) -fPIC $<
 
-# Link executable
-$(PROGRAM): $(OBJ) htslib/libhts.a
+# Link main executable
+$(PROGRAM): nanopolish.o $(OBJ) $(HTS_LIB) $(H5_LIB)
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
+
+# Link test executable
+$(TEST_PROGRAM): nanopolish_test.o $(OBJ) $(HTS_LIB) $(H5_LIB)
+	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
+
+test: $(TEST_PROGRAM)
+	./$(TEST_PROGRAM)
 
 clean:
 	rm nanopolish *.o
