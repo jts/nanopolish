@@ -4,9 +4,9 @@
 # Set up libraries and paths
 #
 
-# Default to using the system-wide libhdf
-H5_LIB=-lhdf5
-H5_INCLUDE=
+# Default to automatically installing hdf5
+H5_LIB=./lib/libhdf5.a -ldl
+H5_INCLUDE=-I./include
 
 LIBS=-lrt ./htslib/libhts.a -lz $(H5_LIB)
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE)
@@ -29,11 +29,11 @@ lib/libhdf5.a:
 	tar -xzf hdf5-1.8.14.tar.gz
 	cd hdf5-1.8.14; ./configure --enable-threadsafe --prefix=`pwd`/..; make; make install
 
-# Overwrite H5 variables to put to local version
-.PHONY: libhdf5.install
-libhdf5.install: lib/libhdf5.a
-	$(eval H5_LIB=./lib/libhdf5.a -ldl)
-	$(eval H5_INCLUDE=-I./include)
+# Overwrite H5 variables to use system-wide version
+.PHONY: libhdf5.system
+libhdf5.system:
+	$(eval H5_LIB=-lhdf5)
+	$(eval H5_INCLUDE=)
 
 # Source files
 SRC=nanopolish.cpp \
@@ -55,11 +55,12 @@ SRC=nanopolish.cpp \
 OBJ=$(SRC:.cpp=.o)
 
 # Generate dependencies
+PHONY=depend
 depend: .depend
 
-.depend: $(SRC)
+.depend: $(SRC) $(H5_LIB)
 	rm -f ./.depend
-	$(CXX) $(CPPFLAGS) -MM $^ > ./.depend;
+	$(CXX) $(CPPFLAGS) -MM $(SRC) > ./.depend;
 
 include .depend
 

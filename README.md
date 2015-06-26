@@ -14,11 +14,7 @@ You will need to run ```git clone --recursive https://github.com/jts/nanopolish.
 make
 ```
 
-If you do not already have libhdf5, you can tell nanopolish to download and build it locally in the source tree:
-
-```
-make libhdf5.install nanopolish
-```
+This will automatically download and install libhdf5.
 
 ## Brief usage instructions
 
