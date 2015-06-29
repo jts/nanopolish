@@ -1,4 +1,4 @@
-#! /usr/bin/perl
+#!/usr/bin/env perl
 #
 # Extract fast5 file names from a poretools fasta file and prepend an index to uniquify names
 #
