@@ -302,7 +302,6 @@ void realign_read(FILE* fp,
             input.rc = rc_flags[strand_idx];
             
             std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
-            //print_alignment("test", 0, 0, ref_subseq, input, event_alignment);
             
             // Output alignment
             size_t num_output = 0;
