@@ -27,6 +27,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "profiler.h"
+#include "progress.h"
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -694,8 +695,16 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     start_segment_id = DEBUG_SEGMENT_ID;
 #endif
 
+    // Initialize progress status
+    std::stringstream message;
+    message << "[consensus] " << contig << ":" << start_base << "-" << end_base;
+    Progress progress(message.str());
+
     uint32_t num_segments = window.anchored_columns.size();
     for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
+
+        // update progress
+        progress.print((float)segment_id / (num_segments - 2));
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -733,6 +742,7 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
             break;
 #endif
     }
+    progress.end();
 
     return consensus;
 }
@@ -829,7 +839,6 @@ int consensus_main(int argc, char** argv)
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
         
-        fprintf(stderr, "Computing consensus for %s:%d-%d\n", contig.c_str(), start_base, end_base);
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
     }
