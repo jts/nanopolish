@@ -108,7 +108,7 @@ class ProfileHMMViterbiOutput
         inline void update_3(uint32_t row, uint32_t col, float m, float e, float k, float lp_emission)
         {
             // probability update
-            float max = std::max(m, std::max(e, k));
+            float max = std::max(std::max(m, e), k);
             set(*p_fm, row, col, max + lp_emission);
 
             // backtrack update
