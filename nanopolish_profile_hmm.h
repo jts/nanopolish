@@ -62,4 +62,38 @@ void profile_hmm_viterbi_fill(FloatMatrix& vm, // viterbi matrix
 void profile_hmm_update_training(const std::string& consensus, 
                                  const HMMInputData& data);
 
+
+// Convenience enum for keeping track of the states in the profile HMM
+enum ProfileState
+{
+    PS_KMER_SKIP = 0,
+    PS_EVENT_SPLIT,
+    PS_MATCH,
+    PS_NUM_STATES = 3
+};
+
+// Convert an enumerated state into a symbol
+inline char ps2char(ProfileState ps) { return "KEMN"[ps]; }
+
+// Pre-computed transitions from the previous block
+// into the current block of states. Log-scaled.
+struct BlockTransitions
+{
+    // Transition from m state
+    float lp_me;
+    float lp_mk;
+    float lp_mm;
+
+    // Transitions from e state
+    float lp_ee;
+    float lp_em;
+
+    // Transitions from k state
+    float lp_kk;
+    float lp_km;
+};
+
+//
+#include "nanopolish_profile_hmm.inl"
+
 #endif
