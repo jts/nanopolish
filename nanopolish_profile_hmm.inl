@@ -188,29 +188,26 @@ inline float profile_hmm_fill_generic(const char* sequence,
             uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
             uint32_t curr_block_offset = PS_NUM_STATES * block;
             
-            // state PS_MATCH
-            float m_m = bt.lp_mm + output.get(row - 1, prev_block_offset + PS_MATCH);
-            float m_e = bt.lp_em + output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT);
-            float m_k = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
-
-            // state PS_EVENT_SPLIT
-            float e_m = bt.lp_me + output.get(row - 1, curr_block_offset + PS_MATCH);
-            float e_e = bt.lp_ee + output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT);
-
-            // state PS_KMER_SKIP
-            float k_m = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
-            float k_k = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
-
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
             float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
             float lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
-
-            // These functions either sum over the previous three states (forward algorithm)
-            // or take the maximum and set the backtracking matrix (viterbi).
+            
+            // state PS_MATCH
+            float m_m = bt.lp_mm + output.get(row - 1, prev_block_offset + PS_MATCH);
+            float m_e = bt.lp_em + output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT);
+            float m_k = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
             output.update_3(row, curr_block_offset + PS_MATCH, m_m, m_e, m_k, lp_emission_m);
+
+            // state PS_EVENT_SPLIT
+            float e_m = bt.lp_me + output.get(row - 1, curr_block_offset + PS_MATCH);
+            float e_e = bt.lp_ee + output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT);
             output.update_3(row, curr_block_offset + PS_EVENT_SPLIT, e_m, e_e, -INFINITY, lp_emission_e);
+
+            // state PS_KMER_SKIP
+            float k_m = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
+            float k_k = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
             output.update_3(row, curr_block_offset + PS_KMER_SKIP, k_m, -INFINITY, k_k, 0.0f); // no emission
 
 #ifdef DEBUG_FILL    
