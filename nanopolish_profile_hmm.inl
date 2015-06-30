@@ -72,23 +72,9 @@ class ProfileHMMForwardOutput
         ProfileHMMForwardOutput(FloatMatrix* p) : p_fm(p) {}
         
         //
-        inline void update_m(uint32_t row, uint32_t col, float m, float e, float k, float lp_emission)
+        inline void update_3(uint32_t row, uint32_t col, float m, float e, float k, float lp_emission)
         {
             float sum = add_logs(m, add_logs(e, k)) + lp_emission;
-            set(*p_fm, row, col, sum);
-        }
-
-        //
-        inline void update_e(uint32_t row, uint32_t col, float m, float e, float lp_emission)
-        {
-            float sum = add_logs(m, e) + lp_emission;
-            set(*p_fm, row, col, sum);
-        }
-        
-        //
-        inline void update_k(uint32_t row, uint32_t col, float m, float k, float lp_emission)
-        {
-            float sum = add_logs(m, k) + lp_emission;
             set(*p_fm, row, col, sum);
         }
 
@@ -119,7 +105,7 @@ class ProfileHMMViterbiOutput
     public:
         ProfileHMMViterbiOutput(FloatMatrix* pf, UInt8Matrix* pb) : p_fm(pf), p_bm(pb) {}
         
-        inline void update_m(uint32_t row, uint32_t col, float m, float e, float k, float lp_emission)
+        inline void update_3(uint32_t row, uint32_t col, float m, float e, float k, float lp_emission)
         {
             // probability update
             float max = std::max(m, std::max(e, k));
@@ -133,28 +119,6 @@ class ProfileHMMViterbiOutput
                 from = PS_EVENT_SPLIT;
             else if(max == k)
                 from = PS_KMER_SKIP;
-            set(*p_bm, row, col, from);
-        }
-
-        inline void update_e(uint32_t row, uint32_t col, float m, float e, float lp_emission)
-        {
-            // probability update
-            float max = std::max(m, e);
-            set(*p_fm, row, col, max + lp_emission);
-            
-            // backtrack update
-            ProfileState from = max == m ? PS_MATCH : PS_EVENT_SPLIT;
-            set(*p_bm, row, col, from);
-        }
-
-        inline void update_k(uint32_t row, uint32_t col, float m, float k, float lp_emission)
-        {
-            // probability update
-            float max = std::max(m, k);
-            set(*p_fm, row, col, max + lp_emission);
-            
-            // backtrack update
-            ProfileState from = max == m ? PS_MATCH : PS_KMER_SKIP;
             set(*p_bm, row, col, from);
         }
 
@@ -225,17 +189,17 @@ inline float profile_hmm_fill_generic(const char* sequence,
             uint32_t curr_block_offset = PS_NUM_STATES * block;
             
             // state PS_MATCH
-            float m1 = bt.lp_mm + output.get(row - 1, prev_block_offset + PS_MATCH);
-            float m2 = bt.lp_em + output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT);
-            float m3 = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
+            float m_m = bt.lp_mm + output.get(row - 1, prev_block_offset + PS_MATCH);
+            float m_e = bt.lp_em + output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT);
+            float m_k = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
 
             // state PS_EVENT_SPLIT
-            float e1 = bt.lp_me + output.get(row - 1, curr_block_offset + PS_MATCH);
-            float e2 = bt.lp_ee + output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT);
+            float e_m = bt.lp_me + output.get(row - 1, curr_block_offset + PS_MATCH);
+            float e_e = bt.lp_ee + output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT);
 
             // state PS_KMER_SKIP
-            float k1 = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
-            float k2 = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
+            float k_m = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
+            float k_k = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
 
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
@@ -245,9 +209,9 @@ inline float profile_hmm_fill_generic(const char* sequence,
 
             // These functions either sum over the previous three states (forward algorithm)
             // or take the maximum and set the backtracking matrix (viterbi).
-            output.update_m(row, curr_block_offset + PS_MATCH, m1, m2, m3, lp_emission_m);
-            output.update_e(row, curr_block_offset + PS_EVENT_SPLIT, e1, e2, lp_emission_e);
-            output.update_k(row, curr_block_offset + PS_KMER_SKIP, k1, k2, 0.0f); // no emission
+            output.update_3(row, curr_block_offset + PS_MATCH, m_m, m_e, m_k, lp_emission_m);
+            output.update_3(row, curr_block_offset + PS_EVENT_SPLIT, e_m, e_e, -INFINITY, lp_emission_e);
+            output.update_3(row, curr_block_offset + PS_KMER_SKIP, k_m, -INFINITY, k_k, 0.0f); // no emission
 
 #ifdef DEBUG_FILL    
             printf("Row %u block %u\n", row, block);
