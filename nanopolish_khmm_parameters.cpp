@@ -129,14 +129,12 @@ void KHMMParameters::train()
     //
     // Profile HMM transitions
     //
-    fprintf(stderr, "TRANSITIONS\n");
 
     size_t sum_m_not_k = get(td.state_transitions, statechar2index('M'), statechar2index('M')) + 
                          get(td.state_transitions, statechar2index('M'), statechar2index('E'));
 
     size_t me = get(td.state_transitions, statechar2index('M'), statechar2index('E'));
     double p_me_not_k = (double)me / sum_m_not_k;
-    fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
 
     size_t sum_e = 0;
     for(int j = 0; j < td.state_transitions.n_cols; ++j) {
@@ -145,8 +143,11 @@ void KHMMParameters::train()
     
     size_t ee = get(td.state_transitions, statechar2index('E'), statechar2index('E'));
     double p_ee = (double)ee / sum_e;
-    fprintf(stderr, "E->E: %lf\n", p_ee);
 
+    /*
+    fprintf(stderr, "TRANSITIONS\n");
+    fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
+    fprintf(stderr, "E->E: %lf\n", p_ee);
     for(int i = 0; i < td.state_transitions.n_rows; ++i) {
         fprintf(stderr, "\t%c: ", "MEK"[i]);
         for(int j = 0; j < td.state_transitions.n_cols; ++j) {
@@ -154,6 +155,7 @@ void KHMMParameters::train()
         }
         fprintf(stderr, "\n");
     }
+    */
 
     if(sum_e == 0 || sum_m_not_k == 0) {
         // insufficient data to train, use defaults
@@ -191,6 +193,6 @@ void KHMMParameters::train()
     // Update probabilities
     for(size_t bin = 0; bin < num_bins; bin++) {
         skip_probabilities[bin] = skip_observations[bin] / total_observations[bin];
-        fprintf(stderr, "SKIPLEARN -- bin[%zu] %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
+        //fprintf(stderr, "SKIPLEARN -- bin[%zu] %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
     }
 }

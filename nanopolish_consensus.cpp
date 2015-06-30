@@ -657,7 +657,6 @@ void train(HMMRealignmentInput& window)
     // train on current consensus
     uint32_t num_segments = window.anchored_columns.size();
     for(uint32_t segment_id = 0; segment_id < num_segments - 2; ++segment_id) {
-        fprintf(stderr, "Training segment %d\n", segment_id);
         train_segment(window, segment_id);
     }
 
