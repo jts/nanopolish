@@ -413,23 +413,28 @@ PathConsVector generate_mutations(const std::string& sequence)
     return mutations;
 }
 
-void run_mutation(std::string& base, const std::vector<HMMInputData>& input, std::string& second_best)
+// Run the mutation algorithm to generate an improved consensus sequence
+std::string run_mutation(const std::string& base, const std::vector<HMMInputData>& input)
 {
     PROFILE_FUNC("run_mutation")
+    std::string result = base;
+
     int iteration = 0;
     while(iteration++ < 10) {
 
         // Generate possible sequences
-        PathConsVector paths = generate_mutations(base);
+        PathConsVector paths = generate_mutations(result);
 
+        // score them in the HMM
         score_paths(paths, input);
 
-        second_best = paths[1].path;
         // check if no improvement was made
-        if(paths[0].path == base)
+        if(paths[0].path == result)
             break;
-        base = paths[0].path;
+        result = paths[0].path;
     }
+
+    return result;
 }
 
 void generate_alt_paths(PathConsVector& paths, const std::string& base, const std::vector<std::string>& alts)
@@ -482,6 +487,31 @@ void generate_alt_paths(PathConsVector& paths, const std::string& base, const st
             match_idx += 1;
         }
     }
+}
+
+// Run the block substitution algorithm to generate an improved consensus sequence
+std::string run_block_substitution(const std::string& base,
+                                   const std::vector<HMMInputData>& input,
+                                   const std::vector<std::string>& alts)
+{
+    std::string result = base;
+
+    uint32_t max_rounds = 6;
+    uint32_t round = 0;
+    while(round++ < max_rounds) {
+        
+        PathConsVector paths;
+        PathCons initial_path(result);
+        paths.push_back(initial_path);
+        
+        generate_alt_paths(paths, result, alts);
+        score_paths(paths, input);
+
+        if(paths[0].path == result)
+            break;
+        result = paths[0].path;
+    }
+    return result;
 }
 
 //
@@ -561,32 +591,9 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     // Only attempt correction if there are any reads here
     if(!data.empty()) {
         
-        uint32_t num_rounds = 6;
-        uint32_t round = 0;
-        while(round++ < num_rounds) {
-            
-            PathConsVector paths;
-            PathCons base_path(base);
-            paths.push_back(base_path);
-            
-            generate_alt_paths(paths, base, alts);
-            score_paths(paths, data);
-
-            if(paths[0].path == base)
-                break;
-            base = paths[0].path;
-        }
-        
-        std::string second_best;
-        run_mutation(base, data, second_best);
-
-#if DEBUG_SHOW_TOP_TWO
-        assert(!second_best.empty());
-        for(uint32_t ri = 0; ri < data.size(); ++ri) {
-            debug_sequence("best", segment_id, ri, base, data[ri]);
-            debug_sequence("second", segment_id, ri, second_best, data[ri]);
-        }
-#endif
+        std::string bs_result = run_block_substitution(base, data, alts);
+        std::string mut_result = run_mutation(bs_result, data);
+        base = mut_result;
     }
 
     if(opt::verbose > 0) {
