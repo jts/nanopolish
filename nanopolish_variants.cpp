@@ -145,17 +145,6 @@ std::vector<Variant> evaluate_variants(const std::string& reference,
         }
     }
 
-    /*
-    // Calculate qualities for the variants in isolation
-    // TODO: make this haplotype based
-    for(size_t i = 0; i < variants.size(); ++i) {
-        Variant& v = variants[i];
-        std::string derived = apply_variant(reference, v);
-        double lp_derived = profile_hmm_score(derived, input);
-        v.quality = lp_derived - lp_base;
-        v.quality = std::max(0.0, v.quality);
-    }
-    */
     return selected_variants;
 }
 
