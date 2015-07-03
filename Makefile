@@ -51,6 +51,8 @@ SRC=nanopolish_consensus.cpp \
     nanopolish_eventalign.cpp \
     nanopolish_getmodel.cpp \
     nanopolish_iupac.cpp \
+    nanopolish_variants.cpp \
+    overlapper.cpp \
     logsum.cpp
 
 EXE_SRC=nanopolish.cpp nanopolish_test.cpp

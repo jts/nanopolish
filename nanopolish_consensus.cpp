@@ -26,6 +26,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_variants.h"
 #include "profiler.h"
 #include "progress.h"
 
@@ -67,6 +68,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --vcf=FILE                       write called variants to vcf FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -76,13 +78,14 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string output_file;
+    static std::string output_vcf;
     static std::string window;
     static int num_threads = 1;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:v";
 
-enum { OPT_HELP = 1, OPT_VERSION };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF };
 
 static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
@@ -92,6 +95,7 @@ static const struct option longopts[] = {
     { "window",      required_argument, NULL, 'w' },
     { "outfile",     required_argument, NULL, 'o' },
     { "threads",     required_argument, NULL, 't' },
+    { "vcf",         required_argument, NULL, OPT_VCF },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -593,6 +597,16 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
         
         std::string bs_result = run_block_substitution(base, data, alts);
         std::string mut_result = run_mutation(bs_result, data);
+    
+        if(!opt::output_vcf.empty()) {
+            std::vector<Variant> variants = evaluate_variants(base, mut_result, data);
+            for(size_t i = 0; i < variants.size(); ++i) {
+                variants[i].ref_name = start_column.base_contig;
+                variants[i].ref_position += start_column.base_start_position + 1;
+                variants[i].write_vcf(stdout);
+            }
+        }
+
         base = mut_result;
     }
 
@@ -601,6 +615,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
         fprintf(stderr, "RESULT[%d]   %s\n", segment_id, base.c_str());
     }
 
+    /*
     // Update the sequences for the start and middle segments
     // by cutting the new consensus in the middle
     // We maintain the k-mer match invariant by requiring the
@@ -635,6 +650,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 
         middle_column.anchors[data[ri].anchor_index].event_idx = event_idx;
     }
+    */
 }
 
 // update the training data on the current segment
@@ -768,6 +784,7 @@ void parse_consensus_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_VCF: arg >> opt::output_vcf; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);

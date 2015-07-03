@@ -196,6 +196,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 base_length = fetched_len - ai * stride;
 
             column.base_sequence = std::string(ref_segment + ai * stride, base_length);
+            column.base_contig = contig_name;
+            column.base_start_position = start + ai * stride;
             assert(column.base_sequence.back() != '\0');
 
             // alts
