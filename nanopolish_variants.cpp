@@ -8,6 +8,7 @@
 #include <algorithm>
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variants.h"
+#include "nanopolish_haplotype.h"
 #include "overlapper.h"
 
 // return a new copy of the string with gap symbols removed
@@ -101,10 +102,60 @@ std::vector<Variant> evaluate_variants(const std::string& reference,
                                        const std::vector<HMMInputData>& input)
 {
     // Calculate baseline probablilty
-    double lp_base = profile_hmm_score(reference, input);
 
-    std::vector<Variant> variants = extract_variants(reference, haplotype);
+    std::vector<Variant> all_variants = extract_variants(reference, haplotype);
+    std::vector<Variant> selected_variants;
 
+    //
+    // Test each variant, greedily selecting the best one at each step
+    //
+    
+    Haplotype base(reference);
+    double base_lp = profile_hmm_score(base.get_sequence(), input);
+
+    while(!all_variants.empty()) {
+ 
+        double best_variant_lp = -INFINITY;
+        size_t best_variant_idx = 0;
+
+        for(size_t i = 0; i < all_variants.size(); ++i) {
+        
+            // apply the variant to get a new haplotype
+            Variant& v = all_variants[i];
+            Haplotype derived = base;
+            derived.apply_variant(v);
+
+            // score the haplotype
+            double variant_lp = profile_hmm_score(derived.get_sequence(), input);
+            
+            if(variant_lp > best_variant_lp) {
+                best_variant_lp = variant_lp;
+                best_variant_idx = i;
+            }
+        }
+
+        if(best_variant_lp > base_lp) {
+            // move the best variant from the all list to the selected list
+            selected_variants.push_back(all_variants[best_variant_idx]);
+
+            all_variants.erase(all_variants.begin() + best_variant_idx);
+            
+            // calculate a quality score for the variant
+            selected_variants.back().quality = best_variant_lp - base_lp;
+
+            //printf("SELECTED %zu from %zu: \n\t", best_variant_idx, all_variants.size() + 1);
+            //selected_variants.back().write_vcf(stdout);
+
+            // apply the variant to the base haplotype
+            base.apply_variant(selected_variants.back());
+            base_lp = best_variant_lp;
+        } else {
+            // no variant improved upon the base haplotype, stop
+            break;
+        }
+    }
+
+    /*
     // Calculate qualities for the variants in isolation
     // TODO: make this haplotype based
     for(size_t i = 0; i < variants.size(); ++i) {
@@ -112,8 +163,9 @@ std::vector<Variant> evaluate_variants(const std::string& reference,
         std::string derived = apply_variant(reference, v);
         double lp_derived = profile_hmm_score(derived, input);
         v.quality = lp_derived - lp_base;
+        v.quality = std::max(0.0, v.quality);
     }
-
-    return variants;
+    */
+    return selected_variants;
 }
 

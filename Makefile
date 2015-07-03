@@ -52,6 +52,7 @@ SRC=nanopolish_consensus.cpp \
     nanopolish_getmodel.cpp \
     nanopolish_iupac.cpp \
     nanopolish_variants.cpp \
+    nanopolish_haplotype.cpp \
     overlapper.cpp \
     logsum.cpp
 

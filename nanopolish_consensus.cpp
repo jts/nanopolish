@@ -80,12 +80,13 @@ namespace opt
     static std::string output_file;
     static std::string output_vcf;
     static std::string window;
+    static int show_progress = 0;
     static int num_threads = 1;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS };
 
 static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
@@ -96,6 +97,7 @@ static const struct option longopts[] = {
     { "outfile",     required_argument, NULL, 'o' },
     { "threads",     required_argument, NULL, 't' },
     { "vcf",         required_argument, NULL, OPT_VCF },
+    { "progress",    no_argument,       NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -586,10 +588,10 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
         alts.push_back(start_column.alt_sequences[ai]);
     }
 
-    // Set up the HMMReadStates, which are used to calculate
-    // the probability of the data given a possible consensus sequence
+    // set up the input data for the HMM
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
-
+    
+    // filter out poor quality reads
     filter_outlier_data(data, base);
 
     // Only attempt correction if there are any reads here
@@ -727,7 +729,9 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     for(uint32_t segment_id = start_segment_id; segment_id < num_segments - 2; ++segment_id) {
 
         // update progress
-        progress.print((float)segment_id / (num_segments - 2));
+        if(opt::show_progress) {
+            progress.print((float)segment_id / (num_segments - 2));
+        }
 
         // Track the original sequence for reference
         if(uncorrected.empty()) {
@@ -765,7 +769,10 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
             break;
 #endif
     }
-    progress.end();
+
+    if(opt::show_progress) {
+        progress.end();
+    }
 
     return consensus;
 }
@@ -784,6 +791,7 @@ void parse_consensus_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_VCF: arg >> opt::output_vcf; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
