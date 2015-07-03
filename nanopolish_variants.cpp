@@ -9,7 +9,6 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variants.h"
 #include "nanopolish_haplotype.h"
-#include "overlapper.h"
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -23,15 +22,14 @@ std::string remove_gaps(const std::string& str)
 std::vector<Variant> extract_variants(const std::string& reference, 
                                       const std::string& haplotype)
 {
-    // Align the reference sequence and haplotype
-    OverlapperParams params = affine_default_params;
-    params.type = ALT_GLOBAL;
-    SequenceOverlap overlap = Overlapper::computeAlignmentAffine(reference, haplotype, params);
+    AlnParam par = aln_param_nt2nt;
+    par.band_width = abs(reference.size() - haplotype.size()) * 2;
+    AlnAln* aln = aln_stdaln(reference.c_str(), haplotype.c_str(), &par, 1, 1);
     
     // Make aligned strings where gaps are padded with '-'
-    std::string pad_ref;
-    std::string pad_hap;
-    overlap.makePaddedMatches(reference, haplotype, &pad_ref, &pad_hap);
+    std::string pad_ref(aln->out1);
+    std::string pad_hap(aln->out2);
+
     assert(pad_ref.size() == pad_hap.size());
     
     //std::cout << "PR: " << pad_ref << "\n";
@@ -82,6 +80,8 @@ std::vector<Variant> extract_variants(const std::string& reference,
         variants.push_back(v);
         diff_start = diff_end;
     }
+
+    aln_free_AlnAln(aln);
     return variants;
 }
 
