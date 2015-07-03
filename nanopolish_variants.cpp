@@ -85,16 +85,6 @@ std::vector<Variant> extract_variants(const std::string& reference,
     return variants;
 }
 
-// Apply a variant to the reference sequence to generate a new sequence
-std::string apply_variant(const std::string& reference,
-                          Variant v)
-{
-    std::string tmp = reference;
-    assert(reference.substr(v.ref_position, v.ref_seq.length()) == v.ref_seq);
-    tmp.replace(v.ref_position, v.ref_seq.length(), v.alt_seq);
-    return tmp;
-}
-
 // Parse variants from the called haplotype and calculate
 // quality scores for them
 std::vector<Variant> evaluate_variants(const std::string& reference, 
