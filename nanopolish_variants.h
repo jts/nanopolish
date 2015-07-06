@@ -14,6 +14,10 @@
 
 struct Variant
 {
+    static void write_vcf_header(FILE* fp) {
+        fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO\n");
+    }
+
     void write_vcf(FILE* fp)
     {
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position, ".");

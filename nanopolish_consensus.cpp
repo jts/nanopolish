@@ -548,6 +548,10 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
 
 std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
 {
+    // this is a special case to make the calling code cleaner
+    if(a.empty())
+        return b;
+
     // These sequences must have a k-mer match at the start/end
     std::string a_last_kmer = a.substr(a.size() - K);
     std::string b_last_kmer = b.substr(0, K);
@@ -683,13 +687,14 @@ void train(HMMRealignmentInput& window)
     }
 }
 
-void write_variants_for_consensus(const std::string& reference, const std::string& consensus, const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
+void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
     // Recompute a reference-based window with sampled columns
     // This is a bit wasteful but the window coordinates are re-aligned during the consensus step so need to be regenerated for now
     int minor_segment_stride = 50;
     HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
-    
+    std::string reference = window.original_sequence;
+
     // Parse variants from a reference/consensus alignment
     std::vector<Variant> variants = extract_variants(reference, consensus);
 
@@ -700,7 +705,7 @@ void write_variants_for_consensus(const std::string& reference, const std::strin
     for(size_t i = 0; i < variants.size(); ++i) {
 
         Variant& v = variants[i];
-        
+
         // Determine the bounding reference segment for this variant
         int variant_start = v.ref_position;
         int variant_end = variant_start + v.ref_seq.size();
@@ -711,8 +716,6 @@ void write_variants_for_consensus(const std::string& reference, const std::strin
         int segment_start_base = segment_start_id * minor_segment_stride;
         int segment_end_base = segment_end_id * minor_segment_stride;
         
-        //fprintf(stderr, "VS: %d VE: %d SSB: %d SSE: %d\n", variant_start, variant_end, segment_start_base, segment_end_base);
-
         // sanity check the bounds meet the minimum distance criteria
         assert(variant_start >= segment_start_base + min_distance_to_end);
         assert(variant_end <= segment_end_base - min_distance_to_end);
@@ -742,6 +745,7 @@ void write_variants_for_consensus(const std::string& reference, const std::strin
             double lp_hap = profile_hmm_score(haplotype.get_sequence(), input[ri]);
 
             quality += (lp_hap - lp_ref);
+            quality = std::max(quality, 0.0);
             num_reads_improved += lp_hap > lp_ref;
         }
 
@@ -750,7 +754,7 @@ void write_variants_for_consensus(const std::string& reference, const std::strin
         variants[i].quality = quality;
         variants[i].add_info("TotalReads", input.size());
         variants[i].add_info("SupportingReads", num_reads_improved);
-        variants[i].write_vcf(stdout);
+        variants[i].write_vcf(out_fp);
     }
 }
 
@@ -779,10 +783,6 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     uint32_t num_segments = window.anchored_columns.size();
     uint32_t start_segment_id = 0;
 
-#ifdef DEBUG_SINGLE_SEGMENT
-    start_segment_id = DEBUG_SEGMENT_ID;
-#endif
-
     // Copy the base segments before they are updated
     // by the consensus algorithm
     std::vector<std::string> ref_segments;
@@ -808,40 +808,24 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
         // run_splice_segment updates the base_sequence of the current anchor, grab it and append
         std::string base = window.anchored_columns[segment_id].base_sequence;
 
-        if(reference.empty()) {
-            // first segment, don't need to handle overlaps
-            reference = ref_segments[segment_id]; 
-            consensus = base;
-
-        } else {
-            // trim first 5 bp off the incoming strings
-            assert(reference.substr(reference.size() - K) == ref_segments[segment_id].substr(0, K));
-            reference.append(ref_segments[segment_id].substr(K));
-            
-            assert(consensus.substr(consensus.size() - K) == base.substr(0, K));
-            consensus.append(base.substr(K));
-        }
+        // append the new sequences in, respecting the K overlap
+        reference = join_sequences_at_kmer(reference, ref_segments[segment_id]);
+        consensus = join_sequences_at_kmer(consensus, base);
 
         if(opt::verbose > 0) {
             fprintf(stderr, "UNCORRECT[%d]: %s\n", segment_id, reference.c_str());
             fprintf(stderr, "CONSENSUS[%d]: %s\n", segment_id, consensus.c_str());
         }
-#ifdef DEBUG_SINGLE_SEGMENT
-        break;
-#endif
-
-#ifdef DEBUG_BENCHMARK
-        if(segment_id >= 10)
-            break;
-#endif
     }
+
+    // Append segment that ends at the last anchor
+    reference = join_sequences_at_kmer(reference, ref_segments[num_segments - 2]);
+    const std::string& last_segment = 
+        window.anchored_columns[num_segments - 2].base_sequence;
+    consensus = join_sequences_at_kmer(consensus, last_segment);
 
     if(opt::show_progress) {
         progress.end();
-    }
-
-    if(!opt::output_vcf.empty()) {
-        write_variants_for_consensus(reference, consensus, name_map, contig, start_base, end_base);
     }
 
     return consensus;
@@ -937,6 +921,12 @@ int consensus_main(int argc, char** argv)
         out_fp = stdout;
     }
 
+    FILE* out_vcf = NULL;
+    if(!opt::output_vcf.empty()) {
+        out_vcf = fopen(opt::output_vcf.c_str(), "w");
+        Variant::write_vcf_header(out_vcf);
+    }
+
     for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
@@ -944,9 +934,16 @@ int consensus_main(int argc, char** argv)
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
 
+        if(!opt::output_vcf.empty()) {
+            write_variants_for_consensus(out_vcf, window_consensus, name_map, contig, start_base, end_base);
+        }
     }
 
     if(out_fp != stdout) {
         fclose(out_fp);
+    }
+
+    if(out_vcf != NULL) {
+        fclose(out_vcf);
     }
 }
