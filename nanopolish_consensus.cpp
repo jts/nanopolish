@@ -691,7 +691,7 @@ void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, co
 {
     // Recompute a reference-based window with sampled columns
     // This is a bit wasteful but the window coordinates are re-aligned during the consensus step so need to be regenerated for now
-    int minor_segment_stride = 50;
+    int minor_segment_stride = 100;
     HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
     std::string reference = window.original_sequence;
 
@@ -701,7 +701,7 @@ void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, co
     std::string ref_name = window.anchored_columns.front().base_contig;
     size_t offset = window.anchored_columns.front().base_start_position;
 
-    int min_distance_to_end = 10;
+    int min_distance_to_end = 20;
     for(size_t i = 0; i < variants.size(); ++i) {
 
         Variant& v = variants[i];
