@@ -63,7 +63,7 @@ std::vector<Variant> extract_variants(const std::string& reference,
         bool is_indel = false;
         size_t diff_end = diff_start;
         while(diff_end < pad_ref.size() && pad_ref[diff_end] != pad_hap[diff_end]) {
-            is_indel = pad_ref[diff_end] == '-' || pad_hap[diff_end] == '-';
+            is_indel = is_indel || pad_ref[diff_end] == '-' || pad_hap[diff_end] == '-';
             diff_end++;
         }
 
@@ -72,6 +72,7 @@ std::vector<Variant> extract_variants(const std::string& reference,
     
         Variant v;
         v.ref_name = "noctg";
+
         assert(ref_positions[diff_start] != std::string::npos);
         v.ref_position = ref_positions[diff_start];
         v.ref_seq = remove_gaps(pad_ref.substr(diff_start, diff_end - diff_start).c_str());
