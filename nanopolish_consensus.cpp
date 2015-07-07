@@ -713,13 +713,26 @@ void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, co
         int segment_start_id = (variant_start - min_distance_to_end) / minor_segment_stride;
         int segment_end_id = (variant_end + min_distance_to_end) / minor_segment_stride + 1;
 
+        // clamp the segments
+        segment_start_id = std::max(segment_start_id, 0);
+        segment_end_id = std::min(segment_end_id, (int)window.anchored_columns.size() - 1);
+
         int segment_start_base = segment_start_id * minor_segment_stride;
         int segment_end_base = segment_end_id * minor_segment_stride;
-        
-        // sanity check the bounds meet the minimum distance criteria
+
+        // check whether there is sufficient distance to the segment bounds
+        // this check can fail if variants are called at the very beginning or
+        // end of the window. we skip such variants
+        if(variant_start - segment_start_base < min_distance_to_end ||
+           segment_end_base - variant_end < min_distance_to_end) {
+            continue;
+        }
+
+        // sanity checks
         assert(variant_start >= segment_start_base + min_distance_to_end);
         assert(variant_end <= segment_end_base - min_distance_to_end);
-        
+        assert(segment_end_id < window.anchored_columns.size());
+
         // prepare the reads for the HMM
         HMMAnchoredColumn& start_column = window.anchored_columns[segment_start_id];
         HMMAnchoredColumn& end_column = window.anchored_columns[segment_end_id];
