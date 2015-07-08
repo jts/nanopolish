@@ -1,5 +1,8 @@
 #
 
+# Sub directories containing source code, except for the main programs
+SUBDIRS := src src/hmm
+
 #
 # Set up libraries and paths
 #
@@ -9,11 +12,13 @@ H5_LIB=./lib/libhdf5.a -ldl
 H5_INCLUDE=-I./include
 HTS_LIB=./htslib/libhts.a
 
+
 HTS_INCLUDE=-I./htslib
 FAST5_INCLUDE=-I./fast5
+NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
 
 LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) -I./src
+CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
 CFLAGS=-O3
 
 PROGRAM=nanopolish
@@ -44,9 +49,7 @@ libhdf5.system:
 	$(eval H5_LIB=-lhdf5)
 	$(eval H5_INCLUDE=)
 
-# Source files, except for the main programs
-SUBDIRS := src 
-
+# Find the source files by searching subdirectories
 CPP_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cpp))
 C_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.c))
 
