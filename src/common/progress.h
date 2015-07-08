@@ -25,9 +25,6 @@ class Progress
         // derived from: http://stackoverflow.com/a/14539953/378881
         void print(float progress) const
         {
-            // get current time
-            timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
 
             // print 
             int max_leader = 40;
@@ -48,7 +45,7 @@ class Progress
                 else if (i == pos) m_os << ">";
                 else m_os << " ";
             }
-            m_os << "] " << int(progress * 100.0) << "% in " << now.tv_sec - m_start_time << "s\r";
+            m_os << "] " << int(progress * 100.0) << "% in " << get_elapsed_seconds() << "s\r";
             m_os.flush();
         }
         
@@ -57,6 +54,14 @@ class Progress
         {
             print(1.0);
             std::cerr << std::endl;
+        }
+
+        double get_elapsed_seconds() const
+        {
+            // get current time
+            timespec now;
+            clock_gettime(CLOCK_REALTIME, &now);
+            return now.tv_sec - m_start_time;
         }
 
     private:
