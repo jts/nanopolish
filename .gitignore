@@ -1,7 +1,18 @@
+
+# Backup files
 .*swp
 .*swo
 .*swm
+
+# Generated files
 *.o
 .depend
 nanopolish
 nanopolish_test
+
+# libhdf5 directories
+bin/
+hdf5-*/
+include/
+lib/
+share/
