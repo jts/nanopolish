@@ -1,4 +1,7 @@
 .*swp
+.*swo
+.*swm
 *.o
 .depend
 nanopolish
+nanopolish_test
