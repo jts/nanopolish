@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_common.h"
-#include "htslib/htslib/kseq.h"
+#include "htslib/kseq.h"
 
 //
 #define FOFN_SUFFIX ".fast5.fofn"
