@@ -50,6 +50,10 @@ struct HMMAnchoredColumn
     std::string base_sequence;
     std::vector<HMMStrandAnchor> anchors;
     std::vector<std::string> alt_sequences;
+
+    // reference name and coordinate for the segment
+    std::string base_contig;
+    size_t base_start_position;
 };
 
 //

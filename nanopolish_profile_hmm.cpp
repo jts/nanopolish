@@ -52,6 +52,16 @@ float profile_hmm_forward_terminate(const FloatMatrix& fm,
     */
 }
 
+// convenience function to run the HMM over multiple inputs and sum the result
+float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data)
+{
+    float score = 0.0f;
+    for(size_t i = 0; i < data.size(); ++i) {
+        score += profile_hmm_score(consensus, data[i]);
+    }
+    return score;
+}
+
 float profile_hmm_score(const std::string& sequence, const HMMInputData& data)
 {
     uint32_t n_kmers = sequence.size() - K + 1;

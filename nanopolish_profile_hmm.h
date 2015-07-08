@@ -21,6 +21,7 @@
 
 // Calculate the probability of the nanopore events given the consensus sequence
 float profile_hmm_score(const std::string& consensus, const HMMInputData& data);
+float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data);
 
 // Run viterbi to align events to kmers
 std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data);

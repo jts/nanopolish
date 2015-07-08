@@ -11,10 +11,13 @@ HTS_LIB=./htslib/libhts.a
 
 LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE)
+CFLAGS=-O3
+
 PROGRAM=nanopolish
 TEST_PROGRAM=nanopolish_test
 
 CXX=g++
+CC=gcc
 
 all: $(PROGRAM) $(TEST_PROGRAM)
 
@@ -39,32 +42,37 @@ libhdf5.system:
 	$(eval H5_INCLUDE=)
 
 # Source files, except for the main programs
-SRC=nanopolish_consensus.cpp \
-    nanopolish_khmm_parameters.cpp \
-    nanopolish_klcs.cpp \
-    nanopolish_common.cpp \
-    nanopolish_profile_hmm.cpp \
-    nanopolish_anchor.cpp \
-    nanopolish_fast5_map.cpp \
-    nanopolish_poremodel.cpp \
-    nanopolish_squiggle_read.cpp \
-    nanopolish_eventalign.cpp \
-    nanopolish_getmodel.cpp \
-    nanopolish_iupac.cpp \
-    logsum.cpp
+CPP_SRC=nanopolish_consensus.cpp \
+        nanopolish_khmm_parameters.cpp \
+        nanopolish_klcs.cpp \
+        nanopolish_common.cpp \
+        nanopolish_profile_hmm.cpp \
+        nanopolish_anchor.cpp \
+        nanopolish_fast5_map.cpp \
+        nanopolish_poremodel.cpp \
+        nanopolish_squiggle_read.cpp \
+        nanopolish_eventalign.cpp \
+        nanopolish_getmodel.cpp \
+        nanopolish_iupac.cpp \
+        nanopolish_variants.cpp \
+        nanopolish_haplotype.cpp \
+        logsum.cpp
+
+C_SRC=stdaln.c
 
 EXE_SRC=nanopolish.cpp nanopolish_test.cpp
 
 # Automatically generated object names
-OBJ=$(SRC:.cpp=.o)
+CPP_OBJ=$(CPP_SRC:.cpp=.o)
+C_OBJ=$(C_SRC:.c=.o)
 
 # Generate dependencies
 PHONY=depend
 depend: .depend
 
-.depend: $(SRC) $(EXE_SRC) $(H5_LIB)
+.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB)
 	rm -f ./.depend
-	$(CXX) $(CPPFLAGS) -MM $(SRC) > ./.depend;
+	$(CXX) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
 
 include .depend
 
@@ -72,12 +80,16 @@ include .depend
 .cpp.o:
 	$(CXX) -c $(CPPFLAGS) -fPIC $<
 
+.c.o:
+	$(CC) -c $(CFLAGS) -fPIC $<
+
+
 # Link main executable
-$(PROGRAM): nanopolish.o $(OBJ) $(HTS_LIB) $(H5_LIB)
+$(PROGRAM): nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 # Link test executable
-$(TEST_PROGRAM): nanopolish_test.o $(OBJ) $(HTS_LIB) $(H5_LIB)
+$(TEST_PROGRAM): nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 test: $(TEST_PROGRAM)
