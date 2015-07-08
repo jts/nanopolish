@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm
+SUBDIRS := src src/hmm src/thirdparty src/common
 
 #
 # Set up libraries and paths
@@ -10,22 +10,24 @@ SUBDIRS := src src/hmm
 # Default to automatically installing hdf5
 H5_LIB=./lib/libhdf5.a -ldl
 H5_INCLUDE=-I./include
+
 HTS_LIB=./htslib/libhts.a
-
-
 HTS_INCLUDE=-I./htslib
+
 FAST5_INCLUDE=-I./fast5
 NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
 
+# Compiler flags
 LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
 CFLAGS=-O3
 
-PROGRAM=nanopolish
-TEST_PROGRAM=nanopolish_test
-
 CXX=g++
 CC=gcc
+
+# Main programs to build
+PROGRAM=nanopolish
+TEST_PROGRAM=nanopolish_test
 
 all: $(PROGRAM) $(TEST_PROGRAM)
 
@@ -75,7 +77,6 @@ include .depend
 
 .c.o:
 	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
-
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
