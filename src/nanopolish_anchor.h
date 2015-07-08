@@ -10,8 +10,8 @@
 #define NANOPOLISH_ANCHOR_H
 
 #include <memory>
-#include "htslib/htslib/hts.h"
-#include "htslib/htslib/sam.h"
+#include "htslib/hts.h"
+#include "htslib/sam.h"
 #include "nanopolish_fast5_map.h"
 
 struct AlignedPair

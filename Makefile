@@ -1,5 +1,8 @@
 #
 
+# Sub directories containing source code, except for the main programs
+SUBDIRS := src src/hmm src/thirdparty src/common
+
 #
 # Set up libraries and paths
 #
@@ -7,17 +10,24 @@
 # Default to automatically installing hdf5
 H5_LIB=./lib/libhdf5.a -ldl
 H5_INCLUDE=-I./include
+
 HTS_LIB=./htslib/libhts.a
+HTS_INCLUDE=-I./htslib
 
+FAST5_INCLUDE=-I./fast5
+NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
+
+# Compiler flags
 LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE)
+CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
 CFLAGS=-O3
-
-PROGRAM=nanopolish
-TEST_PROGRAM=nanopolish_test
 
 CXX=g++
 CC=gcc
+
+# Main programs to build
+PROGRAM=nanopolish
+TEST_PROGRAM=nanopolish_test
 
 all: $(PROGRAM) $(TEST_PROGRAM)
 
@@ -41,26 +51,11 @@ libhdf5.system:
 	$(eval H5_LIB=-lhdf5)
 	$(eval H5_INCLUDE=)
 
-# Source files, except for the main programs
-CPP_SRC=nanopolish_consensus.cpp \
-        nanopolish_khmm_parameters.cpp \
-        nanopolish_klcs.cpp \
-        nanopolish_common.cpp \
-        nanopolish_profile_hmm.cpp \
-        nanopolish_anchor.cpp \
-        nanopolish_fast5_map.cpp \
-        nanopolish_poremodel.cpp \
-        nanopolish_squiggle_read.cpp \
-        nanopolish_eventalign.cpp \
-        nanopolish_getmodel.cpp \
-        nanopolish_iupac.cpp \
-        nanopolish_variants.cpp \
-        nanopolish_haplotype.cpp \
-        logsum.cpp
+# Find the source files by searching subdirectories
+CPP_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cpp))
+C_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.c))
 
-C_SRC=stdaln.c
-
-EXE_SRC=nanopolish.cpp nanopolish_test.cpp
+EXE_SRC=src/main/nanopolish.cpp src/test/nanopolish_test.cpp
 
 # Automatically generated object names
 CPP_OBJ=$(CPP_SRC:.cpp=.o)
@@ -78,22 +73,21 @@ include .depend
 
 # Compile objects
 .cpp.o:
-	$(CXX) -c $(CPPFLAGS) -fPIC $<
+	$(CXX) -o $@ -c $(CPPFLAGS) -fPIC $<
 
 .c.o:
-	$(CC) -c $(CFLAGS) -fPIC $<
-
+	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
 
 # Link main executable
-$(PROGRAM): nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 # Link test executable
-$(TEST_PROGRAM): nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
+$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
 	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
 
 test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
 
 clean:
-	rm nanopolish *.o
+	rm nanopolish nanopolish_test $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o

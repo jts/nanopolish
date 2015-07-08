@@ -8,7 +8,7 @@
 //
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
-#include "fast5/src/fast5.hpp"
+#include "src/fast5.hpp"
 
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :

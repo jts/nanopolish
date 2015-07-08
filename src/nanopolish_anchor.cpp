@@ -10,7 +10,7 @@
 #include <string>
 #include <stdio.h>
 #include <assert.h>
-#include "htslib/htslib/faidx.h"
+#include "htslib/faidx.h"
 #include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_squiggle_read.h"

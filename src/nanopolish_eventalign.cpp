@@ -19,7 +19,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
-#include "htslib/htslib/faidx.h"
+#include "htslib/faidx.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_khmm_parameters.h"
