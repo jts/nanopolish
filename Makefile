@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/common
+SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 
 #
 # Set up libraries and paths

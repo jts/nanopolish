@@ -29,6 +29,7 @@
 #include "nanopolish_fast5_map.h"
 #include "H5pubconf.h"
 #include "profiler.h"
+#include "progress.h"
 
 //
 // Getopt
@@ -53,6 +54,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --progress                       print out a progress message\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -62,13 +64,14 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string region;
+    static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
 }
 
 static const char* shortopts = "r:b:g:t:w:v";
 
-enum { OPT_HELP = 1, OPT_VERSION };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
 
 static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
@@ -77,6 +80,7 @@ static const struct option longopts[] = {
     { "genome",      required_argument, NULL, 'g' },
     { "window",      required_argument, NULL, 'w' },
     { "threads",     required_argument, NULL, 't' },
+    { "progress",    required_argument, NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -195,7 +199,7 @@ void realign_read(FILE* fp,
     // load read
     SquiggleRead sr(read_name, fast5_path);
     
-    if(opt::verbose > 0) {
+    if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 
                 read_name.c_str(), sr.events[0].size(), sr.events[1].size());
     }
@@ -368,6 +372,7 @@ void parse_eventalign_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << EVENTALIGN_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -473,7 +478,8 @@ int eventalign_main(int argc, char** argv)
     int result;
     size_t num_reads_realigned = 0;
     size_t num_records_buffered = 0;
-    
+    Progress progress("[eventalign]");
+
     do {
         assert(num_records_buffered < records.size());
         
@@ -494,6 +500,10 @@ int eventalign_main(int argc, char** argv)
 
             num_reads_realigned += num_records_buffered;
             num_records_buffered = 0;
+        }
+
+        if(opt::progress) {
+            fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
         }
     } while(result >= 0);
  
