@@ -454,7 +454,7 @@ int eventalign_main(int argc, char** argv)
     }
 
 #ifndef H5_HAVE_THREADSAFE
-    if(opt::threads > 1) {
+    if(opt::num_threads > 1) {
         fprintf(stderr, "You enabled multi-threading but you do not have a threadsafe HDF5\n");
         fprintf(stderr, "Please recompile nanopolish's built-in libhdf5 or run with -t 1\n");
         exit(1);

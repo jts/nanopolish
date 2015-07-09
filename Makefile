@@ -18,7 +18,7 @@ FAST5_INCLUDE=-I./fast5
 NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
 
 # Compiler flags
-LIBS=-lrt $(HTS_LIB) -lz $(H5_LIB)
+LIBS=-lrt -lz
 CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
 CFLAGS=-O3
 
@@ -80,11 +80,11 @@ include .depend
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
+	$(CXX) -o $@ $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 # Link test executable
 $(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CPPFLAGS) -fPIC $^ $(LIBS)
+	$(CXX) -o $@ $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
