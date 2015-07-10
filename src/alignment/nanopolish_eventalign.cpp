@@ -55,6 +55,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
+"  -n, --print-read-names               print read names instead of indexes\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -67,9 +68,10 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
+    static bool print_read_names;
 }
 
-static const char* shortopts = "r:b:g:t:w:v";
+static const char* shortopts = "r:b:g:t:w:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
 
@@ -80,6 +82,7 @@ static const struct option longopts[] = {
     { "genome",      required_argument, NULL, 'g' },
     { "window",      required_argument, NULL, 'w' },
     { "threads",     required_argument, NULL, 't' },
+    { "print-read-names", no_argument,  NULL, 'n' },
     { "progress",    required_argument, NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -144,7 +147,8 @@ struct EventAlignment
 
 void emit_header(FILE* fp)
 {
-    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer", "read_index", "strand");
+    fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
+            (not opt::print_read_names? "read_index" : "read_name"), "strand");
     fprintf(fp, "%s\t%s\t%s\t", "event_index", "event_level_mean", "event_length");
     fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "model_name");
 
@@ -159,11 +163,24 @@ void emit_event_alignments(FILE* fp,
         const EventAlignment& ea = alignments[i];
 
         // basic information
-        fprintf(fp, "%s\t%d\t%s\t%zu\t%c\t", ea.ref_name.c_str(), 
-                                             ea.ref_position, 
-                                             ea.ref_kmer.c_str(), 
-                                             ea.read_idx, 
-                                             "tc"[ea.strand_idx]);
+        if (not opt::print_read_names)
+        {
+            fprintf(fp, "%s\t%d\t%s\t%zu\t%c\t",
+                    ea.ref_name.c_str(),
+                    ea.ref_position,
+                    ea.ref_kmer.c_str(),
+                    ea.read_idx,
+                    "tc"[ea.strand_idx]);
+        }
+        else
+        {
+            fprintf(fp, "%s\t%d\t%s\t%s\t%c\t",
+                    ea.ref_name.c_str(),
+                    ea.ref_position,
+                    ea.ref_kmer.c_str(),
+                    sr.read_name.c_str(),
+                    "tc"[ea.strand_idx]);
+        }
 
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
@@ -371,6 +388,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
+            case 'n': opt::print_read_names = true; break;
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
