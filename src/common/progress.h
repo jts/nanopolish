@@ -17,9 +17,13 @@ class Progress
         
         Progress(const std::string message) : m_message(message), m_os(std::cerr)
         {
+#if HAVE_CLOCK_GETTIME            
             timespec start;
             clock_gettime(CLOCK_REALTIME, &start);
             m_start_time = start.tv_sec;
+#else
+            m_start_time = 0;
+#endif
         }
 
         // derived from: http://stackoverflow.com/a/14539953/378881
@@ -59,9 +63,13 @@ class Progress
         double get_elapsed_seconds() const
         {
             // get current time
+#if HAVE_CLOCK_GETTIME            
             timespec now;
             clock_gettime(CLOCK_REALTIME, &now);
             return now.tv_sec - m_start_time;
+#else
+            return 0;
+#endif
         }
 
     private:

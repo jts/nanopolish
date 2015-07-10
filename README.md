@@ -20,8 +20,6 @@ This will automatically download and install libhdf5.
 
 ## Brief usage instructions
 
-The pipeline is still a prototype so it is fragile at the moment. It will be revised for general use after we submit the paper.
-
 The reads that are input into the HMM must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta header. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. You should run:
 
 ```
