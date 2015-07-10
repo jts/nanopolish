@@ -23,7 +23,7 @@ This will automatically download and install libhdf5.
 The reads that are input into the HMM must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta header. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. You should run:
 
 ```
-make -f consensus.make READS=reads.fa ASSEMBLY=draft.fa
+make -f scripts/consensus.make READS=reads.fa ASSEMBLY=draft.fa
 ```
 
 This will map the reads to the assembly with ```bwa mem -x ont2d``` and export a file mapping read names to fast5 files.
@@ -54,13 +54,6 @@ Then you can run nanopolish from the image:
 docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
 ```
 
-
-## Known Issues
-
-If you have extremely high depth (for example you sequenced a virus) then ```poa``` and the hmm will take a very long time to run. I suggest downsampling to reasonable coverage before trying to call the consensus sequence.
-
 ## Credits and Thanks
 
 The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/).
-
-
