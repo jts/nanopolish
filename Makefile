@@ -4,26 +4,47 @@
 SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 
 #
-# Set up libraries and paths
+# Set libraries, paths, flags and options
 #
 
-# Default to automatically installing hdf5
-H5_LIB=./lib/libhdf5.a -ldl
-H5_INCLUDE=-I./include
+#Basic flags every build needs
+LIBS=-lz
+CPPFLAGS=-fopenmp -O3 -std=c++11 -g 
+CFLAGS=-O3
+CXX=g++
+CC=gcc
+HDF5=install
 
+# Check operating system, OSX doesn't have -lrt
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    LIBS += -lrt
+endif
+
+# Default to automatically installing hdf5
+ifeq ($(HDF5), install)
+    H5_LIB=./lib/libhdf5.a
+    H5_INCLUDE=-I./include
+    LIBS += -ldl
+else
+    # Use system-wide hdf5
+    H5_LIB=
+    H5_INCLUDE=
+    LIBS += -lhdf5
+endif
+
+# Bulild and link the libhts submodule
 HTS_LIB=./htslib/libhts.a
 HTS_INCLUDE=-I./htslib
 
+# Include the header-only fast5 library
 FAST5_INCLUDE=-I./fast5
+
+# Include the src subdirectories
 NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
 
-# Compiler flags
-LIBS=-lrt -lz
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
-CFLAGS=-O3
-
-CXX=g++
-CC=gcc
+# Add include flags
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE)
 
 # Main programs to build
 PROGRAM=nanopolish
@@ -38,23 +59,20 @@ htslib/libhts.a:
 	cd htslib; make
 
 #
-# Automatically install HDF5 dependency if requested by user
+# If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
 lib/libhdf5.a:
 	wget https://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz
 	tar -xzf hdf5-1.8.14.tar.gz
 	cd hdf5-1.8.14; ./configure --enable-threadsafe --prefix=`pwd`/..; make; make install
 
-# Overwrite H5 variables to use system-wide version
-.PHONY: libhdf5.system
-libhdf5.system:
-	$(eval H5_LIB=-lhdf5)
-	$(eval H5_INCLUDE=)
+#
+# Source files
+#
 
 # Find the source files by searching subdirectories
 CPP_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cpp))
 C_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.c))
-
 EXE_SRC=src/main/nanopolish.cpp src/test/nanopolish_test.cpp
 
 # Automatically generated object names
