@@ -21,9 +21,11 @@ struct BamHandles
     hts_itr_t* itr;
 };
 
-AlignmentDB::AlignmentDB(const std::string& reference_file,
+AlignmentDB::AlignmentDB(const std::string& reads_file,
+                         const std::string& reference_file,
                          const std::string& sequence_bam,
                          const std::string& event_bam) :
+                            m_fast5_name_map(reads_file),
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
                             m_event_bam(event_bam)
@@ -152,6 +154,24 @@ void AlignmentDB::_load_events_by_region()
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
         EventAlignmentRecord event_record;
+
+        std::string full_name = bam_get_qname(handles.bam_record);
+        
+        // Check for the template/complement suffix
+        size_t suffix_pos = 0;
+        suffix_pos = full_name.find(".template");
+        if(suffix_pos == std::string::npos) {
+            suffix_pos = full_name.find(".complement");
+        }
+        assert(suffix_pos != std::string::npos);
+        std::string read_name = full_name.substr(0, suffix_pos);
+        std::string fast5_path = m_fast5_name_map.get_path(read_name);
+
+        // Do we need to load this fast5 file?
+        if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
+            m_squiggle_read_map[read_name] = new SquiggleRead(read_name, fast5_path);
+        }
+        event_record.sr = m_squiggle_read_map[read_name];
 
         // extract the event stride tag which tells us whether the
         // event indices are increasing or decreasing

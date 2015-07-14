@@ -921,7 +921,6 @@ int consensus_main(int argc, char** argv)
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
     std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
 
-
     const int WINDOW_LENGTH = 10000;
     const int WINDOW_OVERLAP = 200;
 
@@ -931,7 +930,6 @@ int consensus_main(int argc, char** argv)
     int end_window_id;
     
     parser >> contig >> start_window_id >> end_window_id;
-    
 
     FILE* out_fp = NULL;
 
@@ -951,7 +949,7 @@ int consensus_main(int argc, char** argv)
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
     
-        AlignmentDB alignments(opt::genome_file, opt::bam_file, opt::event_bam_file);
+        AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
         alignments.load_region(contig, start_base, end_base);
         
         /*

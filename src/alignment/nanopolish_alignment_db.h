@@ -33,7 +33,8 @@ typedef std::map<std::string, SquiggleRead*> SquiggleReadMap;
 class AlignmentDB
 {
     public:
-        AlignmentDB(const std::string& reference_file,
+        AlignmentDB(const std::string& reads_file,
+                    const std::string& reference_file,
                     const std::string& sequence_bam,
                     const std::string& event_bam);
 
@@ -58,6 +59,7 @@ class AlignmentDB
         int m_region_end;
 
         // cached alignments for a region
+        Fast5Map m_fast5_name_map;
         std::vector<SequenceAlignmentRecord> m_sequence_records;
         std::vector<EventAlignmentRecord> m_event_records;
         SquiggleReadMap m_squiggle_read_map;
