@@ -24,6 +24,7 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_klcs.h"
 #include "nanopolish_profile_hmm.h"
+#include "nanopolish_alignment_db.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_variants.h"
@@ -856,6 +857,7 @@ void parse_consensus_options(int argc, char** argv)
             case 'r': arg >> opt::reads_file; break;
             case 'g': arg >> opt::genome_file; break;
             case 'b': arg >> opt::bam_file; break;
+            case 'e': arg >> opt::event_bam_file; break;
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
             case '?': die = true; break;
@@ -919,6 +921,7 @@ int consensus_main(int argc, char** argv)
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
     std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
 
+
     const int WINDOW_LENGTH = 10000;
     const int WINDOW_OVERLAP = 200;
 
@@ -928,6 +931,7 @@ int consensus_main(int argc, char** argv)
     int end_window_id;
     
     parser >> contig >> start_window_id >> end_window_id;
+    
 
     FILE* out_fp = NULL;
 
@@ -946,13 +950,18 @@ int consensus_main(int argc, char** argv)
     for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
+    
+        AlignmentDB alignments(opt::genome_file, opt::bam_file, opt::event_bam_file);
+        alignments.load_region(contig, start_base, end_base);
         
+        /*
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
 
         if(!opt::output_vcf.empty()) {
             write_variants_for_consensus(out_vcf, window_consensus, name_map, contig, start_base, end_base);
         }
+        */
     }
 
     if(out_fp != stdout) {

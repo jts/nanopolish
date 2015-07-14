@@ -218,7 +218,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     return ret;
 }
 
-std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record)
+std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride)
 {
     std::vector<AlignedPair> out;
 
@@ -252,14 +252,16 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record)
         bool is_aligned = false;
         if(cigar_op == BAM_CMATCH || cigar_op == BAM_CEQUAL || cigar_op == BAM_CDIFF) {
             is_aligned = true;
-            read_inc = 1;
+            read_inc = read_stride;
             ref_inc = 1;
         } else if(cigar_op == BAM_CDEL || cigar_op == BAM_CREF_SKIP) {
             ref_inc = 1;   
-        } else if(cigar_op == BAM_CINS || cigar_op == BAM_CSOFT_CLIP) {
-            read_inc = 1;
+        } else if(cigar_op == BAM_CINS) {
+            read_inc = read_stride;
+        } else if(cigar_op == BAM_CSOFT_CLIP) {
+            read_inc = 1; // special case, do not use read_stride
         } else if(cigar_op == BAM_CHARD_CLIP) {
-            read_inc = 1;
+            read_inc = 0;
         } else {
             printf("Cigar: %d\n", cigar_op);
             assert(false && "Unhandled cigar operation");
