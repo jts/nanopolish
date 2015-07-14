@@ -32,6 +32,11 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
 {
     _clear_region();
 }
+
+AlignmentDB::~AlignmentDB()
+{
+    _clear_region();
+}
         
 void AlignmentDB::load_region(const std::string& contig,
                               int start_position,

@@ -38,6 +38,8 @@ class AlignmentDB
                     const std::string& sequence_bam,
                     const std::string& event_bam);
 
+        ~AlignmentDB();
+
         void load_region(const std::string& contig,
                          int start_position,
                          int stop_position);
