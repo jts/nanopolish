@@ -67,6 +67,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
+"  -e, --event-bam=FILE                 the events aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
@@ -78,6 +79,7 @@ namespace opt
     static unsigned int verbose;
     static std::string reads_file;
     static std::string bam_file;
+    static std::string event_bam_file;
     static std::string genome_file;
     static std::string output_file;
     static std::string output_vcf;
@@ -86,7 +88,7 @@ namespace opt
     static int num_threads = 1;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:v";
+static const char* shortopts = "r:b:g:t:w:o:e:v";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS };
 
@@ -94,6 +96,7 @@ static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
     { "reads",       required_argument, NULL, 'r' },
     { "bam",         required_argument, NULL, 'b' },
+    { "event-bam",   required_argument, NULL, 'e' },
     { "genome",      required_argument, NULL, 'g' },
     { "window",      required_argument, NULL, 'w' },
     { "outfile",     required_argument, NULL, 'o' },
