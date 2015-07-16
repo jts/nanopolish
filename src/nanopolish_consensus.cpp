@@ -919,17 +919,38 @@ void find_variants_for_region(const std::string& contig, int region_start, int r
     subregion_start -= buffer;
     subregion_end += buffer;
     
-    printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
 
     // extract data from alignment database
     std::string ref_string = alignments.get_reference_substring(contig, subregion_start, subregion_end);
     std::vector<std::string> read_strings = alignments.get_read_substrings(contig, subregion_start, subregion_end);
     std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, subregion_start, subregion_end);
+    
+    printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+    printf("%s\n", ref_string.c_str());
 
     // extract potential variants from read strings
-    std::vector<Variant> variants = generate_variants_from_reads(ref_string, read_strings);
-    deduplicate_variants(variants);
+    std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+    deduplicate_variants(candidate_variants);
 
+    // remove variants that are inside of the buffers
+    std::vector<Variant> tmp;
+    for(size_t i = 0; i < candidate_variants.size(); ++i) {
+        const Variant& v = candidate_variants[i];
+        int p = v.ref_position;
+        if(p >= buffer && ref_string.size() - p >= buffer) {
+            tmp.push_back(v);
+        }
+    }
+    candidate_variants.swap(tmp);
+
+    std::vector<Variant> selected_variants = select_variants(candidate_variants, ref_string, event_sequences);
+    for(size_t i = 0; i < selected_variants.size(); ++i) {
+        selected_variants[i].ref_name = contig;
+        selected_variants[i].ref_position += subregion_start;
+        selected_variants[i].write_vcf(stdout);
+    }
+
+#if 0
     // calculate a quality score for each variant
     for(size_t i = 0; i < variants.size(); ++i) {
 
@@ -969,6 +990,7 @@ void find_variants_for_region(const std::string& contig, int region_start, int r
             variants[i].write_vcf(stdout);
         }
     }
+#endif
 }
 
 void parse_consensus_options(int argc, char** argv)
