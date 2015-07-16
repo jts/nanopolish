@@ -39,9 +39,21 @@ AlignmentDB::~AlignmentDB()
     _clear_region();
 }
 
-std::vector<std::string> AlignmentDB::get_read_strings(const std::string& contig,
-                                                       int start_position,
-                                                       int stop_position)
+std::string AlignmentDB::get_reference_substring(const std::string& contig,
+                                                 int start_position,
+                                                 int stop_position)
+{
+    assert(m_region_contig == contig);
+    assert(m_region_start <= start_position);
+    assert(m_region_end >= stop_position);
+
+    return m_region_ref_sequence.substr(start_position - m_region_start, stop_position - start_position + 1);
+}
+
+
+std::vector<std::string> AlignmentDB::get_read_substrings(const std::string& contig,
+                                                          int start_position,
+                                                          int stop_position)
 {
     assert(m_region_contig == contig);
     assert(m_region_start <= start_position);
@@ -205,11 +217,13 @@ void AlignmentDB::_load_sequence_by_region()
         seq_record.aligned_bases = get_aligned_pairs(handles.bam_record);
         m_sequence_records.push_back(seq_record);
         
+        /*
         printf("sequence_record[%zu] prefix: %s alignstart: [%d %d]\n", 
             m_sequence_records.size() - 1,
             m_sequence_records.back().sequence.substr(0, 20).c_str(),
             m_sequence_records.back().aligned_bases.front().ref_pos,
             m_sequence_records.back().aligned_bases.front().read_pos);
+        */
     }
 
     // cleanup
@@ -264,6 +278,7 @@ void AlignmentDB::_load_events_by_region()
         event_record.strand = is_template ? T_IDX : C_IDX;
         m_event_records.push_back(event_record);
         
+        /*
         printf("event_record[%zu] name: %s stride: %d align bounds [%d %d] [%d %d]\n", 
             m_event_records.size() - 1,
             bam_get_qname(handles.bam_record),
@@ -272,6 +287,7 @@ void AlignmentDB::_load_events_by_region()
             m_event_records.back().aligned_events.front().read_pos,
             m_event_records.back().aligned_events.back().ref_pos,
             m_event_records.back().aligned_events.back().read_pos);
+        */
     }
 
     // cleanup

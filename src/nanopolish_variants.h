@@ -18,6 +18,14 @@ struct Variant
         fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO\n");
     }
 
+    // generate a unique identifier for this variant
+    std::string key() const
+    {
+        std::stringstream out;
+        out << ref_name << ':' << ref_position << ':' << ref_seq << ':' << alt_seq;
+        return out.str();
+    }
+
     void write_vcf(FILE* fp)
     {
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position, ".");
@@ -50,6 +58,9 @@ struct Variant
 std::vector<Variant> extract_variants(const std::string& reference, 
                                       const std::string& haplotype);
 
+// Remove redundant variants from the vector
+// Optionally remove variants that have been seen fewer than min_count times
+void deduplicate_variants(std::vector<Variant>& variants);
 
 // Parse variants from the called haplotype and calculate
 // quality scores for them

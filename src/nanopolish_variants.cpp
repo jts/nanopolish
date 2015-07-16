@@ -6,6 +6,7 @@
 // nanopolish_variants -- tools for calling variants
 //
 #include <algorithm>
+#include <map>
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variants.h"
 #include "nanopolish_haplotype.h"
@@ -23,7 +24,7 @@ std::vector<Variant> extract_variants(const std::string& reference,
                                       const std::string& haplotype)
 {
     AlnParam par = aln_param_nt2nt;
-    par.band_width = abs(reference.size() - haplotype.size()) * 2;
+    par.band_width = std::max(20, abs(reference.size() - haplotype.size()) * 2);
     AlnAln* aln = aln_stdaln(reference.c_str(), haplotype.c_str(), &par, 1, 1);
     
     // Make aligned strings where gaps are padded with '-'
@@ -84,6 +85,23 @@ std::vector<Variant> extract_variants(const std::string& reference,
 
     aln_free_AlnAln(aln);
     return variants;
+}
+
+void deduplicate_variants(std::vector<Variant>& variants)
+{
+    std::map<std::string, Variant> map;
+    for(size_t i = 0; i < variants.size(); ++i) {
+        if(map.find(variants[i].key()) == map.end()) {
+            map[variants[i].key()] = variants[i];
+        }
+    }
+
+    variants.clear();
+    for(std::map<std::string, Variant>::iterator iter = map.begin();
+        iter != map.end(); ++iter)
+    {
+        variants.push_back(iter->second);
+    }
 }
 
 // Parse variants from the called haplotype and calculate

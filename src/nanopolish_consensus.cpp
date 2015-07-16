@@ -848,6 +848,129 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     return consensus;
 }
 
+std::vector<Variant> generate_variants_from_reads(const std::string& reference, const std::vector<std::string>& reads)
+{
+    std::vector<Variant> out;
+
+    // Generate alternatives
+    for(uint32_t ri = 0; ri < reads.size(); ++ri) {
+
+        if(reads[ri].size() < K)
+            continue;
+
+        kLCSResult result = kLCS(reference, reads[ri], K);
+
+#ifdef DEBUG_ALT_GENERATION
+        printf("Match to alt %s\n", alt.c_str());
+        for(size_t mi = 0; mi < result.size(); ++mi) {
+            std::string extend = "";
+            if(mi < result.size() - 1 && result[mi].j + 1 != result[mi + 1].j) {
+                extend = alt.substr(result[mi].j, result[mi + 1].j - result[mi].j + K);
+            }
+            printf("\t%zu %zu %s %s\n", result[mi].i, result[mi].j, base.substr(result[mi].i, K).c_str(), extend.c_str());
+        }
+#endif
+
+        uint32_t match_idx = 0;
+        uint32_t last_idx = result.size() - 1;
+        while(match_idx < result.size()) {
+
+            // advance the match to the next point of divergence
+            while(match_idx != last_idx && 
+                  result[match_idx].i == result[match_idx + 1].i - 1 &&
+                  result[match_idx].j == result[match_idx + 1].j - 1) {
+                match_idx++;
+            }
+
+            // no more divergences to process
+            if(match_idx == last_idx)
+                break;
+
+            uint32_t bl = result[match_idx + 1].i - result[match_idx].i + K;
+            uint32_t rl = result[match_idx + 1].j - result[match_idx].j + K;
+
+            std::string ref_subseq = reference.substr(result[match_idx].i, bl);
+            std::string read_subseq = reads[ri].substr(result[match_idx].j, rl);
+            
+            // substrings must share a k-mer at the beginning/end
+            assert(ref_subseq.substr(0, K) == read_subseq.substr(0, K));    
+            assert(ref_subseq.substr(bl - K) == read_subseq.substr(rl - K));    
+
+            std::vector<Variant> local_variants = extract_variants(ref_subseq, read_subseq);
+            for(size_t vi = 0; vi < local_variants.size(); ++vi) {
+                local_variants[vi].ref_position += result[match_idx].i;
+                out.push_back(local_variants[vi]); 
+            }
+
+            match_idx += 1;
+        }
+    }
+    return out;
+}
+
+void find_variants_for_region(const std::string& contig, int region_start, int region_end)
+{
+    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
+    alignments.load_region(contig, region_start, region_end);
+
+    int subregion_start = region_start + 612;
+    int subregion_end = subregion_start + 100;
+    int buffer = 20;
+    subregion_start -= buffer;
+    subregion_end += buffer;
+    
+    printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+
+    // extract data from alignment database
+    std::string ref_string = alignments.get_reference_substring(contig, subregion_start, subregion_end);
+    std::vector<std::string> read_strings = alignments.get_read_substrings(contig, subregion_start, subregion_end);
+    std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, subregion_start, subregion_end);
+
+    // extract potential variants from read strings
+    std::vector<Variant> variants = generate_variants_from_reads(ref_string, read_strings);
+    deduplicate_variants(variants);
+
+    // calculate a quality score for each variant
+    for(size_t i = 0; i < variants.size(); ++i) {
+
+        if(variants[i].ref_position < buffer || 
+           ref_string.size() - variants[i].ref_position < buffer)
+        {
+            continue;
+        }
+
+        // apply the variant to the reference sequence
+        Haplotype haplotype(ref_string);
+        haplotype.apply_variant(variants[i]);
+
+        // Score all reads against both sequences
+        double quality = 0.0f;
+        size_t num_reads_improved = 0;
+        
+        #pragma omp parallel for
+        for(size_t ri = 0; ri < event_sequences.size(); ++ri) {
+            double lp_ref = profile_hmm_score(ref_string, event_sequences[ri]);
+            double lp_hap = profile_hmm_score(haplotype.get_sequence(), event_sequences[ri]);
+
+            #pragma omp critical
+            {
+                quality += (lp_hap - lp_ref);
+                quality = std::max(quality, 0.0);
+                num_reads_improved += lp_hap > lp_ref;
+            }
+        }
+
+        //variants[i].ref_name = ref_name;
+        //variants[i].ref_position += offset + 1;
+        variants[i].quality = quality;
+        variants[i].add_info("TotalReads", event_sequences.size());
+        variants[i].add_info("SupportingReads", num_reads_improved);
+        if(variants[i].quality > 0) {
+            variants[i].write_vcf(stdout);
+        }
+    }
+}
+
 void parse_consensus_options(int argc, char** argv)
 {
     bool die = false;
@@ -914,8 +1037,6 @@ int consensus_main(int argc, char** argv)
     parse_consensus_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
-
     // Parse the window string
     // Replace ":" and "-" with spaces to make it parseable with stringstream
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
@@ -949,18 +1070,7 @@ int consensus_main(int argc, char** argv)
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
     
-        AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
-        alignments.load_region(contig, start_base, end_base);
-        alignments.get_read_strings(contig, start_base + 500, start_base + 600);
-        alignments.get_event_subsequences(contig, start_base + 500, start_base + 600);
-        /*
-        std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
-        fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
-
-        if(!opt::output_vcf.empty()) {
-            write_variants_for_consensus(out_vcf, window_consensus, name_map, contig, start_base, end_base);
-        }
-        */
+        find_variants_for_region(contig, start_base, end_base);
     }
 
     if(out_fp != stdout) {

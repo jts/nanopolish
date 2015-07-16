@@ -58,10 +58,14 @@ class AlignmentDB
         void load_region(const std::string& contig,
                          int start_position,
                          int stop_position);
+        
+        std::string get_reference_substring(const std::string& contig,
+                                            int start_position,
+                                            int stop_position);
 
-        std::vector<std::string> get_read_strings(const std::string& contig,
-                                                  int start_position,
-                                                  int stop_position);
+        std::vector<std::string> get_read_substrings(const std::string& contig,
+                                                     int start_position,
+                                                     int stop_position);
 
         std::vector<HMMInputData> get_event_subsequences(const std::string& contig,
                                                          int start_position,
