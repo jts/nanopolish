@@ -59,17 +59,19 @@ class AlignmentDB
                          int start_position,
                          int stop_position);
         
+        const std::string& get_reference() const { return m_region_ref_sequence; }
+
         std::string get_reference_substring(const std::string& contig,
                                             int start_position,
-                                            int stop_position);
+                                            int stop_position) const;
 
         std::vector<std::string> get_read_substrings(const std::string& contig,
                                                      int start_position,
-                                                     int stop_position);
+                                                     int stop_position) const;
 
         std::vector<HMMInputData> get_event_subsequences(const std::string& contig,
                                                          int start_position,
-                                                         int stop_position);
+                                                         int stop_position) const;
 
 
     private:
@@ -86,7 +88,7 @@ class AlignmentDB
                                  int ref_start,
                                  int ref_stop,
                                  int& read_start,
-                                 int& read_stop);
+                                 int& read_stop) const;
 
         //
         // data

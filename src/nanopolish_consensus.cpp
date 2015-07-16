@@ -910,87 +910,52 @@ std::vector<Variant> generate_variants_from_reads(const std::string& reference, 
 
 void find_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
+    const int BUFFER = 20;
+    int STRIDE= 100;
+
+    // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
-    alignments.load_region(contig, region_start, region_end);
+    alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
+    Haplotype derived_haplotype(alignments.get_reference());
 
-    int subregion_start = region_start + 612;
-    int subregion_end = subregion_start + 100;
-    int buffer = 20;
-    subregion_start -= buffer;
-    subregion_end += buffer;
-    
+    for(int subregion_start = region_start;
+             subregion_start < region_end; 
+             subregion_start += STRIDE)
+    {
+        int subregion_end = subregion_start + STRIDE;
+        subregion_start -= BUFFER;
+        subregion_end += BUFFER;
 
-    // extract data from alignment database
-    std::string ref_string = alignments.get_reference_substring(contig, subregion_start, subregion_end);
-    std::vector<std::string> read_strings = alignments.get_read_substrings(contig, subregion_start, subregion_end);
-    std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, subregion_start, subregion_end);
-    
-    printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
-    printf("%s\n", ref_string.c_str());
-
-    // extract potential variants from read strings
-    std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-    deduplicate_variants(candidate_variants);
-
-    // remove variants that are inside of the buffers
-    std::vector<Variant> tmp;
-    for(size_t i = 0; i < candidate_variants.size(); ++i) {
-        const Variant& v = candidate_variants[i];
-        int p = v.ref_position;
-        if(p >= buffer && ref_string.size() - p >= buffer) {
-            tmp.push_back(v);
-        }
-    }
-    candidate_variants.swap(tmp);
-
-    std::vector<Variant> selected_variants = select_variants(candidate_variants, ref_string, event_sequences);
-    for(size_t i = 0; i < selected_variants.size(); ++i) {
-        selected_variants[i].ref_name = contig;
-        selected_variants[i].ref_position += subregion_start;
-        selected_variants[i].write_vcf(stdout);
-    }
-
-#if 0
-    // calculate a quality score for each variant
-    for(size_t i = 0; i < variants.size(); ++i) {
-
-        if(variants[i].ref_position < buffer || 
-           ref_string.size() - variants[i].ref_position < buffer)
-        {
-            continue;
-        }
-
-        // apply the variant to the reference sequence
-        Haplotype haplotype(ref_string);
-        haplotype.apply_variant(variants[i]);
-
-        // Score all reads against both sequences
-        double quality = 0.0f;
-        size_t num_reads_improved = 0;
+        // extract data from alignment database
+        std::string ref_string = alignments.get_reference_substring(contig, subregion_start, subregion_end);
+        std::vector<std::string> read_strings = alignments.get_read_substrings(contig, subregion_start, subregion_end);
+        std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, subregion_start, subregion_end);
         
-        #pragma omp parallel for
-        for(size_t ri = 0; ri < event_sequences.size(); ++ri) {
-            double lp_ref = profile_hmm_score(ref_string, event_sequences[ri]);
-            double lp_hap = profile_hmm_score(haplotype.get_sequence(), event_sequences[ri]);
+        printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+        printf("%s\n", ref_string.c_str());
 
-            #pragma omp critical
-            {
-                quality += (lp_hap - lp_ref);
-                quality = std::max(quality, 0.0);
-                num_reads_improved += lp_hap > lp_ref;
+        // extract potential variants from read strings
+        std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+        deduplicate_variants(candidate_variants);
+
+        // remove variants that are inside of the buffers
+        std::vector<Variant> tmp;
+        for(size_t i = 0; i < candidate_variants.size(); ++i) {
+            const Variant& v = candidate_variants[i];
+            int p = v.ref_position;
+            if(p >= BUFFER && ref_string.size() - p >= BUFFER) {
+                tmp.push_back(v);
             }
         }
+        candidate_variants.swap(tmp);
 
-        //variants[i].ref_name = ref_name;
-        //variants[i].ref_position += offset + 1;
-        variants[i].quality = quality;
-        variants[i].add_info("TotalReads", event_sequences.size());
-        variants[i].add_info("SupportingReads", num_reads_improved);
-        if(variants[i].quality > 0) {
-            variants[i].write_vcf(stdout);
+        std::vector<Variant> selected_variants = select_variants(candidate_variants, ref_string, event_sequences);
+        for(size_t i = 0; i < selected_variants.size(); ++i) {
+            selected_variants[i].ref_name = contig;
+            selected_variants[i].ref_position += subregion_start;
+            selected_variants[i].write_vcf(stdout);
         }
     }
-#endif
 }
 
 void parse_consensus_options(int argc, char** argv)

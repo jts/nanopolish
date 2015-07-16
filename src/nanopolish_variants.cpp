@@ -135,7 +135,14 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
             derived.apply_variant(v);
 
             // score the haplotype
-            double variant_lp = profile_hmm_score(derived.get_sequence(), input);
+            double variant_lp = 0.0f;
+
+            #pragma omp parallel for
+            for(size_t j = 0; j < input.size(); ++j) {
+                double tmp = profile_hmm_score(derived.get_sequence(), input[j]);
+                #pragma omp critical
+                variant_lp += tmp;
+            }
             
             if(variant_lp > best_variant_lp) {
                 best_variant_lp = variant_lp;

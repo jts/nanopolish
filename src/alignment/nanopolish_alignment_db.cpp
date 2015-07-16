@@ -41,7 +41,7 @@ AlignmentDB::~AlignmentDB()
 
 std::string AlignmentDB::get_reference_substring(const std::string& contig,
                                                  int start_position,
-                                                 int stop_position)
+                                                 int stop_position) const
 {
     assert(m_region_contig == contig);
     assert(m_region_start <= start_position);
@@ -53,7 +53,7 @@ std::string AlignmentDB::get_reference_substring(const std::string& contig,
 
 std::vector<std::string> AlignmentDB::get_read_substrings(const std::string& contig,
                                                           int start_position,
-                                                          int stop_position)
+                                                          int stop_position) const
 {
     assert(m_region_contig == contig);
     assert(m_region_start <= start_position);
@@ -81,7 +81,7 @@ std::vector<std::string> AlignmentDB::get_read_substrings(const std::string& con
 
 std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string& contig,
                                                               int start_position,
-                                                              int stop_position)
+                                                              int stop_position) const
 {
     assert(m_region_contig == contig);
     assert(m_region_start <= start_position);
@@ -300,7 +300,7 @@ bool AlignmentDB::_find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
                                       int ref_start,
                                       int ref_stop,
                                       int& read_start,
-                                      int& read_stop)
+                                      int& read_stop) const
 {
     AlignedPairRefLBComp lb_comp;
     AlignedPairConstIter start_iter = std::lower_bound(pairs.begin(), pairs.end(),
