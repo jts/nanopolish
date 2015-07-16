@@ -43,35 +43,66 @@ std::vector<std::string> AlignmentDB::get_read_strings(const std::string& contig
                                                        int start_position,
                                                        int stop_position)
 {
+    assert(m_region_contig == contig);
+    assert(m_region_start <= start_position);
+    assert(m_region_end >= stop_position);
+
     std::vector<std::string> out;
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& record = m_sequence_records[i];
         if(record.aligned_bases.empty())
             continue;
-
-        AlignedPairRefLBComp lb_comp;
-        AlignedPairConstIter lower = std::lower_bound(record.aligned_bases.begin(),
-                                                      record.aligned_bases.end(),
-                                                      start_position,
-                                                      lb_comp);
-
-        AlignedPairRefUBComp ub_comp;
-        AlignedPairConstIter upper = std::upper_bound(record.aligned_bases.begin(),
-                                                      record.aligned_bases.end(),
-                                                      stop_position,
-                                                      ub_comp);
-
-
-        if(lower != record.aligned_bases.end() &&
-           upper != record.aligned_bases.end() &&
-           lower != upper) 
-        {
-            out.push_back(record.sequence.substr(lower->read_pos, upper->read_pos - lower->read_pos));
-            printf("lower: %d %d\n", lower->ref_pos, lower->read_pos);
-            printf("upper: %d %d\n", upper->ref_pos, upper->read_pos);
-            printf("strng: %s\n", out.back().c_str());
+        
+        int r1, r2;
+        bool bounded = _find_by_ref_bounds(record.aligned_bases, 
+                                           start_position, 
+                                           stop_position,
+                                           r1,
+                                           r2);
+        
+        if(bounded) {
+            out.push_back(record.sequence.substr(r1, r2 - r1 + 1));
         }
     }
+    return out;
+}
+
+std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string& contig,
+                                                              int start_position,
+                                                              int stop_position)
+{
+    assert(m_region_contig == contig);
+    assert(m_region_start <= start_position);
+    assert(m_region_end >= stop_position);
+
+    std::vector<HMMInputData> out;
+    for(size_t i = 0; i < m_event_records.size(); ++i) {
+        const EventAlignmentRecord& record = m_event_records[i];
+        if(record.aligned_events.empty())
+            continue;
+
+        HMMInputData data;
+        data.read = record.sr;
+        data.anchor_index = -1; // unused
+        data.strand = record.strand;
+        data.rc = record.rc;
+        data.event_stride = record.stride;
+        
+        int e1,e2;
+        bool bounded = _find_by_ref_bounds(record.aligned_events, 
+                                           start_position, 
+                                           stop_position,
+                                           e1,
+                                           e2);
+        if(bounded) {
+            assert(e1 >= 0);
+            assert(e2 >= 0);
+            data.event_start_idx = e1;
+            data.event_stop_idx = e2;
+            out.push_back(data);
+        }
+    }
+
     return out;
 }
         
@@ -202,12 +233,15 @@ void AlignmentDB::_load_events_by_region()
         std::string full_name = bam_get_qname(handles.bam_record);
         
         // Check for the template/complement suffix
+        bool is_template = true;
         size_t suffix_pos = 0;
         suffix_pos = full_name.find(".template");
         if(suffix_pos == std::string::npos) {
             suffix_pos = full_name.find(".complement");
+            assert(suffix_pos != std::string::npos);
+            is_template = false;
         }
-        assert(suffix_pos != std::string::npos);
+
         std::string read_name = full_name.substr(0, suffix_pos);
         std::string fast5_path = m_fast5_name_map.get_path(read_name);
 
@@ -224,6 +258,10 @@ void AlignmentDB::_load_events_by_region()
 
         // copy event alignments
         event_record.aligned_events = get_aligned_pairs(handles.bam_record, event_stride);
+
+        event_record.rc = bam_is_rev(handles.bam_record);
+        event_record.stride = event_stride;
+        event_record.strand = is_template ? T_IDX : C_IDX;
         m_event_records.push_back(event_record);
         
         printf("event_record[%zu] name: %s stride: %d align bounds [%d %d] [%d %d]\n", 
@@ -242,3 +280,23 @@ void AlignmentDB::_load_events_by_region()
     sam_close(handles.bam_fh);
 }
 
+bool AlignmentDB::_find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                      int ref_start,
+                                      int ref_stop,
+                                      int& read_start,
+                                      int& read_stop)
+{
+    AlignedPairRefLBComp lb_comp;
+    AlignedPairConstIter start_iter = std::lower_bound(pairs.begin(), pairs.end(),
+                                                       ref_start, lb_comp);
+
+    AlignedPairConstIter stop_iter = std::lower_bound(pairs.begin(), pairs.end(),
+                                                      ref_stop, lb_comp);
+
+    if(start_iter == pairs.end() || stop_iter == pairs.end() || start_iter == stop_iter)
+        return false;
+
+    read_start = start_iter->read_pos;
+    read_stop = stop_iter->read_pos;
+    return true;
+}

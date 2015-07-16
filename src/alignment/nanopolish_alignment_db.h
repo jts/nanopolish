@@ -24,6 +24,9 @@ struct SequenceAlignmentRecord
 struct EventAlignmentRecord
 {
     SquiggleRead* sr;
+    uint8_t rc; // with respect to reference genome
+    uint8_t strand; // 0 = template, 1 = complement
+    uint8_t stride; // whether event indices increase or decrease along the reference
     std::vector<AlignedPair> aligned_events;
 };
 
@@ -60,12 +63,30 @@ class AlignmentDB
                                                   int start_position,
                                                   int stop_position);
 
+        std::vector<HMMInputData> get_event_subsequences(const std::string& contig,
+                                                         int start_position,
+                                                         int stop_position);
+
+
     private:
         
         void _load_sequence_by_region();
         void _load_events_by_region();
         void _clear_region();
 
+        // Search the vector of AlignedPairs using lower_bound/upper_bound
+        // and the input reference coordinates. If the search succeeds,
+        // set read_start/read_stop to be the read_pos of the bounding elements
+        // and return true. 
+        bool _find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                 int ref_start,
+                                 int ref_stop,
+                                 int& read_start,
+                                 int& read_stop);
+
+        //
+        // data
+        //
         std::string m_reference_file;
         std::string m_sequence_bam;
         std::string m_event_bam;
