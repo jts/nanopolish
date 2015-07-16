@@ -27,7 +27,19 @@ struct EventAlignmentRecord
     std::vector<AlignedPair> aligned_events;
 };
 
+struct AlignedPairRefLBComp
+{
+    bool operator()(const AlignedPair& o, int v) { return o.ref_pos < v; }
+};
+
+struct AlignedPairRefUBComp
+{
+    bool operator()(int v, const AlignedPair& o) { return v < o.ref_pos; }
+};
+
 // typedefs
+typedef std::vector<AlignedPair>::iterator AlignedPairIter;
+typedef std::vector<AlignedPair>::const_iterator AlignedPairConstIter;
 typedef std::map<std::string, SquiggleRead*> SquiggleReadMap;
 
 class AlignmentDB
@@ -43,6 +55,10 @@ class AlignmentDB
         void load_region(const std::string& contig,
                          int start_position,
                          int stop_position);
+
+        std::vector<std::string> get_read_strings(const std::string& contig,
+                                                  int start_position,
+                                                  int stop_position);
 
     private:
         

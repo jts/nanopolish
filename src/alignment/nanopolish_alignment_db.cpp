@@ -7,6 +7,7 @@
 // with sets of reads/events aligned to a reference genome
 //
 #include <assert.h>
+#include <algorithm>
 #include "nanopolish_alignment_db.h"
 #include "htslib/faidx.h"
 #include "htslib/hts.h"
@@ -36,6 +37,42 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
 AlignmentDB::~AlignmentDB()
 {
     _clear_region();
+}
+
+std::vector<std::string> AlignmentDB::get_read_strings(const std::string& contig,
+                                                       int start_position,
+                                                       int stop_position)
+{
+    std::vector<std::string> out;
+    for(size_t i = 0; i < m_sequence_records.size(); ++i) {
+        const SequenceAlignmentRecord& record = m_sequence_records[i];
+        if(record.aligned_bases.empty())
+            continue;
+
+        AlignedPairRefLBComp lb_comp;
+        AlignedPairConstIter lower = std::lower_bound(record.aligned_bases.begin(),
+                                                      record.aligned_bases.end(),
+                                                      start_position,
+                                                      lb_comp);
+
+        AlignedPairRefUBComp ub_comp;
+        AlignedPairConstIter upper = std::upper_bound(record.aligned_bases.begin(),
+                                                      record.aligned_bases.end(),
+                                                      stop_position,
+                                                      ub_comp);
+
+
+        if(lower != record.aligned_bases.end() &&
+           upper != record.aligned_bases.end() &&
+           lower != upper) 
+        {
+            out.push_back(record.sequence.substr(lower->read_pos, upper->read_pos - lower->read_pos));
+            printf("lower: %d %d\n", lower->ref_pos, lower->read_pos);
+            printf("upper: %d %d\n", upper->ref_pos, upper->read_pos);
+            printf("strng: %s\n", out.back().c_str());
+        }
+    }
+    return out;
 }
         
 void AlignmentDB::load_region(const std::string& contig,
@@ -73,7 +110,9 @@ void AlignmentDB::_clear_region()
         iter != m_squiggle_read_map.end(); ++iter) 
     {
         delete iter->second;
+        iter->second = NULL;
     }
+
     m_squiggle_read_map.clear();
     m_sequence_records.clear();
     m_event_records.clear();

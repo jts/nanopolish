@@ -951,7 +951,7 @@ int consensus_main(int argc, char** argv)
     
         AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
         alignments.load_region(contig, start_base, end_base);
-        
+        alignments.get_read_strings(contig, start_base + 500, start_base + 600);
         /*
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
