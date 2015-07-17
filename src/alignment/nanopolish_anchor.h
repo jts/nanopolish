@@ -22,6 +22,20 @@ struct AlignedPair
     int read_pos;
 };
 
+struct AlignedPairRefLBComp
+{
+    bool operator()(const AlignedPair& o, int v) { return o.ref_pos < v; }
+};
+
+struct AlignedPairRefUBComp
+{
+    bool operator()(int v, const AlignedPair& o) { return v < o.ref_pos; }
+};
+
+// typedefs
+typedef std::vector<AlignedPair>::iterator AlignedPairIter;
+typedef std::vector<AlignedPair>::const_iterator AlignedPairConstIter;
+
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
 struct HMMStrandAnchor

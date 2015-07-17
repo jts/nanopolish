@@ -693,6 +693,7 @@ void train(HMMRealignmentInput& window)
 
 void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
+    /*
     // Recompute a reference-based window with sampled columns
     // This is a bit wasteful but the window coordinates are re-aligned during the consensus step so need to be regenerated for now
     int minor_segment_stride = 100;
@@ -773,6 +774,7 @@ void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, co
         variants[i].add_info("SupportingReads", num_reads_improved);
         variants[i].write_vcf(out_fp);
     }
+    */
 }
 
 std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
@@ -945,43 +947,56 @@ void find_variants_for_region(const std::string& contig, int region_start, int r
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
-    Haplotype derived_haplotype(alignments.get_reference());
+    Haplotype derived_haplotype(contig,
+                                alignments.get_region_start(),
+                                alignments.get_reference());
 
     for(int subregion_start = region_start;
              subregion_start < region_end; 
              subregion_start += STRIDE)
     {
         int subregion_end = subregion_start + STRIDE;
-        subregion_start -= BUFFER;
-        subregion_end += BUFFER;
+
+        int buffer_start = subregion_start - BUFFER;
+        int buffer_end = subregion_end + BUFFER;
 
         // extract data from alignment database
-        std::string ref_string = alignments.get_reference_substring(contig, subregion_start, subregion_end);
-        std::vector<std::string> read_strings = alignments.get_read_substrings(contig, subregion_start, subregion_end);
-        std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, subregion_start, subregion_end);
+        std::string ref_string = alignments.get_reference_substring(contig, buffer_start, buffer_end);
+        std::vector<std::string> read_strings = alignments.get_read_substrings(contig, buffer_start, buffer_end);
+        std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, buffer_start, buffer_end);
         
-        printf("%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+        printf("%s:%d-%d B:%d-%d\n", contig.c_str(), subregion_start, subregion_end, buffer_start, buffer_end);
         printf("%s\n", ref_string.c_str());
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
         filter_variants_by_count(candidate_variants, 2);
 
-        // remove variants that are inside of the buffers
+        // remove variants that are inside of the buffer regions
         std::vector<Variant> tmp;
         for(size_t i = 0; i < candidate_variants.size(); ++i) {
-            const Variant& v = candidate_variants[i];
+            Variant& v = candidate_variants[i];
+
             int p = v.ref_position;
             if(p >= BUFFER && ref_string.size() - p >= BUFFER) {
+            
+                // The coordinate is relative to the subregion start, update it
+                v.ref_name = contig;
+                v.ref_position += buffer_start;
+
                 tmp.push_back(v);
             }
         }
         candidate_variants.swap(tmp);
 
-        std::vector<Variant> selected_variants = select_variants(candidate_variants, ref_string, event_sequences);
+        // Add variants into the haplotype
+        Haplotype subregion_haplotype = derived_haplotype.substr_by_reference(buffer_start, buffer_end);
+        printf("LOCALREF: %s\n", subregion_haplotype.get_reference().c_str());
+        printf("LOCALHAP: %s\n", subregion_haplotype.get_sequence().c_str());
+
+        std::vector<Variant> selected_variants = select_variants(candidate_variants, subregion_haplotype, event_sequences);
         for(size_t i = 0; i < selected_variants.size(); ++i) {
-            selected_variants[i].ref_name = contig;
-            selected_variants[i].ref_position += subregion_start;
+            derived_haplotype.apply_variant(selected_variants[i]);
             selected_variants[i].write_vcf(stdout);
         }
     }

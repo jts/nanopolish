@@ -12,6 +12,9 @@
 #include "stdaln.h"
 #include "nanopolish_common.h"
 
+// forward declare
+class Haplotype;
+
 struct Variant
 {
     static void write_vcf_header(FILE* fp) {
@@ -64,7 +67,7 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 // Parse variants from the called haplotype and calculate
 // quality scores for them
 std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,
-                                     const std::string& reference, 
+                                     Haplotype base_haplotype, 
                                      const std::vector<HMMInputData>& input);
 
 #endif

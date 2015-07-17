@@ -113,7 +113,7 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
 // Parse variants from the called haplotype and calculate
 // quality scores for them
 std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,
-                                     const std::string& reference, 
+                                     Haplotype base_haplotype,
                                      const std::vector<HMMInputData>& input)
 {
     // make a copy of the variant set to modify
@@ -122,11 +122,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
     // Calculate baseline probablilty
     std::vector<Variant> selected_variants;
 
-    //
-    // Test each variant, greedily selecting the best one at each step
-    //
-    Haplotype base(reference);
-    double base_lp = profile_hmm_score(base.get_sequence(), input);
+    double base_lp = profile_hmm_score(base_haplotype.get_sequence(), input);
 
     while(!all_variants.empty()) {
  
@@ -137,7 +133,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
         
             // apply the variant to get a new haplotype
             Variant& v = all_variants[i];
-            Haplotype derived = base;
+            Haplotype derived = base_haplotype;
             derived.apply_variant(v);
 
             // score the haplotype
@@ -169,7 +165,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
             //selected_variants.back().write_vcf(stdout);
 
             // apply the variant to the base haplotype
-            base.apply_variant(selected_variants.back());
+            base_haplotype.apply_variant(selected_variants.back());
             base_lp = best_variant_lp;
         } else {
             // no variant improved upon the base haplotype, stop
