@@ -965,8 +965,11 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         std::vector<std::string> read_strings = alignments.get_read_substrings(contig, buffer_start, buffer_end);
         std::vector<HMMInputData> event_sequences = alignments.get_event_subsequences(contig, buffer_start, buffer_end);
         
-        printf("%s:%d-%d B:%d-%d\n", contig.c_str(), subregion_start, subregion_end, buffer_start, buffer_end);
-        printf("%s\n", ref_string.c_str());
+        if(opt::verbose > 1) {
+            fprintf(stderr, "Calling:\n");
+            fprintf(stderr, "%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+            fprintf(stderr, "%s\n", ref_string.c_str());
+        }
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
