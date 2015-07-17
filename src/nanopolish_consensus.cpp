@@ -939,7 +939,7 @@ std::vector<Variant> generate_variants_from_reads(const std::string& reference, 
     return out;
 }
 
-void find_variants_for_region(const std::string& contig, int region_start, int region_end)
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = 20;
     int STRIDE = 100;
@@ -991,15 +991,14 @@ void find_variants_for_region(const std::string& contig, int region_start, int r
 
         // Add variants into the haplotype
         Haplotype subregion_haplotype = derived_haplotype.substr_by_reference(buffer_start, buffer_end);
-        printf("LOCALREF: %s\n", subregion_haplotype.get_reference().c_str());
-        printf("LOCALHAP: %s\n", subregion_haplotype.get_sequence().c_str());
-
         std::vector<Variant> selected_variants = select_variants(candidate_variants, subregion_haplotype, event_sequences);
         for(size_t i = 0; i < selected_variants.size(); ++i) {
             derived_haplotype.apply_variant(selected_variants[i]);
             selected_variants[i].write_vcf(stdout);
         }
     }
+
+    return derived_haplotype;
 }
 
 void parse_consensus_options(int argc, char** argv)
@@ -1101,7 +1100,16 @@ int consensus_main(int argc, char** argv)
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
     
-        find_variants_for_region(contig, start_base, end_base);
+        Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
+
+        fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, haplotype.get_sequence().c_str());
+
+        if(!opt::output_vcf.empty()) {
+            std::vector<Variant> variants = haplotype.get_variants();
+            for(size_t vi = 0; vi < variants.size(); vi++) {
+                variants[vi].write_vcf(out_vcf);
+            }
+        }
     }
 
     if(out_fp != stdout) {

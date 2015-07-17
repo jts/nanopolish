@@ -29,6 +29,9 @@ class Haplotype
         // add a variant into the haplotype
         void apply_variant(const Variant& v);
 
+        // return all the variants on this haplotype
+        std::vector<Variant> get_variants() const { return m_variants; }
+
         // return a new haplotype subsetted by reference coordinates
         Haplotype substr_by_reference(size_t start, size_t end);
 

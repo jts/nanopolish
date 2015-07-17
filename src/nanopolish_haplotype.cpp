@@ -81,14 +81,12 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end)
     size_t derived_base_start = _find_derived_index_by_ref_lower_bound(start);
     size_t derived_base_end = _find_derived_index_by_ref_lower_bound(end);
     
-    // Bump out the reference coordinate to encompress the complete range (start, end)
+    // Bump out the reference coordinate to encompass the complete range (start, end)
     while(m_coordinate_map[derived_base_start] > start &&
           m_coordinate_map[derived_base_start] == INSERTED_POSITION)
     { 
         derived_base_start -= 1;
     }
-
-    printf("REQUESTED: [%zu %zu]\n", start, end);
 
     assert(derived_base_start != m_coordinate_map.size());
     assert(derived_base_end != m_coordinate_map.size());
@@ -98,8 +96,6 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end)
     start = m_coordinate_map[derived_base_start];
     end = m_coordinate_map[derived_base_end];
     
-    printf("RECEIVED:  [%zu %zu]\n", start, end);
-
     Haplotype ret(m_ref_name,
                   start,
                   m_reference.substr(start - m_ref_position, end - start + 1));
