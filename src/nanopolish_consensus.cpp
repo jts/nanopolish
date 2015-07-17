@@ -895,12 +895,41 @@ std::vector<Variant> generate_variants_from_reads(const std::string& reference, 
             // substrings must share a k-mer at the beginning/end
             assert(ref_subseq.substr(0, K) == read_subseq.substr(0, K));    
             assert(ref_subseq.substr(bl - K) == read_subseq.substr(rl - K));    
+            assert(ref_subseq != read_subseq);
 
-            std::vector<Variant> local_variants = extract_variants(ref_subseq, read_subseq);
-            for(size_t vi = 0; vi < local_variants.size(); ++vi) {
-                local_variants[vi].ref_position += result[match_idx].i;
-                out.push_back(local_variants[vi]); 
+            // Find the left boundary of the difference
+            int ref_s = 0;
+            int read_s = 0;
+            while(ref_subseq[ref_s] == read_subseq[read_s]) {
+                ref_s += 1;
+                read_s += 1;
             }
+
+            // if its an indel or complex variant, include one matching base
+            if(ref_subseq.length() != read_subseq.length() || ref_s != read_s) {
+                ref_s -= 1;
+                read_s -= 1;
+            }
+            
+            std::string tmp_ref = ref_subseq.substr(ref_s);
+            std::string tmp_read = read_subseq.substr(read_s);
+
+            // trim unnecessary bases from the end
+            while(tmp_ref.size() > 1 && tmp_read.size() > 1 && 
+                  tmp_ref.back() == tmp_read.back()) 
+            {
+                tmp_ref.pop_back();
+                tmp_read.pop_back();
+                assert(!tmp_ref.empty());
+                assert(!tmp_read.empty());
+            }
+
+            Variant v;
+            v.ref_name = "noctg";
+            v.ref_position = ref_s + result[match_idx].i;
+            v.ref_seq = tmp_ref;
+            v.alt_seq = tmp_read;
+            out.push_back(v);
 
             match_idx += 1;
         }
@@ -911,7 +940,7 @@ std::vector<Variant> generate_variants_from_reads(const std::string& reference, 
 void find_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = 20;
-    int STRIDE= 100;
+    int STRIDE = 100;
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
@@ -936,7 +965,7 @@ void find_variants_for_region(const std::string& contig, int region_start, int r
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        deduplicate_variants(candidate_variants);
+        filter_variants_by_count(candidate_variants, 2);
 
         // remove variants that are inside of the buffers
         std::vector<Variant> tmp;

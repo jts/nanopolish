@@ -50,7 +50,7 @@ std::vector<Variant> extract_variants(const std::string& reference,
     // diff_start iterates over the places where these sequences are different
     size_t diff_start = 0;
     while(1) {
-
+        
         // find the start point of the next difference between the strings
         while(diff_start < pad_ref.size() && pad_ref[diff_start] == pad_hap[diff_start]) {
             diff_start++;
@@ -87,20 +87,26 @@ std::vector<Variant> extract_variants(const std::string& reference,
     return variants;
 }
 
-void deduplicate_variants(std::vector<Variant>& variants)
+void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
 {
-    std::map<std::string, Variant> map;
+    std::map<std::string, std::pair<Variant, int>> map;
+
     for(size_t i = 0; i < variants.size(); ++i) {
-        if(map.find(variants[i].key()) == map.end()) {
-            map[variants[i].key()] = variants[i];
+        std::string key = variants[i].key();
+        auto iter = map.find(key);
+        if(iter == map.end()) {
+            map.insert(std::make_pair(key, std::make_pair(variants[i], 1)));
+        } else {
+            iter->second.second += 1;
         }
     }
 
     variants.clear();
-    for(std::map<std::string, Variant>::iterator iter = map.begin();
-        iter != map.end(); ++iter)
-    {
-        variants.push_back(iter->second);
+
+    for(auto iter = map.begin(); iter != map.end(); ++iter) {
+        if(iter->second.second >= min_count) {
+            variants.push_back(iter->second.first);
+        }
     }
 }
 

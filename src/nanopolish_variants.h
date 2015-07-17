@@ -58,9 +58,8 @@ struct Variant
 std::vector<Variant> extract_variants(const std::string& reference, 
                                       const std::string& haplotype);
 
-// Remove redundant variants from the vector
-// Optionally remove variants that have been seen fewer than min_count times
-void deduplicate_variants(std::vector<Variant>& variants);
+// Remove variants that are in the vector fewer than min_count times
+void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 
 // Parse variants from the called haplotype and calculate
 // quality scores for them
