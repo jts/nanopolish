@@ -31,7 +31,7 @@ struct Variant
 
     void write_vcf(FILE* fp)
     {
-        fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position, ".");
+        fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
         fprintf(fp, "%s\t%s\n", "PASS", info.c_str());
     }

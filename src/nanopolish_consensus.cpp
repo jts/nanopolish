@@ -303,9 +303,12 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     const int BUFFER = 20;
     int STRIDE = 100;
 
+    if(region_start < BUFFER)
+        region_start = BUFFER;
+
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
-    alignments.load_region(contig, std::max(0, region_start - BUFFER), region_end + BUFFER);
+    alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
     Haplotype derived_haplotype(contig,
                                 alignments.get_region_start(),
                                 alignments.get_reference());
@@ -317,9 +320,6 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         int subregion_end = subregion_start + STRIDE;
 
         int buffer_start = subregion_start - BUFFER;
-        // clamp buffer to beginning of chomosome
-        buffer_start = std::max(0, buffer_start);
-
         int buffer_end = subregion_end + BUFFER;
 
         // extract data from alignment database
@@ -329,7 +329,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         
         if(opt::verbose > 1) {
             fprintf(stderr, "Calling:\n");
-            fprintf(stderr, "%s:%d-%d\n", contig.c_str(), subregion_start, subregion_end);
+            fprintf(stderr, "%s:%d-%d using buffer range [%d %d]\n", contig.c_str(), subregion_start, subregion_end, buffer_start, buffer_end);
             fprintf(stderr, "%s\n", ref_string.c_str());
         }
 
