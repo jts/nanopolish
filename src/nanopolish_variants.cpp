@@ -112,6 +112,19 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
     }
 }
 
+void filter_out_non_snp_variants(std::vector<Variant>& variants)
+{
+    std::vector<Variant> tmp;
+    for(size_t i = 0; i < variants.size(); ++i) {
+        bool is_snp = variants[i].ref_seq.length() == 1 &&
+                      variants[i].alt_seq.length() == 1;
+        if(is_snp) {
+            tmp.push_back(variants[i]);
+        }
+    }
+    variants.swap(tmp);
+}
+
 // Parse variants from the called haplotype and calculate
 // quality scores for them
 std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,

@@ -64,6 +64,9 @@ std::vector<Variant> extract_variants(const std::string& reference,
 // Remove variants that are in the vector fewer than min_count times
 void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 
+// Remove snps or indels 
+void filter_out_non_snp_variants(std::vector<Variant>& variants);
+
 // Parse variants from the called haplotype and calculate
 // quality scores for them
 std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,

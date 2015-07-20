@@ -66,6 +66,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -m, --min-read-evidence=N            require at least N reads to have a variant to try calling it\n"
+"      --snps                           only call SNPs\n"
 "  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
@@ -86,6 +87,7 @@ namespace opt
     static std::string output_file;
     static std::string output_vcf;
     static std::string window;
+    static int snps_only = 0;
     static int min_read_evidence = 1;
     static int show_progress = 0;
     static int num_threads = 1;
@@ -93,7 +95,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY };
 
 static const struct option longopts[] = {
     { "verbose",           no_argument,       NULL, 'v' },
@@ -106,6 +108,7 @@ static const struct option longopts[] = {
     { "threads",           required_argument, NULL, 't' },
     { "min-read-evidence", required_argument, NULL, 'm' },
     { "vcf",               required_argument, NULL, OPT_VCF },
+    { "snps",              no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",          no_argument,       NULL, OPT_PROGRESS },
     { "help",              no_argument,       NULL, OPT_HELP },
     { "version",           no_argument,       NULL, OPT_VERSION },
@@ -308,8 +311,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                 alignments.get_reference());
 
     for(int subregion_start = region_start;
-             subregion_start < region_end; 
-             subregion_start += STRIDE)
+            subregion_start < region_end; 
+            subregion_start += STRIDE)
     {
         int subregion_end = subregion_start + STRIDE;
 
@@ -332,7 +335,11 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+        
         filter_variants_by_count(candidate_variants, opt::min_read_evidence);
+        if(opt::snps_only) {
+            filter_out_non_snp_variants(candidate_variants);
+        }
 
         // remove variants that are inside of the buffer regions
         std::vector<Variant> tmp;
@@ -381,6 +388,7 @@ void parse_consensus_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_SNPS_ONLY: opt::snps_only = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_VCF: arg >> opt::output_vcf; break;
             case OPT_HELP:
@@ -475,6 +483,7 @@ int consensus_main(int argc, char** argv)
         if(!opt::output_vcf.empty()) {
             std::vector<Variant> variants = haplotype.get_variants();
             for(size_t vi = 0; vi < variants.size(); vi++) {
+                variants[vi].ref_position += 1;
                 variants[vi].write_vcf(out_vcf);
             }
         }
