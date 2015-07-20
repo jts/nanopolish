@@ -65,6 +65,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
+"  -m, --min-read-evidence=N            require at least N reads to have a variant to try calling it\n"
 "  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
@@ -85,27 +86,29 @@ namespace opt
     static std::string output_file;
     static std::string output_vcf;
     static std::string window;
+    static int min_read_evidence = 1;
     static int show_progress = 0;
     static int num_threads = 1;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:v";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS };
 
 static const struct option longopts[] = {
-    { "verbose",     no_argument,       NULL, 'v' },
-    { "reads",       required_argument, NULL, 'r' },
-    { "bam",         required_argument, NULL, 'b' },
-    { "event-bam",   required_argument, NULL, 'e' },
-    { "genome",      required_argument, NULL, 'g' },
-    { "window",      required_argument, NULL, 'w' },
-    { "outfile",     required_argument, NULL, 'o' },
-    { "threads",     required_argument, NULL, 't' },
-    { "vcf",         required_argument, NULL, OPT_VCF },
-    { "progress",    no_argument,       NULL, OPT_PROGRESS },
-    { "help",        no_argument,       NULL, OPT_HELP },
-    { "version",     no_argument,       NULL, OPT_VERSION },
+    { "verbose",           no_argument,       NULL, 'v' },
+    { "reads",             required_argument, NULL, 'r' },
+    { "bam",               required_argument, NULL, 'b' },
+    { "event-bam",         required_argument, NULL, 'e' },
+    { "genome",            required_argument, NULL, 'g' },
+    { "window",            required_argument, NULL, 'w' },
+    { "outfile",           required_argument, NULL, 'o' },
+    { "threads",           required_argument, NULL, 't' },
+    { "min-read-evidence", required_argument, NULL, 'm' },
+    { "vcf",               required_argument, NULL, OPT_VCF },
+    { "progress",          no_argument,       NULL, OPT_PROGRESS },
+    { "help",              no_argument,       NULL, OPT_HELP },
+    { "version",           no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
 
@@ -299,7 +302,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
-    alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
+    alignments.load_region(contig, std::max(0, region_start - BUFFER), region_end + BUFFER);
     Haplotype derived_haplotype(contig,
                                 alignments.get_region_start(),
                                 alignments.get_reference());
@@ -311,6 +314,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         int subregion_end = subregion_start + STRIDE;
 
         int buffer_start = subregion_start - BUFFER;
+        // clamp buffer to beginning of chomosome
+        buffer_start = std::max(0, buffer_start);
+
         int buffer_end = subregion_end + BUFFER;
 
         // extract data from alignment database
@@ -326,7 +332,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        filter_variants_by_count(candidate_variants, 2);
+        filter_variants_by_count(candidate_variants, opt::min_read_evidence);
 
         // remove variants that are inside of the buffer regions
         std::vector<Variant> tmp;
@@ -371,6 +377,7 @@ void parse_consensus_options(int argc, char** argv)
             case 'e': arg >> opt::event_bam_file; break;
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
+            case 'm': arg >> opt::min_read_evidence; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;

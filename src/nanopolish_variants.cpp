@@ -104,8 +104,10 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
     variants.clear();
 
     for(auto iter = map.begin(); iter != map.end(); ++iter) {
+        Variant& v = iter->second.first;
         if(iter->second.second >= min_count) {
-            variants.push_back(iter->second.first);
+            v.add_info("ReadDepth", iter->second.second);
+            variants.push_back(v);
         }
     }
 }
@@ -152,7 +154,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
             }
         }
 
-        if(best_variant_lp > base_lp) {
+        if(best_variant_lp - base_lp > 1.0) {
             // move the best variant from the all list to the selected list
             selected_variants.push_back(all_variants[best_variant_idx]);
 
