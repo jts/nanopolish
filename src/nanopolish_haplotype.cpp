@@ -82,7 +82,7 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end)
     size_t derived_base_end = _find_derived_index_by_ref_lower_bound(end);
     
     // Bump out the reference coordinate to encompass the complete range (start, end)
-    while(m_coordinate_map[derived_base_start] > start &&
+    while(m_coordinate_map[derived_base_start] > start ||
           m_coordinate_map[derived_base_start] == INSERTED_POSITION)
     { 
         derived_base_start -= 1;

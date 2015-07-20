@@ -321,6 +321,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         int buffer_start = subregion_start - BUFFER;
         int buffer_end = subregion_end + BUFFER;
+        buffer_end = std::min(region_end, buffer_end);
 
         // extract data from alignment database
         std::string ref_string = alignments.get_reference_substring(contig, buffer_start, buffer_end);
@@ -483,7 +484,6 @@ int consensus_main(int argc, char** argv)
         if(!opt::output_vcf.empty()) {
             std::vector<Variant> variants = haplotype.get_variants();
             for(size_t vi = 0; vi < variants.size(); vi++) {
-                variants[vi].ref_position += 1;
                 variants[vi].write_vcf(out_vcf);
             }
         }
