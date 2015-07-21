@@ -143,6 +143,13 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
  
         double best_variant_lp = -INFINITY;
         size_t best_variant_idx = 0;
+        size_t best_supporting_reads = 0;
+
+        std::vector<double> base_lp_by_read; 
+        for(size_t j = 0; j < input.size(); ++j) {
+            double tmp = profile_hmm_score(base_haplotype.get_sequence(), input[j]);
+            base_lp_by_read.push_back(tmp);
+        }
 
         for(size_t i = 0; i < all_variants.size(); ++i) {
         
@@ -153,31 +160,35 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 
             // score the haplotype
             double variant_lp = 0.0f;
-
+            size_t supporting_reads = 0;
             #pragma omp parallel for
             for(size_t j = 0; j < input.size(); ++j) {
                 double tmp = profile_hmm_score(derived.get_sequence(), input[j]);
                 #pragma omp critical
-                variant_lp += tmp;
+                {
+                    variant_lp += tmp;
+                    supporting_reads += tmp > base_lp_by_read[j];
+                }
             }
             
             if(variant_lp > best_variant_lp) {
                 best_variant_lp = variant_lp;
                 best_variant_idx = i;
+                best_supporting_reads = supporting_reads;
+                
             }
         }
 
         if(best_variant_lp - base_lp > 1.0) {
             // move the best variant from the all list to the selected list
-            selected_variants.push_back(all_variants[best_variant_idx]);
-
-            all_variants.erase(all_variants.begin() + best_variant_idx);
-            
-            // calculate a quality score for the variant
-            selected_variants.back().quality = best_variant_lp - base_lp;
+            Variant& best_variant = all_variants[best_variant_idx];
+            best_variant.add_info("TotalReads", input.size());
+            best_variant.add_info("SupportingReads", best_supporting_reads);
+            best_variant.add_info("SupportFraction", (double)best_supporting_reads / input.size());
+            best_variant.quality = best_variant_lp - base_lp;
+            selected_variants.push_back(best_variant);
 
             //printf("SELECTED %zu from %zu: \n\t", best_variant_idx, all_variants.size() + 1);
-            //selected_variants.back().write_vcf(stdout);
 
             // apply the variant to the base haplotype
             base_haplotype.apply_variant(selected_variants.back());

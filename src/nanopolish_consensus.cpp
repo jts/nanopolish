@@ -209,6 +209,25 @@ void train(HMMRealignmentInput& window)
     }
 }
 
+std::vector<Variant> generate_all_snps(const std::string& reference)
+{
+    std::vector<Variant> out;
+    for(size_t i = 0; i < reference.size(); ++i) {
+        for(size_t bi = 0; bi < 4; ++bi) {
+            char b = "ACGT"[bi];
+            if(reference[i] != b) {
+                Variant v;
+                v.ref_name = "noctg";
+                v.ref_position = i;
+                v.ref_seq = reference[i];
+                v.alt_seq = b;
+                out.push_back(v);
+            }
+        }
+    }
+    return out;
+}
+
 std::vector<Variant> generate_variants_from_reads(const std::string& reference, const std::vector<std::string>& reads)
 {
     std::vector<Variant> out;
@@ -304,7 +323,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     int STRIDE = 100;
 
     if(region_start < BUFFER)
-        region_start = BUFFER;
+        region_start = BUFFER + 20;
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
@@ -336,8 +355,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         // extract potential variants from read strings
         std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        
-        filter_variants_by_count(candidate_variants, opt::min_read_evidence);
+        //std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
+
+        //filter_variants_by_count(candidate_variants, opt::min_read_evidence);
         if(opt::snps_only) {
             filter_out_non_snp_variants(candidate_variants);
         }
