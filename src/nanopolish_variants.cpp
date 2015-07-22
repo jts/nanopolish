@@ -171,6 +171,12 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
                 }
             }
             
+            if(variant_lp - base_lp > 200.0f) {
+                v.quality = variant_lp - base_lp;
+                //fprintf(stderr, "Candidate with score [%.2lf]\n", variant_lp - base_lp);
+                v.write_vcf(stderr);
+            }
+
             if(variant_lp > best_variant_lp) {
                 best_variant_lp = variant_lp;
                 best_variant_idx = i;
