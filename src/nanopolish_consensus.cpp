@@ -354,10 +354,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
 
         // extract potential variants from read strings
-        //std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
+        std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
 
-        std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        filter_variants_by_count(candidate_variants, opt::min_read_evidence);
+        //std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+        //filter_variants_by_count(candidate_variants, opt::min_read_evidence);
         if(opt::snps_only) {
             filter_out_non_snp_variants(candidate_variants);
         }
