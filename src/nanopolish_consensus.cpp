@@ -19,6 +19,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include "htslib/faidx.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_khmm_parameters.h"
 #include "nanopolish_matrix.h"
@@ -354,10 +355,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
 
         // extract potential variants from read strings
-        std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
+        //std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
 
-        //std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        //filter_variants_by_count(candidate_variants, opt::min_read_evidence);
+        std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+        filter_variants_by_count(candidate_variants, opt::min_read_evidence);
         if(opt::snps_only) {
             filter_out_non_snp_variants(candidate_variants);
         }
@@ -373,7 +374,6 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                 // The coordinate is relative to the subregion start, update it
                 v.ref_name = contig;
                 v.ref_position += buffer_start;
-
                 tmp.push_back(v);
             }
         }
@@ -456,6 +456,14 @@ void parse_consensus_options(int argc, char** argv)
     }
 }
 
+int get_contig_length(const std::string& contig)
+{
+    faidx_t *fai = fai_load(opt::genome_file.c_str());
+    int len = faidx_seq_len(fai, contig.c_str());
+    fai_destroy(fai);
+    return len;
+}
+
 int consensus_main(int argc, char** argv)
 {
     parse_consensus_options(argc, argv);
@@ -475,6 +483,7 @@ int consensus_main(int argc, char** argv)
     int end_base;
     
     parser >> contig >> start_base >> end_base;
+    end_base = std::min(end_base, get_contig_length(contig) - 1);
 
     FILE* out_fp = NULL;
 
@@ -495,11 +504,10 @@ int consensus_main(int argc, char** argv)
 
     for(; start_base < end_base; start_base += WINDOW_LENGTH) {
     
-        int region_end = std::min(end_base, start_base + WINDOW_LENGTH);
-        
-        Haplotype haplotype = call_variants_for_region(contig, start_base, start_base + WINDOW_LENGTH);
+        int window_end = std::min(start_base + WINDOW_LENGTH, end_base);
+        Haplotype haplotype = call_variants_for_region(contig, start_base, window_end);
 
-        fprintf(out_fp, ">%s:%d-%d\n%s\n", contig.c_str(), start_base, start_base + WINDOW_LENGTH, haplotype.get_sequence().c_str());
+        fprintf(out_fp, ">%s:%d-%d\n%s\n", contig.c_str(), start_base, window_end, haplotype.get_sequence().c_str());
 
         if(!opt::output_vcf.empty()) {
             std::vector<Variant> variants = haplotype.get_variants();

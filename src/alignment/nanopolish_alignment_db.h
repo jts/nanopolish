@@ -63,6 +63,7 @@ class AlignmentDB
 
 
         int get_region_start() const { return m_region_start; }
+        int get_region_end() const { return m_region_end; }
 
     private:
         
