@@ -354,11 +354,13 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             fprintf(stderr, "%s\n", ref_string.c_str());
         }
 
+        std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, buffer_start, buffer_end, 0.1);
+
         // extract potential variants from read strings
         //std::vector<Variant> candidate_variants = generate_all_snps(ref_string);
 
-        std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
-        filter_variants_by_count(candidate_variants, opt::min_read_evidence);
+        //std::vector<Variant> candidate_variants = generate_variants_from_reads(ref_string, read_strings);
+        //filter_variants_by_count(candidate_variants, opt::min_read_evidence);
         if(opt::snps_only) {
             filter_out_non_snp_variants(candidate_variants);
         }
@@ -369,11 +371,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             Variant& v = candidate_variants[i];
 
             int p = v.ref_position;
-            if(p >= BUFFER && ref_string.size() - p >= BUFFER) {
-            
-                // The coordinate is relative to the subregion start, update it
-                v.ref_name = contig;
-                v.ref_position += buffer_start;
+            if(p - buffer_start >= BUFFER && buffer_end - p >= BUFFER) {
                 tmp.push_back(v);
             }
         }

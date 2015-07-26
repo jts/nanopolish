@@ -117,6 +117,72 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
 
     return out;
 }
+
+std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& contig,
+                                                         int start_position,
+                                                         int stop_position,
+                                                         double min_frequency) const
+{
+    std::vector<Variant> variants;
+    std::map<std::string, std::pair<Variant, int>> map;
+    
+    size_t num_aligned_reads = 0;
+
+    for(size_t i = 0; i < m_sequence_records.size(); ++i) {
+        const SequenceAlignmentRecord& record = m_sequence_records[i];
+        if(record.aligned_bases.empty())
+            continue;
+        
+        AlignedPairConstIter start_iter;
+        AlignedPairConstIter stop_iter;
+        bool bounded = _find_iter_by_ref_bounds(record.aligned_bases, start_position, stop_position, start_iter, stop_iter);
+        
+        if(!bounded) {
+            continue;
+        }
+        num_aligned_reads += 1;
+        
+        //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos, 
+        //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
+
+        while(start_iter != stop_iter) {
+
+            char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
+            char ab = record.sequence[start_iter->read_pos];
+
+            if(rb != ab) {
+                Variant v;
+                v.ref_name = contig;
+                v.ref_position = start_iter->ref_pos;
+                v.ref_seq = rb;
+                v.alt_seq = ab;
+
+                std::string key = v.key();
+                auto iter = map.find(key);
+                if(iter == map.end()) {
+                    map.insert(std::make_pair(key, std::make_pair(v, 1)));
+                } else {
+                    iter->second.second += 1;
+                }
+            }
+
+            start_iter++;
+        }
+    }
+
+    for(auto iter = map.begin(); iter != map.end(); ++iter) {
+        Variant& v = iter->second.first;
+        size_t count = iter->second.second;
+        double f = (double)count / num_aligned_reads;
+        if(f >= min_frequency) {
+            v.add_info("BaseCalledReadsWithVariant", count);
+            v.add_info("BaseCalledFrequency", f);
+            variants.push_back(v);
+        }
+    }
+
+    return variants;
+}
         
 void AlignmentDB::load_region(const std::string& contig,
                               int start_position,
@@ -296,23 +362,47 @@ void AlignmentDB::_load_events_by_region()
     sam_close(handles.bam_fh);
 }
 
+bool AlignmentDB::_find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                      int ref_start,
+                                      int ref_stop,
+                                      AlignedPairConstIter& start_iter,
+                                      AlignedPairConstIter& stop_iter) const
+{
+    AlignedPairRefLBComp lb_comp;
+    start_iter = std::lower_bound(pairs.begin(), pairs.end(),
+                                  ref_start, lb_comp);
+
+    stop_iter = std::lower_bound(pairs.begin(), pairs.end(),
+                                 ref_stop, lb_comp);
+    
+    if(start_iter == pairs.end() || stop_iter == pairs.end() || start_iter == stop_iter)
+        return false;
+    
+    // require at least one aligned reference base at or outside the boundary
+    bool left_bounded = start_iter->ref_pos <= ref_start ||
+                        (start_iter != pairs.begin() && (start_iter - 1)->ref_pos <= ref_start);
+    
+    bool right_bounded = stop_iter->ref_pos >= ref_stop ||
+                        (stop_iter != pairs.end() && (stop_iter + 1)->ref_pos >= ref_start);
+
+    return left_bounded && right_bounded;
+}
+
+
 bool AlignmentDB::_find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
                                       int ref_start,
                                       int ref_stop,
                                       int& read_start,
                                       int& read_stop) const
 {
-    AlignedPairRefLBComp lb_comp;
-    AlignedPairConstIter start_iter = std::lower_bound(pairs.begin(), pairs.end(),
-                                                       ref_start, lb_comp);
-
-    AlignedPairConstIter stop_iter = std::lower_bound(pairs.begin(), pairs.end(),
-                                                      ref_stop, lb_comp);
-
-    if(start_iter == pairs.end() || stop_iter == pairs.end() || start_iter == stop_iter)
+    AlignedPairConstIter start_iter;
+    AlignedPairConstIter stop_iter;
+    bool bounded = _find_iter_by_ref_bounds(pairs, ref_start, ref_stop, start_iter, stop_iter);
+    if(bounded) {
+        read_start = start_iter->read_pos;
+        read_stop = stop_iter->read_pos;
+        return true;
+    } else {
         return false;
-
-    read_start = start_iter->read_pos;
-    read_stop = stop_iter->read_pos;
-    return true;
+    }
 }

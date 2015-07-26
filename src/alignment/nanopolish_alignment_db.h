@@ -13,6 +13,7 @@
 #include <vector>
 #include <map>
 #include "nanopolish_anchor.h"
+#include "nanopolish_variants.h"
 
 // structs
 struct SequenceAlignmentRecord
@@ -61,6 +62,10 @@ class AlignmentDB
                                                          int start_position,
                                                          int stop_position) const;
 
+        std::vector<Variant> get_variants_in_region(const std::string& contig,
+                                                    int start_position,
+                                                    int stop_position,
+                                                    double min_frequency) const;
 
         int get_region_start() const { return m_region_start; }
         int get_region_end() const { return m_region_end; }
@@ -80,6 +85,12 @@ class AlignmentDB
                                  int ref_stop,
                                  int& read_start,
                                  int& read_stop) const;
+
+        bool _find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                      int ref_start,
+                                      int ref_stop,
+                                      AlignedPairConstIter& start_iter,
+                                      AlignedPairConstIter& stop_iter) const;
 
         //
         // data
