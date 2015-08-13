@@ -157,10 +157,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     while(curr_variant_idx < candidate_variants.size()) {
  
         // Group the variants that are within calling_span bases of each other       
-        size_t end_variant_idx = curr_variant_idx;
+        size_t end_variant_idx = curr_variant_idx + 1;
         while(end_variant_idx < candidate_variants.size()) {
             int distance = candidate_variants[end_variant_idx].ref_position - 
-                           candidate_variants[curr_variant_idx].ref_position;
+                           candidate_variants[end_variant_idx - 1].ref_position;
             if(distance > calling_span)
                 break;
             end_variant_idx++;
