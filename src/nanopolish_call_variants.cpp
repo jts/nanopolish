@@ -29,7 +29,7 @@
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
-#include "nanopolish_variants.h"
+#include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 #include "profiler.h"
 #include "progress.h"

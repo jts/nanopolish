@@ -13,7 +13,7 @@
 #include <vector>
 #include <map>
 #include "nanopolish_anchor.h"
-#include "nanopolish_variants.h"
+#include "nanopolish_variant.h"
 
 // structs
 struct SequenceAlignmentRecord

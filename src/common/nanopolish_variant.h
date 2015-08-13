@@ -3,10 +3,10 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_variants -- tools for calling variants
+// nanopolish_variant -- tools for calling variants
 //
-#ifndef NANOPOLISH_VARIANTS_H
-#define NANOPOLISH_VARIANTS_H
+#ifndef NANOPOLISH_VARIANT_H
+#define NANOPOLISH_VARIANT_H
 
 #include <sstream>
 #include "stdaln.h"

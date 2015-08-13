@@ -9,7 +9,7 @@
 #ifndef NANOPOLISH_HAPLOTYPE_H
 #define NANOPOLISH_HAPLOTYPE_H
 
-#include "nanopolish_variants.h"
+#include "nanopolish_variant.h"
 
 class Haplotype
 {

@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <map>
 #include "nanopolish_profile_hmm.h"
-#include "nanopolish_variants.h"
+#include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 
 // return a new copy of the string with gap symbols removed
@@ -271,15 +271,13 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             }
         }
 
-#if DEBUG_HAPLOTYPE_SELECTION
-        if(opt::verbose > 2) {
-            std::stringstream ss;
-            for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
-                const Variant& v = current_variant_set[vi];
-                ss << (vi > 0 ? "," : "") << v.key();
-            }
-            fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
+#ifdef DEBUG_HAPLOTYPE_SELECTION
+        std::stringstream ss;
+        for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
+            const Variant& v = current_variant_set[vi];
+            ss << (vi > 0 ? "," : "") << v.key();
         }
+        fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
 #endif
     }
     return best_variant_set;
