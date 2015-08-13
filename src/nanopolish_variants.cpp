@@ -116,8 +116,8 @@ void filter_out_non_snp_variants(std::vector<Variant>& variants)
 {
     std::vector<Variant> tmp;
     for(size_t i = 0; i < variants.size(); ++i) {
-        bool is_snp = variants[i].ref_seq.length() == 1 &&
-                      variants[i].alt_seq.length() == 1;
+        bool is_snp = variants[i].ref_seq.length() == 
+                      variants[i].alt_seq.length();
         if(is_snp) {
             tmp.push_back(variants[i]);
         }
@@ -125,8 +125,6 @@ void filter_out_non_snp_variants(std::vector<Variant>& variants)
     variants.swap(tmp);
 }
 
-// Parse variants from the called haplotype and calculate
-// quality scores for them
 std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,
                                      Haplotype base_haplotype,
                                      const std::vector<HMMInputData>& input)
@@ -171,8 +169,6 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
                 }
             }
             
-            printf("TEST: %.2lf\n", variant_lp - base_lp);
-            v.write_vcf(stdout);
             if(variant_lp > best_variant_lp) {
                 best_variant_lp = variant_lp;
                 best_variant_idx = i;
@@ -201,5 +197,91 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
     }
 
     return selected_variants;
+}
+
+std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
+                                        Haplotype base_haplotype, 
+                                        const std::vector<HMMInputData>& input)
+{
+    size_t num_variants = candidate_variants.size();
+    size_t num_haplotypes = 1 << num_variants;
+        
+    double base_lp = 0.0f;
+    std::vector<double> base_lp_by_read(input.size()); 
+    
+    #pragma omp parallel for
+    for(size_t j = 0; j < input.size(); ++j) {
+
+        double tmp = profile_hmm_score(base_haplotype.get_sequence(), input[j]);
+
+        #pragma omp critical
+        {
+            base_lp_by_read[j] = tmp;
+            base_lp += tmp;
+        }
+    }
+
+    double best_lp = -INFINITY;
+    std::vector<Variant> best_variant_set;
+
+    // The haplotype id is a bitmask indicating which variants
+    // to apply to get the haplotype. We skip the empty
+    // variant set.
+    for(size_t hi = 1; hi < num_haplotypes; ++hi) {
+
+        Haplotype current_haplotype = base_haplotype;
+        std::vector<Variant> current_variant_set;
+
+        for(size_t vi = 0; vi < num_variants; vi++) {
+            // if bit vi is set in the haplotype id, apply this variant
+            if( (hi & (1 << vi)) == 0) {
+                continue;
+            }
+
+            current_variant_set.push_back(candidate_variants[vi]);
+            current_haplotype.apply_variant(current_variant_set.back());
+        }
+        
+        // score the haplotype
+        double current_lp = 0.0f;
+        size_t supporting_reads = 0;
+
+        #pragma omp parallel for
+        for(size_t j = 0; j < input.size(); ++j) {
+            double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j]);
+            
+            #pragma omp critical
+            {
+                current_lp += tmp;
+                supporting_reads += tmp > base_lp_by_read[j];
+            }
+        }
+
+        if(current_lp > best_lp && current_lp - base_lp > 1.0) {
+            best_lp = current_lp;
+            best_variant_set = current_variant_set;
+
+            // Annotate variants
+            for(size_t vi = 0; vi < best_variant_set.size(); ++vi) {
+                Variant& v = best_variant_set[vi];
+                v.add_info("TotalReads", input.size());
+                v.add_info("SupportingReads", supporting_reads);
+                v.add_info("SupportFraction", (double)supporting_reads / input.size());
+                v.quality = best_lp - base_lp;
+            }
+        }
+
+#if DEBUG_HAPLOTYPE_SELECTION
+        if(opt::verbose > 2) {
+            std::stringstream ss;
+            for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
+                const Variant& v = current_variant_set[vi];
+                ss << (vi > 0 ? "," : "") << v.key();
+            }
+            fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
+        }
+#endif
+    }
+    return best_variant_set;
 }
 
