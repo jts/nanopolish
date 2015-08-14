@@ -22,6 +22,9 @@ KHMMParameters::KHMMParameters()
     trans_m_to_e_not_k = 0.15f;
     trans_e_to_e = 0.33f;
 
+    trans_start_to_clip = 0.5f;
+    trans_clip_self = 0.90f;
+
     skip_probabilities[0] = 0.51268137;
     skip_probabilities[1] = 0.47243219;
     skip_probabilities[2] = 0.42888741;

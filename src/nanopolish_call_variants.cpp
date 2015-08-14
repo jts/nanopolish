@@ -120,24 +120,10 @@ int get_contig_length(const std::string& contig)
     return len;
 }
 
-double parallel_score(const std::string& sequence, const std::vector<HMMInputData>& event_sequences)
-{
-    double score = 0.0f;
-
-    #pragma omp parallel for
-    for(size_t i = 0; i < event_sequences.size(); ++i) {
-        double s = profile_hmm_score(sequence, event_sequences[i]);
-
-        #pragma omp critical
-        score += s;
-    }
-    return score;
-}
-
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = 20;
-
+    uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
     if(region_start < BUFFER)
         region_start = BUFFER;
 
@@ -152,7 +138,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, 0.2, 20);
 
     // Step 2. Add variants to the haplotypes
-    size_t calling_span = 20;
+    size_t calling_span = 10;
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
  
@@ -194,7 +180,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             
             // Select the best set of variants
             std::vector<Variant> selected_variants = 
-                select_variant_set(calling_variants, calling_haplotype, event_sequences);
+                select_variant_set(calling_variants, calling_haplotype, event_sequences, alignment_flags);
 
             // Apply them to the final haplotype
             for(size_t vi = 0; vi < selected_variants.size(); vi++) {

@@ -47,6 +47,10 @@ class KHMMParameters
         double trans_m_to_e_not_k;
         double trans_e_to_e;
 
+
+        double trans_start_to_clip;
+        double trans_clip_self;
+
         // This is a vector that maps from discretized absolute difference
         // between expected signals to a probability that the transition
         // will be observed by the pore. Access to the skip probabilities

@@ -23,10 +23,6 @@ void profile_hmm_forward_initialize(FloatMatrix& fm)
         set(fm, ri, PS_EVENT_SPLIT, -INFINITY);
         set(fm, ri, PS_MATCH, -INFINITY);
     }
-
-    set(fm, 0, PS_KMER_SKIP, -INFINITY);
-    set(fm, 0, PS_EVENT_SPLIT, -INFINITY);
-    set(fm, 0, PS_MATCH, 0.0f);
 }
 
 // Terminate the forward algorithm by calculating
@@ -53,16 +49,16 @@ float profile_hmm_forward_terminate(const FloatMatrix& fm,
 }
 
 // convenience function to run the HMM over multiple inputs and sum the result
-float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data)
+float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data, const uint32_t flags)
 {
     float score = 0.0f;
     for(size_t i = 0; i < data.size(); ++i) {
-        score += profile_hmm_score(consensus, data[i]);
+        score += profile_hmm_score(consensus, data[i], flags);
     }
     return score;
 }
 
-float profile_hmm_score(const std::string& sequence, const HMMInputData& data)
+float profile_hmm_score(const std::string& sequence, const HMMInputData& data, const uint32_t flags)
 {
     uint32_t n_kmers = sequence.size() - K + 1;
 
@@ -86,7 +82,7 @@ float profile_hmm_score(const std::string& sequence, const HMMInputData& data)
 
     ProfileHMMForwardOutput output(&fm);
 
-    float score = profile_hmm_fill_generic(sequence.c_str(), data, e_start, output);
+    float score = profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
 
     // cleanup
     free_matrix(fm);
@@ -99,7 +95,7 @@ void profile_hmm_viterbi_initialize(FloatMatrix& m)
     profile_hmm_forward_initialize(m);
 }
 
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data)
+std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data, const uint32_t flags)
 {
     std::vector<AlignmentState> alignment;
 
@@ -127,7 +123,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     ProfileHMMViterbiOutput output(&vm, &bm);
 
     profile_hmm_viterbi_initialize(vm);
-    profile_hmm_fill_generic(sequence.c_str(), data, e_start, output);
+    profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
 
     // Traverse the backtrack matrix to compute the results
     

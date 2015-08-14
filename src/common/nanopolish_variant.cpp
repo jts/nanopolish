@@ -201,7 +201,8 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 
-                                        const std::vector<HMMInputData>& input)
+                                        const std::vector<HMMInputData>& input,
+                                        const uint32_t alignment_flags)
 {
     size_t num_variants = candidate_variants.size();
     size_t num_haplotypes = 1 << num_variants;
@@ -212,7 +213,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     #pragma omp parallel for
     for(size_t j = 0; j < input.size(); ++j) {
 
-        double tmp = profile_hmm_score(base_haplotype.get_sequence(), input[j]);
+        double tmp = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
 
         #pragma omp critical
         {
@@ -248,7 +249,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
 
         #pragma omp parallel for
         for(size_t j = 0; j < input.size(); ++j) {
-            double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j]);
+            double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
             #pragma omp critical
             {
                 current_lp += tmp;

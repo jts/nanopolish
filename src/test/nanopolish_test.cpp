@@ -103,8 +103,8 @@ TEST_CASE( "hmm", "[hmm]") {
         "MMKMMMKMEEMMKMKMKMEMMMKMMMKMEMMMKMMMKMMMMMMMMMKKMEMMMM"
         "EMMMMMMMMKMKKMMMMMMMEMMMMMKMMMMMKMEMMMMMKMMMMMEEEEEEEEM";
 
-    double expected_viterbi_last_state[2] = { -237.24, -265.66 };
-    double expected_forward[2] = { -237.238434, -265.6596984863 };
+    double expected_viterbi_last_state[2] = { -237.7690734863, -266.1903076172 };
+    double expected_forward[2] = { -221.1331481934, -262.7046203613 };
 
     for(int si = 0; si <= 1; ++si) {
 
