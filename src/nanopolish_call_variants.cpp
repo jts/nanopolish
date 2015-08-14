@@ -152,7 +152,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, 0.2, 20);
 
     // Step 2. Add variants to the haplotypes
-    size_t calling_span = 15;
+    size_t calling_span = 20;
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
  
