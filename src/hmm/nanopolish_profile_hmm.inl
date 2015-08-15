@@ -236,20 +236,22 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
     // base case, all events aligned
     post_flank[num_events - 1] = log(1 - parameters.trans_start_to_clip);
 
-    // base case, all events aligned but 1
-    {
-        uint32_t event_idx = e_start + (num_events - 1) * data.event_stride; // last event
-        assert(event_idx == data.event_stop_idx);
-        post_flank[num_events - 2] = log(parameters.trans_start_to_clip) + // transition from pre to background state
-                                     log_probability_background(*data.read, event_idx, data.strand) + // emit from background
-                                     log(1 - parameters.trans_clip_self); // transition to silent pre state
-    }
+    if(num_events > 1) {
+        // base case, all events aligned but 1
+        {
+            uint32_t event_idx = e_start + (num_events - 1) * data.event_stride; // last event
+            assert(event_idx == data.event_stop_idx);
+            post_flank[num_events - 2] = log(parameters.trans_start_to_clip) + // transition from pre to background state
+                                         log_probability_background(*data.read, event_idx, data.strand) + // emit from background
+                                         log(1 - parameters.trans_clip_self); // transition to silent pre state
+        }
 
-    for(int i = num_events - 3; i >= 0; --i) {
-        uint32_t event_idx = e_start + (i + 1) * data.event_stride;
-        post_flank[i] = log(parameters.trans_clip_self) +
-                        log_probability_background(*data.read, event_idx, data.strand) + // emit from background
-                        post_flank[i + 1]; // this accounts for the transition from start, and to silent pre
+        for(int i = num_events - 3; i >= 0; --i) {
+            uint32_t event_idx = e_start + (i + 1) * data.event_stride;
+            post_flank[i] = log(parameters.trans_clip_self) +
+                            log_probability_background(*data.read, event_idx, data.strand) + // emit from background
+                            post_flank[i + 1]; // this accounts for the transition from start, and to silent pre
+        }
     }
     return post_flank;
 }
