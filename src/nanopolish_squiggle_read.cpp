@@ -164,12 +164,26 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
     while(start_ea_idx < event_alignments.size()) {
         
+hack:
+        uint32_t prev_kidx = read_kidx;
+
         // Advance the kmer index until we have found the read kmer
         // this tuple refers to
         while(read_kidx < n_read_kmers && 
               strncmp(event_alignments[start_ea_idx].kmer, 
                      read_sequence.c_str() + read_kidx, K) != 0) {
             read_kidx += 1;
+        }
+
+        // In the most recent version of metrichor occasionally
+        // a kmer will be present in the alignment table
+        // that is not in the 2D read. This awful hack
+        // will skip such k-mers. It is not a long-term
+        // solution, only until metrichor is fixed.
+        if(read_kidx - prev_kidx > 10) {
+            start_ea_idx += 1;
+            read_kidx = prev_kidx;
+            goto hack;
         }
 
         // Advance the event alignment end index to the last tuple
