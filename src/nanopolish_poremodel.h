@@ -12,8 +12,6 @@
 #include <assert.h>
 #include "nanopolish_common.h"
 
-#define PORE_MODEL_STATES 1024
-
 //
 struct PoreModelStateParams
 {
@@ -40,9 +38,11 @@ class PoreModel
 
         inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const
         {
-            return state[kmer_rank];
+            return states[kmer_rank];
         }
         
+        inline size_t get_num_states() const { return states.size(); }
+
         // Pre-compute the GaussianParameters to avoid
         // taking numerous logs in the emission calculations
         void bake_gaussian_parameters();
@@ -60,8 +60,8 @@ class PoreModel
         bool is_scaled;
 
         //
-        PoreModelStateParams state[PORE_MODEL_STATES];
-        GaussianParameters scaled_params[PORE_MODEL_STATES];
+        std::vector<PoreModelStateParams> states;
+        std::vector<GaussianParameters> scaled_params;
 };
 
 #endif

@@ -17,7 +17,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
 {
     load_from_fast5(path);
 
-    // perform drift correction
+    // perform drift correction and other scalings
     transform();
 }
 
@@ -81,14 +81,15 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     for (size_t si = 0; si < 2; ++si) {
 
         std::vector<fast5::Model_Entry> model = f_p->get_model(si);
-        assert(model.size() == PORE_MODEL_STATES);
+        pore_model[si].states.resize(model.size());
+
         assert(strcmp(model[0].kmer, "AAAAA") == 0);
-        assert(strcmp(model[PORE_MODEL_STATES - 1].kmer, "TTTTT") == 0);
+        assert(strcmp(model[model.size() - 1].kmer, "TTTTT") == 0);
 
         // Copy into the pore model for this read
         for(size_t mi = 0; mi < model.size(); ++mi) {
             const fast5::Model_Entry& curr = model[mi];
-            pore_model[si].state[mi] = { static_cast<float>(curr.level_mean), 
+            pore_model[si].states[mi] = { static_cast<float>(curr.level_mean), 
                                          static_cast<float>(curr.level_stdv), 
                                          static_cast<float>(curr.sd_mean),
                                          static_cast<float>(curr.sd_stdv) };

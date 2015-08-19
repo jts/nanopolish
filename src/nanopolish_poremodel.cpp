@@ -10,11 +10,13 @@
 
 void PoreModel::bake_gaussian_parameters()
 {
-    for(int i = 0; i < PORE_MODEL_STATES; ++i) {
+    scaled_params.resize(states.size());
+
+    for(int i = 0; i < states.size(); ++i) {
 
         // these functions are provided by ONT
-        scaled_params[i].mean = state[i].level_mean * scale + shift;
-        scaled_params[i].stdv = state[i].level_stdv * var;
+        scaled_params[i].mean = states[i].level_mean * scale + shift;
+        scaled_params[i].stdv = states[i].level_stdv * var;
         scaled_params[i].log_stdv = log(scaled_params[i].stdv); // pre-computed for efficiency
 
         // These are not used, for now
