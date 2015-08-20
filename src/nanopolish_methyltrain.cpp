@@ -34,9 +34,19 @@
 #include "progress.h"
 
 //
+// Structs
+//
+struct StateSummary
+{
+    size_t n;
+    float sum;
+};
+
+//
 // Typedefs
 //
 typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
+typedef std::map<std::string, std::vector<StateSummary>> ModelTrainingMap;
 
 //
 // Getopt
@@ -96,13 +106,15 @@ static const struct option longopts[] = {
 };
 
 // Realign the read in event space
-void train_read(const Fast5Map& name_map, 
-                 const faidx_t* fai, 
-                 const bam_hdr_t* hdr, 
-                 const bam1_t* record, 
-                 size_t read_idx,
-                 int region_start,
-                 int region_end)
+void train_read(const ModelMap& model_map,
+                const Fast5Map& name_map, 
+                const faidx_t* fai, 
+                const bam_hdr_t* hdr, 
+                const bam1_t* record, 
+                size_t read_idx,
+                int region_start,
+                int region_end,
+                ModelTrainingMap& training)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -110,10 +122,43 @@ void train_read(const Fast5Map& name_map,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
-    
+
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+        
+        // replace model with the training model
+        std::string curr_model = sr.model_name[strand_idx];
+        auto model_iter = model_map.find(curr_model);
+
+        if(model_iter != model_map.end()) {
+            sr.replace_pore_model(strand_idx, model_iter->second);
+        } else {
+            assert(false && "Model not found");
+        }
+
+        // Align to the new model
         std::vector<EventAlignment> alignment_output = 
             align_read_to_ref(sr, fai, hdr, record, read_idx, strand_idx, region_start, region_end);
+
+        // Update model observations
+        #pragma omp critical
+        {
+            // Get the training data for this model
+            auto& emission_map = training[curr_model];
+
+            for(size_t i = 0; i < alignment_output.size(); ++i) {
+                const EventAlignment& ea = alignment_output[i];
+                std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                uint32_t rank = kmer_rank(model_kmer.c_str(), K);
+                auto& kmer_summary = emission_map[rank];
+
+                // Here we re-scale the event to the model
+                float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
+                event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
+                printf("%s\t%s\t%zu\t%.2lf\n", curr_model.c_str(), model_kmer.c_str(), read_idx, event_mean);
+                kmer_summary.n += 1;
+                kmer_summary.sum += event_mean;
+            }
+        }
     } // for strands
 }
 
@@ -229,6 +274,17 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
+    // Initialize the training summary stats for each kmer for each model
+    ModelTrainingMap model_training_data;
+    for(auto model_iter = models.begin(); model_iter != models.end(); model_iter++) {
+        std::vector<StateSummary> summaries(model_iter->second.size()); // one per kmer in the model
+        for(size_t ki = 0; ki < model_iter->second.size(); ++ki) {
+            summaries[ki].n = 0;
+            summaries[ki].sum = 0.0f;
+        }
+        model_training_data[model_iter->first] = summaries;
+    }
+
     // Open the BAM and iterate over reads
 
     // load bam file
@@ -295,7 +351,7 @@ int methyltrain_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    train_read(name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+                    train_read(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, model_training_data);
                 }
             }
 
@@ -308,12 +364,27 @@ int methyltrain_main(int argc, char** argv)
         }
     } while(result >= 0);
  
+    // Process the training results
+    for(auto model_training_iter = model_training_data.begin(); 
+             model_training_iter != model_training_data.end(); model_training_iter++) {
+        std::ofstream writer(model_training_iter->first + ".trained");
+        
+        const std::vector<StateSummary>& summaries = model_training_iter->second;
+        std::string curr_kmer = "AAAAA";
+        for(size_t ki = 0; ki < summaries.size(); ++ki) {
+            writer << curr_kmer << "\t" << summaries[ki].sum / summaries[ki].n << "\n";
+        }
+        writer.close();
+    }
+
     assert(num_records_buffered == 0);
 
     // cleanup records
     for(size_t i = 0; i < records.size(); ++i) {
         bam_destroy1(records[i]);
     }
+
+
 
     // cleanup
     sam_itr_destroy(itr);

@@ -50,7 +50,11 @@ class SquiggleRead
         // I/O
         // 
 
+        // Load all the read data from a fast5 file
         void load_from_fast5(const std::string& fast5_path);
+
+        // Replace the pore model for the given strand with the state parameters
+        void replace_pore_model(const uint32_t strand, const std::vector<PoreModelStateParams>& states);
 
         //
         // Access to data

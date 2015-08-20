@@ -6,6 +6,7 @@
 // nanopolish_squiggle_read -- Class holding a squiggle (event)
 // space nanopore read
 //
+#include <algorithm>
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 #include "src/fast5.hpp"
@@ -109,20 +110,17 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
         // Read and shorten the model name
         std::string temp_name = f_p->get_model_file(si);
-        std::string leader = si == 0 ? "template_" : "complement_";
-        std::string trailer = ".model";
+        std::string leader = "/opt/chimaera/model/";
 
         size_t lp = temp_name.find(leader);
         // leader not found
         if(lp == std::string::npos) {
-            lp = 0;
-        } 
+            model_name[si] = temp_name;
+        } else {
+            model_name[si] = temp_name.substr(leader.size());   
+        }
 
-        size_t tp = temp_name.find(trailer);
-        if(tp == std::string::npos)
-            tp = temp_name.size();
-
-        model_name[si] = temp_name.substr(lp, tp - lp);
+        std::replace(model_name[si].begin(), model_name[si].end(), '/', '_');
     }
     
     // Load events for both strands
@@ -224,3 +222,12 @@ hack:
 
     delete f_p;
 }
+
+void SquiggleRead::replace_pore_model(const uint32_t strand, const std::vector<PoreModelStateParams>& states)
+{
+    pore_model[strand].states = states;
+    if(pore_model[strand].is_scaled) {
+        pore_model[strand].bake_gaussian_parameters();
+    }
+}
+

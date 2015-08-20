@@ -47,16 +47,16 @@ class PoreModel
         // taking numerous logs in the emission calculations
         void bake_gaussian_parameters();
     
-    friend SquiggleRead;
-
-    private:
-
         double scale;
         double shift;
         double drift;
         double var;
         double scale_sd;
         double var_sd;
+    
+    friend SquiggleRead;
+    private:
+
         bool is_scaled;
 
         //
