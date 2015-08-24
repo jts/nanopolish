@@ -42,6 +42,12 @@ struct StateSummary
     std::vector<float> events;
 };
 
+struct GaussianMixture
+{
+    std::vector<float> weights;
+    std::vector<GaussianParameters> params;
+};
+
 //
 // Typedefs
 //
@@ -104,6 +110,55 @@ static const struct option longopts[] = {
     { "version",          no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
+
+GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
+                                       const GaussianMixture& input_mixture)
+{
+    GaussianMixture out;
+
+    size_t n_components = input_mixture.params.size();
+    size_t n_data = data.size();
+    assert(input_mixture.weights.size() == n_components);
+    
+    out.weights.resize(n_components, 0.0f);
+    out.params.resize(n_components);
+
+    std::vector<double> mean_sum(n_components, 0.0f);
+    std::vector<double> var_sum(n_components, 0.0f);
+
+    for(size_t i = 0; i < n_data; ++i) {
+        // Calculate the posterior probability that
+        // data i came from each component of the mixture
+        
+        // P(data i | component j) P(component j)
+        std::vector<double> t(n_components, 0.0f);
+        double t_sum = -INFINITY;
+        for(size_t j = 0; j < n_components; ++j) {
+            t[j] = log_normal_pdf(data[i], input_mixture.params[j]) + log(input_mixture.weights[j]);
+            t_sum = add_logs(t_sum, t[j]);
+        }
+
+        // posterior P(component j | data i)
+        for(size_t j = 0; j < n_components; ++j) {
+            double posterior = exp(t[j] - t_sum);
+            out.weights[j] += posterior;
+            mean_sum[j] += posterior * data[i];
+            var_sum[j] += posterior * pow(data[i], 2.0);
+            //fprintf(stderr, "MIXTURE %zu\t%zu\t%.2lf\t%.2f\t%.2lf\t%.2lf\n", i, j, data[i], input_mixture.params[j].mean, input_mixture.params[j].stdv, posterior);
+        }
+    }
+
+    for(size_t j = 0; j < n_components; ++j) {
+        double w = out.weights[j];
+        out.weights[j] = w / n_data;
+        
+        double mean = mean_sum[j] / w;
+        double stdv = (var_sum[j] / w) - pow(mean, 2.0);
+        out.params[j] = GaussianParameters(mean, stdv);
+        fprintf(stderr, "MIXTURE\t%zu\t%.2lf\t%.2lf\t%.2lf\n", j, out.weights[j], out.params[j].mean, out.params[j].stdv);
+    }
+    return out;
+}
 
 // Realign the read in event space
 void train_read(const ModelMap& model_map,
@@ -398,6 +453,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
+            // Initialize a mixture model using the current mean and wide Gaussian to catch misaligned events
+            double misalignment_rate = 0.1f;
+            GaussianParameters misalignment_params(65.0f, 7.0f);
+
             float n = summaries[ki].events.size();
             float sum_mean = 0.0f;
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
@@ -412,9 +471,21 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 sum_var += pow(summaries[ki].events[ei] - mu_prime, 2.0);
             }
             float var_prime = sum_var / n;
+            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             new_pm[ki].level_mean = mu_prime;
             new_pm[ki].level_stdv = sqrt(var_prime);
+            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            
+            GaussianMixture mixture;
+            mixture.weights.push_back(misalignment_rate);
+            mixture.params.push_back(misalignment_params);
 
+            GaussianParameters naive_params(mu_prime, sqrt(var_prime));
+
+            mixture.weights.push_back(1 - misalignment_rate);
+            mixture.params.push_back(naive_params);
+            GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
+            
             /*
             if(kmer.find("CG") != std::string::npos) {
                 float mu_prime = summaries[ki].mean_sum / summaries[ki].n;

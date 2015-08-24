@@ -93,6 +93,9 @@ struct AlignmentState
 // The parameters of a gaussian distribution
 struct GaussianParameters
 {
+    GaussianParameters() : mean(0.0f), stdv(1.0f) { log_stdv = log(stdv); }
+    GaussianParameters(float m, float s) : mean(m), stdv(s) { log_stdv = log(stdv); }
+
     float mean;
     float stdv;
     float log_stdv; // == log(stdv), pre-computed for efficiency
