@@ -38,8 +38,10 @@
 //
 struct StateSummary
 {
+    StateSummary() : n(0), mean_sum(0.f), var_sum(0.f) {}
     size_t n;
-    float sum;
+    float mean_sum;
+    float var_sum;
 };
 
 //
@@ -114,6 +116,7 @@ void train_read(const ModelMap& model_map,
                 size_t read_idx,
                 int region_start,
                 int region_end,
+                size_t round,
                 ModelTrainingMap& training)
 {
     // Load a squiggle read for the mapped read
@@ -153,10 +156,17 @@ void train_read(const ModelMap& model_map,
 
                 // Here we re-scale the event to the model
                 float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
+
+                // unshifted mean
+                float expected_mean = (sr.pore_model[strand_idx].states[rank].level_mean - 
+                                       sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
+
+                sr.get_drift_corrected_level(ea.event_idx, strand_idx);
                 event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-                printf("%s\t%s\t%zu\t%.2lf\n", curr_model.c_str(), model_kmer.c_str(), read_idx, event_mean);
+                printf("%zu\t%s\t%s\t%zu\t%zu\t%zu\t%.2lf\t%c\n", round, curr_model.c_str(), model_kmer.c_str(), ea.ref_position, read_idx, ea.event_idx, event_mean, ea.hmm_state);
                 kmer_summary.n += 1;
-                kmer_summary.sum += event_mean;
+                kmer_summary.mean_sum += event_mean;
+                kmer_summary.var_sum += pow(event_mean - expected_mean, 2.0);
             }
         }
     } // for strands
@@ -266,22 +276,13 @@ void parse_methyltrain_options(int argc, char** argv)
     }
 }
 
-int methyltrain_main(int argc, char** argv)
-{
-    parse_methyltrain_options(argc, argv);
-    omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn);
-    
+ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
+{
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
     for(auto model_iter = models.begin(); model_iter != models.end(); model_iter++) {
         std::vector<StateSummary> summaries(model_iter->second.size()); // one per kmer in the model
-        for(size_t ki = 0; ki < model_iter->second.size(); ++ki) {
-            summaries[ki].n = 0;
-            summaries[ki].sum = 0.0f;
-        }
         model_training_data[model_iter->first] = summaries;
     }
 
@@ -351,40 +352,56 @@ int methyltrain_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    train_read(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, model_training_data);
+                    train_read(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
                 }
             }
 
             num_reads_realigned += num_records_buffered;
             num_records_buffered = 0;
+
+            if(num_reads_realigned > 1000) break;
         }
 
         if(opt::progress) {
             fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
         }
     } while(result >= 0);
+    
+    assert(num_records_buffered == 0);
  
     // Process the training results
+    ModelMap trained_models;
+
     for(auto model_training_iter = model_training_data.begin(); 
              model_training_iter != model_training_data.end(); model_training_iter++) {
-        std::ofstream writer(model_training_iter->first + ".trained");
         
+        // Initialize trained model from input model
+        auto model_iter = models.find(model_training_iter->first);
+        assert(model_iter != models.end());
+        trained_models[model_training_iter->first] = model_iter->second;
+        std::vector<PoreModelStateParams>& new_pm = trained_models[model_training_iter->first];
+
+        // Update means for each kmer
+        std::string kmer = "AAAAA";
         const std::vector<StateSummary>& summaries = model_training_iter->second;
-        std::string curr_kmer = "AAAAA";
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
-            writer << curr_kmer << "\t" << summaries[ki].sum / summaries[ki].n << "\n";
+
+            if(kmer.find("CG") != std::string::npos) {
+                float mu_prime = summaries[ki].mean_sum / summaries[ki].n;
+                float var_prime = summaries[ki].var_sum / summaries[ki].n;
+                new_pm[ki].level_mean = mu_prime;
+                new_pm[ki].level_stdv = sqrt(var_prime);
+                fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            }
+            lexicographic_next(kmer);
         }
-        writer.close();
     }
 
-    assert(num_records_buffered == 0);
 
     // cleanup records
     for(size_t i = 0; i < records.size(); ++i) {
         bam_destroy1(records[i]);
     }
-
-
 
     // cleanup
     sam_itr_destroy(itr);
@@ -392,4 +409,40 @@ int methyltrain_main(int argc, char** argv)
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
+
+    return trained_models;
 }
+
+int methyltrain_main(int argc, char** argv)
+{
+    parse_methyltrain_options(argc, argv);
+    omp_set_num_threads(opt::num_threads);
+
+    Fast5Map name_map(opt::reads_file);
+    ModelMap models = read_models_fofn(opt::models_fofn);
+    
+    for(size_t round = 0; round < 10; round++) {
+        fprintf(stderr, "Starting round %zu\n", round);
+        ModelMap trained_models = train_one_round(models, name_map, round);
+        // Write the model
+        for(auto model_iter = trained_models.begin(); 
+                 model_iter != trained_models.end(); model_iter++) {
+        
+            std::stringstream outname;
+            outname << model_iter->first << ".trained.round" << round + 1;
+            std::ofstream writer(outname.str());
+            
+            const std::vector<PoreModelStateParams>& states = model_iter->second;
+
+            std::string curr_kmer = "AAAAA";
+            for(size_t ki = 0; ki < states.size(); ++ki) {
+                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\n";
+                lexicographic_next(curr_kmer);
+            }
+            writer.close();
+        }
+        models = trained_models;
+    }
+    return EXIT_SUCCESS;
+}
+

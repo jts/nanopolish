@@ -54,9 +54,6 @@ class PoreModel
         double scale_sd;
         double var_sd;
     
-    friend SquiggleRead;
-    private:
-
         bool is_scaled;
 
         //
