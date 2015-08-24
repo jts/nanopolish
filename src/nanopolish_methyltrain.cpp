@@ -38,10 +38,8 @@
 //
 struct StateSummary
 {
-    StateSummary() : n(0), mean_sum(0.f), var_sum(0.f) {}
-    size_t n;
-    float mean_sum;
-    float var_sum;
+    StateSummary() {}
+    std::vector<float> events;
 };
 
 //
@@ -154,19 +152,24 @@ void train_read(const ModelMap& model_map,
                 uint32_t rank = kmer_rank(model_kmer.c_str(), K);
                 auto& kmer_summary = emission_map[rank];
 
+                if(ea.hmm_state != 'M') {
+                    continue;
+                }
                 // Here we re-scale the event to the model
                 float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-
+                event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
+                kmer_summary.events.push_back(event_mean);
+                /*
                 // unshifted mean
                 float expected_mean = (sr.pore_model[strand_idx].states[rank].level_mean - 
                                        sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
 
                 sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-                event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
                 printf("%zu\t%s\t%s\t%zu\t%zu\t%zu\t%.2lf\t%c\n", round, curr_model.c_str(), model_kmer.c_str(), ea.ref_position, read_idx, ea.event_idx, event_mean, ea.hmm_state);
                 kmer_summary.n += 1;
                 kmer_summary.mean_sum += event_mean;
                 kmer_summary.var_sum += pow(event_mean - expected_mean, 2.0);
+                */
             }
         }
     } // for strands
@@ -368,10 +371,19 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     } while(result >= 0);
     
     assert(num_records_buffered == 0);
- 
+    progress.end();
+
+    std::stringstream fn;
+    fn << "training." << round << ".tsv";
+
+    FILE* training_fp = fopen(fn.str().c_str(), "w");
+
+    // header
+    fprintf(training_fp, "model\tkmer\tevent_mean\n");
+
     // Process the training results
     ModelMap trained_models;
-
+    
     for(auto model_training_iter = model_training_data.begin(); 
              model_training_iter != model_training_data.end(); model_training_iter++) {
         
@@ -386,6 +398,24 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
+            float n = summaries[ki].events.size();
+            float sum_mean = 0.0f;
+            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
+                fprintf(training_fp, "%s\t%s\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), summaries[ki].events[ei]);
+                sum_mean += summaries[ki].events[ei];
+            }
+
+            float mu_prime = sum_mean / n;
+            
+            float sum_var = 0.0f;
+            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
+                sum_var += pow(summaries[ki].events[ei] - mu_prime, 2.0);
+            }
+            float var_prime = sum_var / n;
+            new_pm[ki].level_mean = mu_prime;
+            new_pm[ki].level_stdv = sqrt(var_prime);
+
+            /*
             if(kmer.find("CG") != std::string::npos) {
                 float mu_prime = summaries[ki].mean_sum / summaries[ki].n;
                 float var_prime = summaries[ki].var_sum / summaries[ki].n;
@@ -393,6 +423,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm[ki].level_stdv = sqrt(var_prime);
                 fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             }
+            */
             lexicographic_next(kmer);
         }
     }
@@ -409,7 +440,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
-
+    fclose(training_fp);
     return trained_models;
 }
 
