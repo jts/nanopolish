@@ -3,17 +3,23 @@ SHELL=/bin/bash -o pipefail
 
 BWA=bwa
 
+# Get the path to the Makefile
+ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+
+# Get the name of the input file without a suffix
+READS_BASE=$(basename $(READS))
+
 #
 # A pipeline to recompute a consensus sequence for an assembly
 #
-all=$(READS).pp.sorted.bam $(READS).pp.sorted.bam.bai
+all: $(READS_BASE).pp.sorted.bam $(READS_BASE).pp.sorted.bam.bai
 
 #
 # Preprocess the reads to make a name map
 # and uniquify names
 #
 %.pp.fa: %.fa
-	./consensus-preprocess.pl $^ > $@
+	$(ROOT_DIR)/consensus-preprocess.pl $^ > $@
 
 #
 # Make bwa index files for the assembly
