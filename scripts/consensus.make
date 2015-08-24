@@ -21,6 +21,10 @@ all: $(READS_BASE).pp.sorted.bam $(READS_BASE).pp.sorted.bam.bai
 %.pp.fa: %.fa
 	$(ROOT_DIR)/consensus-preprocess.pl $^ > $@
 
+# handle .fasta too
+%.pp.fa: %.fasta
+	$(ROOT_DIR)/consensus-preprocess.pl $^ > $@
+
 #
 # Make bwa index files for the assembly
 #
