@@ -367,8 +367,18 @@ void realign_read(EventalignWriter writer,
     }
     
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
-        std::vector<EventAlignment> alignment = 
-            align_read_to_ref(sr, fai, hdr, record, read_idx, strand_idx, region_start, region_end);
+        EventAlignmentParameters params;
+        params.sr = &sr;
+        params.fai = fai;
+        params.hdr = hdr;
+        params.record = record;
+        params.strand_idx = strand_idx;
+        
+        params.read_idx = read_idx;
+        params.region_start = region_start;
+        params.region_end = region_end;
+
+        std::vector<EventAlignment> alignment = align_read_to_ref(params);
 
         // write to disk
         #pragma omp critical
@@ -382,50 +392,52 @@ void realign_read(EventalignWriter writer,
     }
 }
 
-std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
-                                              const faidx_t* fai, 
-                                              const bam_hdr_t* hdr, 
-                                              const bam1_t* record, 
-                                              size_t read_idx,
-                                              size_t strand_idx,
-                                              int region_start,
-                                              int region_end)
+std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& params)
 {
+    // Sanity check input parameters
+    assert(params.sr != NULL);
+    assert(params.fai != NULL);
+    assert(params.hdr != NULL);
+    assert(params.record != NULL);
+    assert(params.strand_idx < NUM_STRANDS);
+    assert( (params.region_start == -1 && params.region_end == -1) || (params.region_start <= params.region_end));
+
     std::vector<EventAlignment> alignment_output;
 
     // Extract the reference subsequence for the entire alignment
     int fetched_len = 0;
-    int ref_offset = record->core.pos;
-    std::string ref_name(hdr->target_name[record->core.tid]);
+    int ref_offset = params.record->core.pos;
+    std::string ref_name(params.hdr->target_name[params.record->core.tid]);
 
-    char* cref_seq = faidx_fetch_seq(fai, ref_name.c_str(), ref_offset, 
-                                     bam_endpos(record), &fetched_len);
+    char* cref_seq = faidx_fetch_seq(params.fai, ref_name.c_str(), ref_offset, 
+                                     bam_endpos(params.record), &fetched_len);
 
     std::string ref_seq(cref_seq);
     free(cref_seq);
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
+    //printf("Ref seq: %s\n", ref_seq.c_str());
     ref_seq = IUPAC::disambiguate_to_lowest(ref_seq);
 
     if(ref_offset == 0)
         return alignment_output;
 
     // Make a vector of aligned (ref_pos, read_pos) pairs
-    std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
+    std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(params.record);
 
-    if(region_start != -1 && region_end != -1) {
-        trim_aligned_pairs_to_ref_region(aligned_pairs, region_start, region_end);
+    if(params.region_start != -1 && params.region_end != -1) {
+        trim_aligned_pairs_to_ref_region(aligned_pairs, params.region_start, params.region_end);
     }
 
     // Trim the aligned pairs to be within the range of the maximum kmer index
-    int max_kmer_idx = sr.read_sequence.size() - K;
+    int max_kmer_idx = params.sr->read_sequence.size() - K;
     trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
 
     if(aligned_pairs.empty())
         return alignment_output;
 
-    bool do_base_rc = bam_is_rev(record);
+    bool do_base_rc = bam_is_rev(params.record);
     bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
     const int align_stride = 100; // approximately how many reference bases to align to at once
     const int output_stride = 50; // approximately how many event alignments to output at once
@@ -435,15 +447,15 @@ std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
     int read_kidx_end = aligned_pairs.back().read_pos;
     
     if(do_base_rc) {
-        read_kidx_start = sr.flip_k_strand(read_kidx_start);
-        read_kidx_end = sr.flip_k_strand(read_kidx_end);
+        read_kidx_start = params.sr->flip_k_strand(read_kidx_start);
+        read_kidx_end = params.sr->flip_k_strand(read_kidx_end);
     }
     
     assert(read_kidx_start >= 0);
     assert(read_kidx_end >= 0);
 
-    int first_event = sr.get_closest_event_to(read_kidx_start, strand_idx);
-    int last_event = sr.get_closest_event_to(read_kidx_end, strand_idx);
+    int first_event = params.sr->get_closest_event_to(read_kidx_start, params.strand_idx);
+    int last_event = params.sr->get_closest_event_to(read_kidx_end, params.strand_idx);
     bool forward = first_event < last_event;
 
     int last_event_output = -1;
@@ -462,7 +474,7 @@ std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
         int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
 
         if(do_base_rc) {
-            curr_end_read = sr.flip_k_strand(curr_end_read);
+            curr_end_read = params.sr->flip_k_strand(curr_end_read);
         }
         assert(curr_end_read >= 0);
 
@@ -475,10 +487,10 @@ std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
 
         // Set up HMM input
         HMMInputData input;
-        input.read = &sr;
+        input.read = params.sr;
         input.anchor_index = 0; // not used here
         input.event_start_idx = curr_start_event;
-        input.event_stop_idx = sr.get_closest_event_to(curr_end_read, strand_idx);
+        input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
 
         // A limitation of the segment-by-segment alignment is that we can't jump
         // over very large deletions wrt to the reference. The effect of this
@@ -487,9 +499,9 @@ std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
         if(abs(input.event_start_idx - input.event_stop_idx) < 2)
             break;
 
-        input.strand = strand_idx;
+        input.strand = params.strand_idx;
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
-        input.rc = rc_flags[strand_idx];
+        input.rc = rc_flags[params.strand_idx];
         
         std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
         
@@ -517,8 +529,8 @@ std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
                 ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, K);
 
                 // event
-                ea.read_idx = read_idx;
-                ea.strand_idx = strand_idx;
+                ea.read_idx = params.read_idx;
+                ea.strand_idx = params.strand_idx;
                 ea.event_idx = as.event_idx;
                 ea.rc = input.rc;
 

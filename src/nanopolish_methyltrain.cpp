@@ -192,8 +192,17 @@ void train_read(const ModelMap& model_map,
         }
 
         // Align to the new model
-        std::vector<EventAlignment> alignment_output = 
-            align_read_to_ref(sr, fai, hdr, record, read_idx, strand_idx, region_start, region_end);
+        EventAlignmentParameters params;
+        params.sr = &sr;
+        params.fai = fai;
+        params.hdr = hdr;
+        params.record = record;
+        params.strand_idx = strand_idx;
+        
+        params.read_idx = read_idx;
+        params.region_start = region_start;
+        params.region_end = region_end;
+        std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
 
         // Update model observations
         #pragma omp critical
@@ -476,6 +485,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             new_pm[ki].level_stdv = sqrt(var_prime);
             fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             
+            /*
             GaussianMixture mixture;
             mixture.weights.push_back(misalignment_rate);
             mixture.params.push_back(misalignment_params);
@@ -485,7 +495,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             mixture.weights.push_back(1 - misalignment_rate);
             mixture.params.push_back(naive_params);
             GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
-            
+            */
+
             /*
             if(kmer.find("CG") != std::string::npos) {
                 float mu_prime = summaries[ki].mean_sum / summaries[ki].n;

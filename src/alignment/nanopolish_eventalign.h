@@ -16,6 +16,34 @@
 //
 // Structs
 //
+struct EventAlignmentParameters
+{
+    EventAlignmentParameters()
+    {
+        sr = NULL;
+        fai = NULL;
+        hdr = NULL;
+        record = NULL;
+        strand_idx = NUM_STRANDS;
+        
+        read_idx = -1;
+        region_start = -1;
+        region_end = -1;
+    }
+
+    // Mandatory
+    SquiggleRead* sr;
+    const faidx_t* fai;
+    const bam_hdr_t* hdr;
+    const bam1_t* record;
+    size_t strand_idx;
+    
+    // optional
+    int read_idx;
+    int region_start;
+    int region_end;
+};
+
 struct EventAlignment
 {
     // ref data
@@ -37,14 +65,6 @@ struct EventAlignment
 int eventalign_main(int argc, char** argv);
 
 // The main function to realign a read
-std::vector<EventAlignment> align_read_to_ref(SquiggleRead& sr,
-                                              const faidx_t* fai, 
-                                              const bam_hdr_t* hdr, 
-                                              const bam1_t* record, 
-                                              size_t read_idx,
-                                              size_t strand_idx,
-                                              int region_start,
-                                              int region_end);
-
+std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& params);
 
 #endif
