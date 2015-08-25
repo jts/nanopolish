@@ -14,17 +14,18 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_common.h"
 #include "nanopolish_emissions.h"
+#include "nanopolish_hmm_input_sequence.h"
 
 //
 // High level algorithms
 //
 
-// Calculate the probability of the nanopore events given the consensus sequence
-float profile_hmm_score(const std::string& consensus, const HMMInputData& data, const uint32_t flags = 0);
-float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data, const uint32_t flags = 0);
+// Calculate the probability of the nanopore events given a sequence
+float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
+float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMInputData>& data, const uint32_t flags = 0);
 
 // Run viterbi to align events to kmers
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data, const uint32_t flags = 0);
+std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
 
 //
 // Forward algorithm
@@ -36,13 +37,6 @@ void profile_hmm_forward_initialize(FloatMatrix& fm);
 // Terminate the forward algorithm
 float profile_hmm_forward_terminate(const FloatMatrix& fm, uint32_t row);
 
-// Fill in the forward matrix
-float profile_hmm_forward_fill(FloatMatrix& fm, // forward matrix
-                                const char* sequence,
-                                const HMMInputData& data,
-                                uint32_t e_start);
-
-
 //
 // Viterbi
 // 
@@ -50,17 +44,10 @@ float profile_hmm_forward_fill(FloatMatrix& fm, // forward matrix
 // initialize viterbi
 void profile_hmm_viterbi_initialize(FloatMatrix& m);
 
-// fill in the score matrix and the backtrack matrix
-void profile_hmm_viterbi_fill(FloatMatrix& vm, // viterbi matrix
-                              UInt8Matrix& bm, // backtrack matrix
-                              const char* sequence,
-                              const HMMInputData& data,
-                              uint32_t e_start);
-
 //
 // Training
 //
-void profile_hmm_update_training(const std::string& consensus, 
+void profile_hmm_update_training(const HMMInputSequence& sequence, 
                                  const HMMInputData& data);
 
 

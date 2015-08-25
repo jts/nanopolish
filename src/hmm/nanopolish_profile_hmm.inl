@@ -5,7 +5,7 @@
 //
 // nanopolish_profile_hmm -- Profile Hidden Markov Model
 //
-inline float calculate_skip_probability(const char* sequence,
+inline float calculate_skip_probability(const HMMInputSequence& sequence,
                                         const HMMInputData& data,
                                         uint32_t ki,
                                         uint32_t kj)
@@ -13,8 +13,8 @@ inline float calculate_skip_probability(const char* sequence,
     const PoreModel& pm = data.read->pore_model[data.strand];
     const KHMMParameters& parameters = data.read->parameters[data.strand];
 
-    uint32_t rank_i = get_rank(data, sequence, ki);
-    uint32_t rank_j = get_rank(data, sequence, kj);
+    uint32_t rank_i = sequence.get_kmer_rank(ki, data.rc);
+    uint32_t rank_j = sequence.get_kmer_rank(kj, data.rc);
 
     GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
     GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
@@ -22,7 +22,7 @@ inline float calculate_skip_probability(const char* sequence,
     return get_skip_probability(parameters, level_i.mean, level_j.mean);
 }
 
-inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const char* sequence, const HMMInputData& data)
+inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)
 {
     const KHMMParameters& parameters = data.read->parameters[data.strand];
 
@@ -260,7 +260,7 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 // The templated ProfileHMMOutput class allows one to run either Viterbi
 // or the Forward algorithm.
 template<class ProfileHMMOutput>
-inline float profile_hmm_fill_generic(const char* sequence,
+inline float profile_hmm_fill_generic(const HMMInputSequence& sequence,
                                       const HMMInputData& data,
                                       const uint32_t e_start,
                                       uint32_t flags,
@@ -285,7 +285,7 @@ inline float profile_hmm_fill_generic(const char* sequence,
     // Precompute kmer ranks
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki)
-        kmer_ranks[ki] = get_rank(data, sequence, ki);
+        kmer_ranks[ki] = sequence.get_kmer_rank(ki, data.rc);
 
     size_t num_events = output.get_num_rows() - 1;
 

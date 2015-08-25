@@ -28,6 +28,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_hmm_input_sequence.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -478,11 +479,11 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         }
         assert(curr_end_read >= 0);
 
-        std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, 
-                                                curr_end_ref - curr_start_ref + 1);
+        HMMInputSequence hmm_sequence(ref_seq.substr(curr_start_ref - ref_offset, 
+                                                     curr_end_ref - curr_start_ref + 1));
         
         // Nothing to align to
-        if(ref_subseq.length() < K)
+        if(hmm_sequence.length() < K)
             break;
 
         // Set up HMM input
@@ -503,7 +504,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
         input.rc = rc_flags[params.strand_idx];
         
-        std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
+        std::vector<AlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
         
         // Output alignment
         size_t num_output = 0;

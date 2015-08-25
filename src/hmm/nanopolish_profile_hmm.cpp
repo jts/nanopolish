@@ -49,18 +49,18 @@ float profile_hmm_forward_terminate(const FloatMatrix& fm,
 }
 
 // convenience function to run the HMM over multiple inputs and sum the result
-float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data, const uint32_t flags)
+float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMInputData>& data, const uint32_t flags)
 {
     float score = 0.0f;
     for(size_t i = 0; i < data.size(); ++i) {
-        score += profile_hmm_score(consensus, data[i], flags);
+        score += profile_hmm_score(sequence, data[i], flags);
     }
     return score;
 }
 
-float profile_hmm_score(const std::string& sequence, const HMMInputData& data, const uint32_t flags)
+float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    uint32_t n_kmers = sequence.size() - K + 1;
+    uint32_t n_kmers = sequence.length() - K + 1;
 
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
@@ -82,7 +82,7 @@ float profile_hmm_score(const std::string& sequence, const HMMInputData& data, c
 
     ProfileHMMForwardOutput output(&fm);
 
-    float score = profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
+    float score = profile_hmm_fill_generic(sequence, data, e_start, flags, output);
 
     // cleanup
     free_matrix(fm);
@@ -95,11 +95,11 @@ void profile_hmm_viterbi_initialize(FloatMatrix& m)
     profile_hmm_forward_initialize(m);
 }
 
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data, const uint32_t flags)
+std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
     std::vector<AlignmentState> alignment;
 
-    uint32_t n_kmers = sequence.size() - K + 1;
+    uint32_t n_kmers = sequence.length() - K + 1;
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
     uint32_t e_start = data.event_start_idx;
@@ -123,7 +123,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     ProfileHMMViterbiOutput output(&vm, &bm);
 
     profile_hmm_viterbi_initialize(vm);
-    profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
+    profile_hmm_fill_generic(sequence, data, e_start, flags, output);
 
     // Traverse the backtrack matrix to compute the results
     
@@ -184,15 +184,15 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     return alignment;
 }
 
-void profile_hmm_update_training(const std::string& consensus, 
+void profile_hmm_update_training(const HMMInputSequence& sequence,
                                  const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = profile_hmm_align(consensus, data);
+    std::vector<AlignmentState> alignment = profile_hmm_align(sequence, data);
 
     const PoreModel& pm = data.read->pore_model[data.strand];
     TrainingData& training_data = data.read->parameters[data.strand].training_data;
 
-    size_t n_kmers = consensus.size() - K + 1;
+    size_t n_kmers = sequence.length() - K + 1;
     uint32_t strand_idx = 0;
     char prev_s = 'M';
 
@@ -223,8 +223,8 @@ void profile_hmm_update_training(const std::string& consensus,
                 
                 assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
-                uint32_t rank_1 = get_rank(data, consensus.c_str(), transition_kmer_from);
-                uint32_t rank_2 = get_rank(data, consensus.c_str(), transition_kmer_to);
+                uint32_t rank_1 = sequence.get_kmer_rank(transition_kmer_from, data.rc);
+                uint32_t rank_2 = sequence.get_kmer_rank(transition_kmer_to, data.rc);
             
                 GaussianParameters level_1 = pm.get_scaled_parameters(rank_1);
                 GaussianParameters level_2 = pm.get_scaled_parameters(rank_2);
@@ -247,7 +247,7 @@ void profile_hmm_update_training(const std::string& consensus,
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
             
             assert(ki < n_kmers);
-            uint32_t rank = get_rank(data, consensus.c_str(), ki);
+            uint32_t rank = sequence.get_kmer_rank(ki, data.rc);
         
             GaussianParameters model = pm.get_scaled_parameters(rank);
             float norm_level = (level - model.mean) / model.stdv;
