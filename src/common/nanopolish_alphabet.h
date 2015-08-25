@@ -10,6 +10,7 @@
 
 #include <string>
 #include <inttypes.h>
+#include <assert.h>
 
 // A table to map { A, C, G, T } => { 0, 1, 2, 3 }
 extern const uint8_t dna_base_rank[];
@@ -20,6 +21,16 @@ struct DNABaseMap
     static const char* base;
     static const char* complement;
     static const uint32_t size;
+
+    inline static std::string reverse_complement(const std::string& seq)
+    {
+        std::string out(seq.length(), 'A');
+        size_t last_pos = seq.length() - 1;
+        for(int i = last_pos; i >= 0; --i) {
+            out[last_pos - i] = complement[rank[seq[i]]];
+        }
+        return out;
+    }
 };
 
 // DNABaseMap with methyl-cytosine
@@ -29,6 +40,19 @@ struct MethylCytosineBaseMap
     static const char* base;
     static const char* complement;
     static const uint32_t size;
+
+    inline static std::string reverse_complement(const std::string& seq)
+    {
+        assert(false && "TODO: methylation aware RC");
+
+        std::string out(seq.length(), 'A');
+        size_t last_pos = seq.length() - 1;
+        for(int i = last_pos; i >= 0; --i) {
+            out[last_pos - i] = complement[rank[seq[i]]];
+        }
+        return out;
+    }
+
 };
 
 template<class BaseMap>
@@ -37,7 +61,6 @@ class Alphabet
     public:
         inline static uint8_t rank(char b) { return BaseMap::rank[b]; }
         inline static char base(uint8_t rank) { return BaseMap::base[rank]; }
-        inline static char complement(char b) { return BaseMap::complement[rank(b)]; }
         inline static uint32_t size() { return BaseMap::size; }
 
         // return the lexicographic rank of the kmer amongst all strings of 
@@ -57,15 +80,7 @@ class Alphabet
         
         inline static uint32_t rc_kmer_rank(const char* str, uint32_t k)
         {
-            uint32_t p = 1;
-            uint32_t r = 0;
-
-            // from first base to last
-            for(uint32_t i = 0; i < k; ++i) {
-                r += rank(complement(str[i])) * p;
-                p *= BaseMap::size;
-            }
-            return r;
+            assert(false && "deprecated");
         }
 
         // Increment the input string to be the next sequence in lexicographic order
@@ -81,17 +96,11 @@ class Alphabet
             } while(carry > 0 && i >= 0);
         }
 
-        // Reverse-complement a string
-        inline static std::string reverse_complement(const std::string& seq)
-        {
-            std::string out(seq.length(), 'A');
-            size_t last_pos = seq.length() - 1;
-            for(int i = last_pos; i >= 0; --i) {
-                out[last_pos - i] = complement(seq[i]);
-            }
-            return out;
+        // Reverse-complement a string for a general alphabet
+        inline static std::string reverse_complement(const std::string& seq) 
+        { 
+            return BaseMap::reverse_complement(seq);
         }
-
 };
 
 typedef Alphabet<DNABaseMap> DNAAlphabet;

@@ -48,18 +48,12 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( MethylCytosineAlphabet::base(3) == 'M' );
     REQUIRE( MethylCytosineAlphabet::base(4) == 'T' );
 
-    // Collectively test lexicographic_next, kmer_rank, rc_kmer_rank
-    // and reverse_complement
+    // Collectively test lexicographic_next and kmer_rank 
     uint8_t k = 3;
     uint32_t num_strings = pow((double)MethylCytosineAlphabet::size(), (double)k);
     
     std::string kmer(k, 'A');
     for(size_t i = 0; i < num_strings - 1; ++i) {
-
-        // check that the rank(rc(str)) is equal to rc_rank(str)
-        std::string rc = MethylCytosineAlphabet::reverse_complement(kmer);
-        REQUIRE( MethylCytosineAlphabet::kmer_rank(rc.c_str(), k) == 
-                 MethylCytosineAlphabet::rc_kmer_rank(kmer.c_str(), k) );
 
         // check lexicographic next
         std::string next = kmer;
@@ -79,7 +73,6 @@ TEST_CASE( "string functions", "[string_functions]" ) {
     REQUIRE( DNAAlphabet::kmer_rank("AAAAA", 5) == 0 );
     REQUIRE( DNAAlphabet::kmer_rank("GATGA", 5) == 568 );
     REQUIRE( DNAAlphabet::kmer_rank("TTTTT", 5) == 1023 );
-    REQUIRE( DNAAlphabet::kmer_rank("GATGA", 5) == DNAAlphabet::rc_kmer_rank("TCATC", 5 ) );
 
     // lexicographic increment
     std::string str = "AAAAA";
@@ -91,7 +84,6 @@ TEST_CASE( "string functions", "[string_functions]" ) {
     REQUIRE( str == "AAACA" );
 
     // complement, reverse complement
-    REQUIRE( DNAAlphabet::complement('A') == 'T' );
     REQUIRE( DNAAlphabet::reverse_complement("GATGA") == "TCATC" );
 }
 
