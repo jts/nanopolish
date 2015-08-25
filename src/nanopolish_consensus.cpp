@@ -26,6 +26,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_hmm_input_sequence.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -158,15 +159,10 @@ double score_sequence(const std::string& sequence, const HMMInputData& data)
 }
 
 
-std::vector<AlignmentState> hmm_align(const std::string& sequence, const HMMInputData& data)
-{
-    return profile_hmm_align(sequence, data);
-//    return khmm_posterior_decode(sequence, state);
-}
 
-void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const std::string& sequence, const HMMInputData& data)
+void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const HMMInputSequence& sequence, const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = hmm_align(sequence, data);
+    std::vector<AlignmentState> alignment = profile_hmm_align(sequence, data);
     print_alignment(name, seq_id, read_id, sequence, data, alignment);
 }
 
@@ -353,7 +349,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
                 std::string ns = current.insert(current.size() - 5, extension);
                 PathCons ps(ns);
                 new_paths.push_back(ps);
-                lexicographic_next(extension);
+                DNAAlphabet::lexicographic_next(extension);
             } while(extension != first);
         }
     }
@@ -627,7 +623,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     for(uint32_t ri = 0; ri < data.size(); ++ri) {
 
         // Realign to the consensus sequence
-        std::vector<AlignmentState> decodes = hmm_align(base, data[ri]);
+        std::vector<AlignmentState> decodes = profile_hmm_align(base, data[ri]);
 
         // Get the closest event aligned to the target kmer
         int32_t min_k_dist = base.length();
@@ -662,7 +658,7 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
      
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
-        std::vector<AlignmentState> decodes = hmm_align(segment_sequence, input[ri]);
+        std::vector<AlignmentState> decodes = profile_hmm_align(segment_sequence, input[ri]);
         update_training_with_segment(segment_sequence, input[ri]);
     }
 }

@@ -116,7 +116,7 @@ int getmodel_main(int argc, char** argv)
         for(size_t ki = 0; ki < sr.pore_model[si].get_num_states(); ++ki) {
             PoreModelStateParams params = sr.pore_model[si].get_parameters(ki);
             printf("%c\t%s\t%.2lf\t%.2lf\n", strand, kmer.c_str(), params.level_mean, params.level_stdv);
-            lexicographic_next(kmer); // advance kmer
+            DNAAlphabet::lexicographic_next(kmer); // advance kmer
         }
     }
 }

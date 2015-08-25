@@ -85,33 +85,6 @@ struct GaussianParameters
 //
 // Functions
 //
-
-//
-// Kmer Ranks
-//
-inline uint32_t kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(uint32_t i = 0; i < K; ++i)
-        rank |= dna_base_rank[str[i]] << 2 * (K - i - 1);
-    return rank;
-}
-
-inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(int32_t i = K - 1; i >= 0; --i)
-        rank |= ((3 - dna_base_rank[str[i]]) << 2 * i);
-    return rank;
-}
-
-// wrapper to get the rank for a kmer on the correct strand wrt to the read state
-inline uint32_t get_rank(const HMMInputData& data, const char* s, uint32_t ki)
-{
-    const char* p = s + ki;
-    return !data.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
-}
-
 #define ESL_LOG_SUM 1
 
 // Add the log-scaled values a and b using a transform to avoid precision errors
@@ -133,35 +106,7 @@ inline double add_logs(const double a, const double b)
 #endif
 }
 
-// Complement a base
-inline char complement(char b)
-{
-    return "ACGT"[3 - dna_base_rank[b]];
-}
-
-// Reverse-complement a string
-inline std::string reverse_complement(const std::string& seq)
-{
-    std::string out(seq.length(), 'A');
-    size_t last_pos = seq.length() - 1;
-    for(int i = last_pos; i >= 0; --i) {
-        out[last_pos - i] = complement(seq[i]);
-    }
-    return out;
-}
-
-// Increment the input string to be the next DNA sequence in lexicographic order
-void lexicographic_next(std::string& str);
-
 // split a string based on a delimiter
 std::vector<std::string> split(std::string in, char delimiter);
-
-// Print the alignment between the read-strand and a sequence
-void print_alignment(const std::string& name,
-                     uint32_t seq_id,
-                     uint32_t read_id,
-                     const std::string& consensus, 
-                     const HMMInputData& data,
-                     const std::vector<AlignmentState>& alignment);
 
 #endif

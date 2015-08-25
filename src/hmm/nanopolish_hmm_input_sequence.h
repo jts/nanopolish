@@ -11,6 +11,7 @@
 
 #include <string>
 #include "nanopolish_common.h"
+#include "nanopolish_alphabet.h"
 
 // This class is a general wrapper around a string
 // that allows different alphabets to be used.
@@ -25,14 +26,20 @@ class HMMInputSequence
         //
         size_t length() const { return m_seq.length(); }
 
-        // get the lexicographic rank of the ki-th kmer
+        // returns the i-th kmer of the sequence
+        inline std::string get_kmer(uint32_t i, uint32_t k) const
+        {
+            return m_seq.substr(i, k);
+        }
+
+        // get the lexicographic rank of the i-th kmer
         // if the do_rc flag is set, return the rank of
         // reverse-complemented version of the ki-th kmer
         // NOT the ki-th kmer of the reverse-complemented sequence
-        inline uint32_t get_kmer_rank(uint32_t ki, bool do_rc) const
+        inline uint32_t get_kmer_rank(uint32_t i, bool do_rc) const
         {
-            const char* p = m_seq.c_str() + ki;
-            return ! do_rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
+            const char* p = m_seq.c_str() + i;
+            return ! do_rc ?  DNAAlphabet::kmer_rank(p, K) : DNAAlphabet::rc_kmer_rank(p, K);
         }
 
     private:

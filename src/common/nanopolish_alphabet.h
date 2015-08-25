@@ -8,6 +8,7 @@
 #ifndef NANOPOLISH_ALPHABET_H
 #define NANOPOLISH_ALPHABET_H
 
+#include <string>
 #include <inttypes.h>
 
 // A table to map { A, C, G, T } => { 0, 1, 2, 3 }

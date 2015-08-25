@@ -334,9 +334,9 @@ void emit_event_alignment_tsv(FILE* fp,
         fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
 
         // model information
-        std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+        std::string model_kmer = ea.rc ? DNAAlphabet::reverse_complement(ea.ref_kmer) : ea.ref_kmer;
 
-        uint32_t rank = kmer_rank(model_kmer.c_str(), K);
+        uint32_t rank = DNAAlphabet::kmer_rank(model_kmer.c_str(), K);
         GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
         fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), 
                                               model.mean, 

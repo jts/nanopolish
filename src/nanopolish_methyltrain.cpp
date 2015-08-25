@@ -53,7 +53,7 @@ struct GaussianMixture
 //
 typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
 typedef std::map<std::string, std::vector<StateSummary>> ModelTrainingMap;
-
+typedef DNAAlphabet MT_Alphabet;
 //
 // Getopt
 //
@@ -212,8 +212,8 @@ void train_read(const ModelMap& model_map,
 
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-                uint32_t rank = kmer_rank(model_kmer.c_str(), K);
+                std::string model_kmer = ea.rc ? MT_Alphabet::reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                uint32_t rank = MT_Alphabet::kmer_rank(model_kmer.c_str(), K);
                 auto& kmer_summary = emission_map[rank];
 
                 if(ea.hmm_state != 'M') {
@@ -506,7 +506,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             }
             */
-            lexicographic_next(kmer);
+            MT_Alphabet::lexicographic_next(kmer);
         }
     }
 
@@ -550,7 +550,7 @@ int methyltrain_main(int argc, char** argv)
             std::string curr_kmer = "AAAAA";
             for(size_t ki = 0; ki < states.size(); ++ki) {
                 writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\n";
-                lexicographic_next(curr_kmer);
+                MT_Alphabet::lexicographic_next(curr_kmer);
             }
             writer.close();
         }
