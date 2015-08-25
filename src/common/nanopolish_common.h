@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <math.h>
+#include "nanopolish_alphabet.h"
 #include "profiler.h"
 #include "logsum.h"
 
@@ -38,26 +39,6 @@ const uint8_t K = 5;
 const uint8_t T_IDX = 0;
 const uint8_t C_IDX = 1;
 const uint8_t NUM_STRANDS = 2;
-
-// A table to map { A, C, G, T } => { 0, 1, 2, 3 }
-static const uint8_t base_rank[256] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,
-    0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-};
 
 //
 // Data structures
@@ -112,7 +93,7 @@ inline uint32_t kmer_rank(const char* str, uint32_t K)
 {
     uint32_t rank = 0;
     for(uint32_t i = 0; i < K; ++i)
-        rank |= base_rank[str[i]] << 2 * (K - i - 1);
+        rank |= dna_base_rank[str[i]] << 2 * (K - i - 1);
     return rank;
 }
 
@@ -120,7 +101,7 @@ inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
 {
     uint32_t rank = 0;
     for(int32_t i = K - 1; i >= 0; --i)
-        rank |= ((3 - base_rank[str[i]]) << 2 * i);
+        rank |= ((3 - dna_base_rank[str[i]]) << 2 * i);
     return rank;
 }
 
@@ -155,7 +136,7 @@ inline double add_logs(const double a, const double b)
 // Complement a base
 inline char complement(char b)
 {
-    return "ACGT"[3 - base_rank[b]];
+    return "ACGT"[3 - dna_base_rank[b]];
 }
 
 // Reverse-complement a string

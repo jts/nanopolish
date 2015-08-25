@@ -25,11 +25,14 @@ class HMMInputSequence
         //
         size_t length() const { return m_seq.length(); }
 
-        // get the lexicographic rank of the kmer
-        inline uint32_t get_kmer_rank(uint32_t ki, bool is_rc) const
+        // get the lexicographic rank of the ki-th kmer
+        // if the do_rc flag is set, return the rank of
+        // reverse-complemented version of the ki-th kmer
+        // NOT the ki-th kmer of the reverse-complemented sequence
+        inline uint32_t get_kmer_rank(uint32_t ki, bool do_rc) const
         {
             const char* p = m_seq.c_str() + ki;
-            return ! is_rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
+            return ! do_rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
         }
 
     private:

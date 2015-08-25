@@ -18,7 +18,7 @@ void lexicographic_next(std::string& str)
     int carry = 1;
     int i = str.size() - 1;
     do {
-        uint32_t r = base_rank[str[i]] + carry;
+        uint32_t r = dna_base_rank[str[i]] + carry;
         str[i] = "ACGT"[r % 4];
         carry = r / 4;
         i -= 1;

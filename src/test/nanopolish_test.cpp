@@ -11,6 +11,7 @@
 #include "logsum.h"
 #include "catch.hpp"
 #include "nanopolish_common.h"
+#include "nanopolish_alphabet.h"
 #include "nanopolish_emissions.h"
 #include "nanopolish_profile_hmm.h"
 
@@ -21,27 +22,77 @@ void initialize()
     p7_FLogsumInit();
 }
 
+TEST_CASE( "alphabet", "[alphabet]" ) {
+
+    // DNA alphabet
+    REQUIRE( DNAAlphabet::rank('A') == 0 );
+    REQUIRE( DNAAlphabet::rank('C') == 1 );
+    REQUIRE( DNAAlphabet::rank('G') == 2 );
+    REQUIRE( DNAAlphabet::rank('T') == 3 );
+
+    REQUIRE( DNAAlphabet::base(0) == 'A' );
+    REQUIRE( DNAAlphabet::base(1) == 'C' );
+    REQUIRE( DNAAlphabet::base(2) == 'G' );
+    REQUIRE( DNAAlphabet::base(3) == 'T' );
+
+    // MethylCytosine alphabet
+    REQUIRE( MethylCytosineAlphabet::rank('A') == 0 );
+    REQUIRE( MethylCytosineAlphabet::rank('C') == 1 );
+    REQUIRE( MethylCytosineAlphabet::rank('G') == 2 );
+    REQUIRE( MethylCytosineAlphabet::rank('M') == 3 );
+    REQUIRE( MethylCytosineAlphabet::rank('T') == 4 );
+
+    REQUIRE( MethylCytosineAlphabet::base(0) == 'A' );
+    REQUIRE( MethylCytosineAlphabet::base(1) == 'C' );
+    REQUIRE( MethylCytosineAlphabet::base(2) == 'G' );
+    REQUIRE( MethylCytosineAlphabet::base(3) == 'M' );
+    REQUIRE( MethylCytosineAlphabet::base(4) == 'T' );
+
+    // Collectively test lexicographic_next, kmer_rank, rc_kmer_rank
+    // and reverse_complement
+    uint8_t k = 3;
+    uint32_t num_strings = pow((double)MethylCytosineAlphabet::size(), (double)k);
+    
+    std::string kmer(k, 'A');
+    for(size_t i = 0; i < num_strings - 1; ++i) {
+
+        // check that the rank(rc(str)) is equal to rc_rank(str)
+        std::string rc = MethylCytosineAlphabet::reverse_complement(kmer);
+        REQUIRE( MethylCytosineAlphabet::kmer_rank(rc.c_str(), k) == 
+                 MethylCytosineAlphabet::rc_kmer_rank(kmer.c_str(), k) );
+
+        // check lexicographic next
+        std::string next = kmer;
+        MethylCytosineAlphabet::lexicographic_next(next);
+        REQUIRE( next > kmer );
+        int rank_diff = MethylCytosineAlphabet::kmer_rank(next.c_str(), k) - 
+                        MethylCytosineAlphabet::kmer_rank(kmer.c_str(), k);
+        REQUIRE( rank_diff == 1);
+        kmer = next;
+    }
+    REQUIRE(kmer == "TTT");
+}
+
 TEST_CASE( "string functions", "[string_functions]" ) {
 
     // kmer rank
-    REQUIRE( kmer_rank("AAAAA", 5) == 0 );
-    REQUIRE( kmer_rank("GATGA", 5) == 568 );
-    REQUIRE( kmer_rank("TTTTT", 5) == 1023 );
-    REQUIRE( kmer_rank("GATGA", 5) == rc_kmer_rank("TCATC", 5 ) );
+    REQUIRE( DNAAlphabet::kmer_rank("AAAAA", 5) == 0 );
+    REQUIRE( DNAAlphabet::kmer_rank("GATGA", 5) == 568 );
+    REQUIRE( DNAAlphabet::kmer_rank("TTTTT", 5) == 1023 );
+    REQUIRE( DNAAlphabet::kmer_rank("GATGA", 5) == DNAAlphabet::rc_kmer_rank("TCATC", 5 ) );
 
     // lexicographic increment
     std::string str = "AAAAA";
-    lexicographic_next(str);
+    DNAAlphabet::lexicographic_next(str);
     REQUIRE( str == "AAAAC" );
 
     str = "AAAAT";
-    lexicographic_next(str);
+    DNAAlphabet::lexicographic_next(str);
     REQUIRE( str == "AAACA" );
 
     // complement, reverse complement
-    REQUIRE( complement('A') == 'T' );
-    REQUIRE( reverse_complement("GATGA") == "TCATC" );
-
+    REQUIRE( DNAAlphabet::complement('A') == 'T' );
+    REQUIRE( DNAAlphabet::reverse_complement("GATGA") == "TCATC" );
 }
 
 TEST_CASE( "math", "[math]") {
