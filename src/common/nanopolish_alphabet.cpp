@@ -30,7 +30,7 @@ const char* DNAAlphabet::_base = "ACGT";
 const char* DNAAlphabet::_complement = "TGCA";
 const uint32_t DNAAlphabet::_size = 4;
 
-const uint8_t MethylCytosineAlphabet::_rank[256] = {
+const uint8_t MethylCpGAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -48,7 +48,7 @@ const uint8_t MethylCytosineAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
-const char* MethylCytosineAlphabet::_base = "ACGMT";
-const uint32_t MethylCytosineAlphabet::_size = 5;
+const char* MethylCpGAlphabet::_base = "ACGMT";
+const uint32_t MethylCpGAlphabet::_size = 5;
 
 DNAAlphabet gDNAAlphabet;

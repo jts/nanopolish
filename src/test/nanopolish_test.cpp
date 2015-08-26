@@ -26,7 +26,7 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
 
     // DNA alphabet
     DNAAlphabet dna_alphabet;
-    MethylCytosineAlphabet mc_alphabet;
+    MethylCpGAlphabet mc_alphabet;
 
     REQUIRE( dna_alphabet.rank('A') == 0 );
     REQUIRE( dna_alphabet.rank('C') == 1 );
@@ -38,7 +38,7 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( dna_alphabet.base(2) == 'G' );
     REQUIRE( dna_alphabet.base(3) == 'T' );
 
-    // MethylCytosine alphabet
+    // MethylCpG alphabet
     REQUIRE( mc_alphabet.rank('A') == 0 );
     REQUIRE( mc_alphabet.rank('C') == 1 );
     REQUIRE( mc_alphabet.rank('G') == 2 );
@@ -68,6 +68,15 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
         kmer = next;
     }
     REQUIRE(kmer == "TTT");
+
+    // Test the special reverse complement model
+    // for the CpG alphabet
+    REQUIRE( mc_alphabet.reverse_complement("M") == "G");
+    REQUIRE( mc_alphabet.reverse_complement("C") == "G");
+    REQUIRE( mc_alphabet.reverse_complement("MG") == "MG");
+    REQUIRE( mc_alphabet.reverse_complement("AM") == "GT");
+    REQUIRE( mc_alphabet.reverse_complement("AMG") == "MGT");
+    REQUIRE( mc_alphabet.reverse_complement("GTACATG") == dna_alphabet.reverse_complement("GTACATG"));
 }
 
 TEST_CASE( "string functions", "[string_functions]" ) {

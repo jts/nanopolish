@@ -79,10 +79,11 @@ struct DNAAlphabet : public Alphabet
 };
 
 // DNABaseMap with methyl-cytosine
-struct MethylCytosineAlphabet : public Alphabet
+struct MethylCpGAlphabet : public Alphabet
 {
     static const uint8_t _rank[256];
     static const char* _base;
+    static const char* _complement;
     static const uint32_t _size;
 
     virtual uint8_t rank(char b) const { return _rank[b]; }
@@ -91,8 +92,28 @@ struct MethylCytosineAlphabet : public Alphabet
 
     virtual std::string reverse_complement(const std::string& seq) const
     {
-        assert(false && "TODO: methylation aware RC");
-        return "";   
+        std::string out(seq.length(), 'A');
+        size_t i = 0; // input
+        int j = seq.length() - 1; // output
+        while(i < seq.length()) {
+            if(seq[i] == 'M') {
+                
+                out[j--] = 'G';
+                i += 1;
+
+                // CpG methylation model requires M to be followed by G
+                // (if there is space)
+                if(j >= 0) {
+                    assert(i < seq.length());
+                    assert(seq[i] == 'G');
+                    out[j--] = 'M';
+                    ++i;
+                }
+            } else {
+                out[j--] = DNAAlphabet::_complement[DNAAlphabet::_rank[seq[i++]]];
+            }
+        }
+        return out;
     }
 };
 
