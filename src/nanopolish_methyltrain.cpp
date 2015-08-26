@@ -201,7 +201,8 @@ void train_read(const ModelMap& model_map,
         params.hdr = hdr;
         params.record = record;
         params.strand_idx = strand_idx;
-        
+ 
+        params.alphabet = &gMCpGAlphabet;       
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;

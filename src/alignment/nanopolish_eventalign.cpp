@@ -416,8 +416,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
-    //printf("Ref seq: %s\n", ref_seq.c_str());
-    ref_seq = IUPAC::disambiguate_to_lowest(ref_seq);
+    ref_seq = params.alphabet->disambiguate(ref_seq);
 
     if(ref_offset == 0)
         return alignment_output;
@@ -461,7 +460,6 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     int curr_start_event = first_event;
     int curr_start_ref = aligned_pairs.front().ref_pos;
     int curr_pair_idx = 0;
-    
 
     while( (forward && curr_start_event < last_event) ||
            (!forward && curr_start_event > last_event)) {

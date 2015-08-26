@@ -11,6 +11,7 @@
 #include <string>
 #include <inttypes.h>
 #include <assert.h>
+#include "nanopolish_iupac.h"
 
 // A table to map { A, C, G, T } => { 0, 1, 2, 3 }
 extern const uint8_t dna_base_rank[];
@@ -54,6 +55,9 @@ class Alphabet
 
         // reverse complement a string over this alphabet
         virtual std::string reverse_complement(const std::string& seq) const = 0;
+
+        // remove ambiguous nucleotides from the string
+        virtual std::string disambiguate(const std::string& seq) const = 0; 
 };
 
 struct DNAAlphabet : public Alphabet
@@ -76,6 +80,18 @@ struct DNAAlphabet : public Alphabet
         }
         return out;
     }
+
+    // return a new copy of the string with ambiguous characters changed
+    virtual std::string disambiguate(const std::string& str) const
+    {
+        std::string out(str);
+        for(size_t i = 0; i < str.length(); ++i) {
+            assert(IUPAC::isValid(str[i]));
+            out[i] = IUPAC::getPossibleSymbols(str[i])[0];
+        }
+        return out;
+    }
+
 };
 
 // DNABaseMap with methyl-cytosine
@@ -115,6 +131,24 @@ struct MethylCpGAlphabet : public Alphabet
         }
         return out;
     }
+
+    // return a new copy of the string with ambiguous characters changed
+    virtual std::string disambiguate(const std::string& str) const
+    {
+        std::string out(str);
+        for(size_t i = 0; i < str.length(); ++i) {
+
+            if(str[i] == 'M' && i != str.length() - 1 && str[i + 1] == 'G') {
+                // CpG site, assume its methylated not an ambiguity symbol
+                out[i] = 'M';
+            } else {
+                assert(IUPAC::isValid(str[i]));
+                out[i] = IUPAC::getPossibleSymbols(str[i])[0];
+            }
+        }
+        return out;
+    }
+
 };
 
 // Global alphabet objects that can be re-used
