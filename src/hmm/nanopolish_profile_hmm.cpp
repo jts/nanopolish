@@ -228,7 +228,7 @@ void print_alignment(const std::string& name,
         } else {
             lp_diff = alignment[pi].l_fm;
         }
-        std::string kmer = sequence.get_kmer(ki, K);
+        std::string kmer = sequence.get_kmer(ki, K, false);
  
         printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, "tc"[data.strand]);
         printf("%c\t%d\t%d\t", s, ei, ki);

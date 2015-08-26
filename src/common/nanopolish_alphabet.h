@@ -27,7 +27,7 @@ class Alphabet
 
         // return the lexicographic rank of the kmer amongst all strings of 
         // length k for this alphabet
-        inline uint32_t kmer_rank(const char* str, uint32_t k)
+        inline uint32_t kmer_rank(const char* str, uint32_t k) const
         {
             uint32_t p = 1;
             uint32_t r = 0;
@@ -41,7 +41,7 @@ class Alphabet
         }
         
         // Increment the input string to be the next sequence in lexicographic order
-        inline void lexicographic_next(std::string& str)
+        inline void lexicographic_next(std::string& str) const
         {
             int carry = 1;
             int i = str.size() - 1;
@@ -137,7 +137,6 @@ struct MethylCpGAlphabet : public Alphabet
     {
         std::string out(str);
         for(size_t i = 0; i < str.length(); ++i) {
-
             if(str[i] == 'M' && i != str.length() - 1 && str[i + 1] == 'G') {
                 // CpG site, assume its methylated not an ambiguity symbol
                 out[i] = 'M';

@@ -68,6 +68,12 @@ struct EventAlignment
 // Entry point from nanopolish.cpp
 int eventalign_main(int argc, char** argv);
 
+// print the alignment as a tab-separated table
+void emit_event_alignment_tsv(FILE* fp,
+                              const SquiggleRead& sr,
+                              const EventAlignmentParameters& params,
+                              const std::vector<EventAlignment>& alignments);
+
 // The main function to realign a read
 std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& params);
 

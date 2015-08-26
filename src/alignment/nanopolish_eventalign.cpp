@@ -417,6 +417,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
     ref_seq = params.alphabet->disambiguate(ref_seq);
+    std::string rc_ref_seq = params.alphabet->reverse_complement(ref_seq);
 
     if(ref_offset == 0)
         return alignment_output;
@@ -475,8 +476,14 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         }
         assert(curr_end_read >= 0);
 
-        HMMInputSequence hmm_sequence(ref_seq.substr(curr_start_ref - ref_offset, 
-                                                     curr_end_ref - curr_start_ref + 1));
+        int s = curr_start_ref - ref_offset;
+        int l = curr_end_ref - curr_start_ref + 1;
+
+        std::string fwd_subseq = ref_seq.substr(s, l);
+        std::string rc_subseq = rc_ref_seq.substr(ref_seq.length() - s - l, l);
+        assert(fwd_subseq.length() == rc_subseq.length());
+
+        HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
         
         // Nothing to align to
         if(hmm_sequence.length() < K)
@@ -532,7 +539,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 ea.rc = input.rc;
 
                 // hmm
-                assert(false && "Store model kmer");
+                ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, K, input.rc);
                 ea.hmm_state = as.state;
 
                 // store

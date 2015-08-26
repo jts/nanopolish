@@ -49,7 +49,7 @@ struct GaussianMixture
 };
 
 //
-Alphabet* mt_alphabet = &gDNAAlphabet;
+Alphabet* mt_alphabet = &gMCpGAlphabet;
 
 //
 // Typedefs
@@ -202,7 +202,7 @@ void train_read(const ModelMap& model_map,
         params.record = record;
         params.strand_idx = strand_idx;
  
-        params.alphabet = &gMCpGAlphabet;       
+        params.alphabet = &gMCpGAlphabet;
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -211,6 +211,8 @@ void train_read(const ModelMap& model_map,
         // Update model observations
         #pragma omp critical
         {
+//            emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+
             // Get the training data for this model
             auto& emission_map = training[curr_model];
 
@@ -279,10 +281,10 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             
             // Make sure the model file is sorted by rank
             assert(kmer == expected_kmer);
-            assert(gMCpGAlphabet.kmer_rank(kmer.c_str(), K) == states.size());
+            assert(mt_alphabet->kmer_rank(kmer.c_str(), K) == states.size());
             states.push_back(params);
 
-            gMCpGAlphabet.lexicographic_next(expected_kmer);
+            mt_alphabet->lexicographic_next(expected_kmer);
         }
             
         assert(!model_name.empty());
@@ -454,7 +456,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     FILE* training_fp = fopen(fn.str().c_str(), "w");
 
     // header
-    fprintf(training_fp, "model\tkmer\tevent_mean\n");
+    fprintf(training_fp, "model\tmodel_kmer\tevent_mean\n");
 
     // Process the training results
     ModelMap trained_models;
@@ -473,10 +475,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
-            // Initialize a mixture model using the current mean and wide Gaussian to catch misaligned events
-            double misalignment_rate = 0.1f;
-            GaussianParameters misalignment_params(65.0f, 7.0f);
-
             float n = summaries[ki].events.size();
             float sum_mean = 0.0f;
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
@@ -491,12 +489,19 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 sum_var += pow(summaries[ki].events[ei] - mu_prime, 2.0);
             }
             float var_prime = sum_var / n;
-            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
-            new_pm[ki].level_mean = mu_prime;
-            new_pm[ki].level_stdv = sqrt(var_prime);
-            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             
+            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            if(n > 100) {
+                new_pm[ki].level_mean = mu_prime;
+                new_pm[ki].level_stdv = sqrt(var_prime);
+            }
+            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+                
             /*
+            // Initialize a mixture model using the current mean and wide Gaussian to catch misaligned events
+            double misalignment_rate = 0.1f;
+            GaussianParameters misalignment_params(65.0f, 7.0f);
+
             GaussianMixture mixture;
             mixture.weights.push_back(misalignment_rate);
             mixture.params.push_back(misalignment_params);

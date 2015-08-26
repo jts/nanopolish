@@ -29,13 +29,25 @@ class HMMInputSequence
             m_rc_seq = m_alphabet->reverse_complement(seq);
         }
 
+        HMMInputSequence(const std::string& fwd,
+                         const std::string& rc,
+                         const Alphabet* alphabet) : 
+                             m_seq(fwd),
+                             m_rc_seq(rc),
+                             m_alphabet(alphabet)
+        {
+
+        }
+
+
         //
         size_t length() const { return m_seq.length(); }
 
         // returns the i-th kmer of the sequence
-        inline std::string get_kmer(uint32_t i, uint32_t k) const
+        inline std::string get_kmer(uint32_t i, uint32_t k, bool do_rc) const
         {
-            return m_seq.substr(i, k);
+            return ! do_rc ? m_seq.substr(i, k) : 
+                             m_rc_seq.substr(m_rc_seq.length() - i - k, k);
         }
 
         // get the lexicographic rank of the i-th kmer
@@ -60,7 +72,7 @@ class HMMInputSequence
         }
 
         HMMInputSequence(); // not allowed
-        Alphabet* m_alphabet;
+        const Alphabet* m_alphabet;
 
         std::string m_seq;
         std::string m_rc_seq;
