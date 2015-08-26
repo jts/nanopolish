@@ -8,6 +8,18 @@
 #ifndef NANOPOLISH_METHYLTRAIN_H
 #define NANOPOLISH_METHYLTRAIN_H
 
-void methyltrain_main(int argc, char** argv);
+#include <string>
+#include <map>
+#include "nanopolish_poremodel.h"
+
+//
+// Typedefs
+//
+typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
+
+// read models from a file
+ModelMap read_models_fofn(const std::string& fofn_name);
+
+int methyltrain_main(int argc, char** argv);
 
 #endif

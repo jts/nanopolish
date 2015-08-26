@@ -13,6 +13,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_getmodel.h"
 #include "nanopolish_methyltrain.h"
+#include "nanopolish_methyltest.h"
 
 // This code needs to be run before any of the program logic
 // It sets up pre-computed values and caches
@@ -53,6 +54,9 @@ int main(int argc, char** argv)
             return 0;
         } else if(command == "methyltrain") {
             methyltrain_main(argc - 1, argv + 1);
+            return 0;
+        } else if(command == "methyltest") {
+            methyltest_main(argc - 1, argv + 1);
             return 0;
         }
     }

@@ -21,6 +21,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include "htslib/faidx.h"
+#include "nanopolish_methyltrain.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
@@ -49,12 +50,11 @@ struct GaussianMixture
 };
 
 //
-Alphabet* mt_alphabet = &gMCpGAlphabet;
+Alphabet* mtrain_alphabet = &gMCpGAlphabet;
 
 //
 // Typedefs
 //
-typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
 typedef std::map<std::string, std::vector<StateSummary>> ModelTrainingMap;
 
 //
@@ -218,8 +218,8 @@ void train_read(const ModelMap& model_map,
 
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.rc ? mt_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-                uint32_t rank = mt_alphabet->kmer_rank(model_kmer.c_str(), K);
+                std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), K);
                 auto& kmer_summary = emission_map[rank];
 
                 if(ea.hmm_state != 'M') {
@@ -281,10 +281,10 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             
             // Make sure the model file is sorted by rank
             assert(kmer == expected_kmer);
-            assert(mt_alphabet->kmer_rank(kmer.c_str(), K) == states.size());
+            assert(mtrain_alphabet->kmer_rank(kmer.c_str(), K) == states.size());
             states.push_back(params);
 
-            mt_alphabet->lexicographic_next(expected_kmer);
+            mtrain_alphabet->lexicographic_next(expected_kmer);
         }
             
         assert(!model_name.empty());
@@ -522,7 +522,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             }
             */
-            mt_alphabet->lexicographic_next(kmer);
+            mtrain_alphabet->lexicographic_next(kmer);
         }
     }
 
@@ -560,13 +560,14 @@ int methyltrain_main(int argc, char** argv)
             std::stringstream outname;
             outname << model_iter->first << ".trained.round" << round + 1;
             std::ofstream writer(outname.str());
-            
+            writer << "#model_file\t" << model_iter->first << "\n";
             const std::vector<PoreModelStateParams>& states = model_iter->second;
 
             std::string curr_kmer = "AAAAA";
             for(size_t ki = 0; ki < states.size(); ++ki) {
-                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\n";
-                mt_alphabet->lexicographic_next(curr_kmer);
+                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv
+                                            << states[ki].sd_mean << "\t" << states[ki].sd_stdv << "\n";
+                mtrain_alphabet->lexicographic_next(curr_kmer);
             }
             writer.close();
         }
