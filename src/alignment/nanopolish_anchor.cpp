@@ -144,7 +144,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + K);
 
                 if(do_base_rc) {
-                    s = DNAAlphabet::reverse_complement(s);
+                    s = gDNAAlphabet.reverse_complement(s);
                 }
 
                 if(ai >= read_substrings.size())

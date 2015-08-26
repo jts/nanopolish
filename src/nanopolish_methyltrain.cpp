@@ -49,11 +49,14 @@ struct GaussianMixture
 };
 
 //
+Alphabet* mt_alphabet = &gDNAAlphabet;
+
+//
 // Typedefs
 //
 typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
 typedef std::map<std::string, std::vector<StateSummary>> ModelTrainingMap;
-typedef DNAAlphabet MT_Alphabet;
+
 //
 // Getopt
 //
@@ -212,8 +215,8 @@ void train_read(const ModelMap& model_map,
 
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.rc ? MT_Alphabet::reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-                uint32_t rank = MT_Alphabet::kmer_rank(model_kmer.c_str(), K);
+                std::string model_kmer = ea.rc ? mt_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                uint32_t rank = mt_alphabet->kmer_rank(model_kmer.c_str(), K);
                 auto& kmer_summary = emission_map[rank];
 
                 if(ea.hmm_state != 'M') {
@@ -342,7 +345,6 @@ void parse_methyltrain_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 }
-
 
 ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
 {
@@ -506,7 +508,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
             }
             */
-            MT_Alphabet::lexicographic_next(kmer);
+            mt_alphabet->lexicographic_next(kmer);
         }
     }
 
@@ -550,7 +552,7 @@ int methyltrain_main(int argc, char** argv)
             std::string curr_kmer = "AAAAA";
             for(size_t ki = 0; ki < states.size(); ++ki) {
                 writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\n";
-                MT_Alphabet::lexicographic_next(curr_kmer);
+                mt_alphabet->lexicographic_next(curr_kmer);
             }
             writer.close();
         }

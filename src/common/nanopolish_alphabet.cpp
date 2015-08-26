@@ -8,7 +8,7 @@
 #include <assert.h>
 #include "nanopolish_alphabet.h"
 
-const uint8_t DNABaseMap::rank[256] = {
+const uint8_t DNAAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -26,11 +26,11 @@ const uint8_t DNABaseMap::rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
-const char* DNABaseMap::base = "ACGT";
-const char* DNABaseMap::complement = "TGCA";
-const uint32_t DNABaseMap::size = 4;
+const char* DNAAlphabet::_base = "ACGT";
+const char* DNAAlphabet::_complement = "TGCA";
+const uint32_t DNAAlphabet::_size = 4;
 
-const uint8_t MethylCytosineBaseMap::rank[256] = {
+const uint8_t MethylCytosineAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -48,6 +48,7 @@ const uint8_t MethylCytosineBaseMap::rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
-const char* MethylCytosineBaseMap::base = "ACGMT";
-const char* MethylCytosineBaseMap::complement = "TGCGA";
-const uint32_t MethylCytosineBaseMap::size = 5;
+const char* MethylCytosineAlphabet::_base = "ACGMT";
+const uint32_t MethylCytosineAlphabet::_size = 5;
+
+DNAAlphabet gDNAAlphabet;

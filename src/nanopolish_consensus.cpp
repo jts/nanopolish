@@ -349,7 +349,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
                 std::string ns = current.insert(current.size() - 5, extension);
                 PathCons ps(ns);
                 new_paths.push_back(ps);
-                DNAAlphabet::lexicographic_next(extension);
+                gDNAAlphabet.lexicographic_next(extension);
             } while(extension != first);
         }
     }

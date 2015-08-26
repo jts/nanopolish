@@ -25,42 +25,45 @@ void initialize()
 TEST_CASE( "alphabet", "[alphabet]" ) {
 
     // DNA alphabet
-    REQUIRE( DNAAlphabet::rank('A') == 0 );
-    REQUIRE( DNAAlphabet::rank('C') == 1 );
-    REQUIRE( DNAAlphabet::rank('G') == 2 );
-    REQUIRE( DNAAlphabet::rank('T') == 3 );
+    DNAAlphabet dna_alphabet;
+    MethylCytosineAlphabet mc_alphabet;
 
-    REQUIRE( DNAAlphabet::base(0) == 'A' );
-    REQUIRE( DNAAlphabet::base(1) == 'C' );
-    REQUIRE( DNAAlphabet::base(2) == 'G' );
-    REQUIRE( DNAAlphabet::base(3) == 'T' );
+    REQUIRE( dna_alphabet.rank('A') == 0 );
+    REQUIRE( dna_alphabet.rank('C') == 1 );
+    REQUIRE( dna_alphabet.rank('G') == 2 );
+    REQUIRE( dna_alphabet.rank('T') == 3 );
+
+    REQUIRE( dna_alphabet.base(0) == 'A' );
+    REQUIRE( dna_alphabet.base(1) == 'C' );
+    REQUIRE( dna_alphabet.base(2) == 'G' );
+    REQUIRE( dna_alphabet.base(3) == 'T' );
 
     // MethylCytosine alphabet
-    REQUIRE( MethylCytosineAlphabet::rank('A') == 0 );
-    REQUIRE( MethylCytosineAlphabet::rank('C') == 1 );
-    REQUIRE( MethylCytosineAlphabet::rank('G') == 2 );
-    REQUIRE( MethylCytosineAlphabet::rank('M') == 3 );
-    REQUIRE( MethylCytosineAlphabet::rank('T') == 4 );
+    REQUIRE( mc_alphabet.rank('A') == 0 );
+    REQUIRE( mc_alphabet.rank('C') == 1 );
+    REQUIRE( mc_alphabet.rank('G') == 2 );
+    REQUIRE( mc_alphabet.rank('M') == 3 );
+    REQUIRE( mc_alphabet.rank('T') == 4 );
 
-    REQUIRE( MethylCytosineAlphabet::base(0) == 'A' );
-    REQUIRE( MethylCytosineAlphabet::base(1) == 'C' );
-    REQUIRE( MethylCytosineAlphabet::base(2) == 'G' );
-    REQUIRE( MethylCytosineAlphabet::base(3) == 'M' );
-    REQUIRE( MethylCytosineAlphabet::base(4) == 'T' );
+    REQUIRE( mc_alphabet.base(0) == 'A' );
+    REQUIRE( mc_alphabet.base(1) == 'C' );
+    REQUIRE( mc_alphabet.base(2) == 'G' );
+    REQUIRE( mc_alphabet.base(3) == 'M' );
+    REQUIRE( mc_alphabet.base(4) == 'T' );
 
     // Collectively test lexicographic_next and kmer_rank 
     uint8_t k = 3;
-    uint32_t num_strings = pow((double)MethylCytosineAlphabet::size(), (double)k);
+    uint32_t num_strings = pow((double)mc_alphabet.size(), (double)k);
     
     std::string kmer(k, 'A');
     for(size_t i = 0; i < num_strings - 1; ++i) {
 
         // check lexicographic next
         std::string next = kmer;
-        MethylCytosineAlphabet::lexicographic_next(next);
+        mc_alphabet.lexicographic_next(next);
         REQUIRE( next > kmer );
-        int rank_diff = MethylCytosineAlphabet::kmer_rank(next.c_str(), k) - 
-                        MethylCytosineAlphabet::kmer_rank(kmer.c_str(), k);
+        int rank_diff = mc_alphabet.kmer_rank(next.c_str(), k) - 
+                        mc_alphabet.kmer_rank(kmer.c_str(), k);
         REQUIRE( rank_diff == 1);
         kmer = next;
     }
@@ -68,23 +71,24 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
 }
 
 TEST_CASE( "string functions", "[string_functions]" ) {
+    DNAAlphabet dna_alphabet;
 
     // kmer rank
-    REQUIRE( DNAAlphabet::kmer_rank("AAAAA", 5) == 0 );
-    REQUIRE( DNAAlphabet::kmer_rank("GATGA", 5) == 568 );
-    REQUIRE( DNAAlphabet::kmer_rank("TTTTT", 5) == 1023 );
+    REQUIRE( dna_alphabet.kmer_rank("AAAAA", 5) == 0 );
+    REQUIRE( dna_alphabet.kmer_rank("GATGA", 5) == 568 );
+    REQUIRE( dna_alphabet.kmer_rank("TTTTT", 5) == 1023 );
 
     // lexicographic increment
     std::string str = "AAAAA";
-    DNAAlphabet::lexicographic_next(str);
+    dna_alphabet.lexicographic_next(str);
     REQUIRE( str == "AAAAC" );
 
     str = "AAAAT";
-    DNAAlphabet::lexicographic_next(str);
+    dna_alphabet.lexicographic_next(str);
     REQUIRE( str == "AAACA" );
 
     // complement, reverse complement
-    REQUIRE( DNAAlphabet::reverse_complement("GATGA") == "TCATC" );
+    REQUIRE( dna_alphabet.reverse_complement("GATGA") == "TCATC" );
 }
 
 TEST_CASE( "math", "[math]") {

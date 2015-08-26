@@ -11,6 +11,7 @@
 
 #include "htslib/faidx.h"
 #include "htslib/sam.h"
+#include "nanopolish_alphabet.h"
 #include "nanopolish_common.h"
 
 //
@@ -26,6 +27,7 @@ struct EventAlignmentParameters
         record = NULL;
         strand_idx = NUM_STRANDS;
         
+        alphabet = &gDNAAlphabet;
         read_idx = -1;
         region_start = -1;
         region_end = -1;
@@ -39,6 +41,7 @@ struct EventAlignmentParameters
     size_t strand_idx;
     
     // optional
+    Alphabet* alphabet;
     int read_idx;
     int region_start;
     int region_end;
@@ -58,6 +61,7 @@ struct EventAlignment
     bool rc;
 
     // hmm data
+    std::string model_kmer;
     char hmm_state;
 };
 

@@ -302,6 +302,7 @@ void emit_event_alignment_sam(htsFile* fp,
 
 void emit_event_alignment_tsv(FILE* fp,
                               const SquiggleRead& sr,
+                              const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
     for(size_t i = 0; i < alignments.size(); ++i) {
@@ -333,12 +334,9 @@ void emit_event_alignment_tsv(FILE* fp,
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
         fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
 
-        // model information
-        std::string model_kmer = ea.rc ? DNAAlphabet::reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-
-        uint32_t rank = DNAAlphabet::kmer_rank(model_kmer.c_str(), K);
+        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), K);
         GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), 
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
                                               model.mean, 
                                               model.stdv, 
                                               sr.model_name[ea.strand_idx].c_str());
@@ -387,7 +385,7 @@ void realign_read(EventalignWriter writer,
             if(opt::output_sam) {
                 emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment);
             } else {
-                emit_event_alignment_tsv(writer.tsv_fp, sr, alignment);
+                emit_event_alignment_tsv(writer.tsv_fp, sr, params, alignment);
             }
         }
     }
@@ -536,6 +534,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 ea.rc = input.rc;
 
                 // hmm
+                assert(false && "Store model kmer");
                 ea.hmm_state = as.state;
 
                 // store
