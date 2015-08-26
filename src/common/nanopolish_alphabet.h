@@ -119,5 +119,6 @@ struct MethylCpGAlphabet : public Alphabet
 
 // Global alphabet objects that can be re-used
 extern DNAAlphabet gDNAAlphabet;
+extern MethylCpGAlphabet gMCpGAlphabet;
 
 #endif

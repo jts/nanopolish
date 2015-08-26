@@ -52,3 +52,4 @@ const char* MethylCpGAlphabet::_base = "ACGMT";
 const uint32_t MethylCpGAlphabet::_size = 5;
 
 DNAAlphabet gDNAAlphabet;
+MethylCpGAlphabet gMCpGAlphabet;

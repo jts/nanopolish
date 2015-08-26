@@ -250,6 +250,8 @@ ModelMap read_models_fofn(const std::string& fofn_name)
     while(getline(fofn_reader, model_filename)) {
         printf("reading %s\n", model_filename.c_str());
 
+        std::string expected_kmer(5, 'A');
+
         std::ifstream model_reader(model_filename);
         std::string model_line;
 
@@ -270,10 +272,18 @@ ModelMap read_models_fofn(const std::string& fofn_name)
                 continue;
             }
             
+
+
             std::string kmer;
             PoreModelStateParams params;
             parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
+            
+            // Make sure the model file is sorted by rank
+            assert(kmer == expected_kmer);
+            assert(gMCpGAlphabet.kmer_rank(kmer.c_str(), K) == states.size());
             states.push_back(params);
+
+            gMCpGAlphabet.lexicographic_next(expected_kmer);
         }
             
         assert(!model_name.empty());
