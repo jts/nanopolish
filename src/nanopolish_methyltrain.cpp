@@ -271,8 +271,6 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             if(model_line[0] == '#' || model_line.find("kmer") == 0) {
                 continue;
             }
-            
-
 
             std::string kmer;
             PoreModelStateParams params;
