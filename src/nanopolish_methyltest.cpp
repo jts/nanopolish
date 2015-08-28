@@ -108,9 +108,17 @@ void test_read(const ModelMap& model_map,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
+    double read_score = 0.0f;
+    size_t num_sites_tested = 0;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        
+        std::vector<double> site_scores;
+        std::vector<int> site_starts;
+        std::vector<int> site_ends;
+        std::vector<int> site_count;
+
+        double strand_score = 0.0f;
+
         // replace model 
         std::string curr_model = sr.model_name[strand_idx];
         auto model_iter = model_map.find(curr_model);
@@ -121,8 +129,6 @@ void test_read(const ModelMap& model_map,
             assert(false && "Model not found");
         }
 
-        printf("%s\t%d\n", fast5_path.c_str(), -1);
-
         // Align to the new model
         EventAlignmentParameters params;
         params.sr = &sr;
@@ -130,12 +136,161 @@ void test_read(const ModelMap& model_map,
         params.hdr = hdr;
         params.record = record;
         params.strand_idx = strand_idx;
- 
-        params.alphabet = &gMCpGAlphabet;
         params.read_idx = read_idx;
-        std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+        params.alphabet = mtest_alphabet;
 
+        std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+        if(alignment_output.empty())
+            continue;
+        std::string contig = alignment_output.front().ref_name.c_str();
+        
+        //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+        
+        // Convert the EventAlignment to a map between reference positions and events
+        std::vector<AlignedPair> event_aligned_pairs;
+        for(size_t i = 0; i < alignment_output.size(); ++i) {
+
+            AlignedPair ap = { alignment_output[i].ref_position,
+                               alignment_output[i].event_idx };
+            event_aligned_pairs.push_back(ap);
+        }
+
+        int ref_start_pos = event_aligned_pairs.front().ref_pos;
+        int ref_end_pos = event_aligned_pairs.back().ref_pos;
+
+        int fetched_len = 0;
+        assert(ref_end_pos >= ref_start_pos);
+
+        // Extract the reference sequence for this region
+        char* cref_seq = faidx_fetch_seq(fai, alignment_output.front().ref_name.c_str(), 
+                                         ref_start_pos, ref_end_pos, &fetched_len);
+
+        std::string ref_seq(cref_seq);
+        free(cref_seq);
+        ref_seq = gDNAAlphabet.disambiguate(ref_seq);
+
+        // Scan the sequence for CpGs
+        std::vector<int> cpg_sites;
+        for(size_t i = 0; i < ref_seq.size() - 1; ++i) {
+            if(ref_seq[i] == 'C' && ref_seq[i+1] == 'G') {
+                cpg_sites.push_back(i);
+            }
+        }
+        
+        // Batch the CpGs together
+        int min_separation = 10;
+        size_t curr_idx = 0;
+        while(curr_idx < cpg_sites.size()) {
+
+            size_t end_idx = curr_idx + 1;
+            while(end_idx < cpg_sites.size()) {
+                if(cpg_sites[end_idx] - cpg_sites[end_idx - 1] > min_separation)
+                    break;
+                end_idx += 1; 
+            }
+
+            int sub_start_pos = cpg_sites[curr_idx] - min_separation;
+            int sub_end_pos = cpg_sites[end_idx - 1] + min_separation;
+            //printf("testing %zu %zu local: [%d %d] chr: [%d %d]\n", curr_idx, end_idx - 1, sub_start_pos, sub_end_pos, sub_start_pos + ref_start_pos, sub_end_pos + ref_start_pos);
+
+            if(sub_start_pos > min_separation && cpg_sites[end_idx - 1] - cpg_sites[curr_idx] < 200) {
+    
+                std::string subseq = ref_seq.substr(sub_start_pos, sub_end_pos - sub_start_pos + 1);
+                std::string rc_subseq = mtest_alphabet->reverse_complement(subseq);
+
+                AlignedPairRefLBComp lb_comp;
+                AlignedPairConstIter start_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
+                                                                   sub_start_pos + ref_start_pos, lb_comp);
+
+                AlignedPairConstIter stop_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
+                                                                   sub_end_pos + ref_start_pos, lb_comp);
+
+                if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end()) {
+
+                    std::string site_string = ref_seq.substr(cpg_sites[curr_idx] - 3, 5);
+
+                    // Set up event data
+                    HMMInputData data;
+                    data.read = &sr;
+                    data.anchor_index = -1; // unused
+                    data.strand = strand_idx;
+                    data.rc = alignment_output.front().rc;
+                    data.event_stride = -100;
+                    data.event_start_idx = start_iter->read_pos;
+                    data.event_stop_idx = stop_iter->read_pos;
+                    data.event_stride = data.event_start_idx < data.event_stop_idx ? 1 : -1;
+
+                    HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
+                    double unmethylated_score = profile_hmm_score(unmethylated, data);
+
+                    // Methylate the CpGs in the sequence and score again
+                    std::string mcpg_subseq = gMCpGAlphabet.methylate(subseq);
+                    std::string rc_mcpg_subseq = gMCpGAlphabet.reverse_complement(mcpg_subseq);
+                    
+                    //printf("m_subs: %s\n", mcpg_subseq.c_str());
+                    //printf("m_rc_s: %s\n", rc_mcpg_subseq.c_str());
+                    
+                    HMMInputSequence methylated(mcpg_subseq, rc_mcpg_subseq, mtest_alphabet);
+                    double methylated_score = profile_hmm_score(methylated, data);
+                    double diff = methylated_score - unmethylated_score;
+                    site_scores.push_back(diff);
+                    site_starts.push_back(cpg_sites[curr_idx] + ref_start_pos);
+                    site_ends.push_back(cpg_sites[end_idx - 1] + ref_start_pos);
+                    site_count.push_back(end_idx - curr_idx);
+
+                    strand_score += diff;
+                    read_score += diff;
+                    num_sites_tested += 1;
+                    printf("SITE\t%s\t%d\t%d\t%s\t%zu\t%.2lf\t%.2lf\t%.2lf\n", contig.c_str(), site_starts.back(), site_starts.back() + 1, site_string.c_str(), end_idx - curr_idx, unmethylated_score, methylated_score, diff);
+                }
+            }
+
+            curr_idx = end_idx;
+        }
+        printf("STRAND\t%s\t%d\t%.2lf\n", fast5_path.c_str(), strand_idx, strand_score);
+
+        // Calculate the maximal and minimal scoring region
+        double max_score = -INFINITY;
+        int max_start;
+        int max_end;
+        int max_sites;
+
+        double min_score = INFINITY;
+        int min_start;
+        int min_end;
+        int min_sites;
+
+        for(size_t r_start = 0; r_start < site_scores.size(); ++r_start) {
+            for(size_t r_end = r_start + 1; r_end < site_scores.size(); ++r_end) {
+                double sum = 0.0f;
+                size_t count = 0;
+                for(size_t i = r_start; i < r_end; ++i) {
+                    sum += site_scores[i];
+                    count += site_count[i];
+                }
+
+                if(sum > max_score) {
+                    
+                    max_score = sum;
+                    max_start = site_starts[r_start];
+                    max_end = site_ends[r_end - 1];
+                    max_sites = count;
+                }
+
+                if(sum < min_score) {
+                    min_score = sum;
+                    min_start = site_starts[r_start];
+                    min_end = site_ends[r_end - 1];
+                    min_sites = count;
+                }
+            }
+        }
+
+        printf("MIN_REGION\t%.2lf\t%d\t%s\t%d\t%d\n", min_score, min_sites, contig.c_str(), min_start, min_end);
+        printf("MAX_REGION\t%.2lf\t%d\t%s\t%d\t%d\n", max_score, max_sites, contig.c_str(), max_start, max_end);
     } // for strands
+    
+    printf("READ\t%s\t%.2lf\t%zu\n", fast5_path.c_str(), read_score, num_sites_tested);
 }
 
 void parse_methyltest_options(int argc, char** argv)
@@ -283,7 +438,6 @@ int methyltest_main(int argc, char** argv)
             num_reads_processed += num_records_buffered;
             num_records_buffered = 0;
 
-            if(num_reads_processed > 1000) break;
         }
     } while(result >= 0);
     

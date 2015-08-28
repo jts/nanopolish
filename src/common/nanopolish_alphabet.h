@@ -53,6 +53,17 @@ class Alphabet
             } while(carry > 0 && i >= 0);
         }
 
+        // returns the number of unique strings of length l for this alphabet
+        inline size_t get_num_strings(size_t l) const
+        {
+            size_t s = size();
+            size_t n = 1;
+            for(size_t i = 0; i < l; ++i) {
+                n *= s;
+            }
+            return n;
+        }
+
         // reverse complement a string over this alphabet
         virtual std::string reverse_complement(const std::string& seq) const = 0;
 
@@ -143,6 +154,18 @@ struct MethylCpGAlphabet : public Alphabet
             } else {
                 assert(IUPAC::isValid(str[i]));
                 out[i] = IUPAC::getPossibleSymbols(str[i])[0];
+            }
+        }
+        return out;
+    }
+
+    // Convert CpGs of the sequence to mCpG
+    std::string methylate(const std::string& str) const
+    {
+        std::string out(str);
+        for(size_t i = 0; i < out.length() - 1; ++i) {
+            if(out[i] == 'C' && out[i + 1] == 'G') {
+                out[i] = 'M';
             }
         }
         return out;

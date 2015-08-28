@@ -278,7 +278,7 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             std::string kmer;
             PoreModelStateParams params;
             parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
-            
+          
             // Make sure the model file is sorted by rank
             assert(kmer == expected_kmer);
             assert(mtrain_alphabet->kmer_rank(kmer.c_str(), K) == states.size());
@@ -565,7 +565,7 @@ int methyltrain_main(int argc, char** argv)
 
             std::string curr_kmer = "AAAAA";
             for(size_t ki = 0; ki < states.size(); ++ki) {
-                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv
+                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
                                             << states[ki].sd_mean << "\t" << states[ki].sd_stdv << "\n";
                 mtrain_alphabet->lexicographic_next(curr_kmer);
             }

@@ -43,12 +43,16 @@ class HMMInputSequence
         //
         size_t length() const { return m_seq.length(); }
 
+
         // returns the i-th kmer of the sequence
         inline std::string get_kmer(uint32_t i, uint32_t k, bool do_rc) const
         {
             return ! do_rc ? m_seq.substr(i, k) : 
                              m_rc_seq.substr(m_rc_seq.length() - i - k, k);
         }
+        
+        // get the number of kmer ranks supported by the alphabet for this sequence
+        size_t get_num_kmer_ranks(size_t k) const { return m_alphabet->get_num_strings(k); }
 
         // get the lexicographic rank of the i-th kmer
         // if the do_rc flag is set, return the rank of
