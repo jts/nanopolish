@@ -52,7 +52,7 @@
 //
 // Getopt
 //
-#define SUBPROGRAM "consensus"
+#define SUBPROGRAM "variants"
 
 static const char *CONSENSUS_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
@@ -75,6 +75,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"  -m, --min-candidate-frequency=F      alternative bases in F proporation of aligned reads are candidate variants (default 0.2)\n"  
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -86,6 +87,7 @@ namespace opt
     static std::string genome_file;
     static std::string output_file;
     static std::string window;
+    static double min_candidate_frequency = 0.2f;
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
@@ -96,19 +98,19 @@ static const char* shortopts = "r:b:g:t:w:o:e:m:v";
 enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY };
 
 static const struct option longopts[] = {
-    { "verbose",           no_argument,       NULL, 'v' },
-    { "reads",             required_argument, NULL, 'r' },
-    { "bam",               required_argument, NULL, 'b' },
-    { "event-bam",         required_argument, NULL, 'e' },
-    { "genome",            required_argument, NULL, 'g' },
-    { "window",            required_argument, NULL, 'w' },
-    { "outfile",           required_argument, NULL, 'o' },
-    { "threads",           required_argument, NULL, 't' },
-    { "min-read-evidence", required_argument, NULL, 'm' },
-    { "snps",              no_argument,       NULL, OPT_SNPS_ONLY },
-    { "progress",          no_argument,       NULL, OPT_PROGRESS },
-    { "help",              no_argument,       NULL, OPT_HELP },
-    { "version",           no_argument,       NULL, OPT_VERSION },
+    { "verbose",                 no_argument,       NULL, 'v' },
+    { "reads",                   required_argument, NULL, 'r' },
+    { "bam",                     required_argument, NULL, 'b' },
+    { "event-bam",               required_argument, NULL, 'e' },
+    { "genome",                  required_argument, NULL, 'g' },
+    { "window",                  required_argument, NULL, 'w' },
+    { "outfile",                 required_argument, NULL, 'o' },
+    { "threads",                 required_argument, NULL, 't' },
+    { "min-candidate-frequency", required_argument, NULL, 'm' },
+    { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
+    { "progress",                no_argument,       NULL, OPT_PROGRESS },
+    { "help",                    no_argument,       NULL, OPT_HELP },
+    { "version",                 no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
 
@@ -135,7 +137,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                 alignments.get_reference());
 
     // Step 1. Discover putative variants across the whole region
-    std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, 0.2, 20);
+    std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
 
     // Step 2. Add variants to the haplotypes
     size_t calling_span = 10;
@@ -211,6 +213,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'e': arg >> opt::event_bam_file; break;
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
+            case 'm': arg >> opt::min_candidate_frequency; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
