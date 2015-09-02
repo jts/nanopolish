@@ -121,12 +121,14 @@ void test_read(const ModelMap& model_map,
 
         // replace model 
         std::string curr_model = sr.model_name[strand_idx];
-        auto model_iter = model_map.find(curr_model);
+        std::string methyl_model = curr_model + ".methyltrain";
+        auto model_iter = model_map.find(methyl_model);
 
         if(model_iter != model_map.end()) {
             sr.replace_pore_model(strand_idx, model_iter->second);
         } else {
-            assert(false && "Model not found");
+            fprintf(stderr, "Error, methylated model %s not found\n");
+            exit(EXIT_FAILURE);
         }
 
         // Align to the new model
@@ -171,6 +173,7 @@ void test_read(const ModelMap& model_map,
 
         // Scan the sequence for CpGs
         std::vector<int> cpg_sites;
+        assert(ref_seq.size() != 0);
         for(size_t i = 0; i < ref_seq.size() - 1; ++i) {
             if(ref_seq[i] == 'C' && ref_seq[i+1] == 'G') {
                 cpg_sites.push_back(i);
@@ -215,7 +218,6 @@ void test_read(const ModelMap& model_map,
                     data.anchor_index = -1; // unused
                     data.strand = strand_idx;
                     data.rc = alignment_output.front().rc;
-                    data.event_stride = -100;
                     data.event_start_idx = start_iter->read_pos;
                     data.event_stop_idx = stop_iter->read_pos;
                     data.event_stride = data.event_start_idx < data.event_stop_idx ? 1 : -1;
@@ -426,7 +428,7 @@ int methyltest_main(int argc, char** argv)
 
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
+            
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_processed + i;

@@ -76,6 +76,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               read the models to be trained from the FOFN\n"
+"      --no-update-models               do not write out trained models\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
@@ -91,6 +92,7 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
+    static bool write_models = true;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -98,7 +100,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:m:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -108,6 +110,7 @@ static const struct option longopts[] = {
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
     { "models-fofn",      required_argument, NULL, 'm' },
+    { "no-update-models", no_argument,       NULL, OPT_NO_UPDATE_MODELS },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
@@ -265,7 +268,7 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             std::stringstream parser(model_line);
 
             // Extract the model name from the header
-            if(model_line.find("#model_file") != std::string::npos) {
+            if(model_line.find("#model_name") != std::string::npos) {
                 std::string dummy;
                 parser >> dummy >> model_name;
             }
@@ -306,6 +309,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::models_fofn; break;
             case 'v': opt::verbose++; break;
+            case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << METHYLTRAIN_USAGE_MESSAGE;
@@ -451,7 +455,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     progress.end();
 
     std::stringstream fn;
-    fn << "training." << round << ".tsv";
+    fn << opt::bam_file << ".methyltrain." << round << ".tsv";
 
     FILE* training_fp = fopen(fn.str().c_str(), "w");
 
@@ -542,6 +546,30 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     return trained_models;
 }
 
+void write_models(const ModelMap& models, std::string file_suffix)
+{
+    // Write the model
+    for(auto model_iter = models.begin(); 
+             model_iter != models.end(); model_iter++) {
+
+        std::stringstream outname;
+        outname << model_iter->first << ".methyltrain" << file_suffix;
+
+        std::ofstream writer(outname.str());
+        writer << "#model_name\t" << model_iter->first << ".methyltrain\n";
+        const std::vector<PoreModelStateParams>& states = model_iter->second;
+
+        std::string curr_kmer = "AAAAA";
+        for(size_t ki = 0; ki < states.size(); ++ki) {
+            writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
+                << states[ki].sd_mean << "\t" << states[ki].sd_stdv << "\n";
+            mtrain_alphabet->lexicographic_next(curr_kmer);
+        }
+        writer.close();
+    }
+    
+}
+
 int methyltrain_main(int argc, char** argv)
 {
     parse_methyltrain_options(argc, argv);
@@ -553,23 +581,8 @@ int methyltrain_main(int argc, char** argv)
     for(size_t round = 0; round < 10; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
-        // Write the model
-        for(auto model_iter = trained_models.begin(); 
-                 model_iter != trained_models.end(); model_iter++) {
-        
-            std::stringstream outname;
-            outname << model_iter->first << ".trained.round" << round + 1;
-            std::ofstream writer(outname.str());
-            writer << "#model_file\t" << model_iter->first << "\n";
-            const std::vector<PoreModelStateParams>& states = model_iter->second;
-
-            std::string curr_kmer = "AAAAA";
-            for(size_t ki = 0; ki < states.size(); ++ki) {
-                writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
-                                            << states[ki].sd_mean << "\t" << states[ki].sd_stdv << "\n";
-                mtrain_alphabet->lexicographic_next(curr_kmer);
-            }
-            writer.close();
+        if(opt::write_models) {
+            write_models(trained_models, "");
         }
         models = trained_models;
     }
