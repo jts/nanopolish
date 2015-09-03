@@ -35,6 +35,28 @@
 #include "progress.h"
 
 //
+// Structs
+//
+struct OutputHandles
+{
+    FILE* site_writer;
+    FILE* read_writer;
+};
+
+struct ScoredSite
+{
+    std::string chromosome;
+    int start_position;
+    int end_position;
+
+    double ll_unmethylated;
+    double ll_methylated;
+    int n_cpg;
+
+    std::string sequence;
+};
+
+//
 Alphabet* mtest_alphabet = &gMCpGAlphabet;
 
 //
@@ -96,11 +118,12 @@ static const struct option longopts[] = {
 
 // Realign the read in event space
 void test_read(const ModelMap& model_map,
-                const Fast5Map& name_map, 
-                const faidx_t* fai, 
-                const bam_hdr_t* hdr, 
-                const bam1_t* record, 
-                size_t read_idx)
+               const Fast5Map& name_map, 
+               const faidx_t* fai, 
+               const bam_hdr_t* hdr, 
+               const bam1_t* record, 
+               size_t read_idx,
+               const OutputHandles& handles)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -110,6 +133,8 @@ void test_read(const ModelMap& model_map,
     SquiggleRead sr(read_name, fast5_path);
     double read_score = 0.0f;
     size_t num_sites_tested = 0;
+
+    std::vector<ScoredSite> site_output;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         std::vector<double> site_scores;
@@ -235,64 +260,35 @@ void test_read(const ModelMap& model_map,
                     HMMInputSequence methylated(mcpg_subseq, rc_mcpg_subseq, mtest_alphabet);
                     double methylated_score = profile_hmm_score(methylated, data);
                     double diff = methylated_score - unmethylated_score;
-                    site_scores.push_back(diff);
-                    site_starts.push_back(cpg_sites[curr_idx] + ref_start_pos);
-                    site_ends.push_back(cpg_sites[end_idx - 1] + ref_start_pos);
-                    site_count.push_back(end_idx - curr_idx);
 
-                    strand_score += diff;
-                    read_score += diff;
-                    num_sites_tested += 1;
-                    printf("SITE\t%s\t%d\t%d\t%s\t%zu\t%.2lf\t%.2lf\t%.2lf\n", contig.c_str(), site_starts.back(), site_starts.back() + 1, site_string.c_str(), end_idx - curr_idx, unmethylated_score, methylated_score, diff);
+                    ScoredSite ss;
+                    ss.chromosome = contig;
+                    ss.start_position = cpg_sites[curr_idx] + ref_start_pos;
+                    ss.end_position = cpg_sites[end_idx - 1] + ref_start_pos;
+                    ss.ll_unmethylated = unmethylated_score;
+                    ss.ll_methylated = methylated_score;
+                    ss.n_cpg = end_idx - curr_idx;
+                    ss.sequence = site_string;
+                    site_output.push_back(ss);
                 }
             }
 
             curr_idx = end_idx;
         }
-        printf("STRAND\t%s\t%d\t%.2lf\n", fast5_path.c_str(), strand_idx, strand_score);
-
-        // Calculate the maximal and minimal scoring region
-        double max_score = -INFINITY;
-        int max_start;
-        int max_end;
-        int max_sites;
-
-        double min_score = INFINITY;
-        int min_start;
-        int min_end;
-        int min_sites;
-
-        for(size_t r_start = 0; r_start < site_scores.size(); ++r_start) {
-            for(size_t r_end = r_start + 1; r_end < site_scores.size(); ++r_end) {
-                double sum = 0.0f;
-                size_t count = 0;
-                for(size_t i = r_start; i < r_end; ++i) {
-                    sum += site_scores[i];
-                    count += site_count[i];
-                }
-
-                if(sum > max_score) {
-                    
-                    max_score = sum;
-                    max_start = site_starts[r_start];
-                    max_end = site_ends[r_end - 1];
-                    max_sites = count;
-                }
-
-                if(sum < min_score) {
-                    min_score = sum;
-                    min_start = site_starts[r_start];
-                    min_end = site_ends[r_end - 1];
-                    min_sites = count;
-                }
-            }
-        }
-
-        printf("MIN_REGION\t%.2lf\t%d\t%s\t%d\t%d\n", min_score, min_sites, contig.c_str(), min_start, min_end);
-        printf("MAX_REGION\t%.2lf\t%d\t%s\t%d\t%d\n", max_score, max_sites, contig.c_str(), max_start, max_end);
     } // for strands
     
-    printf("READ\t%s\t%.2lf\t%zu\n", fast5_path.c_str(), read_score, num_sites_tested);
+    double ll_ratio_sum = 0;
+    for(size_t si = 0; si < site_output.size(); ++si) {
+        const ScoredSite& ss = site_output[si];
+        double diff = ss.ll_methylated - ss.ll_unmethylated;
+        fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
+        fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", ss.ll_methylated, ss.ll_unmethylated, diff);
+        fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
+
+        ll_ratio_sum += diff;
+    }
+
+    fprintf(handles.read_writer, "%s\t%.2lf\t%zu\n", fast5_path.c_str(), ll_ratio_sum, site_output.size());
 }
 
 void parse_methyltest_options(int argc, char** argv)
@@ -408,6 +404,14 @@ int methyltest_main(int argc, char** argv)
     }
 #endif
 
+    // Initialize writers
+    OutputHandles handles;
+    handles.site_writer = fopen(std::string(opt::bam_file + ".methyltest.sites.bed").c_str(), "w");
+    handles.read_writer = fopen(std::string(opt::bam_file + ".methyltest.reads.tsv").c_str(), "w");
+
+    // Write a header to the reads.tsv file
+    fprintf(handles.read_writer, "name\tsum_ll_ratio\tn_cpg\n");
+
     // Initialize iteration
     std::vector<bam1_t*> records(opt::batch_size, NULL);
     for(size_t i = 0; i < records.size(); ++i) {
@@ -433,7 +437,7 @@ int methyltest_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_processed + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    test_read(models, name_map, fai, hdr, record, read_idx);
+                    test_read(models, name_map, fai, hdr, record, read_idx, handles);
                 }
             }
 
@@ -452,6 +456,9 @@ int methyltest_main(int argc, char** argv)
     }
 
     // cleanup
+    fclose(handles.site_writer);
+    fclose(handles.read_writer);
+
     sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
     fai_destroy(fai);
