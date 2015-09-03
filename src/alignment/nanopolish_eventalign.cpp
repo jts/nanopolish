@@ -254,6 +254,7 @@ void emit_event_alignment_sam(htsFile* fp,
                               const bam1_t* base_record, 
                               const std::vector<EventAlignment>& alignments)
 {
+    assert(!alignments.empty());
     bam1_t* event_record = bam_init1();
     
     // Variable-length data
@@ -530,6 +531,7 @@ void realign_read(EventalignWriter writer,
         // write to disk
         #pragma omp critical
         {
+            assert(!alignment_output.empty());
             if(opt::output_sam) {
                 emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment_output);
             } else {

@@ -81,6 +81,7 @@ void Fast5Map::load_from_fasta(std::string fasta_filename)
         // fasta format that poretools will output. The FAST5 path
         // is always the last field.
         std::vector<std::string> fields = split(seq->comment.s, ' ');
+        assert(read_to_path_map.find(seq->name.s) == read_to_path_map.end());
         read_to_path_map[seq->name.s] = fields.back();
     }
 
