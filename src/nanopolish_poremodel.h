@@ -19,9 +19,12 @@ struct PoreModelStateParams
 {
     double level_mean;
     double level_stdv;
-    
     double sd_mean;
     double sd_stdv;
+
+    double level_log_stdv;
+    double sd_lambda;
+    double sd_log_lambda;
 };
 
 //

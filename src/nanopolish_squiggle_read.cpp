@@ -92,6 +92,11 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
                                          static_cast<float>(curr.level_stdv), 
                                          static_cast<float>(curr.sd_mean),
                                          static_cast<float>(curr.sd_stdv) };
+            // set sd_lambda
+            pore_model[si].state[mi].level_log_stdv = log(pore_model[si].state[mi].level_stdv);
+            pore_model[si].state[mi].sd_lambda =
+                pow(pore_model[si].state[mi].sd_mean, 3.0) / pow(pore_model[si].state[mi].sd_stdv, 2.0);
+            pore_model[si].state[mi].sd_log_lambda = log(pore_model[si].state[mi].sd_lambda);
         }
 
         // Load the scaling parameters for the pore model
