@@ -56,6 +56,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
+"  -f, --full                           print event stdv, and model sd_ parameters\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -69,9 +70,10 @@ namespace opt
     static int num_threads = 1;
     static int batch_size = 128;
     static bool print_read_names;
+    static bool full_output;
 }
 
-static const char* shortopts = "r:b:g:t:w:vn";
+static const char* shortopts = "r:b:g:t:w:vnf";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
 
@@ -83,6 +85,7 @@ static const struct option longopts[] = {
     { "window",      required_argument, NULL, 'w' },
     { "threads",     required_argument, NULL, 't' },
     { "print-read-names", no_argument,  NULL, 'n' },
+    { "full",        no_argument,       NULL, 'f' },
     { "progress",    required_argument, NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -149,8 +152,12 @@ void emit_header(FILE* fp)
 {
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
-    fprintf(fp, "%s\t%s\t%s\t", "event_index", "event_level_mean", "event_length");
-    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "model_name");
+    fprintf(fp, "%s\t%s\t", "event_index", "event_mean");
+    if (opt::full_output) fprintf(fp, "%s\t", "event_stdv");
+    fprintf(fp, "%s\t", "event_length");
+    fprintf(fp, "%s\t%s\t%s\t", "model_kmer", "model_level_mean", "model_level_stdv");
+    if (opt::full_output) fprintf(fp, "%s\t%s\t", "model_sd_mean", "model_sd_stdv");
+    fprintf(fp, "%s\n", "model_name");
 
 }
 
@@ -185,17 +192,18 @@ void emit_event_alignments(FILE* fp,
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-        fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+        fprintf(fp, "%d\t%.2lf\t", ea.event_idx, event_mean);
+        if (opt::full_output) fprintf(fp, "%.2lf\t", sr.get_stdv(ea.event_idx, ea.strand_idx));
+        fprintf(fp, "%.3lf\t", event_duration);
 
         // model information
         std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
 
         uint32_t rank = kmer_rank(model_kmer.c_str(), K);
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), 
-                                              model.mean, 
-                                              model.stdv, 
-                                              sr.model_name[ea.strand_idx].c_str());
+        PoreModelStateParams state = sr.pore_model[ea.strand_idx].get_scaled_state(rank);
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t", model_kmer.c_str(), state.level_mean, state.level_stdv);
+        if (opt::full_output) fprintf(fp, "%.2lf\t%.2lf\t", state.sd_mean, state.sd_stdv);
+        fprintf(fp, "%s\n", sr.model_name[ea.strand_idx].c_str());
     }
 }
 
@@ -389,6 +397,7 @@ void parse_eventalign_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
+            case 'f': opt::full_output = true; break;
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
