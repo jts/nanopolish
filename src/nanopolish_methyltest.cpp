@@ -45,15 +45,27 @@ struct OutputHandles
 
 struct ScoredSite
 {
+    ScoredSite() 
+    { 
+        ll_unmethylated[0] = 0;
+        ll_unmethylated[1] = 0;
+        ll_methylated[0] = 0;
+        ll_methylated[1] = 0;
+    }
+
     std::string chromosome;
     int start_position;
     int end_position;
-
-    double ll_unmethylated;
-    double ll_methylated;
     int n_cpg;
-
     std::string sequence;
+
+    // scores per strand
+    double ll_unmethylated[2];
+    double ll_methylated[2];
+
+    //
+    static bool sort_by_position(const ScoredSite& a, const ScoredSite& b) { return a.start_position < b.start_position; }
+
 };
 
 //
@@ -134,7 +146,7 @@ void test_read(const ModelMap& model_map,
     double read_score = 0.0f;
     size_t num_sites_tested = 0;
 
-    std::vector<ScoredSite> site_output;
+    std::map<int, ScoredSite> site_score_map;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         std::vector<double> site_scores;
@@ -262,14 +274,22 @@ void test_read(const ModelMap& model_map,
                     double diff = methylated_score - unmethylated_score;
 
                     ScoredSite ss;
-                    ss.chromosome = contig;
-                    ss.start_position = cpg_sites[curr_idx] + ref_start_pos;
-                    ss.end_position = cpg_sites[end_idx - 1] + ref_start_pos;
-                    ss.ll_unmethylated = unmethylated_score;
-                    ss.ll_methylated = methylated_score;
-                    ss.n_cpg = end_idx - curr_idx;
-                    ss.sequence = site_string;
-                    site_output.push_back(ss);
+                    int start_position = cpg_sites[curr_idx] + ref_start_pos;
+                    auto iter = site_score_map.find(start_position);
+                    if(iter == site_score_map.end()) {
+                        // insert new score into the map
+                        ScoredSite ss;
+                        ss.chromosome = contig;
+                        ss.start_position = start_position;
+                        ss.end_position = cpg_sites[end_idx - 1] + ref_start_pos;
+                        ss.n_cpg = end_idx - curr_idx;
+                        ss.sequence = site_string;
+                        iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
+                    }
+                    
+                    
+                    iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
+                    iter->second.ll_methylated[strand_idx] = methylated_score;
                 }
             }
 
@@ -277,18 +297,27 @@ void test_read(const ModelMap& model_map,
         }
     } // for strands
     
+
     double ll_ratio_sum = 0;
-    for(size_t si = 0; si < site_output.size(); ++si) {
-        const ScoredSite& ss = site_output[si];
-        double diff = ss.ll_methylated - ss.ll_unmethylated;
-        fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
-        fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", ss.ll_methylated, ss.ll_unmethylated, diff);
-        fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
+    #pragma omp critical
+    {
+        for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
-        ll_ratio_sum += diff;
+            const ScoredSite& ss = iter->second;
+
+            double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
+            double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
+
+            double diff = sum_ll_m - sum_ll_u;
+
+            fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
+            fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
+            fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
+
+            ll_ratio_sum += diff;
+        }
+        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\n", fast5_path.c_str(), ll_ratio_sum, site_score_map.size());
     }
-
-    fprintf(handles.read_writer, "%s\t%.2lf\t%zu\n", fast5_path.c_str(), ll_ratio_sum, site_output.size());
 }
 
 void parse_methyltest_options(int argc, char** argv)
@@ -433,6 +462,7 @@ int methyltest_main(int argc, char** argv)
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
             
+            #pragma omp parallel for
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_processed + i;
