@@ -41,6 +41,12 @@ class PoreModel
             return scaled_params[kmer_rank];
         }
 
+        inline PoreModelStateParams get_scaled_state(const uint32_t kmer_rank) const
+        {
+            assert(is_scaled);
+            return scaled_state[kmer_rank];
+        }
+
         inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const
         {
             return state[kmer_rank];
@@ -64,6 +70,7 @@ class PoreModel
 
         //
         PoreModelStateParams state[PORE_MODEL_STATES];
+        PoreModelStateParams scaled_state[PORE_MODEL_STATES];
         GaussianParameters scaled_params[PORE_MODEL_STATES];
 };
 
