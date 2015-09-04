@@ -9,7 +9,8 @@ SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 
 #Basic flags every build needs
 LIBS=-lz
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g 
+CXXFLAGS = -g -O3
+CXXFLAGS += -std=c++11 -fopenmp
 CFLAGS=-O3
 CXX=g++
 CC=gcc
@@ -85,27 +86,27 @@ depend: .depend
 
 .depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB)
 	rm -f ./.depend
-	$(CXX) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
 
 include .depend
 
 # Compile objects
 .cpp.o:
-	$(CXX) -o $@ -c $(CPPFLAGS) -fPIC $<
+	$(CXX) -o $@ -c $(CXXFLAGS) $(CPPFLAGS) -fPIC $<
 
 .c.o:
 	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 # Link test executable
 $(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
 
 clean:
-	rm nanopolish nanopolish_test $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
+	rm -f nanopolish nanopolish_test $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
