@@ -13,7 +13,7 @@
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 
-//#define MODEL_STDV
+//#define MODEL_STDV 1
 //#define DEBUG_HMM_EMISSION 1
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
@@ -24,11 +24,32 @@ inline float normal_pdf(float x, const GaussianParameters& g)
     return inv_sqrt_2pi / g.stdv * exp(-0.5f * a * a);
 }
 
+inline float normal_pdf(float x, const PoreModelStateParams& s)
+{
+    static const float inv_sqrt_2pi = 0.3989422804014327;
+    float a = (x - s.level_mean) / s.level_stdv;
+    return inv_sqrt_2pi / s.level_stdv * exp(-0.5f * a * a);
+}
+
 inline float log_normal_pdf(float x, const GaussianParameters& g)
 {
     static const float log_inv_sqrt_2pi = log(0.3989422804014327);
     float a = (x - g.mean) / g.stdv;
     return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
+}
+
+inline float log_normal_pdf(float x, const PoreModelStateParams& s)
+{
+    static const float log_inv_sqrt_2pi = log(0.3989422804014327);
+    float a = (x - s.level_mean) / s.level_stdv;
+    return log_inv_sqrt_2pi - s.level_log_stdv + (-0.5f * a * a);
+}
+
+inline float log_invgauss_pdf(float x, float log_x, const PoreModelStateParams& s)
+{
+    static const float log_2pi = log(2 * M_PI);
+    float a = (x - s.sd_mean) / s.sd_mean;
+    return (s.sd_log_lambda - log_2pi - 3 * log_x - s.sd_lambda * a * a / x) / 2;
 }
 
 inline float log_probability_match(const SquiggleRead& read,
@@ -43,25 +64,23 @@ inline float log_probability_match(const SquiggleRead& read,
     // event level mean
     float level = read.get_drift_corrected_level(event_idx, strand);
 
-    GaussianParameters model = pm.get_scaled_parameters(kmer_rank);
+    PoreModelStateParams state = pm.get_scaled_state(kmer_rank);
 
     // we go to great lengths to avoid calling log() in the inner loop of the HMM
     // for this reason we duplicate data here and require the caller to pass
     // in the scale and log(scale), presumably these are cached
-    model.stdv *= state_scale;
-    model.log_stdv += log_state_scale;
-    float lp = log_normal_pdf(level, model);
+    state.level_stdv *= state_scale;
+    state.level_log_stdv += log_state_scale;
+    float lp = log_normal_pdf(level, state);
 
 #if MODEL_STDV
-    // event level stdv
-    float stdv = read.events[strand].stdv[event_idx];
-    float model_sd_mean = pm.state[kmer_rank].sd_mean * pm.scale_sd;
-    float model_sd_stdv = pm.state[kmer_rank].sd_stdv * sqrt(pow(pm.scale_sd, 3.0) / pm.var_sd);
-    lp += log_normal_pdf(stdv, model_sd_mean, model_sd_stdv);
+    float stdv = read.get_stdv(event_idx, strand);
+    float log_stdv = read.get_log_stdv(event_idx, strand);
+    lp += log_invgauss_pdf(stdv, log_stdv, state);
 #endif
 
 #if DEBUG_HMM_EMISSION
-    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, model.mean, model.stdv, exp(lp), normal_pdf(level, model));
+    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
 #endif
 
     return lp;
