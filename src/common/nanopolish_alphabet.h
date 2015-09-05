@@ -171,6 +171,18 @@ struct MethylCpGAlphabet : public Alphabet
         return out;
     }
 
+    // Convert methylated bases to C
+    std::string unmethylate(const std::string& str) const
+    {
+        std::string out(str);
+        for(size_t i = 0; i < out.length(); ++i) {
+            if(out[i] == 'M') {
+                out[i] = 'C';
+            }
+        }
+        return out;
+    }
+
 };
 
 // Global alphabet objects that can be re-used

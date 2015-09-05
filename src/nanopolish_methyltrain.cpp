@@ -76,11 +76,13 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               read the models to be trained from the FOFN\n"
+"      --train-unmethylated             train unmethylated 5-mers instead of methylated\n"
 "      --no-update-models               do not write out trained models\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"  -s, --out-suffix=STR                 name output files like model.out_suffix\n"
 "      --progress                       print out a progress message\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -92,7 +94,9 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
+    static std::string out_suffix = ".methyltrain";
     static bool write_models = true;
+    static bool train_unmethylated = false;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -100,70 +104,105 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:m:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED };
 
 static const struct option longopts[] = {
-    { "verbose",          no_argument,       NULL, 'v' },
-    { "reads",            required_argument, NULL, 'r' },
-    { "bam",              required_argument, NULL, 'b' },
-    { "genome",           required_argument, NULL, 'g' },
-    { "window",           required_argument, NULL, 'w' },
-    { "threads",          required_argument, NULL, 't' },
-    { "models-fofn",      required_argument, NULL, 'm' },
-    { "no-update-models", no_argument,       NULL, OPT_NO_UPDATE_MODELS },
-    { "progress",         no_argument,       NULL, OPT_PROGRESS },
-    { "help",             no_argument,       NULL, OPT_HELP },
-    { "version",          no_argument,       NULL, OPT_VERSION },
+    { "verbose",            no_argument,       NULL, 'v' },
+    { "reads",              required_argument, NULL, 'r' },
+    { "bam",                required_argument, NULL, 'b' },
+    { "genome",             required_argument, NULL, 'g' },
+    { "window",             required_argument, NULL, 'w' },
+    { "threads",            required_argument, NULL, 't' },
+    { "models-fofn",        required_argument, NULL, 'm' },
+    { "out-suffix",         required_argument, NULL, 's' },
+    { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
+    { "train-unmethylated", no_argument,       NULL, OPT_TRAIN_UNMETHYLATED },
+    { "progress",           no_argument,       NULL, OPT_PROGRESS },
+    { "help",               no_argument,       NULL, OPT_HELP },
+    { "version",            no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
 
 GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
                                        const GaussianMixture& input_mixture)
 {
-    GaussianMixture out;
 
     size_t n_components = input_mixture.params.size();
     size_t n_data = data.size();
     assert(input_mixture.weights.size() == n_components);
-    
-    out.weights.resize(n_components, 0.0f);
-    out.params.resize(n_components);
+    GaussianMixture curr_mixture = input_mixture;   
 
-    std::vector<double> mean_sum(n_components, 0.0f);
-    std::vector<double> var_sum(n_components, 0.0f);
-
-    for(size_t i = 0; i < n_data; ++i) {
-        // Calculate the posterior probability that
-        // data i came from each component of the mixture
+    for(size_t iteration = 0; iteration < 10; ++iteration) {
+        std::vector<double> mean_sum(n_components, 0.0f);
+        std::vector<double> var_sum(n_components, 0.0f);
         
-        // P(data i | component j) P(component j)
-        std::vector<double> t(n_components, 0.0f);
-        double t_sum = -INFINITY;
+        GaussianMixture new_mixture = curr_mixture;
         for(size_t j = 0; j < n_components; ++j) {
-            t[j] = log_normal_pdf(data[i], input_mixture.params[j]) + log(input_mixture.weights[j]);
-            t_sum = add_logs(t_sum, t[j]);
+            new_mixture.weights[j] = 0.0f;
         }
 
-        // posterior P(component j | data i)
-        for(size_t j = 0; j < n_components; ++j) {
-            double posterior = exp(t[j] - t_sum);
-            out.weights[j] += posterior;
-            mean_sum[j] += posterior * data[i];
-            var_sum[j] += posterior * pow(data[i], 2.0);
-            //fprintf(stderr, "MIXTURE %zu\t%zu\t%.2lf\t%.2f\t%.2lf\t%.2lf\n", i, j, data[i], input_mixture.params[j].mean, input_mixture.params[j].stdv, posterior);
-        }
-    }
+        std::vector<std::vector<double> > resp;
 
-    for(size_t j = 0; j < n_components; ++j) {
-        double w = out.weights[j];
-        out.weights[j] = w / n_data;
+        for(size_t i = 0; i < n_data; ++i) {
+            // Calculate the posterior probability that
+            // data i came from each component of the mixture
+            
+            // P(data i | component j) P(component j)
+            std::vector<double> t(n_components, 0.0f);
+            double t_sum = -INFINITY;
+            for(size_t j = 0; j < n_components; ++j) {
+                t[j] = log_normal_pdf(data[i], curr_mixture.params[j]) + log(curr_mixture.weights[j]);
+                if(t[j] != -INFINITY && ! std::isnan(t[j])) {
+                    t_sum = add_logs(t_sum, t[j]);
+                }
+            }
+
+            // store P(component j | data i)
+            for(size_t j = 0; j < n_components; ++j) {
+                t[j] = exp(t[j] - t_sum);
+                new_mixture.weights[j] += t[j];
+            }
+            resp.push_back(t);
+        }
         
-        double mean = mean_sum[j] / w;
-        double stdv = (var_sum[j] / w) - pow(mean, 2.0);
-        out.params[j] = GaussianParameters(mean, stdv);
-        fprintf(stderr, "MIXTURE\t%zu\t%.2lf\t%.2lf\t%.2lf\n", j, out.weights[j], out.params[j].mean, out.params[j].stdv);
+        for(size_t j = 0; j < n_components; ++j) {
+            new_mixture.weights[j] /= n_data;
+        }
+
+        // Calculate mean
+        for(size_t i = 0; i < n_data; ++i) {
+            for(size_t j = 0; j < n_components; ++j) {
+                double w_ij = resp[i][j];
+                mean_sum[j] += w_ij * data[i];
+            }
+        }
+        
+        std::vector<double> new_mean(2);
+        for(size_t j = 0; j < n_components; ++j) {
+            new_mean[j] = mean_sum[j] / (n_data * new_mixture.weights[j]);
+        }
+
+        // Calculate variance
+        for(size_t i = 0; i < n_data; ++i) {
+            for(size_t j = 0; j < n_components; ++j) {
+                double w_ij = resp[i][j];
+                var_sum[j] += w_ij * pow(data[i] - new_mean[j], 2.0);
+            }
+        }
+        
+        std::vector<double> new_var(2);
+        for(size_t j = 0; j < n_components; ++j) {
+            new_var[j] = var_sum[j] / (n_data * new_mixture.weights[j]);
+        }
+
+        for(size_t j = 0; j < n_components; ++j) {
+            new_mixture.params[j] = GaussianParameters(new_mean[j], sqrt(new_var[j]));
+            //fprintf(stderr, "MIXTURE\t%zu\t%.2lf\t%.2lf\t%.2lf\n", j, curr_mixture.weights[j], curr_mixture.params[j].mean, curr_mixture.params[j].stdv);
+        }
+
+        curr_mixture = new_mixture;
     }
-    return out;
+    return curr_mixture;
 }
 
 // Realign the read in event space
@@ -308,7 +347,9 @@ void parse_methyltrain_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::models_fofn; break;
+            case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
+            case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -480,6 +521,13 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
             float n = summaries[ki].events.size();
+            
+            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
+                fprintf(training_fp, "%s\t%s\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), summaries[ki].events[ei]);
+            }
+
+            /*
+            // Naive training
             float sum_mean = 0.0f;
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
                 fprintf(training_fp, "%s\t%s\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), summaries[ki].events[ei]);
@@ -493,29 +541,43 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 sum_var += pow(summaries[ki].events[ei] - mu_prime, 2.0);
             }
             float var_prime = sum_var / n;
-            
-            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
-            if(n > 100) {
-                new_pm[ki].level_mean = mu_prime;
-                new_pm[ki].level_stdv = sqrt(var_prime);
-            }
-            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
-                
-            /*
-            // Initialize a mixture model using the current mean and wide Gaussian to catch misaligned events
-            double misalignment_rate = 0.1f;
-            GaussianParameters misalignment_params(65.0f, 7.0f);
+            */
 
             GaussianMixture mixture;
-            mixture.weights.push_back(misalignment_rate);
-            mixture.params.push_back(misalignment_params);
 
-            GaussianParameters naive_params(mu_prime, sqrt(var_prime));
+            // train a mixture model where a minority of 5-mers aren't methylated
+            
+            // unmethylated component
+            double um_rate = 0.05f;
+            std::string um_kmer = gMCpGAlphabet.unmethylate(kmer);
+            size_t um_ki = gMCpGAlphabet.kmer_rank(um_kmer.c_str(), K);
+            GaussianParameters um_params(model_iter->second[um_ki].level_mean, model_iter->second[um_ki].level_stdv);
 
-            mixture.weights.push_back(1 - misalignment_rate);
-            mixture.params.push_back(naive_params);
+            mixture.weights.push_back(um_rate);
+            mixture.params.push_back(um_params);
+
+            GaussianParameters m_params(new_pm[ki].level_mean, new_pm[ki].level_stdv);
+
+            mixture.weights.push_back(1 - um_rate);
+            mixture.params.push_back(m_params);
+            
+            fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                              mixture.weights[0], mixture.params[0].mean, mixture.params[0].stdv,
+                                                              mixture.weights[1], mixture.params[1].mean, mixture.params[1].stdv);
             GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
-            */
+            
+            fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                              trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
+                                                              trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
+            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            
+            bool is_m_kmer = kmer.find('M') != std::string::npos;
+            bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
+            if(update_kmer && n > 100) {
+                new_pm[ki].level_mean = trained_mixture.params[1].mean;
+                new_pm[ki].level_stdv = trained_mixture.params[1].stdv;
+            }
+            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
 
             /*
             if(kmer.find("CG") != std::string::npos) {
@@ -546,17 +608,17 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     return trained_models;
 }
 
-void write_models(const ModelMap& models, std::string file_suffix)
+void write_models(const ModelMap& models)
 {
     // Write the model
     for(auto model_iter = models.begin(); 
              model_iter != models.end(); model_iter++) {
 
         std::stringstream outname;
-        outname << model_iter->first << ".methyltrain" << file_suffix;
+        outname << model_iter->first << opt::out_suffix;
 
         std::ofstream writer(outname.str());
-        writer << "#model_name\t" << model_iter->first << ".methyltrain\n";
+        writer << "#model_name\t" << model_iter->first << (!opt::train_unmethylated ? opt::out_suffix : "") << "\n";
         const std::vector<PoreModelStateParams>& states = model_iter->second;
 
         std::string curr_kmer = "AAAAA";
@@ -582,7 +644,7 @@ int methyltrain_main(int argc, char** argv)
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
         if(opt::write_models) {
-            write_models(trained_models, "");
+            write_models(trained_models);
         }
         models = trained_models;
     }
