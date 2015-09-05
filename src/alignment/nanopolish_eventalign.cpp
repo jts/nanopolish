@@ -57,6 +57,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
 "  -f, --full                           print event stdv, and model sd_ parameters\n"
+"      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -75,7 +76,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:vnf";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_STDV };
 
 static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
@@ -86,6 +87,7 @@ static const struct option longopts[] = {
     { "threads",     required_argument, NULL, 't' },
     { "print-read-names", no_argument,  NULL, 'n' },
     { "full",        no_argument,       NULL, 'f' },
+    { "stdv",        no_argument,       NULL, OPT_STDV },
     { "progress",    required_argument, NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -398,6 +400,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'f': opt::full_output = true; break;
+            case OPT_STDV: model_stdv() = true; break;
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:

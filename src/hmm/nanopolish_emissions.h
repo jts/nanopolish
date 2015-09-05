@@ -13,7 +13,6 @@
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 
-//#define MODEL_STDV 1
 //#define DEBUG_HMM_EMISSION 1
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
@@ -52,6 +51,12 @@ inline float log_invgauss_pdf(float x, float log_x, const PoreModelStateParams& 
     return (s.sd_log_lambda - log_2pi - 3 * log_x - s.sd_lambda * a * a / x) / 2;
 }
 
+inline bool& model_stdv()
+{
+    static bool _model_stdv = false;
+    return _model_stdv;
+}
+
 inline float log_probability_match(const SquiggleRead& read,
                                    uint32_t kmer_rank,
                                    uint32_t event_idx,
@@ -72,12 +77,12 @@ inline float log_probability_match(const SquiggleRead& read,
     state.level_stdv *= state_scale;
     state.level_log_stdv += log_state_scale;
     float lp = log_normal_pdf(level, state);
-
-#if MODEL_STDV
-    float stdv = read.get_stdv(event_idx, strand);
-    float log_stdv = read.get_log_stdv(event_idx, strand);
-    lp += log_invgauss_pdf(stdv, log_stdv, state);
-#endif
+    if (model_stdv())
+    {
+        float stdv = read.get_stdv(event_idx, strand);
+        float log_stdv = read.get_log_stdv(event_idx, strand);
+        lp += log_invgauss_pdf(stdv, log_stdv, state);
+    }
 
 #if DEBUG_HMM_EMISSION
     printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
