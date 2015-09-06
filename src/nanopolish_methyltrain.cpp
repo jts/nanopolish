@@ -483,8 +483,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             num_reads_realigned += num_records_buffered;
             num_records_buffered = 0;
-
-            if(num_reads_realigned > 1000) break;
         }
 
         if(opt::progress) {
