@@ -77,4 +77,7 @@ void emit_event_alignment_tsv(FILE* fp,
 // The main function to realign a read
 std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& params);
 
+// get the specified reference region, threadsafe
+std::string get_reference_region_ts(const faidx_t* fai, const char* ref_name, int start, int end, int* fetched_len);
+
 #endif

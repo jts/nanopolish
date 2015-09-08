@@ -164,7 +164,7 @@ void test_read(const ModelMap& model_map,
         if(model_iter != model_map.end()) {
             sr.replace_pore_model(strand_idx, model_iter->second);
         } else {
-            fprintf(stderr, "Error, methylated model %s not found\n");
+            fprintf(stderr, "Error, methylated model %s not found\n", methyl_model.c_str());
             exit(EXIT_FAILURE);
         }
 
@@ -201,11 +201,9 @@ void test_read(const ModelMap& model_map,
         assert(ref_end_pos >= ref_start_pos);
 
         // Extract the reference sequence for this region
-        char* cref_seq = faidx_fetch_seq(fai, alignment_output.front().ref_name.c_str(), 
-                                         ref_start_pos, ref_end_pos, &fetched_len);
-
-        std::string ref_seq(cref_seq);
-        free(cref_seq);
+        std::string ref_seq = get_reference_region_ts(params.fai, contig.c_str(), ref_start_pos, 
+                                                  ref_end_pos, &fetched_len);
+        
         ref_seq = gDNAAlphabet.disambiguate(ref_seq);
 
         // Scan the sequence for CpGs
@@ -248,6 +246,8 @@ void test_read(const ModelMap& model_map,
                 if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end()) {
 
                     std::string site_string = ref_seq.substr(cpg_sites[curr_idx] - 3, 5);
+                    
+                    uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
                     // Set up event data
                     HMMInputData data;
@@ -260,7 +260,7 @@ void test_read(const ModelMap& model_map,
                     data.event_stride = data.event_start_idx < data.event_stop_idx ? 1 : -1;
 
                     HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
-                    double unmethylated_score = profile_hmm_score(unmethylated, data);
+                    double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
 
                     // Methylate the CpGs in the sequence and score again
                     std::string mcpg_subseq = gMCpGAlphabet.methylate(subseq);
@@ -270,7 +270,7 @@ void test_read(const ModelMap& model_map,
                     //printf("m_rc_s: %s\n", rc_mcpg_subseq.c_str());
                     
                     HMMInputSequence methylated(mcpg_subseq, rc_mcpg_subseq, mtest_alphabet);
-                    double methylated_score = profile_hmm_score(methylated, data);
+                    double methylated_score = profile_hmm_score(methylated, data, hmm_flags);
                     double diff = methylated_score - unmethylated_score;
 
                     ScoredSite ss;
@@ -287,7 +287,6 @@ void test_read(const ModelMap& model_map,
                         iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
                     }
                     
-                    
                     iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
                     iter->second.ll_methylated[strand_idx] = methylated_score;
                 }
@@ -297,10 +296,9 @@ void test_read(const ModelMap& model_map,
         }
     } // for strands
     
-
-    double ll_ratio_sum = 0;
-    #pragma omp critical
+    #pragma omp critical(methyltest_write)
     {
+        double ll_ratio_sum = 0;
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
             const ScoredSite& ss = iter->second;

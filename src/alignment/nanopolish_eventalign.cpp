@@ -143,6 +143,26 @@ int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max,
     return aligned_pairs.size() - 1;
 }
 
+// get the specified reference region, threadsafe
+std::string get_reference_region_ts(const faidx_t* fai, const char* ref_name, int start, int end, int* fetched_len)
+{
+
+    // faidx_fetch_seq is not threadsafe
+    char* cref_seq;
+    #pragma omp critical
+    cref_seq = faidx_fetch_seq(fai, ref_name, start, end, fetched_len);
+    
+    assert(cref_seq != NULL);
+
+    std::string out(cref_seq);
+    free(cref_seq);
+    return out;
+}
+
+//
+//
+//
+
 void emit_tsv_header(FILE* fp)
 {
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
@@ -407,12 +427,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     int fetched_len = 0;
     int ref_offset = params.record->core.pos;
     std::string ref_name(params.hdr->target_name[params.record->core.tid]);
-
-    char* cref_seq = faidx_fetch_seq(params.fai, ref_name.c_str(), ref_offset, 
-                                     bam_endpos(params.record), &fetched_len);
-
-    std::string ref_seq(cref_seq);
-    free(cref_seq);
+    std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset, 
+                                                  bam_endpos(params.record), &fetched_len);
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
