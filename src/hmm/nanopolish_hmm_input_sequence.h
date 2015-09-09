@@ -58,21 +58,21 @@ class HMMInputSequence
         // if the do_rc flag is set, return the rank of
         // reverse-complemented version of the ki-th kmer
         // NOT the ki-th kmer of the reverse-complemented sequence
-        inline uint32_t get_kmer_rank(uint32_t i, bool do_rc) const
+        inline uint32_t get_kmer_rank(uint32_t i, uint32_t k, bool do_rc) const
         {
-            return ! do_rc ? _kmer_rank(i) : _rc_kmer_rank(i);
+            return ! do_rc ? _kmer_rank(i, k) : _rc_kmer_rank(i, k);
         }
 
     private:
 
-        inline uint32_t _kmer_rank(uint32_t i) const
+        inline uint32_t _kmer_rank(uint32_t i, uint32_t k) const
         {
-            return m_alphabet->kmer_rank(m_seq.c_str() + i, K);
+            return m_alphabet->kmer_rank(m_seq.c_str() + i, k);
         }
 
-        inline uint32_t _rc_kmer_rank(uint32_t i) const
+        inline uint32_t _rc_kmer_rank(uint32_t i, uint32_t k) const
         {
-            return m_alphabet->kmer_rank(m_rc_seq.c_str() + (length() - i - K), K);
+            return m_alphabet->kmer_rank(m_rc_seq.c_str() + (length() - i - k), k);
         }
 
         HMMInputSequence(); // not allowed

@@ -42,8 +42,10 @@ int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t stran
 //
 int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 {
+    uint32_t k = pore_model[T_IDX].k;
+
     int stop_before = std::max(0, k_idx - 1000);
-    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - K + 1);
+    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - (int32_t)k + 1);
     
     int event_before = get_next_event(k_idx, stop_before, -1, strand);
     int event_after = get_next_event(k_idx, stop_after, 1, strand);
@@ -149,7 +151,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_event_alignments();
     assert(!read_sequence.empty());
 
-    uint32_t n_read_kmers = read_sequence.size() - K + 1;
+    const uint32_t k = pore_model[T_IDX].k;
+    uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
 
     uint32_t read_kidx = 0;
@@ -170,7 +173,7 @@ hack:
         // this tuple refers to
         while(read_kidx < n_read_kmers && 
               strncmp(event_alignments[start_ea_idx].kmer, 
-                     read_sequence.c_str() + read_kidx, K) != 0) {
+                     read_sequence.c_str() + read_kidx, k) != 0) {
             read_kidx += 1;
         }
 
@@ -194,7 +197,7 @@ hack:
             end_ea_idx += 1;
         }
 
-        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, K).c_str(), start_ea_idx, end_ea_idx);
+        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, k).c_str(), start_ea_idx, end_ea_idx);
         EventRangeForBase& erfb =  base_to_event_map[read_kidx];
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 

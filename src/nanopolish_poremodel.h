@@ -53,6 +53,8 @@ class PoreModel
         double var;
         double scale_sd;
         double var_sd;
+
+        const uint32_t k=5;
     
         bool is_scaled;
 

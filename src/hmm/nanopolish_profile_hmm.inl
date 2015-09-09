@@ -13,8 +13,8 @@ inline float calculate_skip_probability(const HMMInputSequence& sequence,
     const PoreModel& pm = data.read->pore_model[data.strand];
     const KHMMParameters& parameters = data.read->parameters[data.strand];
 
-    uint32_t rank_i = sequence.get_kmer_rank(ki, data.rc);
-    uint32_t rank_j = sequence.get_kmer_rank(kj, data.rc);
+    uint32_t rank_i = sequence.get_kmer_rank(ki, pm.k, data.rc);
+    uint32_t rank_j = sequence.get_kmer_rank(kj, pm.k, data.rc);
 
     GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
     GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
@@ -284,12 +284,14 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& sequence,
  
     // Precompute kmer ranks
 
+    uint32_t k = data.read->pore_model[data.strand].k;
+
     // Make sure the HMMInputSequence's alphabet matches the state space of the read
-    assert(data.read->pore_model[data.strand].states.size() == sequence.get_num_kmer_ranks(K));
+    assert( data.read->pore_model[data.strand].states.size() == sequence.get_num_kmer_ranks(k) );
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki)
-        kmer_ranks[ki] = sequence.get_kmer_rank(ki, data.rc);
+        kmer_ranks[ki] = sequence.get_kmer_rank(ki, k, data.rc);
 
     size_t num_events = output.get_num_rows() - 1;
 

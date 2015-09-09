@@ -228,6 +228,7 @@ void train_read(const ModelMap& model_map,
         
         // replace model with the training model
         std::string curr_model = sr.model_name[strand_idx];
+        uint32_t k = sr.pore_model[strand_idx].k;
         auto model_iter = model_map.find(curr_model);
 
         if(model_iter != model_map.end()) {
@@ -261,7 +262,7 @@ void train_read(const ModelMap& model_map,
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
                 std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-                uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), K);
+                uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
 
                 if(ea.hmm_state != 'M') {
@@ -292,16 +293,18 @@ ModelMap read_models_fofn(const std::string& fofn_name)
     ModelMap out;
     std::ifstream fofn_reader(fofn_name);
     std::string model_filename;
+    bool firstkmer = true;
     while(getline(fofn_reader, model_filename)) {
         printf("reading %s\n", model_filename.c_str());
-
-        std::string expected_kmer(5, 'A');
 
         std::ifstream model_reader(model_filename);
         std::string model_line;
 
         std::string model_name;
         std::vector<PoreModelStateParams> states;
+
+        std::string expected_kmer;
+        uint32_t k;
 
         while(getline(model_reader, model_line)) {
             std::stringstream parser(model_line);
@@ -320,10 +323,16 @@ ModelMap read_models_fofn(const std::string& fofn_name)
             std::string kmer;
             PoreModelStateParams params;
             parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
-          
+            if (firstkmer) {
+                k = kmer.length();
+                assert(k == 5);
+                expected_kmer = std::string(k, 'A');
+                firstkmer = false;
+            }
+
             // Make sure the model file is sorted by rank
             assert(kmer == expected_kmer);
-            assert(mtrain_alphabet->kmer_rank(kmer.c_str(), K) == states.size());
+            assert(mtrain_alphabet->kmer_rank(kmer.c_str(), k) == states.size());
             states.push_back(params);
 
             mtrain_alphabet->lexicographic_next(expected_kmer);
@@ -513,8 +522,15 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         trained_models[model_training_iter->first] = model_iter->second;
         std::vector<PoreModelStateParams>& new_pm = trained_models[model_training_iter->first];
 
+        // LJD: TODO: calculate k from state size for now; 
+        // eventually that will be a vector of pore models, not of state params
+        // and we'll be able to read this directly
+        uint32_t k=1;
+        while (gMCpGAlphabet.get_num_strings(k) < model_iter->second.size())
+            k++;
+
         // Update means for each kmer
-        std::string kmer = "AAAAA";
+        std::string kmer(k, 'A');
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
@@ -543,12 +559,12 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             GaussianMixture mixture;
 
-            // train a mixture model where a minority of 5-mers aren't methylated
+            // train a mixture model where a minority of k-mers aren't methylated
             
             // unmethylated component
             double um_rate = 0.05f;
             std::string um_kmer = gMCpGAlphabet.unmethylate(kmer);
-            size_t um_ki = gMCpGAlphabet.kmer_rank(um_kmer.c_str(), K);
+            size_t um_ki = gMCpGAlphabet.kmer_rank(um_kmer.c_str(), k);
             GaussianParameters um_params(model_iter->second[um_ki].level_mean, model_iter->second[um_ki].level_stdv);
 
             mixture.weights.push_back(um_rate);

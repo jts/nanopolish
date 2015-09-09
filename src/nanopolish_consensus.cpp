@@ -357,7 +357,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
     paths.swap(new_paths);
 }
 
-PathConsVector generate_mutations(const std::string& sequence)
+PathConsVector generate_mutations(const std::string& sequence, const uint32_t k)
 {
     PathConsVector mutations;
 
@@ -368,7 +368,7 @@ PathConsVector generate_mutations(const std::string& sequence)
     }
 
     // Mutate every base except for in the first/last k-mer
-    for(size_t si = K; si < sequence.size() - K; ++si) {
+    for(size_t si = k; si < sequence.size() - k; ++si) {
         
         // All subs
         for(size_t bi = 0; bi < 4; bi++) {
@@ -418,11 +418,14 @@ std::string run_mutation(const std::string& base, const std::vector<HMMInputData
     PROFILE_FUNC("run_mutation")
     std::string result = base;
 
+    // assume models for all the reads have the same k
+    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+
     int iteration = 0;
     while(iteration++ < 10) {
 
         // Generate possible sequences
-        PathConsVector paths = generate_mutations(result);
+        PathConsVector paths = generate_mutations(result, k);
 
         // score them in the HMM
         score_paths(paths, input);
@@ -436,25 +439,26 @@ std::string run_mutation(const std::string& base, const std::vector<HMMInputData
     return result;
 }
 
-void generate_alt_paths(PathConsVector& paths, const std::string& base, const std::vector<std::string>& alts)
+void generate_alt_paths(PathConsVector& paths, const std::string& base, const std::vector<std::string>& alts, 
+                        const uint32_t k)
 {
     // Generate alternatives
     for(uint32_t ai = 0; ai < alts.size(); ++ai) {
         const std::string& alt = alts[ai];
 
-        if(alt.size() < K)
+        if(alt.size() < k)
             continue;
 
-        kLCSResult result = kLCS(base, alt, K);
+        kLCSResult result = kLCS(base, alt, k);
 
 #ifdef DEBUG_ALT_GENERATION
         printf("Match to alt %s\n", alt.c_str());
         for(size_t mi = 0; mi < result.size(); ++mi) {
             std::string extend = "";
             if(mi < result.size() - 1 && result[mi].j + 1 != result[mi + 1].j) {
-                extend = alt.substr(result[mi].j, result[mi + 1].j - result[mi].j + K);
+                extend = alt.substr(result[mi].j, result[mi + 1].j - result[mi].j + k);
             }
-            printf("\t%zu %zu %s %s\n", result[mi].i, result[mi].j, base.substr(result[mi].i, K).c_str(), extend.c_str());
+            printf("\t%zu %zu %s %s\n", result[mi].i, result[mi].j, base.substr(result[mi].i, k).c_str(), extend.c_str());
         }
 #endif
 
@@ -495,6 +499,9 @@ std::string run_block_substitution(const std::string& base,
 {
     std::string result = base;
 
+    // assume models for all the reads have the same k
+    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+
     uint32_t max_rounds = 6;
     uint32_t round = 0;
     while(round++ < max_rounds) {
@@ -503,7 +510,7 @@ std::string run_block_substitution(const std::string& base,
         PathCons initial_path(result);
         paths.push_back(initial_path);
         
-        generate_alt_paths(paths, result, alts);
+        generate_alt_paths(paths, result, alts, k);
         score_paths(paths, input);
 
         if(paths[0].path == result)
@@ -537,17 +544,17 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
     input.swap(out_rs);
 }
 
-std::string join_sequences_at_kmer(const std::string& a, const std::string& b)
+std::string join_sequences_at_kmer(const std::string& a, const std::string& b, const uint32_t k)
 {
     // this is a special case to make the calling code cleaner
     if(a.empty())
         return b;
 
     // These sequences must have a k-mer match at the start/end
-    std::string a_last_kmer = a.substr(a.size() - K);
-    std::string b_last_kmer = b.substr(0, K);
+    std::string a_last_kmer = a.substr(a.size() - k);
+    std::string b_last_kmer = b.substr(0, k);
     assert(a_last_kmer == b_last_kmer);
-    return a + b.substr(K);
+    return a + b.substr(k);
 }
 
 void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
@@ -574,10 +581,6 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
 
-    // The current consensus sequence
-    std::string original = join_sequences_at_kmer(s_m_base, m_e_base);
-    std::string base = original;
-    
     // The collection of alternative sequences
     std::vector<std::string> alts;
 
@@ -588,6 +591,13 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     // set up the input data for the HMM
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
     
+    // assume models for all the reads have the same k
+    const uint32_t k = data[0].read->pore_model[T_IDX].k;
+
+    // The current consensus sequence
+    std::string original = join_sequences_at_kmer(s_m_base, m_e_base, k);
+    std::string base = original;
+
     // filter out poor quality reads
     filter_outlier_data(data, base);
 
@@ -607,14 +617,14 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     // Update the sequences for the start and middle segments
     // by cutting the new consensus in the middle
     // We maintain the k-mer match invariant by requiring the
-    // sequences to overlap by 5bp
-    assert(base.length() >= K);
-    uint32_t midpoint_kmer = (base.length() - K + 1) / 2;
+    // sequences to overlap by k-bp
+    assert(base.length() >= k);
+    uint32_t midpoint_kmer = (base.length() - k + 1) / 2;
 
-    std::string s_m_fixed = base.substr(0, midpoint_kmer + K);
+    std::string s_m_fixed = base.substr(0, midpoint_kmer + k);
     std::string m_e_fixed = base.substr(midpoint_kmer);
 
-    assert(s_m_fixed.substr(s_m_fixed.size() - K) == m_e_fixed.substr(0, K));
+    assert(s_m_fixed.substr(s_m_fixed.size() - k) == m_e_fixed.substr(0, k));
 
     start_column.base_sequence = s_m_fixed;
     middle_column.base_sequence = m_e_fixed;
@@ -652,10 +662,13 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::string s_m_base = start_column.base_sequence;
     std::string m_e_base = middle_column.base_sequence;
 
-    std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base);
-
     // Set up the the input data for the HMM
     std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
+
+    // assume models for all the reads have the same k
+    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+
+    std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base, k);
      
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
         std::vector<AlignmentState> decodes = profile_hmm_align(segment_sequence, input[ri]);
@@ -694,6 +707,9 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     //
     train(window);
 
+    // assume models for all the reads have the same k
+    const uint32_t k = window.reads[0]->pore_model[T_IDX].k;
+
     //
     // Compute the new consensus sequence
     //
@@ -729,8 +745,8 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
         std::string base = window.anchored_columns[segment_id].base_sequence;
 
         // append the new sequences in, respecting the K overlap
-        reference = join_sequences_at_kmer(reference, ref_segments[segment_id]);
-        consensus = join_sequences_at_kmer(consensus, base);
+        reference = join_sequences_at_kmer(reference, ref_segments[segment_id], k);
+        consensus = join_sequences_at_kmer(consensus, base, k);
 
         if(opt::verbose > 0) {
             fprintf(stderr, "UNCORRECT[%d]: %s\n", segment_id, reference.c_str());
@@ -739,10 +755,10 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     }
 
     // Append segment that ends at the last anchor
-    reference = join_sequences_at_kmer(reference, ref_segments[num_segments - 2]);
+    reference = join_sequences_at_kmer(reference, ref_segments[num_segments - 2], k);
     const std::string& last_segment = 
         window.anchored_columns[num_segments - 2].base_sequence;
-    consensus = join_sequences_at_kmer(consensus, last_segment);
+    consensus = join_sequences_at_kmer(consensus, last_segment, k);
 
     if(opt::show_progress) {
         progress.end();

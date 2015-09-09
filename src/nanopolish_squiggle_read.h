@@ -79,7 +79,7 @@ class SquiggleRead
         inline int32_t flip_k_strand(int32_t k_idx) const
         {
             assert(!read_sequence.empty());
-            return read_sequence.size() - k_idx - K;
+            return read_sequence.size() - k_idx - pore_model[T_IDX].k;
         }
 
         // Transform each event by correcting for current drift
