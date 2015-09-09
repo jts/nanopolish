@@ -360,7 +360,7 @@ void emit_event_alignment_tsv(FILE* fp,
         fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
                                               model.mean, 
                                               model.stdv, 
-                                              sr.model_name[ea.strand_idx].c_str());
+                                              sr.pore_model[ea.strand_idx].name.c_str());
     }
 }
 

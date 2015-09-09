@@ -227,12 +227,12 @@ void train_read(const ModelMap& model_map,
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         
         // replace model with the training model
-        std::string curr_model = sr.model_name[strand_idx];
+        std::string curr_model = sr.pore_model[strand_idx].name;
         uint32_t k = sr.pore_model[strand_idx].k;
         auto model_iter = model_map.find(curr_model);
 
         if(model_iter != model_map.end()) {
-            sr.replace_pore_model(strand_idx, model_iter->second);
+            sr.pore_model[strand_idx].update_states(model_iter->second);
         } else {
             assert(false && "Model not found");
         }
@@ -293,53 +293,13 @@ ModelMap read_models_fofn(const std::string& fofn_name)
     ModelMap out;
     std::ifstream fofn_reader(fofn_name);
     std::string model_filename;
+
     while(getline(fofn_reader, model_filename)) {
         printf("reading %s\n", model_filename.c_str());
-        bool firstkmer = true;
+        PoreModel p(model_filename, *mtrain_alphabet);
+        assert(!p.name.empty());
 
-        std::ifstream model_reader(model_filename);
-        std::string model_line;
-
-        std::string model_name;
-        std::vector<PoreModelStateParams> states;
-
-        std::string expected_kmer;
-        uint32_t k;
-
-        while(getline(model_reader, model_line)) {
-            std::stringstream parser(model_line);
-
-            // Extract the model name from the header
-            if(model_line.find("#model_name") != std::string::npos) {
-                std::string dummy;
-                parser >> dummy >> model_name;
-            }
-            
-            // skip the rest of the header
-            if(model_line[0] == '#' || model_line.find("kmer") == 0) {
-                continue;
-            }
-
-            std::string kmer;
-            PoreModelStateParams params;
-            parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
-            if (firstkmer) {
-                k = kmer.length();
-                assert(k == 5);
-                expected_kmer = std::string(k, 'A');
-                firstkmer = false;
-            }
-
-            // Make sure the model file is sorted by rank
-            assert(kmer == expected_kmer);
-            assert(mtrain_alphabet->kmer_rank(kmer.c_str(), k) == states.size());
-            states.push_back(params);
-
-            mtrain_alphabet->lexicographic_next(expected_kmer);
-        }
-            
-        assert(!model_name.empty());
-        out[model_name] = states;
+        out[p.name] = p;
     }
     return out;
 }
@@ -416,7 +376,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
     for(auto model_iter = models.begin(); model_iter != models.end(); model_iter++) {
-        std::vector<StateSummary> summaries(model_iter->second.size()); // one per kmer in the model
+        std::vector<StateSummary> summaries(model_iter->second.get_num_states()); // one per kmer in the model
         model_training_data[model_iter->first] = summaries;
     }
 
@@ -520,16 +480,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         auto model_iter = models.find(model_training_iter->first);
         assert(model_iter != models.end());
         trained_models[model_training_iter->first] = model_iter->second;
-        std::vector<PoreModelStateParams>& new_pm = trained_models[model_training_iter->first];
-
-        // LJD: TODO: calculate k from state size for now; 
-        // eventually that will be a vector of pore models, not of state params
-        // and we'll be able to read this directly
-        uint32_t k=1;
-        while (gMCpGAlphabet.get_num_strings(k) < model_iter->second.size())
-            k++;
+        PoreModel& new_pm = trained_models[model_training_iter->first];
 
         // Update means for each kmer
+        uint32_t k = new_pm.k;
         std::string kmer(k, 'A');
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
@@ -565,12 +519,14 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             double um_rate = 0.05f;
             std::string um_kmer = gMCpGAlphabet.unmethylate(kmer);
             size_t um_ki = gMCpGAlphabet.kmer_rank(um_kmer.c_str(), k);
-            GaussianParameters um_params(model_iter->second[um_ki].level_mean, model_iter->second[um_ki].level_stdv);
+            GaussianParameters um_params(model_iter->second.get_parameters(um_ki).level_mean, 
+                                           model_iter->second.get_parameters(um_ki).level_stdv);
 
             mixture.weights.push_back(um_rate);
             mixture.params.push_back(um_params);
 
-            GaussianParameters m_params(new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            GaussianParameters m_params(model_iter->second.get_parameters(ki).level_mean, 
+                                           model_iter->second.get_parameters(ki).level_stdv);
 
             mixture.weights.push_back(1 - um_rate);
             mixture.params.push_back(m_params);
@@ -583,15 +539,17 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
                                                               trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
                                                               trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
-            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                                    new_pm.get_parameters(ki).level_mean, new_pm.get_parameters(ki).level_stdv);
             
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
             if(update_kmer && n > 100) {
-                new_pm[ki].level_mean = trained_mixture.params[1].mean;
-                new_pm[ki].level_stdv = trained_mixture.params[1].stdv;
+                new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
+                new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
             }
-            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
+            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                                    new_pm.get_parameters(ki).level_mean, new_pm.get_parameters(ki).level_stdv);
 
             /*
             if(kmer.find("CG") != std::string::npos) {
@@ -622,28 +580,17 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     return trained_models;
 }
 
-void write_models(const ModelMap& models)
+void write_models(ModelMap& models)
 {
     // Write the model
     for(auto model_iter = models.begin(); 
              model_iter != models.end(); model_iter++) {
 
-        std::stringstream outname;
-        outname << model_iter->first << opt::out_suffix;
+        std::string outname   =  model_iter->first + opt::out_suffix;
+        std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
 
-        std::ofstream writer(outname.str());
-        writer << "#model_name\t" << model_iter->first << (!opt::train_unmethylated ? opt::out_suffix : "") << "\n";
-        const std::vector<PoreModelStateParams>& states = model_iter->second;
-
-        std::string curr_kmer = "AAAAA";
-        for(size_t ki = 0; ki < states.size(); ++ki) {
-            writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
-                << states[ki].sd_mean << "\t" << states[ki].sd_stdv << "\n";
-            mtrain_alphabet->lexicographic_next(curr_kmer);
-        }
-        writer.close();
+        models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
     }
-    
 }
 
 int methyltrain_main(int argc, char** argv)

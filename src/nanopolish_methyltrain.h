@@ -15,7 +15,7 @@
 //
 // Typedefs
 //
-typedef std::map<std::string, std::vector<PoreModelStateParams>> ModelMap;
+typedef std::map<std::string, PoreModel> ModelMap;
 
 // read models from a file
 ModelMap read_models_fofn(const std::string& fofn_name);
