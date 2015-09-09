@@ -293,9 +293,9 @@ ModelMap read_models_fofn(const std::string& fofn_name)
     ModelMap out;
     std::ifstream fofn_reader(fofn_name);
     std::string model_filename;
-    bool firstkmer = true;
     while(getline(fofn_reader, model_filename)) {
         printf("reading %s\n", model_filename.c_str());
+        bool firstkmer = true;
 
         std::ifstream model_reader(model_filename);
         std::string model_line;
