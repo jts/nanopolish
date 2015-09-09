@@ -37,10 +37,17 @@
 //
 // Structs
 //
+struct StateTrainingData
+{
+    float level_mean;
+    float level_stdv;
+    float duration;
+};
+
 struct StateSummary
 {
     StateSummary() {}
-    std::vector<float> events;
+    std::vector<StateTrainingData> events;
 };
 
 struct GaussianMixture
@@ -102,7 +109,7 @@ namespace opt
     static int batch_size = 128;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:vn";
+static const char* shortopts = "r:b:g:t:m:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED };
 
@@ -123,7 +130,7 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
-GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
+GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& data,
                                        const GaussianMixture& input_mixture)
 {
 
@@ -151,7 +158,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
             std::vector<double> t(n_components, 0.0f);
             double t_sum = -INFINITY;
             for(size_t j = 0; j < n_components; ++j) {
-                t[j] = log_normal_pdf(data[i], curr_mixture.params[j]) + log(curr_mixture.weights[j]);
+                t[j] = log_normal_pdf(data[i].level_mean, curr_mixture.params[j]) + log(curr_mixture.weights[j]);
                 if(t[j] != -INFINITY && ! std::isnan(t[j])) {
                     t_sum = add_logs(t_sum, t[j]);
                 }
@@ -173,7 +180,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
         for(size_t i = 0; i < n_data; ++i) {
             for(size_t j = 0; j < n_components; ++j) {
                 double w_ij = resp[i][j];
-                mean_sum[j] += w_ij * data[i];
+                mean_sum[j] += w_ij * data[i].level_mean;
             }
         }
         
@@ -186,7 +193,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<float>& data,
         for(size_t i = 0; i < n_data; ++i) {
             for(size_t j = 0; j < n_components; ++j) {
                 double w_ij = resp[i][j];
-                var_sum[j] += w_ij * pow(data[i] - new_mean[j], 2.0);
+                var_sum[j] += w_ij * pow(data[i].level_mean - new_mean[j], 2.0);
             }
         }
         
@@ -270,7 +277,12 @@ void train_read(const ModelMap& model_map,
                 // Here we re-scale the event to the model
                 float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
                 event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-                kmer_summary.events.push_back(event_mean);
+                
+                float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
+                float event_duration = sr.events[strand_idx][ea.event_idx].duration;
+                StateTrainingData std = { event_mean, event_stdv, event_duration };
+                kmer_summary.events.push_back(std);
+
                 /*
                 // unshifted mean
                 float expected_mean = (sr.pore_model[strand_idx].states[rank].level_mean - 
@@ -494,12 +506,12 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     progress.end();
 
     std::stringstream fn;
-    fn << opt::bam_file << ".methyltrain." << round << ".tsv";
+    fn << opt::bam_file << ".methyltrain.tsv";
 
     FILE* training_fp = fopen(fn.str().c_str(), "w");
 
     // header
-    fprintf(training_fp, "model\tmodel_kmer\tevent_mean\n");
+    fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\n");
 
     // Process the training results
     ModelMap trained_models;
@@ -510,6 +522,20 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         // Initialize trained model from input model
         auto model_iter = models.find(model_training_iter->first);
         assert(model_iter != models.end());
+
+        std::string model_name = model_training_iter->first;
+        std::string model_short_name = "";
+
+        if(model_name == "r7.3_template_median68pA.model") {
+            model_short_name = "t";
+        } else if(model_name == "r7.3_complement_median68pA_pop1.model") {
+            model_short_name = "c.p1";
+        } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
+            model_short_name = "c.p2";
+        } else {
+            assert(false);
+        }
+
         trained_models[model_training_iter->first] = model_iter->second;
         std::vector<PoreModelStateParams>& new_pm = trained_models[model_training_iter->first];
 
@@ -518,28 +544,13 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         const std::vector<StateSummary>& summaries = model_training_iter->second;
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
 
-            float n = summaries[ki].events.size();
-            
+            // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                fprintf(training_fp, "%s\t%s\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), summaries[ki].events[ei]);
+                fprintf(training_fp, "%s\t%s\t%.2lf\t%.2lf\t%.2lf\n", model_short_name.c_str(), kmer.c_str(), 
+                                                                      summaries[ki].events[ei].level_mean, 
+                                                                      summaries[ki].events[ei].level_stdv,
+                                                                      summaries[ki].events[ei].duration);
             }
-
-            /*
-            // Naive training
-            float sum_mean = 0.0f;
-            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                fprintf(training_fp, "%s\t%s\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), summaries[ki].events[ei]);
-                sum_mean += summaries[ki].events[ei];
-            }
-
-            float mu_prime = sum_mean / n;
-            
-            float sum_var = 0.0f;
-            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                sum_var += pow(summaries[ki].events[ei] - mu_prime, 2.0);
-            }
-            float var_prime = sum_var / n;
-            */
 
             GaussianMixture mixture;
 
@@ -558,24 +569,28 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             mixture.weights.push_back(1 - um_rate);
             mixture.params.push_back(m_params);
-            
-            fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                                                              mixture.weights[0], mixture.params[0].mean, mixture.params[0].stdv,
-                                                              mixture.weights[1], mixture.params[1].mean, mixture.params[1].stdv);
+ 
+            if(opt::verbose > 1) {
+                           
+                fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                                  mixture.weights[0], mixture.params[0].mean, mixture.params[0].stdv,
+                                                                  mixture.weights[1], mixture.params[1].mean, mixture.params[1].stdv);
+            }
+
             GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
             
-            fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                                                              trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
-                                                              trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
-            fprintf(stderr, "BEFORE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
-            
+            if(opt::verbose > 1) {
+                fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                                                                  trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
+                                                                  trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
+            }
+                
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
-            if(update_kmer && n > 100) {
+            if(update_kmer && summaries[ki].events.size() > 100) {
                 new_pm[ki].level_mean = trained_mixture.params[1].mean;
                 new_pm[ki].level_stdv = trained_mixture.params[1].stdv;
             }
-            fprintf(stderr, "SINGLE_TRAIN %s\t%s\t%.2lf\t%.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
 
             /*
             if(kmer.find("CG") != std::string::npos) {
