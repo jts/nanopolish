@@ -42,6 +42,7 @@ struct StateTrainingData
     float level_mean;
     float level_stdv;
     float duration;
+    float read_var;
 };
 
 struct StateSummary
@@ -193,7 +194,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         for(size_t i = 0; i < n_data; ++i) {
             for(size_t j = 0; j < n_components; ++j) {
                 double w_ij = resp[i][j];
-                var_sum[j] += w_ij * pow(data[i].level_mean - new_mean[j], 2.0);
+                var_sum[j] += w_ij * pow( (data[i].level_mean - new_mean[j]) / data[i].read_var, 2.0);
             }
         }
         
@@ -280,7 +281,7 @@ void train_read(const ModelMap& model_map,
                 
                 float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
                 float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                StateTrainingData std = { event_mean, event_stdv, event_duration };
+                StateTrainingData std = { event_mean, event_stdv, event_duration, sr.pore_model[strand_idx].var };
                 kmer_summary.events.push_back(std);
 
                 /*
