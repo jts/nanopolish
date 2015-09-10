@@ -157,12 +157,12 @@ void test_read(const ModelMap& model_map,
         double strand_score = 0.0f;
 
         // replace model 
-        std::string curr_model = sr.model_name[strand_idx];
+        std::string curr_model = sr.pore_model[strand_idx].name;
         std::string methyl_model = curr_model + ".methyltrain";
         auto model_iter = model_map.find(methyl_model);
 
         if(model_iter != model_map.end()) {
-            sr.replace_pore_model(strand_idx, model_iter->second);
+            sr.pore_model[strand_idx].update_states( model_iter->second );
         } else {
             fprintf(stderr, "Error, methylated model %s not found\n", methyl_model.c_str());
             exit(EXIT_FAILURE);

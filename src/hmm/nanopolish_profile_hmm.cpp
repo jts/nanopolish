@@ -60,7 +60,8 @@ float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMI
 
 float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    uint32_t n_kmers = sequence.length() - K + 1;
+    const uint32_t k = data.read->pore_model[T_IDX].k;
+    uint32_t n_kmers = sequence.length() - k + 1;
 
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
@@ -98,8 +99,9 @@ void profile_hmm_viterbi_initialize(FloatMatrix& m)
 std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
     std::vector<AlignmentState> alignment;
+    const uint32_t k = data.read->pore_model[T_IDX].k;
 
-    uint32_t n_kmers = sequence.length() - K + 1;
+    uint32_t n_kmers = sequence.length() - k + 1;
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
     uint32_t e_start = data.event_start_idx;
@@ -197,6 +199,8 @@ void print_alignment(const std::string& name,
     size_t n_skips = 0;
     size_t n_mergeskips = 0;
     
+    const uint32_t k = data.read->pore_model[T_IDX].k;
+
     char prev_s = '\0';
     for(size_t pi = 0; pi < alignment.size(); ++pi) {
 
@@ -207,7 +211,7 @@ void print_alignment(const std::string& name,
         double level = data.read->get_drift_corrected_level(ei, data.strand);
         double sd = data.read->events[data.strand][ei].stdv;
         double duration = data.read->get_duration(ei, data.strand);
-        uint32_t rank = sequence.get_kmer_rank(ki, data.rc);
+        uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
         
         const PoreModel& pm = data.read->pore_model[data.strand];
         GaussianParameters model = pm.get_scaled_parameters(rank);
@@ -228,7 +232,7 @@ void print_alignment(const std::string& name,
         } else {
             lp_diff = alignment[pi].l_fm;
         }
-        std::string kmer = sequence.get_kmer(ki, K, false);
+        std::string kmer = sequence.get_kmer(ki, k, false);
  
         printf("DEBUG\t%s\t%d\t%d\t%c\t", name.c_str(), read_id, data.rc, "tc"[data.strand]);
         printf("%c\t%d\t%d\t", s, ei, ki);
@@ -269,7 +273,9 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
     const PoreModel& pm = data.read->pore_model[data.strand];
     TrainingData& training_data = data.read->parameters[data.strand].training_data;
 
-    size_t n_kmers = sequence.length() - K + 1;
+    const uint32_t k = pm.k;
+
+    size_t n_kmers = sequence.length() - k + 1;
     uint32_t strand_idx = 0;
     char prev_s = 'M';
 
@@ -283,6 +289,8 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
         // We do not record observations for merge states as there was no kmer transitions
         // We also do not record observations for the beginning of the matches as the
         // alignment may be poor due to edge effects
+
+        // LJD TODO: should this 5 be k?
         if(pi > 5 && pi < alignment.size() - 5) {
  
             // skip transition training data
@@ -300,8 +308,8 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
                 
                 assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
 
-                uint32_t rank_1 = sequence.get_kmer_rank(transition_kmer_from, data.rc);
-                uint32_t rank_2 = sequence.get_kmer_rank(transition_kmer_to, data.rc);
+                uint32_t rank_1 = sequence.get_kmer_rank(transition_kmer_from, k, data.rc);
+                uint32_t rank_2 = sequence.get_kmer_rank(transition_kmer_to, k, data.rc);
             
                 GaussianParameters level_1 = pm.get_scaled_parameters(rank_1);
                 GaussianParameters level_2 = pm.get_scaled_parameters(rank_2);
@@ -324,7 +332,7 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
             
             assert(ki < n_kmers);
-            uint32_t rank = sequence.get_kmer_rank(ki, data.rc);
+            uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
         
             GaussianParameters model = pm.get_scaled_parameters(rank);
             float norm_level = (level - model.mean) / model.stdv;

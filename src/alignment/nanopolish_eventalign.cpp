@@ -325,6 +325,7 @@ void emit_event_alignment_tsv(FILE* fp,
                               const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
+    uint32_t k = sr.pore_model[T_IDX].k;
     for(size_t i = 0; i < alignments.size(); ++i) {
 
         const EventAlignment& ea = alignments[i];
@@ -354,12 +355,12 @@ void emit_event_alignment_tsv(FILE* fp,
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
         fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
 
-        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), K);
+        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
         GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
         fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
                                               model.mean, 
                                               model.stdv, 
-                                              sr.model_name[ea.strand_idx].c_str());
+                                              sr.pore_model[ea.strand_idx].name.c_str());
     }
 }
 
@@ -430,6 +431,9 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset, 
                                                   bam_endpos(params.record), &fetched_len);
 
+    // k from read pore model
+    const uint32_t k = params.sr->pore_model[T_IDX].k;
+
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
     ref_seq = params.alphabet->disambiguate(ref_seq);
@@ -446,7 +450,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     }
 
     // Trim the aligned pairs to be within the range of the maximum kmer index
-    int max_kmer_idx = params.sr->read_sequence.size() - K;
+    int max_kmer_idx = params.sr->read_sequence.size() - k;
     trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
 
     if(aligned_pairs.empty())
@@ -502,7 +506,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
         
         // Nothing to align to
-        if(hmm_sequence.length() < K)
+        if(hmm_sequence.length() < k)
             break;
 
         // Set up HMM input
@@ -546,7 +550,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 // ref
                 ea.ref_name = ref_name;
                 ea.ref_position = curr_start_ref + as.kmer_idx;
-                ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, K);
+                ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, k);
 
                 // event
                 ea.read_idx = params.read_idx;
@@ -555,7 +559,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 ea.rc = input.rc;
 
                 // hmm
-                ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, K, input.rc);
+                ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, k, input.rc);
                 ea.hmm_state = as.state;
 
                 // store

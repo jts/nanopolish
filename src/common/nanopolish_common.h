@@ -33,7 +33,6 @@ enum AlignmentPolicy
 //
 // Constants
 //
-const uint8_t K = 5;
 
 // strands
 const uint8_t T_IDX = 0;
