@@ -128,6 +128,17 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+// Expand the event indices outwards
+void bump(HMMInputData& data, int amount)
+{
+    if(data.event_start_idx < data.event_stop_idx) {
+        data.event_start_idx -= amount;
+        data.event_stop_idx += amount;
+    } else {
+        data.event_start_idx += amount;
+        data.event_stop_idx -= amount;
+    }
+}
 // Realign the read in event space
 void test_read(const ModelMap& model_map,
                const Fast5Map& name_map, 
@@ -229,7 +240,6 @@ void test_read(const ModelMap& model_map,
 
             int sub_start_pos = cpg_sites[curr_idx] - min_separation;
             int sub_end_pos = cpg_sites[end_idx - 1] + min_separation;
-            //printf("testing %zu %zu local: [%d %d] chr: [%d %d]\n", curr_idx, end_idx - 1, sub_start_pos, sub_end_pos, sub_start_pos + ref_start_pos, sub_end_pos + ref_start_pos);
 
             if(sub_start_pos > min_separation && cpg_sites[end_idx - 1] - cpg_sites[curr_idx] < 200) {
     
@@ -258,7 +268,7 @@ void test_read(const ModelMap& model_map,
                     data.event_start_idx = start_iter->read_pos;
                     data.event_stop_idx = stop_iter->read_pos;
                     data.event_stride = data.event_start_idx < data.event_stop_idx ? 1 : -1;
-
+                    
                     HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
                     double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
 
@@ -289,6 +299,17 @@ void test_read(const ModelMap& model_map,
                     
                     iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
                     iter->second.ll_methylated[strand_idx] = methylated_score;
+
+                    /*
+                    // Debug alignments
+                    printf("Forward unmethylated: %.2lf\n", unmethylated_score);
+                    printf("Forward methylated: %.2lf\n", methylated_score);
+                    std::vector<AlignmentState> um_align = profile_hmm_align(unmethylated, data, hmm_flags);
+                    print_alignment("unmethylated", start_position, 0, unmethylated, data, um_align);
+                    
+                    std::vector<AlignmentState> m_align = profile_hmm_align(methylated, data, hmm_flags);
+                    print_alignment("methylated", start_position, 0, methylated, data, m_align);
+                    */
                 }
             }
 
@@ -299,6 +320,8 @@ void test_read(const ModelMap& model_map,
     #pragma omp critical(methyltest_write)
     {
         double ll_ratio_sum = 0;
+        size_t num_positive = 0;
+
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
             const ScoredSite& ss = iter->second;
@@ -307,6 +330,7 @@ void test_read(const ModelMap& model_map,
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
 
             double diff = sum_ll_m - sum_ll_u;
+            num_positive += diff > 0;
 
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
@@ -314,7 +338,7 @@ void test_read(const ModelMap& model_map,
 
             ll_ratio_sum += diff;
         }
-        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\n", fast5_path.c_str(), ll_ratio_sum, site_score_map.size());
+        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\tNUM_POSITIVE=%zu\n", fast5_path.c_str(), ll_ratio_sum, site_score_map.size(), num_positive);
     }
 }
 
@@ -437,7 +461,7 @@ int methyltest_main(int argc, char** argv)
     handles.read_writer = fopen(std::string(opt::bam_file + ".methyltest.reads.tsv").c_str(), "w");
 
     // Write a header to the reads.tsv file
-    fprintf(handles.read_writer, "name\tsum_ll_ratio\tn_cpg\n");
+    fprintf(handles.read_writer, "name\tsum_ll_ratio\tn_cpg\ttags\n");
 
     // Initialize iteration
     std::vector<bam1_t*> records(opt::batch_size, NULL);

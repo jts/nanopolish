@@ -47,8 +47,12 @@ struct StateTrainingData
 
 struct StateSummary
 {
-    StateSummary() {}
+    StateSummary() { num_matches = 0; num_skips = 0; num_stays = 0; }
     std::vector<StateTrainingData> events;
+
+    int num_matches;
+    int num_skips;
+    int num_stays;
 };
 
 struct GaussianMixture
@@ -273,29 +277,19 @@ void train_read(const ModelMap& model_map,
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
 
-                if(ea.hmm_state != 'M') {
-                    continue;
+                if(ea.hmm_state == 'M') {
+                    // Here we re-scale the event to the model
+                    float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
+                    event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
+                    
+                    float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
+                    float event_duration = sr.events[strand_idx][ea.event_idx].duration;
+                    StateTrainingData std = { event_mean, event_stdv, event_duration, sr.pore_model[strand_idx].var };
+                    kmer_summary.events.push_back(std);
+                    kmer_summary.num_matches += 1;
+                } else if(ea.hmm_state == 'E') {
+                    kmer_summary.num_stays += 1;
                 }
-                // Here we re-scale the event to the model
-                float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-                event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-                
-                float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-                float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                StateTrainingData std = { event_mean, event_stdv, event_duration, sr.pore_model[strand_idx].var };
-                kmer_summary.events.push_back(std);
-
-                /*
-                // unshifted mean
-                float expected_mean = (sr.pore_model[strand_idx].states[rank].level_mean - 
-                                       sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-
-                sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-                printf("%zu\t%s\t%s\t%zu\t%zu\t%zu\t%.2lf\t%c\n", round, curr_model.c_str(), model_kmer.c_str(), ea.ref_position, read_idx, ea.event_idx, event_mean, ea.hmm_state);
-                kmer_summary.n += 1;
-                kmer_summary.mean_sum += event_mean;
-                kmer_summary.var_sum += pow(event_mean - expected_mean, 2.0);
-                */
             }
         }
     } // for strands
@@ -475,12 +469,16 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     assert(num_records_buffered == 0);
     progress.end();
 
-    std::stringstream fn;
-    fn << opt::bam_file << ".methyltrain.tsv";
+    std::stringstream training_fn;
+    training_fn << opt::bam_file << ".methyltrain.tsv";
+    
+    std::stringstream summary_fn;
+    summary_fn << opt::bam_file << ".methyltrain.summary";
 
-    FILE* training_fp = fopen(fn.str().c_str(), "w");
+    FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
+    FILE* training_fp = fopen(training_fn.str().c_str(), "w");
 
-    // header
+    // training header
     fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\n");
 
     // Process the training results
@@ -522,6 +520,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                       summaries[ki].events[ei].level_stdv,
                                                                       summaries[ki].events[ei].duration);
             }
+
+            // write to the summary file
+            fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
 
             GaussianMixture mixture;
 
@@ -591,6 +592,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
     fclose(training_fp);
+    fclose(summary_fp);
     return trained_models;
 }
 

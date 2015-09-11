@@ -156,6 +156,11 @@ std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, 
         // Update the event (row) and k-mer using the current state
         // The next state is encoded in the backtrack matrix for the current cell
         ProfileState next_ps = (ProfileState)get(bm, row, col);
+        
+        // If we hit the softclip state we are done aligning
+        if(next_ps == PS_PRE_SOFT) {
+            break;
+        }
 
 #if DEBUG_BACKTRACK
         printf("Backtrack [%zu %zu] k: %zu block: %zu curr_ps: %c next_ps: %c\n", row, col, kmer_idx, block, ps2char(curr_ps), ps2char(next_ps));
