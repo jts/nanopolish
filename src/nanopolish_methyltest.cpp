@@ -41,6 +41,7 @@ struct OutputHandles
 {
     FILE* site_writer;
     FILE* read_writer;
+    FILE* strand_writer;
 };
 
 struct ScoredSite
@@ -169,6 +170,7 @@ void test_read(const ModelMap& model_map,
 
         // replace model 
         std::string curr_model = sr.pore_model[strand_idx].name;
+
         std::string methyl_model = curr_model + ".methyltrain";
         auto model_iter = model_map.find(methyl_model);
 
@@ -319,7 +321,8 @@ void test_read(const ModelMap& model_map,
     
     #pragma omp critical(methyltest_write)
     {
-        double ll_ratio_sum = 0;
+        double ll_ratio_sum_strand[2] = { 0.0f, 0.0f };
+        double ll_ratio_sum_both = 0;
         size_t num_positive = 0;
 
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
@@ -336,9 +339,17 @@ void test_read(const ModelMap& model_map,
             fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
             fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
 
-            ll_ratio_sum += diff;
+            ll_ratio_sum_strand[0] += ss.ll_methylated[0] - ss.ll_unmethylated[0];
+            ll_ratio_sum_strand[1] += ss.ll_methylated[1] - ss.ll_unmethylated[1];
+            ll_ratio_sum_both += diff;
         }
-        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\tNUM_POSITIVE=%zu\n", fast5_path.c_str(), ll_ratio_sum, site_score_map.size(), num_positive);
+        std::string complement_model = sr.pore_model[C_IDX].name;
+        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\t%s\tNUM_POSITIVE=%zu\n", fast5_path.c_str(), ll_ratio_sum_both, site_score_map.size(), complement_model.c_str(), num_positive);
+    
+        for(size_t si = 0; si < NUM_STRANDS; ++si) {
+            std::string model = sr.pore_model[si].name;
+            fprintf(handles.strand_writer, "%s\t%.2lf\t%zu\t%s\n", fast5_path.c_str(), ll_ratio_sum_strand[si], site_score_map.size(), model.c_str());
+        }
     }
 }
 
@@ -459,9 +470,14 @@ int methyltest_main(int argc, char** argv)
     OutputHandles handles;
     handles.site_writer = fopen(std::string(opt::bam_file + ".methyltest.sites.bed").c_str(), "w");
     handles.read_writer = fopen(std::string(opt::bam_file + ".methyltest.reads.tsv").c_str(), "w");
+    handles.strand_writer = fopen(std::string(opt::bam_file + ".methyltest.strand.tsv").c_str(), "w");
 
     // Write a header to the reads.tsv file
-    fprintf(handles.read_writer, "name\tsum_ll_ratio\tn_cpg\ttags\n");
+    fprintf(handles.read_writer, "name\tsum_ll_ratio\tn_cpg\tcomplement_model\ttags\n");
+    
+    // strand header
+    fprintf(handles.strand_writer, "name\tsum_ll_ratio\tn_cpg\tmodel\n");
+
 
     // Initialize iteration
     std::vector<bam1_t*> records(opt::batch_size, NULL);
@@ -510,6 +526,7 @@ int methyltest_main(int argc, char** argv)
     // cleanup
     fclose(handles.site_writer);
     fclose(handles.read_writer);
+    fclose(handles.strand_writer);
 
     sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
