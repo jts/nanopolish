@@ -21,6 +21,9 @@ struct Variant
         fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO\n");
     }
 
+    Variant() { }
+    Variant(const std::string& line) { read_vcf(line); }
+
     // generate a unique identifier for this variant
     std::string key() const
     {
@@ -34,6 +37,29 @@ struct Variant
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
         fprintf(fp, "%s\t%s\n", "PASS", info.c_str());
+    }
+
+    void read_vcf(const std::string& line)
+    {
+        std::stringstream ss(line);
+        std::string dummy;
+        ss >> ref_name;
+        ss >> ref_position;
+        ss >> dummy; // ID, not used
+        ss >> ref_seq;
+        ss >> alt_seq;
+        ss >> quality;
+        ss >> dummy; // FILTER, not used
+        ss >> info;
+
+        // VCF is 1-based but we internally represent a variant as 0-based
+        ref_position -= 1;
+
+        assert(!ref_name.empty());
+        assert(!ref_seq.empty());
+        assert(!alt_seq.empty());
+        assert(ref_position >= 0);
+        assert(quality >= 0.0f);
     }
 
     template<typename T>

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <queue>
 #include <sstream>
+#include <fstream>
 #include <set>
 #include <omp.h>
 #include <getopt.h>
@@ -75,7 +76,8 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"  -m, --min-candidate-frequency=F      alternative bases in F proporation of aligned reads are candidate variants (default 0.2)\n"  
+"  -m, --min-candidate-frequency=F      alternative bases in F proporation of aligned reads are candidate variants (default 0.2)\n"
+"  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
 "      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -87,6 +89,7 @@ namespace opt
     static std::string event_bam_file;
     static std::string genome_file;
     static std::string output_file;
+    static std::string candidates_file;
     static std::string window;
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
@@ -95,7 +98,7 @@ namespace opt
     static int num_threads = 1;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY, OPT_CALC_ALL_SUPPORT };
 
@@ -109,6 +112,7 @@ static const struct option longopts[] = {
     { "outfile",                 required_argument, NULL, 'o' },
     { "threads",                 required_argument, NULL, 't' },
     { "min-candidate-frequency", required_argument, NULL, 'm' },
+    { "candidates",              required_argument, NULL, 'c' },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
@@ -181,6 +185,34 @@ void annotate_with_all_support(std::vector<Variant>& variants,
     }
 }
 
+std::vector<Variant> get_variants_from_vcf(const std::string& filename, 
+                                           const std::string& contig,
+                                           int region_start,
+                                           int region_end)
+{
+    std::vector<Variant> out;
+    std::ifstream infile(filename);
+    std::string line;
+    while(getline(infile, line)) {
+        
+        // skip headers
+        if(line[0] == '#') {
+            continue;
+        }
+        
+        // parse variant
+        Variant v(line);
+
+        if(v.ref_name == contig &&
+           v.ref_position >= region_start &&
+           v.ref_position <= region_end) 
+        {
+            out.push_back(v);
+        }
+    }
+    return out;
+}
+
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = 20;
@@ -196,7 +228,12 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                 alignments.get_reference());
 
     // Step 1. Discover putative variants across the whole region
-    std::vector<Variant> candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
+    std::vector<Variant> candidate_variants;
+    if(opt::candidates_file.empty()) {
+        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
+    } else {
+        candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
+    }
 
     // Step 2. Add variants to the haplotypes
     size_t calling_span = 10;
@@ -280,6 +317,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
             case 'm': arg >> opt::min_candidate_frequency; break;
+            case 'c': arg >> opt::candidates_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
