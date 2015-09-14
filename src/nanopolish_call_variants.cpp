@@ -62,20 +62,21 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 
 static const char *CONSENSUS_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Compute a new consensus sequence for an assembly using a signal-level HMM\n"
+"Find SNPs using a signal-level HMM\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "      --snps                           only call SNPs\n"
-"  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
+"  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
-"  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-"  -e, --event-bam=FILE                 the events aligned to the genome assembly are in bam FILE\n"
-"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
+"  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
+"  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -m, --min-candidate-frequency=F      alternative bases in F proporation of aligned reads are candidate variants (default 0.2)\n"  
+"      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -88,6 +89,7 @@ namespace opt
     static std::string output_file;
     static std::string window;
     static double min_candidate_frequency = 0.2f;
+    static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
@@ -95,7 +97,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY, OPT_CALC_ALL_SUPPORT };
 
 static const struct option longopts[] = {
     { "verbose",                 no_argument,       NULL, 'v' },
@@ -107,6 +109,7 @@ static const struct option longopts[] = {
     { "outfile",                 required_argument, NULL, 'o' },
     { "threads",                 required_argument, NULL, 't' },
     { "min-candidate-frequency", required_argument, NULL, 'm' },
+    { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
     { "help",                    no_argument,       NULL, OPT_HELP },
@@ -120,6 +123,62 @@ int get_contig_length(const std::string& contig)
     int len = faidx_seq_len(fai, contig.c_str());
     fai_destroy(fai);
     return len;
+}
+
+void annotate_with_all_support(std::vector<Variant>& variants,
+                               Haplotype base_haplotype,
+                               const std::vector<HMMInputData>& input,
+                               const uint32_t alignment_flags)
+
+{
+    for(size_t vi = 0; vi < variants.size(); vi++) {
+        
+        // Generate a haplotype containing every variant in the set except for vi
+        Haplotype test_haplotype = base_haplotype;
+        for(size_t vj = 0; vj < variants.size(); vj++) {
+
+            // do not apply the variant we are testing
+            if(vj == vi) {
+                continue;
+            }
+            test_haplotype.apply_variant(variants[vj]);
+        }
+        
+        // Make a vector of four haplotypes, one per base
+        std::vector<Haplotype> curr_haplotypes;
+        Variant tmp_variant = variants[vi];
+        for(size_t bi = 0; bi < 4; ++bi) {
+            tmp_variant.alt_seq = "ACGT"[bi];
+            Haplotype tmp = test_haplotype;
+            tmp.apply_variant(tmp_variant);
+            curr_haplotypes.push_back(tmp);
+        }
+
+        // Test all reads against the 4 haplotypes
+        std::vector<int> support_count(4, 0);
+
+        for(size_t input_idx = 0; input_idx < input.size(); ++input_idx) {
+            double best_score = -INFINITY;
+            size_t best_hap_idx = 0;
+
+            // calculate which haplotype this read supports best
+            for(size_t hap_idx = 0; hap_idx < curr_haplotypes.size(); ++hap_idx) {
+                double score = profile_hmm_score(curr_haplotypes[hap_idx].get_sequence(), input[input_idx], alignment_flags);
+                if(score > best_score) {
+                    best_score = score;
+                    best_hap_idx = hap_idx;
+                }
+            }
+            support_count[best_hap_idx] += 1;
+        }
+
+        std::stringstream ss;
+        for(size_t bi = 0; bi < 4; ++bi) {
+            ss << support_count[bi] / (double)input.size() << (bi != 3 ? "," : "");
+        }
+
+        variants[vi].add_info("AllSupportFractions", ss.str());
+    }
 }
 
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
@@ -184,8 +243,15 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             std::vector<Variant> selected_variants = 
                 select_variant_set(calling_variants, calling_haplotype, event_sequences, alignment_flags);
 
+            // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
+            if(opt::calculate_all_support) {
+                annotate_with_all_support(selected_variants, calling_haplotype, event_sequences, alignment_flags);
+
+            }
+
             // Apply them to the final haplotype
             for(size_t vi = 0; vi < selected_variants.size(); vi++) {
+
                 derived_haplotype.apply_variant(selected_variants[vi]);
 
                 if(opt::verbose > 1) {
@@ -217,6 +283,7 @@ void parse_call_variants_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_HELP:
