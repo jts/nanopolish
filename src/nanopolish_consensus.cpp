@@ -419,7 +419,8 @@ std::string run_mutation(const std::string& base, const std::vector<HMMInputData
     std::string result = base;
 
     // assume models for all the reads have the same k
-    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+    assert(!input.empty());
+    const uint32_t k = input[0].read->pore_model[input[0].strand].k;
 
     int iteration = 0;
     while(iteration++ < 10) {
@@ -500,7 +501,8 @@ std::string run_block_substitution(const std::string& base,
     std::string result = base;
 
     // assume models for all the reads have the same k
-    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+    assert(!input.empty());
+    const uint32_t k = input[0].read->pore_model[input[0].strand].k;
 
     uint32_t max_rounds = 6;
     uint32_t round = 0;
@@ -592,7 +594,8 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
     
     // assume models for all the reads have the same k
-    const uint32_t k = data[0].read->pore_model[T_IDX].k;
+    assert(!data.empty());
+    const uint32_t k = data[0].read->pore_model[data[0].strand].k;
 
     // The current consensus sequence
     std::string original = join_sequences_at_kmer(s_m_base, m_e_base, k);
@@ -666,7 +669,8 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
 
     // assume models for all the reads have the same k
-    const uint32_t k = input[0].read->pore_model[T_IDX].k;
+    assert(!input.empty());
+    const uint32_t k = input[0].read->pore_model[input[0].strand].k;
 
     std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base, k);
      

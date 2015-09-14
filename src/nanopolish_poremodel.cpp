@@ -31,7 +31,7 @@ void PoreModel::bake_gaussian_parameters()
     is_scaled = true;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet &alphabet) 
+PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) 
 {
     std::ifstream model_reader(filename);
     std::string model_line;
@@ -71,7 +71,7 @@ PoreModel::PoreModel(const std::string filename, const Alphabet &alphabet)
     assert( ninserted == states.size() );
 }
 
-PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet &alphabet) 
+PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet) 
 {
 
     std::vector<fast5::Model_Entry> model = f_p->get_model(strand);
