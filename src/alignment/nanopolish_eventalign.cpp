@@ -478,7 +478,10 @@ void realign_read(EventalignWriter writer,
 
         std::vector<EventAlignment> alignment = align_read_to_ref(params);
 
-        EventalignSummary summary = summarize_alignment(sr, strand_idx, params, alignment);
+        EventalignSummary summary;
+        if(writer.summary_fp != NULL) {
+            summary = summarize_alignment(sr, strand_idx, params, alignment);
+        }
 
         // write to disk
         #pragma omp critical
