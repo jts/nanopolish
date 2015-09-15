@@ -59,6 +59,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
+"      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -68,6 +69,7 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string region;
+    static std::string summary_file;
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
@@ -77,7 +79,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -86,6 +88,7 @@ static const struct option longopts[] = {
     { "genome",           required_argument, NULL, 'g' },
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
+    { "summary",          required_argument, NULL, OPT_SUMMARY },
     { "print-read-names", no_argument,       NULL, 'n' },
     { "sam",              no_argument,       NULL, OPT_SAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
@@ -99,6 +102,32 @@ struct EventalignWriter
 {
     FILE* tsv_fp;
     htsFile* sam_fp;
+    FILE* summary_fp;
+};
+
+// Summarize the event alignment for a read strand
+struct EventalignSummary
+{
+    EventalignSummary() {
+        num_events = 0;
+        num_matches = 0;
+        num_stays = 0;
+        num_skips = 0;
+        sum_z_score = 0;
+        sum_duration = 0;
+        alignment_edit_distance = 0;
+        reference_span = 0;
+    }
+
+    int num_events;
+    int num_matches;
+    int num_stays;
+    int num_skips;
+
+    double sum_duration;
+    double sum_z_score;
+    int alignment_edit_distance;
+    int reference_span;
 };
 
 // Modify the aligned_pairs vector to ensure the highest read position
@@ -244,11 +273,6 @@ std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>
             out.push_back(incoming);
         }
 
-/*
-        if(ai < 20) {
-            printf("r: %d e: %d cigar: %s\n", r_idx, e_idx, cigar_ops_to_string(out).c_str());
-        }
-*/
         prev_r_idx = r_idx;
         prev_e_idx = e_idx;
         ai++;
@@ -322,10 +346,11 @@ void emit_event_alignment_sam(htsFile* fp,
 
 void emit_event_alignment_tsv(FILE* fp,
                               const SquiggleRead& sr,
+                              uint32_t strand_idx,
                               const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
-    uint32_t k = sr.pore_model[T_IDX].k;
+    uint32_t k = sr.pore_model[strand_idx].k;
     for(size_t i = 0; i < alignments.size(); ++i) {
 
         const EventAlignment& ea = alignments[i];
@@ -364,6 +389,59 @@ void emit_event_alignment_tsv(FILE* fp,
     }
 }
 
+EventalignSummary summarize_alignment(const SquiggleRead& sr,
+                                      uint32_t strand_idx,
+                                      const EventAlignmentParameters& params,
+                                      const std::vector<EventAlignment>& alignments)
+{
+    EventalignSummary summary;
+
+    uint32_t k = sr.pore_model[strand_idx].k;
+
+    size_t prev_ref_pos = std::string::npos;
+    
+    // the number of unique reference positions seen in the alignment
+    size_t num_unique_ref_pos = 0;
+
+    for(size_t i = 0; i < alignments.size(); ++i) {
+
+        const EventAlignment& ea = alignments[i];
+
+        summary.num_events += 1;
+
+        // movement information
+        size_t ref_move = ea.ref_position - prev_ref_pos;
+        if(ref_move == 0) {
+            assert(ea.hmm_state == 'E');
+            summary.num_stays += 1;
+        } else if(i != 0 && ref_move > 1) {
+            summary.num_skips += 1;
+        }
+
+        // event information
+        summary.sum_duration += sr.get_duration(ea.event_idx, ea.strand_idx);
+
+        if(ea.hmm_state == 'M') {
+            summary.num_matches += 1;
+            
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+            double z = (event_mean - model.mean) / model.stdv;
+            summary.sum_z_score += z;
+        }
+
+        prev_ref_pos = ea.ref_position;
+    }
+
+    int nm = bam_aux2i(bam_aux_get(params.record, "NM"));
+    summary.alignment_edit_distance = nm;
+    if(!alignments.empty()) {
+        summary.reference_span = alignments.back().ref_position - alignments.front().ref_position + 1;
+    }
+    return summary;
+}
+
 // Realign the read in event space
 void realign_read(EventalignWriter writer,
                   const Fast5Map& name_map, 
@@ -400,13 +478,22 @@ void realign_read(EventalignWriter writer,
 
         std::vector<EventAlignment> alignment = align_read_to_ref(params);
 
+        EventalignSummary summary = summarize_alignment(sr, strand_idx, params, alignment);
+
         // write to disk
         #pragma omp critical
         {
             if(opt::output_sam) {
                 emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment);
             } else {
-                emit_event_alignment_tsv(writer.tsv_fp, sr, params, alignment);
+                emit_event_alignment_tsv(writer.tsv_fp, sr, strand_idx, params, alignment);
+            }
+
+            if(writer.summary_fp != NULL && summary.num_events > 0) {
+                fprintf(writer.summary_fp, "%s\t%s\t", read_name.c_str(), strand_idx == 0 ? "template" : "complement");
+                fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_matches, summary.num_skips, summary.num_stays);
+                fprintf(writer.summary_fp, "%.2lf\t%.2lf\t", summary.sum_duration, summary.sum_z_score / summary.num_matches);
+                fprintf(writer.summary_fp, "%d\t%d\n", summary.alignment_edit_distance, summary.reference_span);
             }
         }
     }
@@ -594,6 +681,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'v': opt::verbose++; break;
+            case OPT_SUMMARY: arg >> opt::summary_file; break;
             case OPT_SAM: opt::output_sam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -690,7 +778,7 @@ int eventalign_main(int argc, char** argv)
 #endif
 
     // Initialize output
-    EventalignWriter writer = { NULL, NULL };
+    EventalignWriter writer = { NULL, NULL, NULL };
 
     if(opt::output_sam) {
         writer.sam_fp = hts_open("-", "w");
@@ -698,6 +786,13 @@ int eventalign_main(int argc, char** argv)
     } else {
         writer.tsv_fp = stdout;
         emit_tsv_header(writer.tsv_fp);
+    }
+
+    if(!opt::summary_file.empty()) {
+        writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
+        // header
+        fprintf(writer.summary_fp, "read_name\tstrand\tnum_events\tnum_matches\tnum_skips\tnum_stays\t");
+        fprintf(writer.summary_fp, "total_duration\tavg_z_score\tedit_distance\treference_span\n");
     }
     
     // Initialize iteration
@@ -754,6 +849,10 @@ int eventalign_main(int argc, char** argv)
 
     if(writer.sam_fp != NULL) {
         hts_close(writer.sam_fp);
+    }
+
+    if(writer.summary_fp != NULL) {
+        fclose(writer.summary_fp);
     }
     return EXIT_SUCCESS;
 }

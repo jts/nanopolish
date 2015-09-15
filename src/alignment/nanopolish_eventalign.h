@@ -71,6 +71,7 @@ int eventalign_main(int argc, char** argv);
 // print the alignment as a tab-separated table
 void emit_event_alignment_tsv(FILE* fp,
                               const SquiggleRead& sr,
+                              uint32_t strand_idx,
                               const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments);
 
