@@ -641,6 +641,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 ea.ref_name = ref_name;
                 ea.ref_position = curr_start_ref + as.kmer_idx;
                 ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, k);
+                ea.prev_ref_kmer = ea.ref_position != ref_offset ? ref_seq.substr(ea.ref_position - ref_offset - 1, k)
+                                                                 : ea.ref_kmer;
 
                 // event
                 ea.read_idx = params.read_idx;

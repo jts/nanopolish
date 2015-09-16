@@ -52,6 +52,7 @@ struct EventAlignment
     // ref data
     std::string ref_name;
     std::string ref_kmer;
+    std::string prev_ref_kmer;
     int ref_position;
 
     // event data
