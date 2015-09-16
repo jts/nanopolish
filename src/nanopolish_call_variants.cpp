@@ -283,7 +283,6 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
             if(opt::calculate_all_support) {
                 annotate_with_all_support(selected_variants, calling_haplotype, event_sequences, alignment_flags);
-
             }
 
             // Apply them to the final haplotype

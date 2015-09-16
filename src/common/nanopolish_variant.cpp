@@ -206,7 +206,8 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
 {
     size_t num_variants = candidate_variants.size();
     size_t num_haplotypes = 1 << num_variants;
-        
+    
+    double base_lp_by_strand[2] = { 0.0f, 0.0f };
     double base_lp = 0.0f;
     std::vector<double> base_lp_by_read(input.size()); 
     
@@ -219,6 +220,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         {
             base_lp_by_read[j] = tmp;
             base_lp += tmp;
+            base_lp_by_strand[input[j].strand] += tmp;
         }
     }
 
@@ -245,6 +247,8 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         
         // score the haplotype
         double current_lp = 0.0f;
+        double current_lp_by_strand[2] = { 0.0f, 0.0f };
+
         size_t supporting_reads = 0;
 
         #pragma omp parallel for
@@ -254,6 +258,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             {
                 current_lp += tmp;
                 supporting_reads += tmp > base_lp_by_read[j];
+                current_lp_by_strand[input[j].strand] += tmp;
             }
         }
 
@@ -267,6 +272,8 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 v.add_info("TotalReads", input.size());
                 v.add_info("SupportingReads", supporting_reads);
                 v.add_info("SupportFraction", (double)supporting_reads / input.size());
+                v.add_info("TemplateQuality", current_lp_by_strand[0] - base_lp_by_strand[0]);
+                v.add_info("ComplementQuality", current_lp_by_strand[1] - base_lp_by_strand[1]);
                 v.quality = best_lp - base_lp;
             }
         }
