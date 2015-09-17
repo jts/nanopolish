@@ -82,7 +82,7 @@ float profile_hmm_score(const std::string& sequence, const HMMInputData& data, c
 
     ProfileHMMForwardOutput output(&fm);
 
-    float score = profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
+    float score = profile_hmm_fill_generic(sequence.c_str(), data, flags, output);
 
     // cleanup
     free_matrix(fm);
@@ -123,7 +123,7 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     ProfileHMMViterbiOutput output(&vm, &bm);
 
     profile_hmm_viterbi_initialize(vm);
-    profile_hmm_fill_generic(sequence.c_str(), data, e_start, flags, output);
+    profile_hmm_fill_generic(sequence.c_str(), data, flags, output);
 
     // Traverse the backtrack matrix to compute the results
     

@@ -262,15 +262,17 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 template<class ProfileHMMOutput>
 inline float profile_hmm_fill_generic(const char* _sequence,
                                       const HMMInputData& _data,
-                                      const uint32_t _e_start,
                                       uint32_t flags,
                                       ProfileHMMOutput& output)
 {
     PROFILE_FUNC("profile_hmm_fill_generic")
 
-
+    // We want to always process the events in numerically increasing order.
+    // Perform reversals and complements to make this so - eventually
+    // this should be cleaned up to avoid copying HMMInputData.
     const char* sequence = _sequence;
     std::string rc = reverse_complement(_sequence);
+
     HMMInputData data = _data;
     assert( (data.rc && data.event_stride == -1) || (!data.rc && data.event_stride == 1));
 
