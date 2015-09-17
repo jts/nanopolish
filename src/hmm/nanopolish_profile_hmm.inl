@@ -260,14 +260,30 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 // The templated ProfileHMMOutput class allows one to run either Viterbi
 // or the Forward algorithm.
 template<class ProfileHMMOutput>
-inline float profile_hmm_fill_generic(const char* sequence,
-                                      const HMMInputData& data,
-                                      const uint32_t e_start,
+inline float profile_hmm_fill_generic(const char* _sequence,
+                                      const HMMInputData& _data,
+                                      const uint32_t _e_start,
                                       uint32_t flags,
                                       ProfileHMMOutput& output)
 {
     PROFILE_FUNC("profile_hmm_fill_generic")
 
+
+    const char* sequence = _sequence;
+    std::string rc = reverse_complement(_sequence);
+    HMMInputData data = _data;
+    assert( (data.rc && data.event_stride == -1) || (!data.rc && data.event_stride == 1));
+
+    if(data.event_stride == -1) {
+        sequence = rc.c_str();
+        uint32_t tmp = data.event_stop_idx;
+        data.event_stop_idx = data.event_start_idx;
+        data.event_start_idx = tmp;
+        data.event_stride = 1;
+        data.rc = false;
+    }
+    uint32_t e_start = data.event_start_idx;
+    
     const KHMMParameters& parameters = data.read->parameters[data.strand];
 
     // Calculate number of blocks
