@@ -126,14 +126,22 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     profile_hmm_fill_generic(sequence.c_str(), data, flags, output);
 
     // Traverse the backtrack matrix to compute the results
-    
+    if(data.event_stride == -1) {
+        assert(data.event_stop_idx < data.event_start_idx);
+        e_start = data.event_stop_idx;
+    } else {
+        assert(data.event_start_idx < data.event_stop_idx);
+        e_start = data.event_start_idx;
+    }
+
     // start from the last event matched to the last kmer
+    assert(flags == 0);
     uint32_t row = n_rows - 1;
     uint32_t col = PS_NUM_STATES * n_kmers + PS_MATCH;
 
     while(row > 0) {
         
-        uint32_t event_idx = e_start + (row - 1) * data.event_stride;
+        uint32_t event_idx = e_start + (row - 1);
         uint32_t block = col / PS_NUM_STATES;
         assert(block > 0);
         assert(get(vm, row, col) != -INFINITY);
@@ -144,7 +152,9 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
 
         AlignmentState as;
         as.event_idx = event_idx;
-        as.kmer_idx = kmer_idx;
+
+        // flip the strand of the reference k-mer if we aligned to the reverse-complement
+        as.kmer_idx = !data.rc ? kmer_idx : sequence.size() - kmer_idx - K;
         as.l_posterior = -INFINITY; // not computed
         as.l_fm = get(vm, row, col);
         as.log_transition_probability = -INFINITY; // not computed
@@ -175,7 +185,11 @@ std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const
     }
 
     //
-    std::reverse(alignment.begin(), alignment.end());
+    if(!data.rc) {
+        std::reverse(alignment.begin(), alignment.end());
+    }
+
+    assert(alignment.front().kmer_idx <= alignment.back().kmer_idx);
 
     //
     free_matrix(vm);
