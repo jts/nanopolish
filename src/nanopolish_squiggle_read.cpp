@@ -112,6 +112,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     assert(!read_sequence.empty());
 
     const uint32_t k = pore_model[T_IDX].k;
+    assert(pore_model[C_IDX].k == k);
+
     uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
 

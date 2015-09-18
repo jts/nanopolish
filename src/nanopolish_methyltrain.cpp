@@ -266,7 +266,7 @@ void train_read(const ModelMap& model_map,
         params.record = record;
         params.strand_idx = strand_idx;
  
-        params.alphabet = &gMCpGAlphabet;
+        params.alphabet = mtrain_alphabet;
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -560,7 +560,14 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             model_short_name = "c.p1";
         } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
             model_short_name = "c.p2";
+        } else if(model_name == "r7.3_e6_70bps_6mer_template_median68pA.model") {
+            model_short_name = "t.006";
+        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model") {
+            model_short_name = "c.p1.006";
+        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model") {
+            model_short_name = "c.p2.006";
         } else {
+            printf("Unknown model: %s\n", model_name.c_str());
             assert(false);
         }
 

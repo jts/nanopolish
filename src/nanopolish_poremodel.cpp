@@ -76,7 +76,6 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alph
 
     std::vector<fast5::Model_Entry> model = f_p->get_model(strand);
     k = (uint32_t) strlen(model[0].kmer);
-
     states.resize( alphabet.get_num_strings(k) );
     assert(states.size() == model.size());
 
