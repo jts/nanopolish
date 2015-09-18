@@ -280,44 +280,30 @@ void train_read(const ModelMap& model_map,
 
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                std::string model_kmer = ea.model_kmer;
 
-                std::string prev_ref_kmer = ea.ref_kmer;
-                std::string next_ref_kmer = ea.ref_kmer;
+                // Grab the previous/next model kmer
+                // If the read is from the same strand as the reference
+                // the next kmer comes from the next alignment_output (and vice-versa)
+                // other the indices are swapped
+                int next_stride = ea.rc ? -1 : 1;
 
-                // Search backwards for the previous reference k-mer aligned to
-                for(size_t j = i; j > 0; j--) {
-                    int diff = abs(ea.ref_position -  alignment_output[j].ref_position);
-                    if(diff == 1) {
-                        prev_ref_kmer = alignment_output[j].ref_kmer;
-                    }
-                    
-                    if(diff != 0) {
-                        break;
-                    }
-                }
+                std::string prev_kmer = "";
+                std::string next_kmer = "";
 
-                // Search forward for the next reference k-mer aligned to
-                for(size_t j = i + 1; j < alignment_output.size(); j++) {
-                    int diff = abs(ea.ref_position -  alignment_output[j].ref_position);
-                    if(diff == 1) {
-                        next_ref_kmer = alignment_output[j].ref_kmer;
+                if(i > 0 && i < alignment_output.size() - 1) {
+                    assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
+                    assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
+
+                    // check for exactly one base of movement along the reference
+                    if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
+                        next_kmer = alignment_output[i + next_stride].model_kmer;
                     }
-                    
-                    if(diff != 0) {
-                        break;
+
+                    if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
+                        prev_kmer = alignment_output[i - next_stride].model_kmer;
                     }
                 }
-
-                // If striding backwards, swap previous/next
-                if(ea.rc) {
-                    std::string tmp = prev_ref_kmer;
-                    prev_ref_kmer = next_ref_kmer;
-                    next_ref_kmer = tmp;
-                }
-
-                std::string prev_kmer = ea.rc ?  mtrain_alphabet->reverse_complement(prev_ref_kmer) : prev_ref_kmer;
-                std::string next_kmer = ea.rc ?  mtrain_alphabet->reverse_complement(next_ref_kmer) : next_ref_kmer;
 
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
@@ -328,9 +314,8 @@ void train_read(const ModelMap& model_map,
                                         alignment_output[i].hmm_state == 'M' &&
                                         alignment_output[i - 1].hmm_state == 'M' &&
                                         alignment_output[i + 1].hmm_state == 'M' &&
-                                        prev_kmer != model_kmer &&
-                                        next_kmer != model_kmer;
-
+                                        prev_kmer != "" &&
+                                        next_kmer != "";
 
                 if(use_for_training) {
 
