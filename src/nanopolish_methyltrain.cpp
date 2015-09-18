@@ -247,7 +247,6 @@ void train_read(const ModelMap& model_map,
         
         // replace model with the training model
         std::string curr_model = sr.pore_model[strand_idx].name;
-        uint32_t k = sr.pore_model[strand_idx].k;
         auto model_iter = model_map.find(curr_model);
 
         if(model_iter != model_map.end()) {
@@ -255,6 +254,9 @@ void train_read(const ModelMap& model_map,
         } else {
             assert(false && "Model not found");
         }
+        
+        // set k
+        uint32_t k = sr.pore_model[strand_idx].k;
 
         // Align to the new model
         EventAlignmentParameters params;
@@ -273,7 +275,7 @@ void train_read(const ModelMap& model_map,
         // Update model observations
         #pragma omp critical
         {
-//            emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+            //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
             // Get the training data for this model
             auto& emission_map = training[curr_model];

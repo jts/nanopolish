@@ -60,7 +60,7 @@ float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMI
 
 float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    const uint32_t k = data.read->pore_model[T_IDX].k;
+    const uint32_t k = data.read->pore_model[data.strand].k;
     uint32_t n_kmers = sequence.length() - k + 1;
 
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
@@ -99,7 +99,7 @@ void profile_hmm_viterbi_initialize(FloatMatrix& m)
 std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
     std::vector<AlignmentState> alignment;
-    const uint32_t k = data.read->pore_model[T_IDX].k;
+    const uint32_t k = data.read->pore_model[data.strand].k;
 
     uint32_t n_kmers = sequence.length() - k + 1;
     uint32_t n_states = PS_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
@@ -204,7 +204,7 @@ void print_alignment(const std::string& name,
     size_t n_skips = 0;
     size_t n_mergeskips = 0;
     
-    const uint32_t k = data.read->pore_model[T_IDX].k;
+    const uint32_t k = data.read->pore_model[data.strand].k;
 
     char prev_s = '\0';
     for(size_t pi = 0; pi < alignment.size(); ++pi) {

@@ -283,7 +283,6 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& sequence,
     std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, data);
  
     // Precompute kmer ranks
-
     uint32_t k = data.read->pore_model[data.strand].k;
 
     // Make sure the HMMInputSequence's alphabet matches the state space of the read

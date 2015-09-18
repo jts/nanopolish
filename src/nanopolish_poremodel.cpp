@@ -138,6 +138,7 @@ void PoreModel::write(const std::string filename, const Alphabet& alphabet, cons
 
 void PoreModel::update_states( const PoreModel &other ) 
 {
+    k = other.k;
     update_states( other.states );
 }
 

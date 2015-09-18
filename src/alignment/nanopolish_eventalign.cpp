@@ -522,7 +522,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                                                   bam_endpos(params.record), &fetched_len);
 
     // k from read pore model
-    const uint32_t k = params.sr->pore_model[T_IDX].k;
+    const uint32_t k = params.sr->pore_model[params.strand_idx].k;
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
