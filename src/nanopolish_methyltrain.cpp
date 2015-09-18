@@ -48,7 +48,8 @@ struct StateTrainingData
     int ref_strand;
 
     float z;
-    std::string prev_ref_kmer;
+    std::string prev_kmer;
+    std::string next_kmer;
 };
 
 struct StateSummary
@@ -280,17 +281,55 @@ void train_read(const ModelMap& model_map,
             for(size_t i = 0; i < alignment_output.size(); ++i) {
                 const EventAlignment& ea = alignment_output[i];
                 std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-                std::string prev_kmer = ea.rc ?  mtrain_alphabet->reverse_complement(ea.prev_ref_kmer) : ea.prev_ref_kmer; 
+
+                std::string prev_ref_kmer = ea.ref_kmer;
+                std::string next_ref_kmer = ea.ref_kmer;
+
+                // Search backwards for the previous reference k-mer aligned to
+                for(size_t j = i; j > 0; j--) {
+                    int diff = abs(ea.ref_position -  alignment_output[j].ref_position);
+                    if(diff == 1) {
+                        prev_ref_kmer = alignment_output[j].ref_kmer;
+                    }
+                    
+                    if(diff != 0) {
+                        break;
+                    }
+                }
+
+                // Search forward for the next reference k-mer aligned to
+                for(size_t j = i + 1; j < alignment_output.size(); j++) {
+                    int diff = abs(ea.ref_position -  alignment_output[j].ref_position);
+                    if(diff == 1) {
+                        next_ref_kmer = alignment_output[j].ref_kmer;
+                    }
+                    
+                    if(diff != 0) {
+                        break;
+                    }
+                }
+
+                // If striding backwards, swap previous/next
+                if(ea.rc) {
+                    std::string tmp = prev_ref_kmer;
+                    prev_ref_kmer = next_ref_kmer;
+                    next_ref_kmer = tmp;
+                }
+
+                std::string prev_kmer = ea.rc ?  mtrain_alphabet->reverse_complement(prev_ref_kmer) : prev_ref_kmer;
+                std::string next_kmer = ea.rc ?  mtrain_alphabet->reverse_complement(next_ref_kmer) : next_ref_kmer;
+
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
-
                 
                 // Should we use this event for training?
                 bool use_for_training = i > 5 && 
                                         i + 5 < alignment_output.size() &&
                                         alignment_output[i].hmm_state == 'M' &&
                                         alignment_output[i - 1].hmm_state == 'M' &&
-                                        alignment_output[i + 1].hmm_state == 'M';
+                                        alignment_output[i + 1].hmm_state == 'M' &&
+                                        prev_kmer != model_kmer &&
+                                        next_kmer != model_kmer;
 
 
                 if(use_for_training) {
@@ -304,7 +343,17 @@ void train_read(const ModelMap& model_map,
                     
                     float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
                     float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                    StateTrainingData std = { event_mean, event_stdv, event_duration, sr.pore_model[strand_idx].var, ea.ref_position, ea.rc, z, prev_kmer };
+                    StateTrainingData std = { event_mean, 
+                                              event_stdv, 
+                                              event_duration, 
+                                              sr.pore_model[strand_idx].var, 
+                                              ea.ref_position, 
+                                              ea.rc, 
+                                              z, 
+                                              prev_kmer, 
+                                              next_kmer 
+                                            };
+
                     kmer_summary.events.push_back(std);
                 }
 
@@ -503,7 +552,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     FILE* training_fp = fopen(training_fn.str().c_str(), "w");
 
     // training header
-    fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\n");
+    fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
 
     // Process the training results
     ModelMap trained_models;
@@ -539,7 +588,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                fprintf(training_fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\n", model_short_name.c_str(), kmer.c_str(), 
+                fprintf(training_fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", model_short_name.c_str(), kmer.c_str(), 
                                                                               summaries[ki].events[ei].level_mean, 
                                                                               summaries[ki].events[ei].level_stdv,
                                                                               summaries[ki].events[ei].duration,
@@ -547,7 +596,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                               summaries[ki].events[ei].ref_strand,
                                                                               summaries[ki].events[ei].z,
                                                                               summaries[ki].events[ei].read_var,
-                                                                              summaries[ki].events[ei].prev_ref_kmer.c_str());
+                                                                              summaries[ki].events[ei].prev_kmer.c_str(),
+                                                                              summaries[ki].events[ei].next_kmer.c_str());
             }
 
             // write to the summary file
