@@ -650,9 +650,6 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
                 // hmm
                 ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, k, input.rc);
-                assert(ea.model_kmer == (input.rc ? 
-                    params.alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer));
-
                 ea.hmm_state = as.state;
 
                 // store

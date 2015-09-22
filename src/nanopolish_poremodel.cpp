@@ -33,11 +33,14 @@ void PoreModel::bake_gaussian_parameters()
 
 PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) 
 {
+    model_filename = filename;
     std::ifstream model_reader(filename);
     std::string model_line;
 
     bool firstKmer = true;
     int ninserted = 0;
+
+    shift_offset = 0.0f;
 
     while (getline(model_reader, model_line)) {
         std::stringstream parser(model_line);
@@ -46,6 +49,15 @@ PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet)
         if (model_line.find("#model_name") != std::string::npos) {
             std::string dummy;
             parser >> dummy >> name;
+        }
+
+        // Extract shift offset from the header
+        // This will be applied to the per-read shift values
+        // to allow switching between models with different averages
+        if (model_line.find("#shift_offset") != std::string::npos) {
+            std::string dummy;
+            parser >> dummy >> shift_offset;
+            printf("found shift offset of %.2lf\n", shift_offset);
         }
 
         // skip the rest of the header
@@ -99,6 +111,9 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alph
     var = params.var;
     var_sd = params.var_sd;
 
+    // no offset needed when loading directly from the fast5
+    shift_offset = 0.0f;
+
     // apply shift/scale transformation to the pore model states
     bake_gaussian_parameters();
 
@@ -119,12 +134,15 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alph
 
 void PoreModel::write(const std::string filename, const Alphabet& alphabet, const std::string modelname) 
 {
-    std::string outmodelname=modelname;
-    if (modelname.empty())
+    std::string outmodelname = modelname;
+    if(modelname.empty())
         outmodelname = name;
 
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
+
+    printf("SHIFT OFFSET: %.lf\n", shift_offset);
+    writer << "#shift_offset\t" << shift_offset << std::endl;
 
     std::string curr_kmer(k,alphabet.base(0));
     for(size_t ki = 0; ki < states.size(); ++ki) {
@@ -138,6 +156,7 @@ void PoreModel::write(const std::string filename, const Alphabet& alphabet, cons
 void PoreModel::update_states( const PoreModel &other ) 
 {
     k = other.k;
+    shift += other.shift_offset;
     update_states( other.states );
 }
 

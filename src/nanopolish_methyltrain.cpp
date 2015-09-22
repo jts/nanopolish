@@ -252,6 +252,7 @@ void train_read(const ModelMap& model_map,
         if(model_iter != model_map.end()) {
             sr.pore_model[strand_idx].update_states(model_iter->second);
         } else {
+            printf("Error: model %s not found\n", curr_model.c_str());
             assert(false && "Model not found");
         }
         
@@ -675,9 +676,9 @@ void write_models(ModelMap& models)
     for(auto model_iter = models.begin(); 
              model_iter != models.end(); model_iter++) {
 
-        std::string outname   =  model_iter->first + opt::out_suffix;
+        assert(!model_iter->second.model_filename.empty());
+        std::string outname   =  model_iter->second.model_filename + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
-
         models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
     }
 }
@@ -690,7 +691,7 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
-    static size_t TRAINING_ROUNDS = 1;
+    static size_t TRAINING_ROUNDS = 3;
 
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);

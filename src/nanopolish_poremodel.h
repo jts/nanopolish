@@ -61,6 +61,16 @@ class PoreModel
         void update_states( const PoreModel &other );
         void update_states( const std::vector<PoreModelStateParams> &otherstates );
 
+        //
+        // Data
+        //
+
+        // model metadata
+        std::string model_filename;
+        std::string name;
+        uint32_t k;
+
+        // per-read scaling parameters
         double scale;
         double shift;
         double drift;
@@ -68,9 +78,12 @@ class PoreModel
         double scale_sd;
         double var_sd;
 
-        std::string name;
-        uint32_t k;
+        // to support swapping models, a .model file might contain a shift_offset field
+        // which describes how to change the per-read shift values to match the incoming
+        // model. This field stores this data, which might be 0.
+        double shift_offset;
 
+        //
         bool is_scaled;
 
         std::vector<PoreModelStateParams> states;
