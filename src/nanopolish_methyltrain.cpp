@@ -34,6 +34,8 @@
 #include "profiler.h"
 #include "progress.h"
 
+#include "../eigen/Eigen/Dense"
+
 //
 // Structs
 //
@@ -217,6 +219,94 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     return curr_mixture;
 }
 
+// recalculate shift, scale, drift, scale_sd from an alignment and the read
+void recalibrate_model(SquiggleRead &sr,
+                       const int strand_idx,
+                       const std::vector<EventAlignment> &alignment_output) 
+{
+    std::vector<double> raw_events, times, level_means, level_stdvs;
+    uint32_t k = sr.pore_model[strand_idx].k;
+
+    // extract necessary vectors from the read and the pore model; note do not want scaled values
+    for ( const auto &ea : alignment_output ) {
+        if(ea.hmm_state == 'M') {
+            std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+
+            raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
+            times.push_back      ( sr.get_time(ea.event_idx, strand_idx) );
+            level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
+            level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
+        }
+    }
+
+    const int minNumEventsToRescale = 500;
+    if (raw_events.size() < minNumEventsToRescale) 
+        return;
+
+    // Assemble linear system corresponding to weighted least squares problem
+    // Can just directly call a weighted least squares solver, but there's enough
+    // structure in our problem it's a little faster just to build the normal eqn
+    // matrices ourselves
+    Eigen::Matrix3d A;
+    Eigen::Vector3d b;
+
+    for (int i=0; i<3; i++) {
+        b(i) = 0.;
+        for (int j=0; j<3; j++)
+            A(i,j) = 0.;
+    }
+
+    for (int i=0; i<raw_events.size(); i++) {
+        double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
+        double mu = level_means[i];
+        double t  = times[i];
+        double e  = raw_events[i];
+
+        A(0,0) += inv_var;  A(0,1) += mu*inv_var;    A(0,2) += t*inv_var;
+                            A(1,1) += mu*mu*inv_var; A(1,2) += mu*t*inv_var;
+                                                     A(2,2) += t*t*inv_var;
+
+        b(0) += e*inv_var;
+        b(1) += mu*e*inv_var;
+        b(2) += t*e*inv_var;
+    }
+    A(1,0) = A(0,1);
+    A(2,0) = A(0,2);
+    A(2,1) = A(1,2);
+
+    // perform the linear solve
+    Eigen::Vector3d x = A.fullPivLu().solve(b);
+
+    double shift = x(0);
+    double scale = x(1);
+    double drift = x(2);
+
+    double var = 0.;
+    for (int i=0; i<raw_events.size(); i++) {
+        double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
+        var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
+    }
+    var /= raw_events.size();
+
+    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", " 
+    //                                                << sr.pore_model[strand_idx].scale << ", " 
+    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //                                                << sr.pore_model[strand_idx].var   << std::endl;
+    sr.pore_model[strand_idx].shift = shift;
+    sr.pore_model[strand_idx].scale = scale;
+    sr.pore_model[strand_idx].drift = drift;
+    //sr.pore_model[strand_idx].var   = var;
+
+    if (sr.pore_model[strand_idx].is_scaled)
+        sr.pore_model[strand_idx].bake_gaussian_parameters();
+
+    //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", " 
+    //                                                << sr.pore_model[strand_idx].scale << ", " 
+    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //                                                << sr.pore_model[strand_idx].var   << std::endl;
+}
+
 // Realign the read in event space
 void train_read(const ModelMap& model_map,
                 const Fast5Map& name_map, 
@@ -263,6 +353,9 @@ void train_read(const ModelMap& model_map,
         params.region_end = region_end;
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
 
+        // Update pore model based on alignment
+        recalibrate_model(sr, strand_idx, alignment_output);
+
         // Update model observations
         #pragma omp critical
         {
@@ -271,8 +364,9 @@ void train_read(const ModelMap& model_map,
             // Get the training data for this model
             auto& emission_map = training[curr_model];
 
-            for(size_t i = 0; i < alignment_output.size(); ++i) {
-                const EventAlignment& ea = alignment_output[i];
+            std::vector<float> raw_events, level_means, level_stdvs, times;
+
+            for ( const auto &ea : alignment_output ) {
                 std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
@@ -281,16 +375,17 @@ void train_read(const ModelMap& model_map,
                     // Here we re-scale the event to the model
                     float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
                     event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-                    
+
                     float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
                     float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                    StateTrainingData std = { event_mean, event_stdv, event_duration, sr.pore_model[strand_idx].var };
+                    StateTrainingData std = { event_mean, event_stdv, event_duration, (float)sr.pore_model[strand_idx].var };
                     kmer_summary.events.push_back(std);
                     kmer_summary.num_matches += 1;
                 } else if(ea.hmm_state == 'E') {
                     kmer_summary.num_stays += 1;
                 }
             }
+            
         }
     } // for strands
 }
