@@ -109,10 +109,42 @@ struct FullStateTrainingData
 
 struct MinimalStateTrainingData
 {
+    //
+    // Functions
+    //
+    MinimalStateTrainingData(const SquiggleRead& sr,
+                             const EventAlignment& ea,
+                             uint32_t rank,
+                             const std::string& prev_kmer,
+                             const std::string& next_kmer)
+    {
+        // scale the observation to the expected pore model
+        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+    }
+
+    static void write_header(FILE* fp)
+    {
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tread_var\n");
+    }
+
+    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
+    {
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\n",
+                    model_name.c_str(), 
+                    kmer.c_str(), 
+                    level_mean, 
+                    read_var);
+    }
+
+    //
+    // Data
+    //
     float level_mean;
+    float read_var;
 };
 
-typedef FullStateTrainingData StateTrainingData;
+typedef MinimalStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
