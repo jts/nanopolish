@@ -37,8 +37,63 @@
 //
 // Structs
 //
-struct StateTrainingData
+
+// The state training data comes in two different
+// sizes Full and Minimal. The model training functions
+// only actually need the Minimal data but for exploration
+// the Full data is useful so left as an option.
+struct FullStateTrainingData
 {
+    //
+    // Functions
+    //
+    FullStateTrainingData(const SquiggleRead& sr,
+                          const EventAlignment& ea,
+                          uint32_t rank,
+                          const std::string& prev_kmer,
+                          const std::string& next_kmer)
+    {
+        // scale the observation to the expected pore model
+        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
+        this->level_stdv = 0;
+        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
+        
+        this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->ref_position = ea.ref_position;
+        this->ref_strand = ea.rc;
+        
+        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
+        this->prev_kmer = prev_kmer;
+        this->next_kmer = next_kmer;
+    }
+
+    static void write_header(FILE* fp)
+    {
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
+    }
+
+    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
+    {
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", 
+                    model_name.c_str(), 
+                    kmer.c_str(), 
+                    level_mean, 
+                    level_stdv,
+                    duration,
+                    ref_position,
+                    ref_strand,
+                    z,
+                    read_var,
+                    prev_kmer.c_str(),
+                    next_kmer.c_str());
+    }
+
+    //
+    // Data
+    //
+
     float level_mean;
     float level_stdv;
     float duration;
@@ -51,6 +106,13 @@ struct StateTrainingData
     std::string prev_kmer;
     std::string next_kmer;
 };
+
+struct MinimalStateTrainingData
+{
+    float level_mean;
+};
+
+typedef FullStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
@@ -322,26 +384,7 @@ void train_read(const ModelMap& model_map,
 
                 if(use_for_training) {
 
-                    GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-                    double z = (sr.get_drift_corrected_level(ea.event_idx, strand_idx) -  model.mean ) / model.stdv;
-
-                    // Here we re-scale the event to the model
-                    float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-                    event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
-                    
-                    float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-                    float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                    StateTrainingData std = { event_mean, 
-                                              event_stdv, 
-                                              event_duration, 
-                                              sr.pore_model[strand_idx].var, 
-                                              ea.ref_position, 
-                                              ea.rc, 
-                                              z, 
-                                              prev_kmer, 
-                                              next_kmer 
-                                            };
-
+                    StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
                     kmer_summary.events.push_back(std);
                 }
 
@@ -540,8 +583,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     FILE* training_fp = fopen(training_fn.str().c_str(), "w");
 
     // training header
-    fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
-
+    StateTrainingData::write_header(training_fp);
+    
     // Process the training results
     ModelMap trained_models;
     
@@ -583,16 +626,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                fprintf(training_fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", model_short_name.c_str(), kmer.c_str(), 
-                                                                              summaries[ki].events[ei].level_mean, 
-                                                                              summaries[ki].events[ei].level_stdv,
-                                                                              summaries[ki].events[ei].duration,
-                                                                              summaries[ki].events[ei].ref_position,
-                                                                              summaries[ki].events[ei].ref_strand,
-                                                                              summaries[ki].events[ei].z,
-                                                                              summaries[ki].events[ei].read_var,
-                                                                              summaries[ki].events[ei].prev_kmer.c_str(),
-                                                                              summaries[ki].events[ei].next_kmer.c_str());
+                summaries[ki].events[ei].write_tsv(training_fp, model_short_name, kmer);
             }
 
             // write to the summary file

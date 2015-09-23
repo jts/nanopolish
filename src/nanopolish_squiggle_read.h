@@ -71,6 +71,14 @@ class SquiggleRead
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
         }
+
+        // Return the observed current level after correcting for drift, shift and scale
+        inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
+        {
+            assert(drift_correction_performed);
+            float level = get_drift_corrected_level(event_idx, strand);
+            return (level - pore_model[strand].shift) / pore_model[strand].scale;
+        }
         
         // Calculate the index of this k-mer on the other strand
         inline int32_t flip_k_strand(int32_t k_idx) const
