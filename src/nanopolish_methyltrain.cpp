@@ -757,7 +757,7 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
-    static size_t TRAINING_ROUNDS = 3;
+    static size_t TRAINING_ROUNDS = 10;
 
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
