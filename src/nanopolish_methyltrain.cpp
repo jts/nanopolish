@@ -91,6 +91,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               read the models to be trained from the FOFN\n"
 "      --train-unmethylated             train unmethylated 5-mers instead of methylated\n"
+"  -c  --calibrate                      recalibrate aligned reads to model before training\n"
 "      --no-update-models               do not write out trained models\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
@@ -103,6 +104,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 namespace opt
 {
     static unsigned int verbose;
+    static unsigned int calibrate=0;
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
@@ -116,12 +118,13 @@ namespace opt
     static int batch_size = 128;
 }
 
-static const char* shortopts = "r:b:g:t:m:vn";
+static const char* shortopts = "r:b:g:t:m:vnc";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
+    { "calibrate",          no_argument,       NULL, 'c' },
     { "reads",              required_argument, NULL, 'r' },
     { "bam",                required_argument, NULL, 'b' },
     { "genome",             required_argument, NULL, 'g' },
@@ -354,7 +357,8 @@ void train_read(const ModelMap& model_map,
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
 
         // Update pore model based on alignment
-        recalibrate_model(sr, strand_idx, alignment_output);
+        if ( opt::calibrate )
+            recalibrate_model(sr, strand_idx, alignment_output);
 
         // Update model observations
         #pragma omp critical
@@ -420,6 +424,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 'm': arg >> opt::models_fofn; break;
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
+            case 'c': opt::calibrate = 1; break;
             case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
