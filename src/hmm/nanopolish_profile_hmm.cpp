@@ -342,8 +342,6 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
             GaussianParameters model = pm.get_scaled_parameters(rank);
             float norm_level = (level - model.mean) / model.stdv;
 
-            if(s == 'M')
-                training_data.emissions_for_matches.push_back(norm_level);
             prev_s = s;
 
 #ifdef PRINT_TRAINING_MESSAGES

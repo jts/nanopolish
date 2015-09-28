@@ -28,7 +28,6 @@ struct TrainingData
     uint32_t n_skips;
 
     std::vector<KmerTransitionObservation> kmer_transitions;
-    std::vector<double> emissions_for_matches;
     UInt32Matrix state_transitions;
 };
 
