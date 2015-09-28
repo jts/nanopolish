@@ -640,7 +640,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
         input.rc = rc_flags[params.strand_idx];
         
-        std::vector<AlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
+        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
         
         // Output alignment
         size_t num_output = 0;
@@ -655,7 +655,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         for(; event_align_idx < event_alignment.size() && 
               (num_output < output_stride || last_section); event_align_idx++) {
 
-            AlignmentState& as = event_alignment[event_align_idx];
+            HMMAlignmentState& as = event_alignment[event_align_idx];
             if(as.state != 'K' && as.event_idx != curr_start_event) {
 
                 EventAlignment ea;

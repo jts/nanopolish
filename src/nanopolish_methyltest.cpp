@@ -306,10 +306,10 @@ void test_read(const ModelMap& model_map,
                     // Debug alignments
                     printf("Forward unmethylated: %.2lf\n", unmethylated_score);
                     printf("Forward methylated: %.2lf\n", methylated_score);
-                    std::vector<AlignmentState> um_align = profile_hmm_align(unmethylated, data, hmm_flags);
+                    std::vector<HMMAlignmentState> um_align = profile_hmm_align(unmethylated, data, hmm_flags);
                     print_alignment("unmethylated", start_position, 0, unmethylated, data, um_align);
                     
-                    std::vector<AlignmentState> m_align = profile_hmm_align(methylated, data, hmm_flags);
+                    std::vector<HMMAlignmentState> m_align = profile_hmm_align(methylated, data, hmm_flags);
                     print_alignment("methylated", start_position, 0, methylated, data, m_align);
                     */
                 }

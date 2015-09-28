@@ -60,7 +60,7 @@ struct HMMInputData
 };
 
 // A representation of an event->kmer alignment
-struct AlignmentState
+struct HMMAlignmentState
 {
     uint32_t event_idx;
     uint32_t kmer_idx;

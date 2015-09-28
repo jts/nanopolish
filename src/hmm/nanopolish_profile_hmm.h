@@ -25,7 +25,7 @@ float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& da
 float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMInputData>& data, const uint32_t flags = 0);
 
 // Run viterbi to align events to kmers
-std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
+std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
 
 // Print the alignment between the read-strand and a sequence
 void print_alignment(const std::string& name,
@@ -33,7 +33,7 @@ void print_alignment(const std::string& name,
                      uint32_t read_id,
                      const HMMInputSequence& consensus, 
                      const HMMInputData& data,
-                     const std::vector<AlignmentState>& alignment);
+                     const std::vector<HMMAlignmentState>& alignment);
 
 //
 // Forward algorithm

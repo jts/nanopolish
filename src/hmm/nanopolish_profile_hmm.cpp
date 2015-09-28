@@ -96,9 +96,9 @@ void profile_hmm_viterbi_initialize(FloatMatrix& m)
     profile_hmm_forward_initialize(m);
 }
 
-std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
+std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    std::vector<AlignmentState> alignment;
+    std::vector<HMMAlignmentState> alignment;
     const uint32_t k = data.read->pore_model[data.strand].k;
 
     uint32_t n_kmers = sequence.length() - k + 1;
@@ -144,7 +144,7 @@ std::vector<AlignmentState> profile_hmm_align(const HMMInputSequence& sequence, 
         
         ProfileState curr_ps = (ProfileState) (col % PS_NUM_STATES);
 
-        AlignmentState as;
+        HMMAlignmentState as;
         as.event_idx = event_idx;
         as.kmer_idx = kmer_idx;
         as.l_posterior = -INFINITY; // not computed
@@ -197,7 +197,7 @@ void print_alignment(const std::string& name,
                      uint32_t read_id,
                      const HMMInputSequence& sequence, 
                      const HMMInputData& data,
-                     const std::vector<AlignmentState>& alignment)
+                     const std::vector<HMMAlignmentState>& alignment)
 {
     size_t n_matches = 0;
     size_t n_merges = 0;
@@ -273,7 +273,7 @@ void print_alignment(const std::string& name,
 void profile_hmm_update_training(const HMMInputSequence& sequence,
                                  const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = profile_hmm_align(sequence, data);
+    std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
 
     const PoreModel& pm = data.read->pore_model[data.strand];
     TransitionTrainingData& training_data = data.read->parameters[data.strand].training_data;
