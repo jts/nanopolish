@@ -276,7 +276,7 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
     std::vector<AlignmentState> alignment = profile_hmm_align(sequence, data);
 
     const PoreModel& pm = data.read->pore_model[data.strand];
-    TrainingData& training_data = data.read->parameters[data.strand].training_data;
+    TransitionTrainingData& training_data = data.read->parameters[data.strand].training_data;
 
     const uint32_t k = pm.k;
 

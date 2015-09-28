@@ -67,7 +67,7 @@ KHMMParameters::KHMMParameters()
     skip_probabilities[39] = 0.02985075;
 
     // initialize training data
-    TrainingData& td = training_data;
+    TransitionTrainingData& td = training_data;
     td.n_matches = 0;
     td.n_merges = 0;
     td.n_skips = 0;
@@ -116,7 +116,7 @@ int statechar2index(char s)
     return 0;
 }
 
-void add_state_transition(TrainingData& td, char from, char to)
+void add_state_transition(TransitionTrainingData& td, char from, char to)
 {
     int f_idx = statechar2index(from);
     int t_idx = statechar2index(to);
@@ -127,7 +127,7 @@ void add_state_transition(TrainingData& td, char from, char to)
 
 void KHMMParameters::train()
 {
-    TrainingData& td = training_data;
+    TransitionTrainingData& td = training_data;
 
     //
     // Profile HMM transitions

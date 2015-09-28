@@ -21,7 +21,7 @@ struct KmerTransitionObservation
 };
 
 // This struct holds observations used to learn the parameters
-struct TrainingData
+struct TransitionTrainingData
 {
     uint32_t n_matches;
     uint32_t n_merges;
@@ -46,7 +46,6 @@ class KHMMParameters
         double trans_m_to_e_not_k;
         double trans_e_to_e;
 
-
         double trans_start_to_clip;
         double trans_clip_self;
 
@@ -58,14 +57,14 @@ class KHMMParameters
         double skip_bin_width;
 
         // Data used to train the model
-        TrainingData training_data;
+        TransitionTrainingData training_data;
 
     private:
         KHMMParameters(const KHMMParameters& other) {}
 };
 
 // add an observation of a state transition
-void add_state_transition(TrainingData& td, char from, char to);
+void add_state_transition(TransitionTrainingData& td, char from, char to);
 
 // Get the probability of skipping a kmer observation given the expected signal level
 double get_skip_probability(const KHMMParameters& parameters, double k_level1, double k_level2);
