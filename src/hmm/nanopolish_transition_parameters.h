@@ -3,10 +3,11 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_khmm_parameters -- parameters for khmm model
+// nanopolish_transitions_parameters -- transition
+// parameters for profile HMM
 //
-#ifndef NANOPOLISH_KHMM_PARAMETERS
-#define NANOPOLISH_KHMM_PARAMETERS
+#ifndef NANOPOLISH_TRANSITION_PARAMETERS
+#define NANOPOLISH_TRANSITION_PARAMETERS
 
 #include <vector>
 #include <stdint.h>
@@ -32,13 +33,13 @@ struct TransitionTrainingData
 };
 
 //
-class KHMMParameters
+class TransitionParameters
 {
     public:
 
         // functions
-        KHMMParameters();
-        ~KHMMParameters();
+        TransitionParameters();
+        ~TransitionParameters();
 
         void train();
 
@@ -60,13 +61,13 @@ class KHMMParameters
         TransitionTrainingData training_data;
 
     private:
-        KHMMParameters(const KHMMParameters& other) {}
+        TransitionParameters(const TransitionParameters& other) {}
 };
 
 // add an observation of a state transition
 void add_state_transition(TransitionTrainingData& td, char from, char to);
 
 // Get the probability of skipping a kmer observation given the expected signal level
-double get_skip_probability(const KHMMParameters& parameters, double k_level1, double k_level2);
+double get_skip_probability(const TransitionParameters& parameters, double k_level1, double k_level2);
 
 #endif

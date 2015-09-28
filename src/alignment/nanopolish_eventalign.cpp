@@ -23,7 +23,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"

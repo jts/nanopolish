@@ -11,7 +11,7 @@
 
 #include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include <string>
 
 // The raw event data for a read
@@ -113,7 +113,7 @@ class SquiggleRead
         std::vector<EventRangeForBase> base_to_event_map;
 
         // one set of parameters per strand
-        KHMMParameters parameters[2];
+        TransitionParameters parameters[2];
 
     private:
         

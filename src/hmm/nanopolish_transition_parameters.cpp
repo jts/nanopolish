@@ -3,14 +3,14 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_khmm_parameters -- parameters for khmm model
+// nanopolish_transition_parameters -- parameters for khmm model
 //
 #include <math.h>
 #include <assert.h>
 #include <stdio.h>
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 
-KHMMParameters::KHMMParameters()
+TransitionParameters::TransitionParameters()
 {
     skip_bin_width = 0.5;
     skip_probabilities.resize(40);
@@ -81,12 +81,12 @@ KHMMParameters::KHMMParameters()
     }
 }
 
-KHMMParameters::~KHMMParameters()
+TransitionParameters::~TransitionParameters()
 {
     free_matrix(training_data.state_transitions);
 }
 
-inline size_t get_bin(const KHMMParameters& parameters, double k_level1, double k_level2)
+inline size_t get_bin(const TransitionParameters& parameters, double k_level1, double k_level2)
 {
     assert(!parameters.skip_probabilities.empty());
 
@@ -98,7 +98,7 @@ inline size_t get_bin(const KHMMParameters& parameters, double k_level1, double 
     return bin;
 }
 
-double get_skip_probability(const KHMMParameters& parameters, double k_level1, double k_level2)
+double get_skip_probability(const TransitionParameters& parameters, double k_level1, double k_level2)
 {
     size_t bin = get_bin(parameters, k_level1, k_level2);
     assert(bin < parameters.skip_probabilities.size());
@@ -125,7 +125,7 @@ void add_state_transition(TransitionTrainingData& td, char from, char to)
     set(td.state_transitions, f_idx, t_idx, count + 1);
 }
 
-void KHMMParameters::train()
+void TransitionParameters::train()
 {
     TransitionTrainingData& td = training_data;
 
