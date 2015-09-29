@@ -9,7 +9,7 @@ SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 
 #Basic flags every build needs
 LIBS=-lz
-CPPFLAGS=-fopenmp -O3 -std=c++11 -g 
+CPPFLAGS=-fopenmp -O3 -std=c++11 -g
 CFLAGS=-O3
 CXX=g++
 CC=gcc

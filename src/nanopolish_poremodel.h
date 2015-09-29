@@ -29,7 +29,7 @@ struct PoreModelStateParams
 class PoreModel
 {
     public:
-        PoreModel(uint32_t _k=5) : is_scaled(false), k(_k) {}
+        PoreModel(uint32_t _k=5) : is_scaled(false), k(_k), pmalphabet(&gDNAAlphabet) {}
 
         // These constructors and the output routine take an alphabet 
         // so that kmers are inserted/written in order
@@ -38,7 +38,7 @@ class PoreModel
         PoreModel(const std::string filename, const Alphabet& alphabet=gDNAAlphabet);
         PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet=gDNAAlphabet);
 
-        void write(const std::string filename, const Alphabet& alphabet, const std::string modelname="");
+        void write(const std::string filename, const std::string modelname="");
 
         inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
         {
@@ -69,9 +69,10 @@ class PoreModel
         double var_sd;
 
         std::string name;
-        uint32_t k;
-
         bool is_scaled;
+
+        uint32_t k;
+        const Alphabet *pmalphabet; 
 
         std::vector<PoreModelStateParams> states;
         std::vector<GaussianParameters> scaled_params;

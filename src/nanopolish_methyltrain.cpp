@@ -20,6 +20,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <cstddef>
 #include "htslib/faidx.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_eventalign.h"
@@ -222,6 +223,63 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     return curr_mixture;
 }
 
+double model_score(SquiggleRead &sr,
+                   const size_t strand_idx,
+                   const faidx_t *fai, 
+                   const std::vector<EventAlignment> &alignment_output,
+                   const size_t events_per_segment)  
+{
+    double curr_score = 0;
+    size_t nevents = 0;
+
+    for(int align_start_idx = events_per_segment; 
+               align_start_idx < (int)alignment_output.size() - (int)events_per_segment; 
+               align_start_idx += events_per_segment) {
+
+        const EventAlignment& align_start = alignment_output[align_start_idx];
+        const EventAlignment& align_end = alignment_output[align_start_idx + events_per_segment];
+        std::string contig = alignment_output.front().ref_name.c_str();
+
+        // Set up event data
+        HMMInputData data;
+        data.read = &sr;
+        data.anchor_index = -1; // unused
+        data.strand = strand_idx;
+        data.rc = alignment_output.front().rc;
+        data.event_start_idx = align_start.event_idx;
+        data.event_stop_idx = align_end.event_idx;
+        data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
+        
+        // Set up reference data
+        int ref_start_pos = align_start.ref_position;
+        int ref_end_pos = align_end.ref_position;
+        int fetched_len = 0;
+
+        assert(ref_end_pos >= ref_start_pos);
+
+        // Extract the reference sequence for this region
+        std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
+                                                      ref_end_pos, &fetched_len);
+
+        if (fetched_len < 100)
+            continue;
+
+        const Alphabet *alphabet = sr.pore_model[strand_idx].pmalphabet;
+    
+        ref_seq = alphabet->disambiguate(ref_seq);
+        HMMInputSequence sequence(ref_seq, alphabet->reverse_complement(ref_seq), alphabet);
+
+        // Run HMM using current model
+        curr_score += profile_hmm_score(sequence, data, 0);
+        nevents += events_per_segment;
+    }
+
+    if (nevents == 0)
+        return +1;
+    else
+        return curr_score/nevents;
+}
+
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
@@ -260,7 +318,7 @@ void recalibrate_model(SquiggleRead &sr,
             A(i,j) = 0.;
     }
 
-    for (int i=0; i<raw_events.size(); i++) {
+    for (size_t i=0; i<raw_events.size(); i++) {
         double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
         double mu = level_means[i];
         double t  = times[i];
@@ -286,7 +344,7 @@ void recalibrate_model(SquiggleRead &sr,
     double drift = x(2);
 
     double var = 0.;
-    for (int i=0; i<raw_events.size(); i++) {
+    for (size_t i=0; i<raw_events.size(); i++) {
         double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
         var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
     }
@@ -296,6 +354,7 @@ void recalibrate_model(SquiggleRead &sr,
     //                                                << sr.pore_model[strand_idx].scale << ", " 
     //                                                << sr.pore_model[strand_idx].drift << ", " 
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
+
     sr.pore_model[strand_idx].shift = shift;
     sr.pore_model[strand_idx].scale = scale;
     sr.pore_model[strand_idx].drift = drift;
@@ -355,13 +414,25 @@ void train_read(const ModelMap& model_map,
         params.region_start = region_start;
         params.region_end = region_end;
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+        if (alignment_output.size() == 0)
+            return;
 
         // Update pore model based on alignment
-        if ( opt::calibrate )
+        double orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+#pragma omp critical(print)
+        std::cout << round << " " << curr_model << " " << read_idx << " Original " << orig_score << std::endl;
+
+        if ( opt::calibrate ) {
             recalibrate_model(sr, strand_idx, alignment_output);
 
+            double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+#pragma omp critical(print)
+            {
+                std::cout << round << " " << curr_model << " " << read_idx << " Rescaled " << rescaled_score << std::endl;
+                std::cout << round << " " << curr_model << " " << read_idx << " Delta " << rescaled_score-orig_score << std::endl;
+            }
+        }
         // Update model observations
-        #pragma omp critical
         {
 //            emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
@@ -383,9 +454,13 @@ void train_read(const ModelMap& model_map,
                     float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
                     float event_duration = sr.events[strand_idx][ea.event_idx].duration;
                     StateTrainingData std = { event_mean, event_stdv, event_duration, (float)sr.pore_model[strand_idx].var };
-                    kmer_summary.events.push_back(std);
-                    kmer_summary.num_matches += 1;
+#pragma omp critical(kmer)
+                    {
+                        kmer_summary.events.push_back(std);
+                        kmer_summary.num_matches += 1;
+                    }
                 } else if(ea.hmm_state == 'E') {
+#pragma omp atomic
                     kmer_summary.num_stays += 1;
                 }
             }
@@ -601,7 +676,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
             model_short_name = "c.p2";
         } else {
-            assert(false);
+            //assert(false);
+            model_short_name = model_name;
         }
 
         trained_models[model_training_iter->first] = model_iter->second;
@@ -705,7 +781,7 @@ void write_models(ModelMap& models)
         std::string outname   =  model_iter->first + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
 
-        models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
+        models[model_iter->first].write( outname, modelname );
     }
 }
 
@@ -717,7 +793,8 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
-    for(size_t round = 0; round < 10; round++) {
+    const int nrounds=10;
+    for(size_t round = 0; round < nrounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
         if(opt::write_models) {

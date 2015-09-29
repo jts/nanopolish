@@ -31,7 +31,7 @@ void PoreModel::bake_gaussian_parameters()
     is_scaled = true;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) 
+PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) : pmalphabet(&alphabet), is_scaled(false)
 {
     std::ifstream model_reader(filename);
     std::string model_line;
@@ -68,10 +68,11 @@ PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet)
         ninserted++;
     }
 
+    is_scaled = false;
     assert( ninserted == states.size() );
 }
 
-PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet) 
+PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet) : pmalphabet(&alphabet)
 {
 
     std::vector<fast5::Model_Entry> model = f_p->get_model(strand);
@@ -118,7 +119,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alph
     std::replace(name.begin(), name.end(), '/', '_');
 }
 
-void PoreModel::write(const std::string filename, const Alphabet& alphabet, const std::string modelname) 
+void PoreModel::write(const std::string filename, const std::string modelname) 
 {
     std::string outmodelname=modelname;
     if (modelname.empty())
@@ -127,17 +128,19 @@ void PoreModel::write(const std::string filename, const Alphabet& alphabet, cons
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
 
-    std::string curr_kmer(k,alphabet.base(0));
+    std::string curr_kmer(k,pmalphabet->base(0));
     for(size_t ki = 0; ki < states.size(); ++ki) {
         writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
                << states[ki].sd_mean << "\t" << states[ki].sd_stdv << std::endl;
-        alphabet.lexicographic_next(curr_kmer);
+        pmalphabet->lexicographic_next(curr_kmer);
     }
     writer.close();
 }
 
 void PoreModel::update_states( const PoreModel &other ) 
 {
+    k = other.k;
+    pmalphabet = other.pmalphabet;
     update_states( other.states );
 }
 

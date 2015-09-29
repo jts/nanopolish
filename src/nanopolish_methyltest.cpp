@@ -155,9 +155,6 @@ void test_read(const ModelMap& model_map,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
-    double read_score = 0.0f;
-    size_t num_sites_tested = 0;
-
     std::map<int, ScoredSite> site_score_map;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
@@ -165,8 +162,6 @@ void test_read(const ModelMap& model_map,
         std::vector<int> site_starts;
         std::vector<int> site_ends;
         std::vector<int> site_count;
-
-        double strand_score = 0.0f;
 
         // replace model 
         std::string curr_model = sr.pore_model[strand_idx].name;
