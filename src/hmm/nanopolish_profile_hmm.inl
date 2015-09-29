@@ -19,7 +19,7 @@ inline float calculate_skip_probability(const HMMInputSequence& sequence,
     GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
     GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
 
-    return get_skip_probability(parameters, level_i.mean, level_j.mean);
+    return parameters.get_skip_probability(level_i.mean, level_j.mean);
 }
 
 inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)

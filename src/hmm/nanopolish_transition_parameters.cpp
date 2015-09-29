@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include "nanopolish_transition_parameters.h"
+#include "nanopolish_poremodel.h"
+#include "nanopolish_squiggle_read.h"
 
 TransitionParameters::TransitionParameters()
 {
@@ -81,30 +83,21 @@ TransitionParameters::TransitionParameters()
     }
 }
 
+//
 TransitionParameters::~TransitionParameters()
 {
     free_matrix(training_data.state_transitions);
 }
 
-inline size_t get_bin(const TransitionParameters& parameters, double k_level1, double k_level2)
+// 
+double TransitionParameters::get_skip_probability(double k_level1, double k_level2) const
 {
-    assert(!parameters.skip_probabilities.empty());
-
-    double d = fabs(k_level1 - k_level2);
-    size_t bin = d / parameters.skip_bin_width;
-
-    // clamp out-of-range to last value
-    bin = bin >= parameters.skip_probabilities.size() ? parameters.skip_probabilities.size() - 1 : bin;
-    return bin;
+    size_t bin = get_skip_bin(k_level1, k_level2);
+    assert(bin < skip_probabilities.size());
+    return skip_probabilities[bin];
 }
 
-double get_skip_probability(const TransitionParameters& parameters, double k_level1, double k_level2)
-{
-    size_t bin = get_bin(parameters, k_level1, k_level2);
-    assert(bin < parameters.skip_probabilities.size());
-    return parameters.skip_probabilities[bin];
-}
-
+//
 int statechar2index(char s)
 {
     switch(s) {
@@ -116,13 +109,97 @@ int statechar2index(char s)
     return 0;
 }
 
-void add_state_transition(TransitionTrainingData& td, char from, char to)
+//
+void TransitionParameters::add_transition_observation(char state_from, char state_to)
 {
-    int f_idx = statechar2index(from);
-    int t_idx = statechar2index(to);
+    int f_idx = statechar2index(state_from);
+    int t_idx = statechar2index(state_to);
 
-    int count = get(td.state_transitions, f_idx, t_idx);
-    set(td.state_transitions, f_idx, t_idx, count + 1);
+    int count = get(training_data.state_transitions, f_idx, t_idx);
+    set(training_data.state_transitions, f_idx, t_idx, count + 1);
+}
+
+void TransitionParameters::add_training_from_alignment(const HMMInputSequence& sequence,
+                                                       const HMMInputData& data,
+                                                       const std::vector<HMMAlignmentState>& alignment,
+                                                       size_t ignore_edge_length)
+{
+    // do nothing if the alignment is too short
+    if(alignment.size() <= ignore_edge_length) {
+        return;
+    }
+
+    const PoreModel& pm = data.read->pore_model[data.strand];
+    const uint32_t k = pm.k;
+
+    size_t n_kmers = sequence.length() - k + 1;
+    uint32_t strand_idx = 0;
+    char prev_s = 'M';
+
+    for(size_t pi = 0; pi < alignment.size(); ++pi) {
+
+        uint32_t ei = alignment[pi].event_idx;
+        uint32_t ki = alignment[pi].kmer_idx;
+        char s = alignment[pi].state;
+    
+        // Record transition observations
+        // We do not record observations for merge states as there was no kmer transitions
+        // We also do not record observations for the beginning of the matches as the
+        // alignment may be poor due to edge effects
+        if(pi > ignore_edge_length && pi < alignment.size() - ignore_edge_length) {
+ 
+            // skip transition training data
+            // we do not process the E state here as no k-mer move was made
+            if(s != 'E') {
+                uint32_t transition_kmer_from = alignment[pi - 1].kmer_idx;
+                uint32_t transition_kmer_to = alignment[pi].kmer_idx;
+
+                // Specially handle skips
+                // We only want to record the first k-mer skipped if multiple were skipped
+                if(s == 'K') {
+                    transition_kmer_from = alignment[pi - 1].kmer_idx;
+                    transition_kmer_to = transition_kmer_from + 1;
+                }
+                
+                assert(transition_kmer_from < n_kmers && transition_kmer_to < n_kmers);
+
+                uint32_t rank_1 = sequence.get_kmer_rank(transition_kmer_from, k, data.rc);
+                uint32_t rank_2 = sequence.get_kmer_rank(transition_kmer_to, k, data.rc);
+            
+                GaussianParameters level_1 = pm.get_scaled_parameters(rank_1);
+                GaussianParameters level_2 = pm.get_scaled_parameters(rank_2);
+            
+#ifdef PRINT_TRAINING_MESSAGES
+                printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\n", strand_idx, level_1.mean, level_2.mean, s);
+#endif
+                KmerTransitionObservation to = { level_1.mean, level_2.mean, s };
+                training_data.kmer_transitions.push_back(to);
+            }
+
+            // State-to-state transition
+            add_transition_observation(prev_s, s);
+
+            // emission
+            float level = data.read->get_drift_corrected_level(ei, data.strand);
+            float sd = data.read->events[data.strand][ei].stdv;
+            float duration = data.read->get_duration(ei, data.strand);
+            if(ki >= n_kmers)
+                printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
+            
+            assert(ki < n_kmers);
+            uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
+        
+            GaussianParameters model = pm.get_scaled_parameters(rank);
+            float norm_level = (level - model.mean) / model.stdv;
+
+            prev_s = s;
+        }
+
+        // summary
+        training_data.n_matches += (s == 'M');
+        training_data.n_merges += (s == 'E');
+        training_data.n_skips += (s == 'K');
+    }
 }
 
 void TransitionParameters::train()
@@ -178,7 +255,6 @@ void TransitionParameters::train()
     std::vector<double> total_observations(num_bins, 0.0f);
     std::vector<double> skip_observations(num_bins, 0.0f);
 
-
     for(size_t bin = 0; bin < num_bins; bin++) {
         skip_observations[bin] = skip_probabilities[bin] * pseudocount;
         total_observations[bin] = pseudocount;
@@ -187,7 +263,7 @@ void TransitionParameters::train()
     for(size_t oi = 0; oi < td.kmer_transitions.size(); ++oi) {
         const KmerTransitionObservation& to = td.kmer_transitions[oi];
         bool is_skip = to.state == 'K';
-        size_t bin = get_bin(*this, to.level_1, to.level_2);
+        size_t bin = get_skip_bin(to.level_1, to.level_2);
 
         skip_observations[bin] += is_skip;
         total_observations[bin] += 1;

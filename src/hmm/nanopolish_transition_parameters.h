@@ -12,6 +12,7 @@
 #include <vector>
 #include <stdint.h>
 #include "nanopolish_matrix.h"
+#include "nanopolish_hmm_input_sequence.h"
 
 // 
 struct KmerTransitionObservation
@@ -37,13 +38,30 @@ class TransitionParameters
 {
     public:
 
+        //
         // functions
+        //
         TransitionParameters();
         ~TransitionParameters();
 
+        // update transition parameters from training data
         void train();
 
+        // Get the probability of skipping a kmer observation given the pair of expected levels
+        double get_skip_probability(double k_level1, double k_level2) const;
+
+        // add an observation of a state transition to the training data
+        void add_transition_observation(char hmm_state_from, char hmm_state_to);
+
+        // update the training data using the alignment
+        void add_training_from_alignment(const HMMInputSequence& sequence,
+                                         const HMMInputData& data,
+                                         const std::vector<HMMAlignmentState>& alignment,
+                                         size_t ignore_edge_length = 5);
+
+        //
         // data
+        //
         double trans_m_to_e_not_k;
         double trans_e_to_e;
 
@@ -60,14 +78,26 @@ class TransitionParameters
         // Data used to train the model
         TransitionTrainingData training_data;
 
+
     private:
+
+        // Not allowed
         TransitionParameters(const TransitionParameters& other) {}
+
+        // Calculate which bin of the skip probability table this level difference falls in
+        inline size_t get_skip_bin(double k_level1, double k_level2) const
+        {
+            assert(!skip_probabilities.empty());
+
+            double d = fabs(k_level1 - k_level2);
+            size_t bin = d / skip_bin_width;
+
+            // clamp out-of-range to last value
+            bin = bin >= skip_probabilities.size() ? skip_probabilities.size() - 1 : bin;
+            return bin;
+        }
+
 };
 
-// add an observation of a state transition
-void add_state_transition(TransitionTrainingData& td, char from, char to);
-
-// Get the probability of skipping a kmer observation given the expected signal level
-double get_skip_probability(const TransitionParameters& parameters, double k_level1, double k_level2);
 
 #endif

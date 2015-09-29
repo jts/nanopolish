@@ -166,9 +166,10 @@ void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, 
     print_alignment(name, seq_id, read_id, sequence, data, alignment);
 }
 
-void update_training_with_segment(const std::string& sequence, const HMMInputData& data)
+void update_training_with_segment(const HMMInputSequence& sequence, const HMMInputData& data)
 {
-    profile_hmm_update_training(sequence, data);
+    std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
+    data.read->parameters[data.strand].add_training_from_alignment(sequence, data, alignment);
 }
 
 struct PathCons
