@@ -283,10 +283,16 @@ double model_score(SquiggleRead &sr,
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
-                       const std::vector<EventAlignment> &alignment_output) 
+                       const std::vector<EventAlignment> &alignment_output, 
+                       bool scale_var) 
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
     uint32_t k = sr.pore_model[strand_idx].k;
+
+    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", " 
+    //                                                << sr.pore_model[strand_idx].scale << ", " 
+    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //                                                << sr.pore_model[strand_idx].var   << std::endl;
 
     // extract necessary vectors from the read and the pore model; note do not want scaled values
     for ( const auto &ea : alignment_output ) {
@@ -343,22 +349,20 @@ void recalibrate_model(SquiggleRead &sr,
     double scale = x(1);
     double drift = x(2);
 
-    double var = 0.;
-    for (size_t i=0; i<raw_events.size(); i++) {
-        double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
-        var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
-    }
-    var /= raw_events.size();
-
-    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", " 
-    //                                                << sr.pore_model[strand_idx].scale << ", " 
-    //                                                << sr.pore_model[strand_idx].drift << ", " 
-    //                                                << sr.pore_model[strand_idx].var   << std::endl;
-
     sr.pore_model[strand_idx].shift = shift;
     sr.pore_model[strand_idx].scale = scale;
     sr.pore_model[strand_idx].drift = drift;
-    //sr.pore_model[strand_idx].var   = var;
+
+    if (scale_var) {
+        double var = 0.;
+        for (size_t i=0; i<raw_events.size(); i++) {
+            double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
+            var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
+        }
+        var /= raw_events.size();
+
+        sr.pore_model[strand_idx].var   = var;
+    }
 
     if (sr.pore_model[strand_idx].is_scaled)
         sr.pore_model[strand_idx].bake_gaussian_parameters();
@@ -423,7 +427,7 @@ void train_read(const ModelMap& model_map,
         std::cout << round << " " << curr_model << " " << read_idx << " Original " << orig_score << std::endl;
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output);
+            recalibrate_model(sr, strand_idx, alignment_output, round > 5);
 
             double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
 #pragma omp critical(print)
