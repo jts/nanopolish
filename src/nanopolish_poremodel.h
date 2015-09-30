@@ -85,7 +85,6 @@ class PoreModel
 
         bool is_scaled;
 
-        uint32_t k;
         const Alphabet *pmalphabet; 
 
         std::vector<PoreModelStateParams> states;

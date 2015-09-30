@@ -920,7 +920,6 @@ void write_models(ModelMap& models)
         std::string outname   =  model_iter->second.model_filename + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
         models[model_iter->first].write( outname, modelname );
-        models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
     }
 }
 
