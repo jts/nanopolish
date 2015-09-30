@@ -83,6 +83,9 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
         pore_model[si] = PoreModel( f_p, si );
+
+        // initialize transition parameters
+        parameters[si].initialize(pore_model[si].name);
     }
     
     // Load events for both strands

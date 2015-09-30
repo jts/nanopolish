@@ -44,6 +44,8 @@ class TransitionParameters
         TransitionParameters();
         ~TransitionParameters();
 
+        void initialize(const std::string& model_name);
+
         // update transition parameters from training data
         void train();
 
@@ -67,6 +69,8 @@ class TransitionParameters
 
         double trans_start_to_clip;
         double trans_clip_self;
+        
+        bool is_initialized = false;
 
         // This is a vector that maps from discretized absolute difference
         // between expected signals to a probability that the transition
@@ -80,6 +84,11 @@ class TransitionParameters
 
 
     private:
+
+        // Model-specific transition initialization
+        void initialize_sqkmap005();
+        void initialize_sqkmap006_template();
+        void initialize_sqkmap006_complement();
 
         // Not allowed
         TransitionParameters(const TransitionParameters& other) {}

@@ -14,18 +14,67 @@
 
 TransitionParameters::TransitionParameters()
 {
+    // initialize training data
+    TransitionTrainingData& td = training_data;
+    td.n_matches = 0;
+    td.n_merges = 0;
+    td.n_skips = 0;
+
+    //
+    allocate_matrix(td.state_transitions, 3, 3);
+    for(int i = 0; i < td.state_transitions.n_rows; ++i) {
+        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+            set(td.state_transitions, i, j, 0);
+        }
+    }
+
+    //
+    // Initialize transition parameters
+    //
+
+    // these are fixed across all models
     skip_bin_width = 0.5;
-    skip_probabilities.resize(40);
-
-    // These default values are learned from a set of e.coli reads
-    // trained on a de novo assembly
-
-    // for profile model
-    trans_m_to_e_not_k = 0.15f;
-    trans_e_to_e = 0.33f;
-
+    skip_probabilities.resize(30);
+ 
     trans_start_to_clip = 0.5f;
     trans_clip_self = 0.90f;
+}
+
+//
+TransitionParameters::~TransitionParameters()
+{
+    free_matrix(training_data.state_transitions);
+}
+
+void TransitionParameters::initialize(const std::string& model_name)
+{
+    is_initialized = true;
+
+    if(model_name == "r7.3_template_median68pA.model" ||
+       model_name == "r7.3_complement_median68pA_pop1.model" || 
+       model_name == "r7.3_complement_median68pA_pop2.model") 
+    {
+        initialize_sqkmap005();
+    } 
+    else if(model_name == "r7.3_e6_70bps_6mer_template_median68pA.model")
+    {
+        initialize_sqkmap006_template();
+    } 
+    else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model" ||
+            model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model")
+    {
+        initialize_sqkmap006_complement();
+    } else {
+        printf("Error: unknown model: %s\n", model_name.c_str());
+        exit(EXIT_FAILURE);
+    }
+}
+
+void TransitionParameters::initialize_sqkmap005()
+{
+    assert(!skip_probabilities.empty());
+    trans_m_to_e_not_k = 0.15f;
+    trans_e_to_e = 0.33f;
 
     skip_probabilities[0] = 0.51268137;
     skip_probabilities[1] = 0.47243219;
@@ -57,41 +106,89 @@ TransitionParameters::TransitionParameters()
     skip_probabilities[27] = 0.07228916;
     skip_probabilities[28] = 0.05855856;
     skip_probabilities[29] = 0.06842737;
-    skip_probabilities[30] = 0.06145251;
-    skip_probabilities[31] = 0.07352941;
-    skip_probabilities[32] = 0.06278027;
-    skip_probabilities[33] = 0.05932203;
-    skip_probabilities[34] = 0.09708738;
-    skip_probabilities[35] = 0.08290155;
-    skip_probabilities[36] = 0.07692308;
-    skip_probabilities[37] = 0.06896552;
-    skip_probabilities[38] = 0.03448276;
-    skip_probabilities[39] = 0.02985075;
 
-    // initialize training data
-    TransitionTrainingData& td = training_data;
-    td.n_matches = 0;
-    td.n_merges = 0;
-    td.n_skips = 0;
-
-    //
-    allocate_matrix(td.state_transitions, 3, 3);
-    for(int i = 0; i < td.state_transitions.n_rows; ++i) {
-        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
-            set(td.state_transitions, i, j, 0);
-        }
-    }
 }
 
-//
-TransitionParameters::~TransitionParameters()
+void TransitionParameters::initialize_sqkmap006_template()
 {
-    free_matrix(training_data.state_transitions);
+    assert(!skip_probabilities.empty());
+    trans_m_to_e_not_k = 0.17f;
+    trans_e_to_e = 0.55f;
+
+    skip_probabilities[0] = 0.487;
+    skip_probabilities[1] = 0.412;
+    skip_probabilities[2] = 0.311;
+    skip_probabilities[3] = 0.229;
+    skip_probabilities[4] = 0.174;
+    skip_probabilities[5] = 0.134;
+    skip_probabilities[6] = 0.115;
+    skip_probabilities[7] = 0.103;
+    skip_probabilities[8] = 0.096;
+    skip_probabilities[9] = 0.092;
+    skip_probabilities[10] = 0.088;
+    skip_probabilities[11] = 0.087;
+    skip_probabilities[12] = 0.084;
+    skip_probabilities[13] = 0.085;
+    skip_probabilities[14] = 0.083;
+    skip_probabilities[15] = 0.082;
+    skip_probabilities[16] = 0.085;
+    skip_probabilities[17] = 0.083;
+    skip_probabilities[18] = 0.084;
+    skip_probabilities[19] = 0.082;
+    skip_probabilities[20] = 0.080;
+    skip_probabilities[21] = 0.085;
+    skip_probabilities[22] = 0.088;
+    skip_probabilities[23] = 0.086;
+    skip_probabilities[24] = 0.087;
+    skip_probabilities[25] = 0.089;
+    skip_probabilities[26] = 0.085;
+    skip_probabilities[27] = 0.090;
+    skip_probabilities[28] = 0.087;
+    skip_probabilities[29] = 0.096;
+}
+
+void TransitionParameters::initialize_sqkmap006_complement()
+{
+    assert(!skip_probabilities.empty());
+    trans_m_to_e_not_k = 0.14f;
+    trans_e_to_e = 0.49f;
+
+    skip_probabilities[0] = 0.531;
+    skip_probabilities[1] = 0.478;
+    skip_probabilities[2] = 0.405;
+    skip_probabilities[3] = 0.327;
+    skip_probabilities[4] = 0.257;
+    skip_probabilities[5] = 0.207;
+    skip_probabilities[6] = 0.172;
+    skip_probabilities[7] = 0.154;
+    skip_probabilities[8] = 0.138;
+    skip_probabilities[9] = 0.132;
+    skip_probabilities[10] = 0.127;
+    skip_probabilities[11] = 0.123;
+    skip_probabilities[12] = 0.117;
+    skip_probabilities[13] = 0.115;
+    skip_probabilities[14] = 0.113;
+    skip_probabilities[15] = 0.113;
+    skip_probabilities[16] = 0.115;
+    skip_probabilities[17] = 0.109;
+    skip_probabilities[18] = 0.109;
+    skip_probabilities[19] = 0.107;
+    skip_probabilities[20] = 0.104;
+    skip_probabilities[21] = 0.105;
+    skip_probabilities[22] = 0.108;
+    skip_probabilities[23] = 0.106;
+    skip_probabilities[24] = 0.111;
+    skip_probabilities[25] = 0.114;
+    skip_probabilities[26] = 0.118;
+    skip_probabilities[27] = 0.119;
+    skip_probabilities[28] = 0.110;
+    skip_probabilities[29] = 0.119;
 }
 
 // 
 double TransitionParameters::get_skip_probability(double k_level1, double k_level2) const
 {
+    assert(is_initialized);
     size_t bin = get_skip_bin(k_level1, k_level2);
     assert(bin < skip_probabilities.size());
     return skip_probabilities[bin];
@@ -224,7 +321,7 @@ void TransitionParameters::train()
     size_t ee = get(td.state_transitions, statechar2index('E'), statechar2index('E'));
     double p_ee = (double)ee / sum_e;
 
-    /*
+#ifdef SHOW_TRAINING_RESULT
     fprintf(stderr, "TRANSITIONS\n");
     fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
     fprintf(stderr, "E->E: %lf\n", p_ee);
@@ -235,7 +332,7 @@ void TransitionParameters::train()
         }
         fprintf(stderr, "\n");
     }
-    */
+#endif
 
     if(sum_e == 0 || sum_m_not_k == 0) {
         // insufficient data to train, use defaults
@@ -272,6 +369,8 @@ void TransitionParameters::train()
     // Update probabilities
     for(size_t bin = 0; bin < num_bins; bin++) {
         skip_probabilities[bin] = skip_observations[bin] / total_observations[bin];
-        //fprintf(stderr, "SKIPLEARN -- bin[%zu] %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
+#ifdef SHOW_TRAINING_RESULT
+        fprintf(stderr, "SKIPLEARN -- %zu %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
+#endif
     }
 }

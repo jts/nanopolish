@@ -689,8 +689,14 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         curr_start_event = last_event_output;
         curr_start_ref = last_ref_kmer_output;
         curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
-    } // for segment
 
+#if EVENTALIGN_TRAIN
+        // update training data for read
+        params.sr->parameters[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+        global_training[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+#endif
+    } // for segment
+    
     return alignment_output;
 }
 
