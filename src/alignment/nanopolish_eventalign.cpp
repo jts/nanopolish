@@ -23,7 +23,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
@@ -57,6 +57,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --scale-events                   scale events to the model, rather than vice-versa\n"
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
@@ -73,13 +74,14 @@ namespace opt
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
+    static int scale_events = 0;
     static int batch_size = 128;
     static bool print_read_names;
 }
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -90,6 +92,7 @@ static const struct option longopts[] = {
     { "threads",          required_argument, NULL, 't' },
     { "summary",          required_argument, NULL, OPT_SUMMARY },
     { "print-read-names", no_argument,       NULL, 'n' },
+    { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",              no_argument,       NULL, OPT_SAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
@@ -378,14 +381,34 @@ void emit_event_alignment_tsv(FILE* fp,
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-        fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+        if(opt::scale_events) {
 
-        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
-                                              model.mean, 
-                                              model.stdv, 
-                                              sr.pore_model[ea.strand_idx].name.c_str());
+            // scale reads to the model
+            event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+
+            // unscaled parameters
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
+            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
+                                                  model.level_mean, 
+                                                  model.level_stdv, 
+                                                  sr.pore_model[ea.strand_idx].name.c_str());
+
+        } else {
+
+            // scale model to the reads
+            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+            float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
+                                                  model.mean, 
+                                                  model.stdv, 
+                                                  sr.pore_model[ea.strand_idx].name.c_str());
+        }
     }
 }
 
@@ -522,7 +545,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                                                   bam_endpos(params.record), &fetched_len);
 
     // k from read pore model
-    const uint32_t k = params.sr->pore_model[T_IDX].k;
+    const uint32_t k = params.sr->pore_model[params.strand_idx].k;
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
@@ -617,7 +640,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
         input.rc = rc_flags[params.strand_idx];
         
-        std::vector<AlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
+        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
         
         // Output alignment
         size_t num_output = 0;
@@ -632,7 +655,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         for(; event_align_idx < event_alignment.size() && 
               (num_output < output_stride || last_section); event_align_idx++) {
 
-            AlignmentState& as = event_alignment[event_align_idx];
+            HMMAlignmentState& as = event_alignment[event_align_idx];
             if(as.state != 'K' && as.event_idx != curr_start_event) {
 
                 EventAlignment ea;
@@ -666,8 +689,14 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         curr_start_event = last_event_output;
         curr_start_ref = last_ref_kmer_output;
         curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
-    } // for segment
 
+#if EVENTALIGN_TRAIN
+        // update training data for read
+        params.sr->parameters[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+        global_training[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+#endif
+    } // for segment
+    
     return alignment_output;
 }
 
@@ -684,6 +713,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'v': opt::verbose++; break;
+            case OPT_SCALE_EVENTS: opt::scale_events = true; break;
             case OPT_SUMMARY: arg >> opt::summary_file; break;
             case OPT_SAM: opt::output_sam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;

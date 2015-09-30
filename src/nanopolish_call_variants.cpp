@@ -22,7 +22,7 @@
 #include <getopt.h>
 #include "htslib/faidx.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_klcs.h"
 #include "nanopolish_profile_hmm.h"

@@ -20,7 +20,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_klcs.h"
 #include "nanopolish_profile_hmm.h"
@@ -162,13 +162,14 @@ double score_sequence(const std::string& sequence, const HMMInputData& data)
 
 void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const HMMInputSequence& sequence, const HMMInputData& data)
 {
-    std::vector<AlignmentState> alignment = profile_hmm_align(sequence, data);
+    std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
     print_alignment(name, seq_id, read_id, sequence, data, alignment);
 }
 
-void update_training_with_segment(const std::string& sequence, const HMMInputData& data)
+void update_training_with_segment(const HMMInputSequence& sequence, const HMMInputData& data)
 {
-    profile_hmm_update_training(sequence, data);
+    std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
+    data.read->parameters[data.strand].add_training_from_alignment(sequence, data, alignment);
 }
 
 struct PathCons
@@ -636,7 +637,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
     for(uint32_t ri = 0; ri < data.size(); ++ri) {
 
         // Realign to the consensus sequence
-        std::vector<AlignmentState> decodes = profile_hmm_align(base, data[ri]);
+        std::vector<HMMAlignmentState> decodes = profile_hmm_align(base, data[ri]);
 
         // Get the closest event aligned to the target kmer
         int32_t min_k_dist = base.length();
@@ -675,7 +676,7 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base, k);
      
     for(uint32_t ri = 0; ri < input.size(); ++ri) {
-        std::vector<AlignmentState> decodes = profile_hmm_align(segment_sequence, input[ri]);
+        std::vector<HMMAlignmentState> decodes = profile_hmm_align(segment_sequence, input[ri]);
         update_training_with_segment(segment_sequence, input[ri]);
     }
 }

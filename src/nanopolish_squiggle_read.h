@@ -11,7 +11,7 @@
 
 #include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include <string>
 
 // The raw event data for a read
@@ -71,6 +71,14 @@ class SquiggleRead
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
         }
+
+        // Return the observed current level after correcting for drift, shift and scale
+        inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
+        {
+            assert(drift_correction_performed);
+            float level = get_drift_corrected_level(event_idx, strand);
+            return (level - pore_model[strand].shift) / pore_model[strand].scale;
+        }
         
         inline float get_time(uint32_t event_idx, uint32_t strand) const
         {
@@ -121,7 +129,7 @@ class SquiggleRead
         std::vector<EventRangeForBase> base_to_event_map;
 
         // one set of parameters per strand
-        KHMMParameters parameters[2];
+        TransitionParameters parameters[2];
 
     private:
         

@@ -26,7 +26,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
@@ -40,13 +40,114 @@
 //
 // Structs
 //
-struct StateTrainingData
+
+// The state training data comes in two different
+// sizes Full and Minimal. The model training functions
+// only actually need the Minimal data but for exploration
+// the Full data is useful so left as an option.
+struct FullStateTrainingData
 {
+    //
+    // Functions
+    //
+    FullStateTrainingData(const SquiggleRead& sr,
+                          const EventAlignment& ea,
+                          uint32_t rank,
+                          const std::string& prev_kmer,
+                          const std::string& next_kmer)
+    {
+        // scale the observation to the expected pore model
+        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
+        this->level_stdv = 0;
+        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
+        
+        this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->ref_position = ea.ref_position;
+        this->ref_strand = ea.rc;
+        
+        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
+        this->prev_kmer = prev_kmer;
+        this->next_kmer = next_kmer;
+    }
+
+    static void write_header(FILE* fp)
+    {
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
+    }
+
+    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
+    {
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", 
+                    model_name.c_str(), 
+                    kmer.c_str(), 
+                    level_mean, 
+                    level_stdv,
+                    duration,
+                    ref_position,
+                    ref_strand,
+                    z,
+                    read_var,
+                    prev_kmer.c_str(),
+                    next_kmer.c_str());
+    }
+
+    //
+    // Data
+    //
+
     float level_mean;
     float level_stdv;
     float duration;
     float read_var;
+
+    int ref_position;
+    int ref_strand;
+
+    float z;
+    std::string prev_kmer;
+    std::string next_kmer;
 };
+
+struct MinimalStateTrainingData
+{
+    //
+    // Functions
+    //
+    MinimalStateTrainingData(const SquiggleRead& sr,
+                             const EventAlignment& ea,
+                             uint32_t rank,
+                             const std::string& prev_kmer,
+                             const std::string& next_kmer)
+    {
+        // scale the observation to the expected pore model
+        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+    }
+
+    static void write_header(FILE* fp)
+    {
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tread_var\n");
+    }
+
+    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
+    {
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\n",
+                    model_name.c_str(), 
+                    kmer.c_str(), 
+                    level_mean, 
+                    read_var);
+    }
+
+    //
+    // Data
+    //
+    float level_mean;
+    float read_var;
+};
+
+typedef MinimalStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
@@ -396,14 +497,17 @@ void train_read(const ModelMap& model_map,
         
         // replace model with the training model
         std::string curr_model = sr.pore_model[strand_idx].name;
-        uint32_t k = sr.pore_model[strand_idx].k;
         auto model_iter = model_map.find(curr_model);
 
         if(model_iter != model_map.end()) {
             sr.pore_model[strand_idx].update_states(model_iter->second);
         } else {
+            printf("Error: model %s not found\n", curr_model.c_str());
             assert(false && "Model not found");
         }
+        
+        // set k
+        uint32_t k = sr.pore_model[strand_idx].k;
 
         // Align to the new model
         EventAlignmentParameters params;
@@ -413,7 +517,7 @@ void train_read(const ModelMap& model_map,
         params.record = record;
         params.strand_idx = strand_idx;
  
-        params.alphabet = &gMCpGAlphabet;
+        params.alphabet = mtrain_alphabet;
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -438,37 +542,64 @@ void train_read(const ModelMap& model_map,
         }
         // Update model observations
         {
-//            emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+            //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
             // Get the training data for this model
             auto& emission_map = training[curr_model];
+            for(size_t i = 0; i < alignment_output.size(); ++i) {
+                const EventAlignment& ea = alignment_output[i];
+                std::string model_kmer = ea.model_kmer;
 
-            std::vector<float> raw_events, level_means, level_stdvs, times;
+                // Grab the previous/next model kmer
+                // If the read is from the same strand as the reference
+                // the next kmer comes from the next alignment_output (and vice-versa)
+                // other the indices are swapped
+                int next_stride = ea.rc ? -1 : 1;
 
-            for ( const auto &ea : alignment_output ) {
-                std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+                std::string prev_kmer = "";
+                std::string next_kmer = "";
+
+                if(i > 0 && i < alignment_output.size() - 1) {
+                    assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
+                    assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
+
+                    // check for exactly one base of movement along the reference
+                    if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
+                        next_kmer = alignment_output[i + next_stride].model_kmer;
+                    }
+
+                    if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
+                        prev_kmer = alignment_output[i - next_stride].model_kmer;
+                    }
+                }
+
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
                 auto& kmer_summary = emission_map[rank];
+                
+                // Should we use this event for training?
+                bool use_for_training = i > 5 && 
+                                        i + 5 < alignment_output.size() &&
+                                        alignment_output[i].hmm_state == 'M' &&
+                                        alignment_output[i - 1].hmm_state == 'M' &&
+                                        alignment_output[i + 1].hmm_state == 'M' &&
+                                        prev_kmer != "" &&
+                                        next_kmer != "";
 
-                if(ea.hmm_state == 'M') {
-                    // Here we re-scale the event to the model
-                    float event_mean = sr.get_drift_corrected_level(ea.event_idx, strand_idx);
-                    event_mean = (event_mean - sr.pore_model[strand_idx].shift) / sr.pore_model[strand_idx].scale;
+                if(use_for_training) {
+                    StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
+                    #pragma omp critical(kmer)
+                    kmer_summary.events.push_back(std);
+                }
 
-                    float event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-                    float event_duration = sr.events[strand_idx][ea.event_idx].duration;
-                    StateTrainingData std = { event_mean, event_stdv, event_duration, (float)sr.pore_model[strand_idx].var };
-#pragma omp critical(kmer)
-                    {
-                        kmer_summary.events.push_back(std);
-                        kmer_summary.num_matches += 1;
-                    }
+                if(ea.hmm_state == 'M')  {
+                    #pragma omp atomic
+                    kmer_summary.num_matches += 1;
                 } else if(ea.hmm_state == 'E') {
-#pragma omp atomic
+                    #pragma omp atomic
                     kmer_summary.num_stays += 1;
                 }
+
             }
-            
         }
     } // for strands
 }
@@ -658,8 +789,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     FILE* training_fp = fopen(training_fn.str().c_str(), "w");
 
     // training header
-    fprintf(training_fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\n");
-
+    StateTrainingData::write_header(training_fp);
+    
     // Process the training results
     ModelMap trained_models;
     
@@ -679,9 +810,15 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             model_short_name = "c.p1";
         } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
             model_short_name = "c.p2";
+        } else if(model_name == "r7.3_e6_70bps_6mer_template_median68pA.model") {
+            model_short_name = "t.006";
+        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model") {
+            model_short_name = "c.p1.006";
+        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model") {
+            model_short_name = "c.p2.006";
         } else {
-            //assert(false);
-            model_short_name = model_name;
+            printf("Unknown model: %s\n", model_name.c_str());
+            assert(false);
         }
 
         trained_models[model_training_iter->first] = model_iter->second;
@@ -695,10 +832,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                fprintf(training_fp, "%s\t%s\t%.2lf\t%.2lf\t%.2lf\n", model_short_name.c_str(), kmer.c_str(), 
-                                                                      summaries[ki].events[ei].level_mean, 
-                                                                      summaries[ki].events[ei].level_stdv,
-                                                                      summaries[ki].events[ei].duration);
+                summaries[ki].events[ei].write_tsv(training_fp, model_short_name, kmer);
             }
 
             // write to the summary file
@@ -782,10 +916,11 @@ void write_models(ModelMap& models)
     for(auto model_iter = models.begin(); 
              model_iter != models.end(); model_iter++) {
 
-        std::string outname   =  model_iter->first + opt::out_suffix;
+        assert(!model_iter->second.model_filename.empty());
+        std::string outname   =  model_iter->second.model_filename + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
-
         models[model_iter->first].write( outname, modelname );
+        models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
     }
 }
 
@@ -797,8 +932,8 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
-    const int nrounds=10;
-    for(size_t round = 0; round < nrounds; round++) {
+    const size_t TRAINING_ROUNDS = 10;
+    for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
         if(opt::write_models) {

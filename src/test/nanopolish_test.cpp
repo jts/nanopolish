@@ -110,7 +110,7 @@ TEST_CASE( "math", "[math]") {
     REQUIRE( log_normal_pdf(2.25, params) == Approx(log(normal_pdf(2.25, params))) );
 }
 
-std::string event_alignment_to_string(const std::vector<AlignmentState>& alignment)
+std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alignment)
 {
     std::string out;
     for(size_t i = 0; i < alignment.size(); ++i) {
@@ -165,7 +165,7 @@ TEST_CASE( "hmm", "[hmm]") {
     for(int si = 0; si <= 1; ++si) {
 
         // viterbi align
-        std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input[si]);
+        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(ref_subseq, input[si]);
         std::string ea_str = event_alignment_to_string(event_alignment);
     
         // check
