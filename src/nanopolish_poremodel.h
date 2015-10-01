@@ -36,8 +36,8 @@ class PoreModel
         // so that kmers are inserted/written in order
         // nicer might be to store the states as a map from kmer -> state
 
-        PoreModel(const std::string filename, const Alphabet& alphabet=gDNAAlphabet);
-        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet=gDNAAlphabet);
+        PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
+        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet=NULL);
 
         void write(const std::string filename, const std::string modelname="");
 
@@ -94,6 +94,6 @@ class PoreModel
 
 typedef std::map<std::string, PoreModel> ModelMap;
 
-ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet);
+ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet=nullptr);
 
 #endif

@@ -31,7 +31,19 @@ void PoreModel::bake_gaussian_parameters()
     is_scaled = true;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) : pmalphabet(&alphabet), is_scaled(false)
+void add_found_bases(char *known, const char *kmer) {
+    char newbase[2];
+    int posn;
+    newbase[1] = '\0';
+
+    while ( (posn = strcspn(kmer, known)) != strlen(known) ){
+        newbase[0] = kmer[posn];
+        strcat(known, newbase);
+    }
+    return;
+}
+
+PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pmalphabet(alphabet), is_scaled(false)
 {
     model_filename = filename;
     std::ifstream model_reader(filename);
@@ -41,6 +53,11 @@ PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) : pma
     int ninserted = 0;
 
     shift_offset = 0.0f;
+
+    const size_t maxNucleotides=50;
+    char bases[maxNucleotides+1]="";
+
+    std::map<std::string, PoreModelStateParams> kmers;
 
     while (getline(model_reader, model_line)) {
         std::stringstream parser(model_line);
@@ -69,38 +86,61 @@ PoreModel::PoreModel(const std::string filename, const Alphabet& alphabet) : pma
         PoreModelStateParams params;
         parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
 
+        kmers[kmer] = params;
+        add_found_bases(bases, kmer.c_str());
+
         if (firstKmer) {
             k = kmer.length();
-            states.resize( alphabet.get_num_strings(k) );
-
             firstKmer = false;
         }
-
-        states[ alphabet.kmer_rank(kmer.c_str(), k) ] = params;
-        ninserted++;
     }
 
-    is_scaled = false;
+    if (pmalphabet == nullptr) 
+        pmalphabet = best_alphabet(bases);
+
+    assert( pmalphabet != nullptr );
+
+    states.resize(pmalphabet->get_num_strings(k));
+    for (const auto &iter : kmers ) {
+        ninserted++;
+        states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
+    }
     assert( ninserted == states.size() );
+
+    is_scaled = false;
 }
 
-PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet) : pmalphabet(&alphabet)
+PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet) : pmalphabet(alphabet)
 {
+    const size_t maxNucleotides=50;
+    char bases[maxNucleotides+1]="";
+
+    std::map<std::string, PoreModelStateParams> kmers;
 
     std::vector<fast5::Model_Entry> model = f_p->get_model(strand);
     k = (uint32_t) strlen(model[0].kmer);
-    states.resize( alphabet.get_num_strings(k) );
-    assert(states.size() == model.size());
 
     // Copy into the pore model for this read
     for(size_t mi = 0; mi < model.size(); ++mi) {
         const fast5::Model_Entry& curr = model[mi];
 
-        size_t rank = alphabet.kmer_rank(curr.kmer, k);
-        states[rank] = { static_cast<float>(curr.level_mean),
-                         static_cast<float>(curr.level_stdv),
-                         static_cast<float>(curr.sd_mean),
-                         static_cast<float>(curr.sd_stdv) };
+        std::string stringkmer(curr.kmer);
+        kmers[stringkmer] = { static_cast<float>(curr.level_mean),
+                              static_cast<float>(curr.level_stdv),
+                              static_cast<float>(curr.sd_mean),
+                              static_cast<float>(curr.sd_stdv) };
+        add_found_bases(bases, curr.kmer);
+    }
+
+    if (pmalphabet == nullptr)
+        pmalphabet = best_alphabet(bases);
+    assert( pmalphabet != nullptr );
+
+    states.resize( pmalphabet->get_num_strings(k) );
+    assert(states.size() == model.size());
+
+    for (const auto &iter : kmers ) {
+        states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
     }
 
     // Load the scaling parameters for the pore model
@@ -178,7 +218,7 @@ ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet
 
     while(getline(fofn_reader, model_filename)) {
         printf("reading %s\n", model_filename.c_str());
-        PoreModel p(model_filename, *alphabet);
+        PoreModel p(model_filename, alphabet);
         assert(!p.name.empty());
 
         out[p.name] = p;

@@ -181,7 +181,7 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
     params.record = record;
     params.strand_idx = strand_idx;
 
-    params.alphabet = &gMCpGAlphabet;
+    params.alphabet = &gDNAAlphabet;
     params.read_idx = read_idx;
     params.region_start = region_start;
     params.region_end = region_end;
@@ -252,7 +252,7 @@ int scorereads_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models;
     if (!opt::models_fofn.empty())
-        models = read_models_fofn(opt::models_fofn, &gMCpGAlphabet);
+        models = read_models_fofn(opt::models_fofn, &gDNAAlphabet);
     
     // Open the BAM and iterate over reads
 
@@ -314,7 +314,7 @@ int scorereads_main(int argc, char** argv)
 
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
+            #pragma omp parallel for schedule(dynamic)
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
@@ -338,7 +338,8 @@ int scorereads_main(int argc, char** argv)
 
                         double score = model_score(sr, strand_idx, fai, ao, 500);
                         #pragma omp critical(print)
-                        std::cout << read_idx << " " << strand_idx << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;
+                        std::cout << read_name << " " << ( strand_idx ? "complement" : "template" ) 
+                                  << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;
                     } 
                 }
             }
