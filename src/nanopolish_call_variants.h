@@ -8,6 +8,6 @@
 #ifndef NANOPOLISH_CALL_VARIANTS_H
 #define NANOPOLISH_CALL_VARIANTS_H
 
-void call_variants_main(int argc, char** argv);
+int call_variants_main(int argc, char** argv);
 
 #endif
