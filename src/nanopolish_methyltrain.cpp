@@ -541,65 +541,63 @@ void train_read(const ModelMap& model_map,
             }
         }
         // Update model observations
-        {
-            //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+        //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
-            // Get the training data for this model
-            auto& emission_map = training[curr_model];
-            for(size_t i = 0; i < alignment_output.size(); ++i) {
-                const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.model_kmer;
+        // Get the training data for this model
+        auto& emission_map = training[curr_model];
+        for(size_t i = 0; i < alignment_output.size(); ++i) {
+            const EventAlignment& ea = alignment_output[i];
+            std::string model_kmer = ea.model_kmer;
 
-                // Grab the previous/next model kmer
-                // If the read is from the same strand as the reference
-                // the next kmer comes from the next alignment_output (and vice-versa)
-                // other the indices are swapped
-                int next_stride = ea.rc ? -1 : 1;
+            // Grab the previous/next model kmer
+            // If the read is from the same strand as the reference
+            // the next kmer comes from the next alignment_output (and vice-versa)
+            // other the indices are swapped
+            int next_stride = ea.rc ? -1 : 1;
 
-                std::string prev_kmer = "";
-                std::string next_kmer = "";
+            std::string prev_kmer = "";
+            std::string next_kmer = "";
 
-                if(i > 0 && i < alignment_output.size() - 1) {
-                    assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
-                    assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
+            if(i > 0 && i < alignment_output.size() - 1) {
+                assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
+                assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
 
-                    // check for exactly one base of movement along the reference
-                    if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
-                        next_kmer = alignment_output[i + next_stride].model_kmer;
-                    }
-
-                    if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
-                        prev_kmer = alignment_output[i - next_stride].model_kmer;
-                    }
+                // check for exactly one base of movement along the reference
+                if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
+                    next_kmer = alignment_output[i + next_stride].model_kmer;
                 }
 
-                uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
-                auto& kmer_summary = emission_map[rank];
-                
-                // Should we use this event for training?
-                bool use_for_training = i > 5 && 
-                                        i + 5 < alignment_output.size() &&
-                                        alignment_output[i].hmm_state == 'M' &&
-                                        alignment_output[i - 1].hmm_state == 'M' &&
-                                        alignment_output[i + 1].hmm_state == 'M' &&
-                                        prev_kmer != "" &&
-                                        next_kmer != "";
-
-                if(use_for_training) {
-                    StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
-                    #pragma omp critical(kmer)
-                    kmer_summary.events.push_back(std);
+                if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
+                    prev_kmer = alignment_output[i - next_stride].model_kmer;
                 }
-
-                if(ea.hmm_state == 'M')  {
-                    #pragma omp atomic
-                    kmer_summary.num_matches += 1;
-                } else if(ea.hmm_state == 'E') {
-                    #pragma omp atomic
-                    kmer_summary.num_stays += 1;
-                }
-
             }
+
+            uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+            auto& kmer_summary = emission_map[rank];
+            
+            // Should we use this event for training?
+            bool use_for_training = i > 5 && 
+                                    i + 5 < alignment_output.size() &&
+                                    alignment_output[i].hmm_state == 'M' &&
+                                    alignment_output[i - 1].hmm_state == 'M' &&
+                                    alignment_output[i + 1].hmm_state == 'M' &&
+                                    prev_kmer != "" &&
+                                    next_kmer != "";
+
+            if(use_for_training) {
+                StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
+                #pragma omp critical(kmer)
+                kmer_summary.events.push_back(std);
+            }
+
+            if(ea.hmm_state == 'M')  {
+                #pragma omp atomic
+                kmer_summary.num_matches += 1;
+            } else if(ea.hmm_state == 'E') {
+                #pragma omp atomic
+                kmer_summary.num_stays += 1;
+            }
+
         }
     } // for strands
 }
