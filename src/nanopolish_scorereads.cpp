@@ -22,6 +22,7 @@
 #include <getopt.h>
 #include <cstddef>
 #include "htslib/faidx.h"
+#include "nanopolish_alphabet.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
@@ -146,27 +147,18 @@ double model_score(SquiggleRead &sr,
         return curr_score/nevents;
 }
 
-// Realign the read in event space
-void train_read(const ModelMap& model_map,
-                const Fast5Map& name_map, 
-                const faidx_t* fai, 
-                const bam_hdr_t* hdr, 
-                const bam1_t* record, 
-                size_t read_idx,
-                int region_start,
-                int region_end)
-                
+std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
+                                                const size_t strand_idx, 
+                                                const size_t read_idx,
+                                                const ModelMap& model_map,
+                                                const faidx_t* fai,                        
+                                                const bam_hdr_t* hdr,                        
+                                                const bam1_t* record, 
+                                                int region_start,
+                                                int region_end)
 {
-    // Load a squiggle read for the mapped read
-    std::string read_name = bam_get_qname(record);
-    std::string fast5_path = name_map.get_path(read_name);
-
-    // load read
-    SquiggleRead sr(read_name, fast5_path);
-
-    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        
-        // replace model with the training model
+    // optionally replace model  
+    if (!opt::models_fofn.empty()) {
         std::string curr_model = sr.pore_model[strand_idx].name;
         auto model_iter = model_map.find(curr_model);
 
@@ -176,36 +168,24 @@ void train_read(const ModelMap& model_map,
             printf("Error: model %s not found\n", curr_model.c_str());
             assert(false && "Model not found");
         }
-        
-        // set k
-        uint32_t k = sr.pore_model[strand_idx].k;
+    }        
 
-        // Align to the new model
-        EventAlignmentParameters params;
-        params.sr = &sr;
-        params.fai = fai;
-        params.hdr = hdr;
-        params.record = record;
-        params.strand_idx = strand_idx;
- 
-        //params.alphabet = mtrain_alphabet;
-        params.read_idx = read_idx;
-        params.region_start = region_start;
-        params.region_end = region_end;
-        std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
-        if (alignment_output.size() == 0)
-            return;
+    // set k
+    uint32_t k = sr.pore_model[strand_idx].k;
 
-        // Update pore model based on alignment
-        //if ( opt::calibrate ) 
-            //recalibrate_model(sr, strand_idx, alignment_output, false);
+    // Align to the new model
+    EventAlignmentParameters params;
+    params.sr = &sr;
+    params.fai = fai;
+    params.hdr = hdr;
+    params.record = record;
+    params.strand_idx = strand_idx;
 
-        double score = model_score(sr, strand_idx, fai, alignment_output, 500);
-#pragma omp critical(print)
-            {
-                std::cout << round << " " << curr_model << " " << read_idx << " Rescaled " << score << std::endl;
-            }
-        }
+    params.alphabet = &gMCpGAlphabet;
+    params.read_idx = read_idx;
+    params.region_start = region_start;
+    params.region_end = region_end;
+    return align_read_to_ref(params);
 } 
 
 void parse_scorereads_options(int argc, char** argv)
@@ -271,8 +251,8 @@ int scorereads_main(int argc, char** argv)
 
     Fast5Map name_map(opt::reads_file);
     ModelMap models;
-    //if (!opt::models_fofn.empty())
-    //    models = read_models_fofn(opt::models_fofn);
+    if (!opt::models_fofn.empty())
+        models = read_models_fofn(opt::models_fofn, &gMCpGAlphabet);
     
     // Open the BAM and iterate over reads
 
@@ -339,7 +319,27 @@ int scorereads_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    train_read(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+
+                    //load read
+                    std::string read_name = bam_get_qname(record);
+                    std::string fast5_path = name_map.get_path(read_name);
+                    SquiggleRead sr(read_name, fast5_path);
+
+                    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+                        std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, read_idx,
+                                                                             models, fai, hdr,
+                                                                             record, clip_start, clip_end);
+                        if (ao.size() == 0)
+                            continue;
+
+                        // Update pore model based on alignment
+                        if ( opt::calibrate ) 
+                            recalibrate_model(sr, strand_idx, ao, false);
+
+                        double score = model_score(sr, strand_idx, fai, ao, 500);
+                        #pragma omp critical(print)
+                        std::cout << read_idx << " " << strand_idx << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;
+                    } 
                 }
             }
 
