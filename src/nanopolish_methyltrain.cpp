@@ -35,6 +35,7 @@
 #include "profiler.h"
 #include "progress.h"
 
+#include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
 
 //
@@ -324,63 +325,6 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     return curr_mixture;
 }
 
-double model_score(SquiggleRead &sr,
-                   const size_t strand_idx,
-                   const faidx_t *fai, 
-                   const std::vector<EventAlignment> &alignment_output,
-                   const size_t events_per_segment)  
-{
-    double curr_score = 0;
-    size_t nevents = 0;
-
-    for(int align_start_idx = events_per_segment; 
-               align_start_idx < (int)alignment_output.size() - (int)events_per_segment; 
-               align_start_idx += events_per_segment) {
-
-        const EventAlignment& align_start = alignment_output[align_start_idx];
-        const EventAlignment& align_end = alignment_output[align_start_idx + events_per_segment];
-        std::string contig = alignment_output.front().ref_name.c_str();
-
-        // Set up event data
-        HMMInputData data;
-        data.read = &sr;
-        data.anchor_index = -1; // unused
-        data.strand = strand_idx;
-        data.rc = alignment_output.front().rc;
-        data.event_start_idx = align_start.event_idx;
-        data.event_stop_idx = align_end.event_idx;
-        data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
-        
-        // Set up reference data
-        int ref_start_pos = align_start.ref_position;
-        int ref_end_pos = align_end.ref_position;
-        int fetched_len = 0;
-
-        assert(ref_end_pos >= ref_start_pos);
-
-        // Extract the reference sequence for this region
-        std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
-                                                      ref_end_pos, &fetched_len);
-
-        if (fetched_len < 100)
-            continue;
-
-        const Alphabet *alphabet = sr.pore_model[strand_idx].pmalphabet;
-    
-        ref_seq = alphabet->disambiguate(ref_seq);
-        HMMInputSequence sequence(ref_seq, alphabet->reverse_complement(ref_seq), alphabet);
-
-        // Run HMM using current model
-        curr_score += profile_hmm_score(sequence, data, 0);
-        nevents += events_per_segment;
-    }
-
-    if (nevents == 0)
-        return +1;
-    else
-        return curr_score/nevents;
-}
-
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
@@ -600,22 +544,6 @@ void train_read(const ModelMap& model_map,
 
         }
     } // for strands
-}
-
-ModelMap read_models_fofn(const std::string& fofn_name)
-{
-    ModelMap out;
-    std::ifstream fofn_reader(fofn_name);
-    std::string model_filename;
-
-    while(getline(fofn_reader, model_filename)) {
-        printf("reading %s\n", model_filename.c_str());
-        PoreModel p(model_filename, *mtrain_alphabet);
-        assert(!p.name.empty());
-
-        out[p.name] = p;
-    }
-    return out;
 }
 
 void parse_methyltrain_options(int argc, char** argv)
@@ -927,7 +855,7 @@ int methyltrain_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn);
+    ModelMap models = read_models_fofn(opt::models_fofn, mtrain_alphabet);
     
     const size_t TRAINING_ROUNDS = 10;
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {

@@ -418,7 +418,7 @@ int methyltest_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn);
+    ModelMap models = read_models_fofn(opt::models_fofn, mtest_alphabet);
     
     // Open the BAM and iterate over reads
 

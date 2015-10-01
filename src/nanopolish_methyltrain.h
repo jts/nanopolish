@@ -12,14 +12,6 @@
 #include <map>
 #include "nanopolish_poremodel.h"
 
-//
-// Typedefs
-//
-typedef std::map<std::string, PoreModel> ModelMap;
-
-// read models from a file
-ModelMap read_models_fofn(const std::string& fofn_name);
-
 int methyltrain_main(int argc, char** argv);
 
 #endif

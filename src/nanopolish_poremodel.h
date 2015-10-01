@@ -13,6 +13,7 @@
 #include "nanopolish_common.h"
 #include <inttypes.h>
 #include <string>
+#include <map>
 #include "../fast5/src/fast5.hpp"
 
 //
@@ -90,5 +91,9 @@ class PoreModel
         std::vector<PoreModelStateParams> states;
         std::vector<GaussianParameters> scaled_params;
 };
+
+typedef std::map<std::string, PoreModel> ModelMap;
+
+ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet);
 
 #endif
