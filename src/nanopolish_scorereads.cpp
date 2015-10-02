@@ -15,6 +15,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <algorithm>
+#include <iterator>
 #include <fstream>
 #include <sstream>
 #include <set>
@@ -54,6 +55,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               optionally use these models rather than models in fast5\n"
 "  -c  --calibrate                      recalibrate aligned reads to model before scoring\n"
+"  -i  --individual-reads=READ,READ     optional comma-delimited list of readnames to score\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
@@ -69,11 +71,12 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
+    static std::vector<std::string> readnames;
     static int num_threads = 1;
     static int batch_size = 128;
 }
 
-static const char* shortopts = "r:b:g:t:m:vc";
+static const char* shortopts = "i:r:b:g:t:m:vc";
 
 enum { OPT_HELP = 1, OPT_VERSION };
 
@@ -85,6 +88,7 @@ static const struct option longopts[] = {
     { "genome",             required_argument, NULL, 'g' },
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
+    { "individual-reads",   required_argument, NULL, 'i' },
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -191,6 +195,7 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
 void parse_scorereads_options(int argc, char** argv)
 {
     bool die = false;
+    std::string readlist;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
@@ -199,6 +204,7 @@ void parse_scorereads_options(int argc, char** argv)
             case 'g': arg >> opt::genome_file; break;
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::models_fofn; break;
+            case 'i': arg >> readlist; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
             case '?': die = true; break;
@@ -236,6 +242,16 @@ void parse_scorereads_options(int argc, char** argv)
         die = true;
     }
     
+    // this is much cleaner with sregex_token_iterator, which isn't implemented in gcc until 4.9
+    if (!readlist.empty()) {
+        size_t start = readlist.find_first_not_of(","), end=start;
+        while (start != std::string::npos){
+                end = readlist.find(",", start);
+                opt::readnames.push_back(readlist.substr(start, end-start));
+                start = readlist.find_first_not_of(",", end);
+        }
+    }
+
     if (die) 
     {
         std::cout << "\n" << SCOREREADS_USAGE_MESSAGE;
@@ -324,6 +340,11 @@ int scorereads_main(int argc, char** argv)
                     std::string read_name = bam_get_qname(record);
                     std::string fast5_path = name_map.get_path(read_name);
                     SquiggleRead sr(read_name, fast5_path);
+
+                    // TODO: early exit when have processed all of the reads in readnames
+                    if (!opt::readnames.empty() && 
+                         std::find(opt::readnames.begin(), opt::readnames.end(), read_name) == opt::readnames.end() )
+                            continue;
 
                     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
                         std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, read_idx,
