@@ -196,6 +196,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --train-unmethylated             train unmethylated 5-mers instead of methylated\n"
 "  -c  --calibrate                      recalibrate aligned reads to model before training\n"
 "      --no-update-models               do not write out trained models\n"
+"      --output-scores                  optionally output read scores during training\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
@@ -216,6 +217,7 @@ namespace opt
     static std::string out_suffix = ".methyltrain";
     static bool write_models = true;
     static bool train_unmethylated = false;
+    static bool output_scores = false;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -223,7 +225,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:m:vnc";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED, OPT_OUTPUT_SCORES };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
@@ -235,6 +237,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
+    { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
     { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
     { "train-unmethylated", no_argument,       NULL, OPT_TRAIN_UNMETHYLATED },
     { "progress",           no_argument,       NULL, OPT_PROGRESS },
@@ -470,18 +473,23 @@ void train_read(const ModelMap& model_map,
             return;
 
         // Update pore model based on alignment
-        double orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-#pragma omp critical(print)
-        std::cout << round << " " << curr_model << " " << read_idx << " Original " << orig_score << std::endl;
+        double orig_score;
+        if (opt::output_scores) {
+            orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+            #pragma omp critical(print)
+            std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+        }
 
         if ( opt::calibrate ) {
             recalibrate_model(sr, strand_idx, alignment_output, false);
 
-            double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-#pragma omp critical(print)
-            {
-                std::cout << round << " " << curr_model << " " << read_idx << " Rescaled " << rescaled_score << std::endl;
-                std::cout << round << " " << curr_model << " " << read_idx << " Delta " << rescaled_score-orig_score << std::endl;
+            if (opt::output_scores) {
+                double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+                #pragma omp critical(print)
+                {
+                    std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Rescaled " << rescaled_score << std::endl;
+                    std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Delta " << rescaled_score-orig_score << std::endl;
+                }
             }
         }
         // Update model observations
@@ -561,6 +569,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
+            case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
