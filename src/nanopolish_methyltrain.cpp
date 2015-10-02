@@ -475,7 +475,7 @@ void train_read(const ModelMap& model_map,
         std::cout << round << " " << curr_model << " " << read_idx << " Original " << orig_score << std::endl;
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output, round > 5);
+            recalibrate_model(sr, strand_idx, alignment_output, false);
 
             double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
 #pragma omp critical(print)
