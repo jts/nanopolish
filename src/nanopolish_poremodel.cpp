@@ -36,7 +36,7 @@ void add_found_bases(char *known, const char *kmer) {
     int posn;
     newbase[1] = '\0';
 
-    while ( (posn = strcspn(kmer, known)) != strlen(kmer) ){
+    while ( (posn = strspn(kmer, known)) != strlen(kmer) ){
         newbase[0] = kmer[posn];
         strcat(known, newbase);
     }

@@ -181,7 +181,7 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
     params.record = record;
     params.strand_idx = strand_idx;
 
-    params.alphabet = &gDNAAlphabet;
+    params.alphabet = sr.pore_model[strand_idx].pmalphabet;
     params.read_idx = read_idx;
     params.region_start = region_start;
     params.region_end = region_end;
@@ -252,7 +252,7 @@ int scorereads_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models;
     if (!opt::models_fofn.empty())
-        models = read_models_fofn(opt::models_fofn, &gDNAAlphabet);
+        models = read_models_fofn(opt::models_fofn);
     
     // Open the BAM and iterate over reads
 
@@ -337,6 +337,8 @@ int scorereads_main(int argc, char** argv)
                             recalibrate_model(sr, strand_idx, ao, false);
 
                         double score = model_score(sr, strand_idx, fai, ao, 500);
+                        if (score > 0) 
+                            continue;
                         #pragma omp critical(print)
                         std::cout << read_name << " " << ( strand_idx ? "complement" : "template" ) 
                                   << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;

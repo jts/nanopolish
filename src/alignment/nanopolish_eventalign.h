@@ -41,7 +41,7 @@ struct EventAlignmentParameters
     size_t strand_idx;
     
     // optional
-    Alphabet* alphabet;
+    const Alphabet* alphabet;
     int read_idx;
     int region_start;
     int region_end;

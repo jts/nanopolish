@@ -110,7 +110,7 @@ struct DNAAlphabet : public Alphabet
     // does this alphabet contain all of the nucleotides in bases?
     virtual inline bool contains_all(const char *bases) const
     {
-        return strcspn(_base, bases) == strlen(_base);
+        return strspn(bases, _base) == strlen(bases);
     }
 };
 
@@ -195,7 +195,7 @@ struct MethylCpGAlphabet : public Alphabet
     // does this alphabet contain all of the nucleotides in bases?
     virtual inline bool contains_all(const char *bases) const 
     {
-        return strcspn(_base, bases) == strlen(_base);
+        return strspn(bases, _base) == strlen(bases);
     }
 };
 
