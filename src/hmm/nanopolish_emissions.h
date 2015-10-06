@@ -31,6 +31,17 @@ inline float log_normal_pdf(float x, const GaussianParameters& g)
     return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
 }
 
+inline float z_score(const SquiggleRead& read,
+                     uint32_t kmer_rank,
+                     uint32_t event_idx,
+                     uint8_t strand)
+{
+    const PoreModel& pm = read.pore_model[strand];
+    float level = read.get_drift_corrected_level(event_idx, strand);
+    GaussianParameters model = pm.get_scaled_parameters(kmer_rank);
+    return (level - model.mean) / model.stdv;
+}
+
 inline float log_probability_match(const SquiggleRead& read,
                                    uint32_t kmer_rank,
                                    uint32_t event_idx,
@@ -77,6 +88,14 @@ inline float log_probability_event_insert(const SquiggleRead& read,
 
     return log_probability_match(read, kmer_rank, event_idx, strand, scale, log_scale);
 }
+
+inline float log_probability_background(const SquiggleRead& read,
+                                        uint32_t event_idx,
+                                        uint8_t strand)
+{
+    return -3.0f;
+}
+
 
 inline float log_probability_kmer_insert(const SquiggleRead& read,
                                          uint32_t kmer_rank,

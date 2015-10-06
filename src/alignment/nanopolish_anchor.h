@@ -12,6 +12,8 @@
 #include <memory>
 #include "htslib/hts.h"
 #include "htslib/sam.h"
+#include "nanopolish_common.h"
+#include "nanopolish_squiggle_read.h"
 #include "nanopolish_fast5_map.h"
 
 struct AlignedPair
@@ -19,6 +21,20 @@ struct AlignedPair
     int ref_pos;
     int read_pos;
 };
+
+struct AlignedPairRefLBComp
+{
+    bool operator()(const AlignedPair& o, int v) { return o.ref_pos < v; }
+};
+
+struct AlignedPairRefUBComp
+{
+    bool operator()(int v, const AlignedPair& o) { return v < o.ref_pos; }
+};
+
+// typedefs
+typedef std::vector<AlignedPair>::iterator AlignedPairIter;
+typedef std::vector<AlignedPair>::const_iterator AlignedPairConstIter;
 
 // An event index and orientation that gives us a handle
 // into the event sequence for some SquiggleRead
@@ -76,7 +92,10 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
 
 // Return a vector specifying pairs of bases that have been aligned to each other
-std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record);
+// This function can handle an "event cigar" bam record, which requires the ability
+// for event indices to be in ascending or descending order. In the latter case
+// read_stride should be -1
+std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride = 1);
 
 std::vector<int> uniformally_sample_read_positions(const std::vector<AlignedPair>& aligned_pairs,
                                                    int ref_start,

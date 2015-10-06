@@ -20,11 +20,11 @@
 //
 
 // Calculate the probability of the nanopore events given the consensus sequence
-float profile_hmm_score(const std::string& consensus, const HMMInputData& data);
-float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data);
+float profile_hmm_score(const std::string& consensus, const HMMInputData& data, const uint32_t flags = 0);
+float profile_hmm_score(const std::string& consensus, const std::vector<HMMInputData>& data, const uint32_t flags = 0);
 
 // Run viterbi to align events to kmers
-std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data);
+std::vector<AlignmentState> profile_hmm_align(const std::string& sequence, const HMMInputData& data, const uint32_t flags = 0);
 
 //
 // Forward algorithm
@@ -70,11 +70,19 @@ enum ProfileState
     PS_KMER_SKIP = 0,
     PS_EVENT_SPLIT,
     PS_MATCH,
-    PS_NUM_STATES = 3
+    PS_NUM_STATES = 3,
+    PS_PRE_SOFT // intentionally after PS_NUM_STATES
+};
+
+// Flags to modify the behaviour of the HMM
+enum HMMAlignmentFlags
+{
+    HAF_ALLOW_PRE_CLIP = 1, // allow events to go unmatched before the aligning region
+    HAF_ALLOW_POST_CLIP = 2 // allow events to go unmatched after the aligning region
 };
 
 // Convert an enumerated state into a symbol
-inline char ps2char(ProfileState ps) { return "KEMN"[ps]; }
+inline char ps2char(ProfileState ps) { return "KEMNS"[ps]; }
 
 // Pre-computed transitions from the previous block
 // into the current block of states. Log-scaled.

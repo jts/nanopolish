@@ -49,6 +49,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
+"      --sam                            write output in SAM format\n"
 "  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
@@ -65,6 +66,7 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string region;
+    static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -73,20 +75,28 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM };
 
 static const struct option longopts[] = {
-    { "verbose",     no_argument,       NULL, 'v' },
-    { "reads",       required_argument, NULL, 'r' },
-    { "bam",         required_argument, NULL, 'b' },
-    { "genome",      required_argument, NULL, 'g' },
-    { "window",      required_argument, NULL, 'w' },
-    { "threads",     required_argument, NULL, 't' },
-    { "print-read-names", no_argument,  NULL, 'n' },
-    { "progress",    required_argument, NULL, OPT_PROGRESS },
-    { "help",        no_argument,       NULL, OPT_HELP },
-    { "version",     no_argument,       NULL, OPT_VERSION },
+    { "verbose",          no_argument,       NULL, 'v' },
+    { "reads",            required_argument, NULL, 'r' },
+    { "bam",              required_argument, NULL, 'b' },
+    { "genome",           required_argument, NULL, 'g' },
+    { "window",           required_argument, NULL, 'w' },
+    { "threads",          required_argument, NULL, 't' },
+    { "print-read-names", no_argument,       NULL, 'n' },
+    { "sam",              no_argument,       NULL, OPT_SAM },
+    { "progress",         no_argument,       NULL, OPT_PROGRESS },
+    { "help",             no_argument,       NULL, OPT_HELP },
+    { "version",          no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
+};
+
+// convenience wrapper for the two output modes
+struct EventalignWriter
+{
+    FILE* tsv_fp;
+    htsFile* sam_fp;
 };
 
 // Modify the aligned_pairs vector to ensure the highest read position
@@ -145,7 +155,7 @@ struct EventAlignment
     bool rc;
 };
 
-void emit_header(FILE* fp)
+void emit_tsv_header(FILE* fp)
 {
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
@@ -154,9 +164,158 @@ void emit_header(FILE* fp)
 
 }
 
-void emit_event_alignments(FILE* fp,
-                           const SquiggleRead& sr,
-                           const std::vector<EventAlignment>& alignments)
+void emit_sam_header(samFile* fp, const bam_hdr_t* hdr)
+{
+    sam_hdr_write(fp, hdr);
+}
+
+std::string cigar_ops_to_string(const std::vector<uint32_t>& ops)
+{
+    std::stringstream ss;
+    for(size_t i = 0; i < ops.size(); ++i) {
+        ss << bam_cigar_oplen(ops[i]);
+        ss << BAM_CIGAR_STR[bam_cigar_op(ops[i])];
+    }
+    return ss.str();
+}
+
+std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>& alignments)
+{
+    std::vector<uint32_t> out;
+
+    // add a softclip tag to account for unaligned events at the beginning/end of the read
+    if(alignments[0].event_idx > 0) {
+        out.push_back(alignments[0].event_idx << BAM_CIGAR_SHIFT | BAM_CSOFT_CLIP);
+    }
+
+    // we always start with a match
+    out.push_back(1 << BAM_CIGAR_SHIFT | BAM_CMATCH);
+
+    int prev_r_idx = alignments[0].ref_position;
+    int prev_e_idx = alignments[0].event_idx;
+    size_t ai = 1;
+
+    while(ai < alignments.size()) {
+
+        int r_idx = alignments[ai].ref_position;
+        int e_idx = alignments[ai].event_idx;
+
+        int r_step = abs(r_idx - prev_r_idx);
+        int e_step = abs(e_idx - prev_e_idx);
+
+        uint32_t incoming;
+        if(r_step == 1 && e_step == 1) {
+
+            // regular match
+            incoming = 1 << BAM_CIGAR_SHIFT;
+            incoming |= BAM_CMATCH;
+
+        } else if(r_step > 1) {
+            assert(e_step == 1);
+            // reference jump of more than 1, this is how deletions are represented
+            // we push the deletion onto the output then start a new match
+            incoming = (r_step - 1) << BAM_CIGAR_SHIFT;
+            incoming |= BAM_CDEL;
+            out.push_back(incoming);
+            
+            incoming = 1 << BAM_CIGAR_SHIFT;
+            incoming |= BAM_CMATCH;
+        } else {
+            assert(e_step == 1 && r_step == 0);
+            incoming = 1 << BAM_CIGAR_SHIFT;
+            incoming |= BAM_CINS;
+        }
+
+        // If the operation matches the previous, extend the length
+        // otherwise append a new op
+        if(bam_cigar_op(out.back()) == bam_cigar_op(incoming)) {
+            uint32_t sum = bam_cigar_oplen(out.back()) + 
+                           bam_cigar_oplen(incoming);
+            out.back() = sum << BAM_CIGAR_SHIFT | bam_cigar_op(incoming);
+        } else {
+            out.push_back(incoming);
+        }
+
+/*
+        if(ai < 20) {
+            printf("r: %d e: %d cigar: %s\n", r_idx, e_idx, cigar_ops_to_string(out).c_str());
+        }
+*/
+        prev_r_idx = r_idx;
+        prev_e_idx = e_idx;
+        ai++;
+    }
+    return out;
+}
+
+void emit_event_alignment_sam(htsFile* fp,
+                              const SquiggleRead& sr,
+                              const bam_hdr_t* base_hdr,
+                              const bam1_t* base_record, 
+                              const std::vector<EventAlignment>& alignments)
+{
+    assert(!alignments.empty());
+    bam1_t* event_record = bam_init1();
+    
+    // Variable-length data
+    std::string qname = sr.read_name + (alignments.front().strand_idx == 0 ? ".template" : ".complement");
+
+    // basic stats
+    event_record->core.tid = base_record->core.tid;
+    event_record->core.pos = alignments.front().ref_position;
+    event_record->core.qual = base_record->core.qual;
+    event_record->core.l_qname = qname.length() + 1; // must be null-terminated
+
+    event_record->core.flag = alignments.front().rc ? 16 : 0;
+
+    event_record->core.l_qseq = 0;
+    
+    event_record->core.mtid = -1;
+    event_record->core.mpos = -1;
+    event_record->core.isize = 0;
+
+    std::vector<uint32_t> cigar = event_alignment_to_cigar(alignments);
+    event_record->core.n_cigar = cigar.size();
+
+    // calculate length of incoming data
+    event_record->m_data = event_record->core.l_qname + // query name
+                           event_record->core.n_cigar * 4 + // 4 bytes per cigar op
+                           event_record->core.l_qseq + // query seq
+                           event_record->core.l_qseq; // query quality
+        
+    // nothing copied yet
+    event_record->l_data = 0;
+    
+    // allocate data
+    event_record->data = (uint8_t*)malloc(event_record->m_data);
+
+    // copy q name
+    assert(event_record->core.l_qname <= event_record->m_data);
+    strncpy(bam_get_qname(event_record), 
+            qname.c_str(),
+            event_record->core.l_qname);
+    event_record->l_data += event_record->core.l_qname;
+    
+    // cigar
+    assert(event_record->l_data + event_record->core.n_cigar * 4 <= event_record->m_data);
+    memcpy(bam_get_cigar(event_record), 
+           &cigar[0],
+           event_record->core.n_cigar * 4);
+    event_record->l_data += event_record->core.n_cigar * 4;
+
+    // no copy for seq and qual
+    assert(event_record->l_data <= event_record->m_data);
+
+    int stride = alignments.front().event_idx < alignments.back().event_idx ? 1 : -1;
+    bam_aux_append(event_record, "ES", 'i', 4, reinterpret_cast<uint8_t*>(&stride));
+
+    sam_write1(fp, base_hdr, event_record);
+    bam_destroy1(event_record); // automatically frees malloc'd segment
+}
+
+void emit_event_alignment_tsv(FILE* fp,
+                              const SquiggleRead& sr,
+                              const std::vector<EventAlignment>& alignments)
 {
     for(size_t i = 0; i < alignments.size(); ++i) {
 
@@ -200,7 +359,7 @@ void emit_event_alignments(FILE* fp,
 }
 
 // Realign the read in event space
-void realign_read(FILE* fp, 
+void realign_read(EventalignWriter writer,
                   const Fast5Map& name_map, 
                   const faidx_t* fai, 
                   const bam_hdr_t* hdr, 
@@ -372,7 +531,12 @@ void realign_read(FILE* fp,
         // write to disk
         #pragma omp critical
         {
-            emit_event_alignments(fp, sr, alignment_output);
+            assert(!alignment_output.empty());
+            if(opt::output_sam) {
+                emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment_output);
+            } else {
+                emit_event_alignment_tsv(writer.tsv_fp, sr, alignment_output);
+            }
         }
     } // for strands
 }
@@ -390,6 +554,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'v': opt::verbose++; break;
+            case OPT_SAM: opt::output_sam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << EVENTALIGN_USAGE_MESSAGE;
@@ -484,8 +649,16 @@ int eventalign_main(int argc, char** argv)
     }
 #endif
 
-    // Write the header
-    emit_header(stdout);
+    // Initialize output
+    EventalignWriter writer = { NULL, NULL };
+
+    if(opt::output_sam) {
+        writer.sam_fp = hts_open("-", "w");
+        emit_sam_header(writer.sam_fp, hdr);
+    } else {
+        writer.tsv_fp = stdout;
+        emit_tsv_header(writer.tsv_fp);
+    }
     
     // Initialize iteration
     std::vector<bam1_t*> records(opt::batch_size, NULL);
@@ -512,7 +685,7 @@ int eventalign_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(stdout, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
                 }
             }
 
@@ -538,4 +711,8 @@ int eventalign_main(int argc, char** argv)
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
+
+    if(writer.sam_fp != NULL) {
+        hts_close(writer.sam_fp);
+    }
 }

@@ -26,8 +26,6 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
-#include "nanopolish_variants.h"
-#include "nanopolish_haplotype.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -70,7 +68,6 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"      --vcf=FILE                       write called variants to vcf FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -80,7 +77,6 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string output_file;
-    static std::string output_vcf;
     static std::string window;
     static int show_progress = 0;
     static int num_threads = 1;
@@ -98,7 +94,6 @@ static const struct option longopts[] = {
     { "window",      required_argument, NULL, 'w' },
     { "outfile",     required_argument, NULL, 'o' },
     { "threads",     required_argument, NULL, 't' },
-    { "vcf",         required_argument, NULL, OPT_VCF },
     { "progress",    no_argument,       NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -687,90 +682,6 @@ void train(HMMRealignmentInput& window)
     }
 }
 
-void write_variants_for_consensus(FILE* out_fp, const std::string& consensus, const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
-{
-    // Recompute a reference-based window with sampled columns
-    // This is a bit wasteful but the window coordinates are re-aligned during the consensus step so need to be regenerated for now
-    int minor_segment_stride = 100;
-    HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
-    std::string reference = window.original_sequence;
-
-    // Parse variants from a reference/consensus alignment
-    std::vector<Variant> variants = extract_variants(reference, consensus);
-
-    std::string ref_name = window.anchored_columns.front().base_contig;
-    size_t offset = window.anchored_columns.front().base_start_position;
-
-    int min_distance_to_end = 20;
-    for(size_t i = 0; i < variants.size(); ++i) {
-
-        Variant& v = variants[i];
-
-        // Determine the bounding reference segment for this variant
-        int variant_start = v.ref_position;
-        int variant_end = variant_start + v.ref_seq.size();
-
-        int segment_start_id = (variant_start - min_distance_to_end) / minor_segment_stride;
-        int segment_end_id = (variant_end + min_distance_to_end) / minor_segment_stride + 1;
-
-        // clamp the segments
-        segment_start_id = std::max(segment_start_id, 0);
-        segment_end_id = std::min(segment_end_id, (int)window.anchored_columns.size() - 1);
-
-        int segment_start_base = segment_start_id * minor_segment_stride;
-        int segment_end_base = segment_end_id * minor_segment_stride;
-
-        // check whether there is sufficient distance to the segment bounds
-        // this check can fail if variants are called at the very beginning or
-        // end of the window. we skip such variants
-        if(variant_start - segment_start_base < min_distance_to_end ||
-           segment_end_base - variant_end < min_distance_to_end) {
-            continue;
-        }
-
-        // sanity checks
-        assert(variant_start >= segment_start_base + min_distance_to_end);
-        assert(variant_end <= segment_end_base - min_distance_to_end);
-        assert(segment_end_id < window.anchored_columns.size());
-
-        // prepare the reads for the HMM
-        HMMAnchoredColumn& start_column = window.anchored_columns[segment_start_id];
-        HMMAnchoredColumn& end_column = window.anchored_columns[segment_end_id];
-        std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
-
-        // extract the reference segment
-        std::string ref_segment = reference.substr(segment_start_base, segment_end_base - segment_start_base);
-        
-        // copy the variant and shift its coordinate to match the ref segment
-        Variant relative_v = v;
-        relative_v.ref_position -= segment_start_base;
-
-        // apply the variant to the reference sequence
-        Haplotype haplotype(ref_segment);
-        haplotype.apply_variant(relative_v);
-
-        // Score all reads against both sequences
-        double quality = 0.0f;
-        size_t num_reads_improved = 0;
-
-        for(size_t ri = 0; ri < input.size(); ++ri) {
-            double lp_ref = profile_hmm_score(ref_segment, input[ri]);
-            double lp_hap = profile_hmm_score(haplotype.get_sequence(), input[ri]);
-
-            quality += (lp_hap - lp_ref);
-            quality = std::max(quality, 0.0);
-            num_reads_improved += lp_hap > lp_ref;
-        }
-
-        variants[i].ref_name = ref_name;
-        variants[i].ref_position += offset + 1;
-        variants[i].quality = quality;
-        variants[i].add_info("TotalReads", input.size());
-        variants[i].add_info("SupportingReads", num_reads_improved);
-        variants[i].write_vcf(out_fp);
-    }
-}
-
 std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
     const int minor_segment_stride = 50;
@@ -859,7 +770,6 @@ void parse_consensus_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
-            case OPT_VCF: arg >> opt::output_vcf; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -934,29 +844,15 @@ int consensus_main(int argc, char** argv)
         out_fp = stdout;
     }
 
-    FILE* out_vcf = NULL;
-    if(!opt::output_vcf.empty()) {
-        out_vcf = fopen(opt::output_vcf.c_str(), "w");
-        Variant::write_vcf_header(out_vcf);
-    }
-
     for(int window_id = start_window_id; window_id < end_window_id; ++window_id) {
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
         
         std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
-
-        if(!opt::output_vcf.empty()) {
-            write_variants_for_consensus(out_vcf, window_consensus, name_map, contig, start_base, end_base);
-        }
     }
 
     if(out_fp != stdout) {
         fclose(out_fp);
-    }
-
-    if(out_vcf != NULL) {
-        fclose(out_vcf);
     }
 }

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include "logsum.h"
+#include "nanopolish_call_variants.h"
 #include "nanopolish_consensus.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_getmodel.h"
@@ -45,6 +46,9 @@ int main(int argc, char** argv)
             return 0;
         } else if(command == "getmodel") {
             getmodel_main(argc - 1, argv + 1);
+            return 0;
+        } else if(command == "variants") {
+            call_variants_main(argc - 1, argv + 1);
             return 0;
         }
     }

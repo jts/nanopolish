@@ -77,6 +77,20 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
 
+    // Check if an alternative analysis group is present in the read name
+    int group_id = -1;
+    size_t bc_2d_pos = read_name.find("Basecall_2D");
+    if(bc_2d_pos != std::string::npos) {
+        int ret = sscanf(read_name.substr(bc_2d_pos).c_str(), "Basecall_2D_%03d_2d", &group_id);
+    } 
+    
+    // default to 0 group
+    if(group_id == -1) {
+        group_id = 0;
+    }
+    
+    f_p->set_basecalled_group_id(group_id);
+
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
 
@@ -163,21 +177,35 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     uint32_t end_ea_idx = 0;
 
     while(start_ea_idx < event_alignments.size()) {
-        
+
+hack:
+        uint32_t prev_kidx = read_kidx;
+
         // Advance the kmer index until we have found the read kmer
         // this tuple refers to
-        while(read_kidx < n_read_kmers && 
-              strncmp(event_alignments[start_ea_idx].kmer, 
-                     read_sequence.c_str() + read_kidx, K) != 0) {
+        while(read_kidx < n_read_kmers &&
+                strncmp(event_alignments[start_ea_idx].kmer,
+                    read_sequence.c_str() + read_kidx, K) != 0) {
             read_kidx += 1;
+        }
+
+        // In the most recent version of metrichor occasionally
+        // a kmer will be present in the alignment table
+        // that is not in the 2D read. This awful hack
+        // will skip such k-mers. It is not a long-term
+        // solution, only until metrichor is fixed.
+        if(read_kidx - prev_kidx > 10) {
+            start_ea_idx += 1;
+            read_kidx = prev_kidx;
+            goto hack;
         }
 
         // Advance the event alignment end index to the last tuple
         // with the same kmer as the start of this range
         end_ea_idx = start_ea_idx;
         while(end_ea_idx < event_alignments.size() &&
-              strcmp(event_alignments[start_ea_idx].kmer, 
-                     event_alignments[end_ea_idx].kmer) == 0) {
+                strcmp(event_alignments[start_ea_idx].kmer,
+                    event_alignments[end_ea_idx].kmer) == 0) {
             end_ea_idx += 1;
         }
 
