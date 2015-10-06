@@ -90,13 +90,3 @@ std::string IUPAC::getPossibleSymbols(char c)
             return "";
     }
 }
-
-std::string IUPAC::disambiguate_to_lowest(const std::string& str)
-{
-    std::string out(str);
-    for(size_t i = 0; i < str.length(); ++i) {
-        assert(isValid(str[i]));
-        out[i] = getPossibleSymbols(str[i])[0];
-    }
-    return out;
-}

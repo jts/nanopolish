@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <math.h>
+#include "nanopolish_alphabet.h"
 #include "profiler.h"
 #include "logsum.h"
 
@@ -32,32 +33,11 @@ enum AlignmentPolicy
 //
 // Constants
 //
-const uint8_t K = 5;
 
 // strands
 const uint8_t T_IDX = 0;
 const uint8_t C_IDX = 1;
 const uint8_t NUM_STRANDS = 2;
-
-// A table to map { A, C, G, T } => { 0, 1, 2, 3 }
-static const uint8_t base_rank[256] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,
-    0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-};
 
 //
 // Data structures
@@ -80,7 +60,7 @@ struct HMMInputData
 };
 
 // A representation of an event->kmer alignment
-struct AlignmentState
+struct HMMAlignmentState
 {
     uint32_t event_idx;
     uint32_t kmer_idx;
@@ -93,6 +73,9 @@ struct AlignmentState
 // The parameters of a gaussian distribution
 struct GaussianParameters
 {
+    GaussianParameters() : mean(0.0f), stdv(1.0f) { log_stdv = log(stdv); }
+    GaussianParameters(float m, float s) : mean(m), stdv(s) { log_stdv = log(stdv); }
+
     float mean;
     float stdv;
     float log_stdv; // == log(stdv), pre-computed for efficiency
@@ -101,33 +84,6 @@ struct GaussianParameters
 //
 // Functions
 //
-
-//
-// Kmer Ranks
-//
-inline uint32_t kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(uint32_t i = 0; i < K; ++i)
-        rank |= base_rank[str[i]] << 2 * (K - i - 1);
-    return rank;
-}
-
-inline uint32_t rc_kmer_rank(const char* str, uint32_t K)
-{
-    uint32_t rank = 0;
-    for(int32_t i = K - 1; i >= 0; --i)
-        rank |= ((3 - base_rank[str[i]]) << 2 * i);
-    return rank;
-}
-
-// wrapper to get the rank for a kmer on the correct strand wrt to the read state
-inline uint32_t get_rank(const HMMInputData& data, const char* s, uint32_t ki)
-{
-    const char* p = s + ki;
-    return !data.rc ?  kmer_rank(p, K) : rc_kmer_rank(p, K);
-}
-
 #define ESL_LOG_SUM 1
 
 // Add the log-scaled values a and b using a transform to avoid precision errors
@@ -149,35 +105,7 @@ inline double add_logs(const double a, const double b)
 #endif
 }
 
-// Complement a base
-inline char complement(char b)
-{
-    return "ACGT"[3 - base_rank[b]];
-}
-
-// Reverse-complement a string
-inline std::string reverse_complement(const std::string& seq)
-{
-    std::string out(seq.length(), 'A');
-    size_t last_pos = seq.length() - 1;
-    for(int i = last_pos; i >= 0; --i) {
-        out[last_pos - i] = complement(seq[i]);
-    }
-    return out;
-}
-
-// Increment the input string to be the next DNA sequence in lexicographic order
-void lexicographic_next(std::string& str);
-
 // split a string based on a delimiter
 std::vector<std::string> split(std::string in, char delimiter);
-
-// Print the alignment between the read-strand and a sequence
-void print_alignment(const std::string& name,
-                     uint32_t seq_id,
-                     uint32_t read_id,
-                     const std::string& consensus, 
-                     const HMMInputData& data,
-                     const std::vector<AlignmentState>& alignment);
 
 #endif

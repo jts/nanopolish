@@ -25,10 +25,6 @@ namespace IUPAC
     // Returns a string defining the possible unambiguous bases for each symbol
     // in the alphabet
     std::string getPossibleSymbols(char c);
-
-    // Disambiguate the string by changing each base to the lexicographically
-    // lowest out of all possibilities
-    std::string disambiguate_to_lowest(const std::string& str);
 };
 
 #endif

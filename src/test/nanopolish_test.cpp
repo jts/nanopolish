@@ -11,6 +11,7 @@
 #include "logsum.h"
 #include "catch.hpp"
 #include "nanopolish_common.h"
+#include "nanopolish_alphabet.h"
 #include "nanopolish_emissions.h"
 #include "nanopolish_profile_hmm.h"
 
@@ -21,27 +22,82 @@ void initialize()
     p7_FLogsumInit();
 }
 
+TEST_CASE( "alphabet", "[alphabet]" ) {
+
+    // DNA alphabet
+    DNAAlphabet dna_alphabet;
+    MethylCpGAlphabet mc_alphabet;
+
+    REQUIRE( dna_alphabet.rank('A') == 0 );
+    REQUIRE( dna_alphabet.rank('C') == 1 );
+    REQUIRE( dna_alphabet.rank('G') == 2 );
+    REQUIRE( dna_alphabet.rank('T') == 3 );
+
+    REQUIRE( dna_alphabet.base(0) == 'A' );
+    REQUIRE( dna_alphabet.base(1) == 'C' );
+    REQUIRE( dna_alphabet.base(2) == 'G' );
+    REQUIRE( dna_alphabet.base(3) == 'T' );
+
+    // MethylCpG alphabet
+    REQUIRE( mc_alphabet.rank('A') == 0 );
+    REQUIRE( mc_alphabet.rank('C') == 1 );
+    REQUIRE( mc_alphabet.rank('G') == 2 );
+    REQUIRE( mc_alphabet.rank('M') == 3 );
+    REQUIRE( mc_alphabet.rank('T') == 4 );
+
+    REQUIRE( mc_alphabet.base(0) == 'A' );
+    REQUIRE( mc_alphabet.base(1) == 'C' );
+    REQUIRE( mc_alphabet.base(2) == 'G' );
+    REQUIRE( mc_alphabet.base(3) == 'M' );
+    REQUIRE( mc_alphabet.base(4) == 'T' );
+
+    // Collectively test lexicographic_next and kmer_rank 
+    uint8_t k = 3;
+    uint32_t num_strings = pow((double)mc_alphabet.size(), (double)k);
+    
+    std::string kmer(k, 'A');
+    for(size_t i = 0; i < num_strings - 1; ++i) {
+
+        // check lexicographic next
+        std::string next = kmer;
+        mc_alphabet.lexicographic_next(next);
+        REQUIRE( next > kmer );
+        int rank_diff = mc_alphabet.kmer_rank(next.c_str(), k) - 
+                        mc_alphabet.kmer_rank(kmer.c_str(), k);
+        REQUIRE( rank_diff == 1);
+        kmer = next;
+    }
+    REQUIRE(kmer == "TTT");
+
+    // Test the special reverse complement model
+    // for the CpG alphabet
+    REQUIRE( mc_alphabet.reverse_complement("M") == "G");
+    REQUIRE( mc_alphabet.reverse_complement("C") == "G");
+    REQUIRE( mc_alphabet.reverse_complement("MG") == "MG");
+    REQUIRE( mc_alphabet.reverse_complement("AM") == "GT");
+    REQUIRE( mc_alphabet.reverse_complement("AMG") == "MGT");
+    REQUIRE( mc_alphabet.reverse_complement("GTACATG") == dna_alphabet.reverse_complement("GTACATG"));
+}
+
 TEST_CASE( "string functions", "[string_functions]" ) {
+    DNAAlphabet dna_alphabet;
 
     // kmer rank
-    REQUIRE( kmer_rank("AAAAA", 5) == 0 );
-    REQUIRE( kmer_rank("GATGA", 5) == 568 );
-    REQUIRE( kmer_rank("TTTTT", 5) == 1023 );
-    REQUIRE( kmer_rank("GATGA", 5) == rc_kmer_rank("TCATC", 5 ) );
+    REQUIRE( dna_alphabet.kmer_rank("AAAAA", 5) == 0 );
+    REQUIRE( dna_alphabet.kmer_rank("GATGA", 5) == 568 );
+    REQUIRE( dna_alphabet.kmer_rank("TTTTT", 5) == 1023 );
 
     // lexicographic increment
     std::string str = "AAAAA";
-    lexicographic_next(str);
+    dna_alphabet.lexicographic_next(str);
     REQUIRE( str == "AAAAC" );
 
     str = "AAAAT";
-    lexicographic_next(str);
+    dna_alphabet.lexicographic_next(str);
     REQUIRE( str == "AAACA" );
 
     // complement, reverse complement
-    REQUIRE( complement('A') == 'T' );
-    REQUIRE( reverse_complement("GATGA") == "TCATC" );
-
+    REQUIRE( dna_alphabet.reverse_complement("GATGA") == "TCATC" );
 }
 
 TEST_CASE( "math", "[math]") {
@@ -54,7 +110,7 @@ TEST_CASE( "math", "[math]") {
     REQUIRE( log_normal_pdf(2.25, params) == Approx(log(normal_pdf(2.25, params))) );
 }
 
-std::string event_alignment_to_string(const std::vector<AlignmentState>& alignment)
+std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alignment)
 {
     std::string out;
     for(size_t i = 0; i < alignment.size(); ++i) {
@@ -109,7 +165,7 @@ TEST_CASE( "hmm", "[hmm]") {
     for(int si = 0; si <= 1; ++si) {
 
         // viterbi align
-        std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input[si]);
+        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(ref_subseq, input[si]);
         std::string ea_str = event_alignment_to_string(event_alignment);
     
         // check

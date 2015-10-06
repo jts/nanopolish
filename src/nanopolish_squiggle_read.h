@@ -11,7 +11,7 @@
 
 #include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include <string>
 
 // The raw event data for a read
@@ -50,6 +50,7 @@ class SquiggleRead
         // I/O
         // 
 
+        // Load all the read data from a fast5 file
         void load_from_fast5(const std::string& fast5_path);
 
         //
@@ -70,12 +71,20 @@ class SquiggleRead
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
         }
+
+        // Return the observed current level after correcting for drift, shift and scale
+        inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
+        {
+            assert(drift_correction_performed);
+            float level = get_drift_corrected_level(event_idx, strand);
+            return (level - pore_model[strand].shift) / pore_model[strand].scale;
+        }
         
         // Calculate the index of this k-mer on the other strand
         inline int32_t flip_k_strand(int32_t k_idx) const
         {
             assert(!read_sequence.empty());
-            return read_sequence.size() - k_idx - K;
+            return read_sequence.size() - k_idx - pore_model[T_IDX].k;
         }
 
         // Transform each event by correcting for current drift
@@ -96,7 +105,6 @@ class SquiggleRead
 
         // one model for each strand
         PoreModel pore_model[2];
-        std::string model_name[2];
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
@@ -105,7 +113,7 @@ class SquiggleRead
         std::vector<EventRangeForBase> base_to_event_map;
 
         // one set of parameters per strand
-        KHMMParameters parameters[2];
+        TransitionParameters parameters[2];
 
     private:
         

@@ -58,6 +58,9 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     std::vector<HMMReadAnchorSet> read_anchors;
     std::vector<std::vector<std::string>> read_substrings;
 
+    // kmer size of pore model
+    uint32_t k;
+
     // Load the SquiggleReads aligned to this region and the bases
     // that are mapped to our reference anchoring positions
     int result;
@@ -70,6 +73,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         // load read
         ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
         const SquiggleRead& sr = *ret.reads.back();
+        k = sr.pore_model[T_IDX].k;
 
         // parse alignments to reference
         std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
@@ -105,7 +109,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 read_kidx = sr.flip_k_strand(read_kidx);
 
             // If the aligned base is beyong the start of the last k-mer of the read, skip
-            if(read_kidx >= sr.read_sequence.size() - K + 1) {
+            if(read_kidx >= sr.read_sequence.size() - k + 1) {
                 continue;
             }
 
@@ -124,7 +128,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             if(ai < read_bases_for_anchors.size() - 1) {
                 int start_kidx = read_bases_for_anchors[ai];
                 int end_kidx = read_bases_for_anchors[ai + 1];
-                int max_kidx = sr.read_sequence.size() - K;
+                int max_kidx = sr.read_sequence.size() - k;
 
                 // flip
                 if(do_base_rc) {
@@ -141,10 +145,10 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 start_kidx = start_kidx >= 0 ? start_kidx : 0;
                 end_kidx = end_kidx <= max_kidx ? end_kidx : max_kidx;
                 
-                std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + K);
+                std::string s = sr.read_sequence.substr(start_kidx, end_kidx - start_kidx + k);
 
                 if(do_base_rc) {
-                    s = reverse_complement(s);
+                    s = gDNAAlphabet.reverse_complement(s);
                 }
 
                 if(ai >= read_substrings.size())
@@ -190,8 +194,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         // Add sequences except for last anchor
         if(ai != num_anchors - 1) {
             
-            // base, these sequences need to overlap by K - 1 bases
-            int base_length = stride + K;
+            // base, these sequences need to overlap by k - 1 bases
+            int base_length = stride + k;
             if(ai * stride + base_length > fetched_len)
                 base_length = fetched_len - ai * stride;
 

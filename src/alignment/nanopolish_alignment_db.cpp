@@ -234,6 +234,7 @@ void AlignmentDB::load_region(const std::string& contig,
     m_region_end = std::min(stop_position, faidx_seq_len(fai, contig.c_str()));
 
     // load the reference sequence for this region
+    // its ok to use the unthreadsafe fetch_seq here since we have our own fai
     int fetched_len = 0;
     char* ref_segment = faidx_fetch_seq(fai, m_region_contig.c_str(), m_region_start, m_region_end, &fetched_len);
     m_region_ref_sequence = ref_segment;

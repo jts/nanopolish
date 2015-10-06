@@ -6,6 +6,7 @@
 // nanopolish_squiggle_read -- Class holding a squiggle (event)
 // space nanopore read
 //
+#include <algorithm>
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 #include "src/fast5.hpp"
@@ -17,7 +18,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
 {
     load_from_fast5(path);
 
-    // perform drift correction
+    // perform drift correction and other scalings
     transform();
 }
 
@@ -41,8 +42,10 @@ int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t stran
 //
 int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 {
+    uint32_t k = pore_model[T_IDX].k;
+
     int stop_before = std::max(0, k_idx - 1000);
-    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - K + 1);
+    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - (int32_t)k + 1);
     
     int event_before = get_next_event(k_idx, stop_before, -1, strand);
     int event_after = get_next_event(k_idx, stop_after, 1, strand);
@@ -93,49 +96,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
+        pore_model[si] = PoreModel( f_p, si );
 
-        std::vector<fast5::Model_Entry> model = f_p->get_model(si);
-        assert(model.size() == PORE_MODEL_STATES);
-        assert(strcmp(model[0].kmer, "AAAAA") == 0);
-        assert(strcmp(model[PORE_MODEL_STATES - 1].kmer, "TTTTT") == 0);
-
-        // Copy into the pore model for this read
-        for(size_t mi = 0; mi < model.size(); ++mi) {
-            const fast5::Model_Entry& curr = model[mi];
-            pore_model[si].state[mi] = { static_cast<float>(curr.level_mean), 
-                                         static_cast<float>(curr.level_stdv), 
-                                         static_cast<float>(curr.sd_mean),
-                                         static_cast<float>(curr.sd_stdv) };
-        }
-
-        // Load the scaling parameters for the pore model
-        fast5::Model_Parameters params = f_p->get_model_parameters(si);
-        pore_model[si].drift = params.drift;
-        pore_model[si].scale = params.scale;
-        pore_model[si].scale_sd = params.scale_sd;
-        pore_model[si].shift = params.shift;
-        pore_model[si].var = params.var;
-        pore_model[si].var_sd = params.var_sd;
-
-        // apply shift/scale transformation to the pore model states
-        pore_model[si].bake_gaussian_parameters();
-
-        // Read and shorten the model name
-        std::string temp_name = f_p->get_model_file(si);
-        std::string leader = si == 0 ? "template_" : "complement_";
-        std::string trailer = ".model";
-
-        size_t lp = temp_name.find(leader);
-        // leader not found
-        if(lp == std::string::npos) {
-            lp = 0;
-        } 
-
-        size_t tp = temp_name.find(trailer);
-        if(tp == std::string::npos)
-            tp = temp_name.size();
-
-        model_name[si] = temp_name.substr(lp, tp - lp);
+        // initialize transition parameters
+        parameters[si].initialize(pore_model[si].name);
     }
     
     // Load events for both strands
@@ -164,7 +128,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_event_alignments();
     assert(!read_sequence.empty());
 
-    uint32_t n_read_kmers = read_sequence.size() - K + 1;
+    const uint32_t k = pore_model[T_IDX].k;
+    assert(pore_model[C_IDX].k == k);
+
+    uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
 
     uint32_t read_kidx = 0;
@@ -183,9 +150,9 @@ hack:
 
         // Advance the kmer index until we have found the read kmer
         // this tuple refers to
-        while(read_kidx < n_read_kmers &&
-                strncmp(event_alignments[start_ea_idx].kmer,
-                    read_sequence.c_str() + read_kidx, K) != 0) {
+        while(read_kidx < n_read_kmers && 
+              strncmp(event_alignments[start_ea_idx].kmer, 
+                     read_sequence.c_str() + read_kidx, k) != 0) {
             read_kidx += 1;
         }
 
@@ -209,7 +176,7 @@ hack:
             end_ea_idx += 1;
         }
 
-        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, K).c_str(), start_ea_idx, end_ea_idx);
+        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, k).c_str(), start_ea_idx, end_ea_idx);
         EventRangeForBase& erfb =  base_to_event_map[read_kidx];
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 
@@ -237,3 +204,4 @@ hack:
 
     delete f_p;
 }
+

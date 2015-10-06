@@ -20,13 +20,15 @@
 #include <omp.h>
 #include <getopt.h>
 #include "htslib/faidx.h"
+#include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_khmm_parameters.h"
+#include "nanopolish_transition_parameters.h"
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_hmm_input_sequence.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -55,8 +57,10 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --scale-events                   scale events to the model, rather than vice-versa\n"
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
+"      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -66,16 +70,18 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string region;
+    static std::string summary_file;
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
+    static int scale_events = 0;
     static int batch_size = 128;
     static bool print_read_names;
 }
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -84,7 +90,9 @@ static const struct option longopts[] = {
     { "genome",           required_argument, NULL, 'g' },
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
+    { "summary",          required_argument, NULL, OPT_SUMMARY },
     { "print-read-names", no_argument,       NULL, 'n' },
+    { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",              no_argument,       NULL, OPT_SAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
@@ -97,6 +105,32 @@ struct EventalignWriter
 {
     FILE* tsv_fp;
     htsFile* sam_fp;
+    FILE* summary_fp;
+};
+
+// Summarize the event alignment for a read strand
+struct EventalignSummary
+{
+    EventalignSummary() {
+        num_events = 0;
+        num_matches = 0;
+        num_stays = 0;
+        num_skips = 0;
+        sum_z_score = 0;
+        sum_duration = 0;
+        alignment_edit_distance = 0;
+        reference_span = 0;
+    }
+
+    int num_events;
+    int num_matches;
+    int num_stays;
+    int num_skips;
+
+    double sum_duration;
+    double sum_z_score;
+    int alignment_edit_distance;
+    int reference_span;
 };
 
 // Modify the aligned_pairs vector to ensure the highest read position
@@ -141,19 +175,25 @@ int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max,
     return aligned_pairs.size() - 1;
 }
 
-struct EventAlignment
+// get the specified reference region, threadsafe
+std::string get_reference_region_ts(const faidx_t* fai, const char* ref_name, int start, int end, int* fetched_len)
 {
-    // ref data
-    std::string ref_name;
-    std::string ref_kmer;
-    int ref_position;
 
-    // event data
-    size_t read_idx;
-    int strand_idx;
-    int event_idx;
-    bool rc;
-};
+    // faidx_fetch_seq is not threadsafe
+    char* cref_seq;
+    #pragma omp critical
+    cref_seq = faidx_fetch_seq(fai, ref_name, start, end, fetched_len);
+    
+    assert(cref_seq != NULL);
+
+    std::string out(cref_seq);
+    free(cref_seq);
+    return out;
+}
+
+//
+//
+//
 
 void emit_tsv_header(FILE* fp)
 {
@@ -236,11 +276,6 @@ std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>
             out.push_back(incoming);
         }
 
-/*
-        if(ai < 20) {
-            printf("r: %d e: %d cigar: %s\n", r_idx, e_idx, cigar_ops_to_string(out).c_str());
-        }
-*/
         prev_r_idx = r_idx;
         prev_e_idx = e_idx;
         ai++;
@@ -315,8 +350,11 @@ void emit_event_alignment_sam(htsFile* fp,
 
 void emit_event_alignment_tsv(FILE* fp,
                               const SquiggleRead& sr,
+                              uint32_t strand_idx,
+                              const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
+    uint32_t k = sr.pore_model[strand_idx].k;
     for(size_t i = 0; i < alignments.size(); ++i) {
 
         const EventAlignment& ea = alignments[i];
@@ -344,18 +382,88 @@ void emit_event_alignment_tsv(FILE* fp,
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-        fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+        if(opt::scale_events) {
 
-        // model information
-        std::string model_kmer = ea.rc ? reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            // scale reads to the model
+            event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
 
-        uint32_t rank = kmer_rank(model_kmer.c_str(), K);
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", model_kmer.c_str(), 
-                                              model.mean, 
-                                              model.stdv, 
-                                              sr.model_name[ea.strand_idx].c_str());
+            // unscaled parameters
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
+            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
+                                                  model.level_mean, 
+                                                  model.level_stdv, 
+                                                  sr.pore_model[ea.strand_idx].name.c_str());
+
+        } else {
+
+            // scale model to the reads
+            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+            float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
+                                                  model.mean, 
+                                                  model.stdv, 
+                                                  sr.pore_model[ea.strand_idx].name.c_str());
+        }
     }
+}
+
+EventalignSummary summarize_alignment(const SquiggleRead& sr,
+                                      uint32_t strand_idx,
+                                      const EventAlignmentParameters& params,
+                                      const std::vector<EventAlignment>& alignments)
+{
+    EventalignSummary summary;
+
+    uint32_t k = sr.pore_model[strand_idx].k;
+
+    size_t prev_ref_pos = std::string::npos;
+    
+    // the number of unique reference positions seen in the alignment
+    size_t num_unique_ref_pos = 0;
+
+    for(size_t i = 0; i < alignments.size(); ++i) {
+
+        const EventAlignment& ea = alignments[i];
+
+        summary.num_events += 1;
+
+        // movement information
+        size_t ref_move = ea.ref_position - prev_ref_pos;
+        if(ref_move == 0) {
+            assert(ea.hmm_state == 'E');
+            summary.num_stays += 1;
+        } else if(i != 0 && ref_move > 1) {
+            summary.num_skips += 1;
+        }
+
+        // event information
+        summary.sum_duration += sr.get_duration(ea.event_idx, ea.strand_idx);
+
+        if(ea.hmm_state == 'M') {
+            summary.num_matches += 1;
+            
+            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+            double z = (event_mean - model.mean) / model.stdv;
+            summary.sum_z_score += z;
+        }
+
+        prev_ref_pos = ea.ref_position;
+    }
+
+    int nm = bam_aux2i(bam_aux_get(params.record, "NM"));
+    summary.alignment_edit_distance = nm;
+    if(!alignments.empty()) {
+        summary.reference_span = alignments.back().ref_position - alignments.front().ref_position + 1;
+    }
+    return summary;
 }
 
 // Realign the read in event space
@@ -379,166 +487,218 @@ void realign_read(EventalignWriter writer,
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 
                 read_name.c_str(), sr.events[0].size(), sr.events[1].size());
     }
-
-    // Extract the reference subsequence for the entire alignment
-    int fetched_len = 0;
-    int ref_offset = record->core.pos;
-    std::string ref_name(hdr->target_name[record->core.tid]);
-
-    char* cref_seq = faidx_fetch_seq(fai, ref_name.c_str(), ref_offset, 
-                                     bam_endpos(record), &fetched_len);
-
-    std::string ref_seq(cref_seq);
-    free(cref_seq);
-
-    // If the reference sequence contains ambiguity codes
-    // switch them to the lexicographically lowest base
-    ref_seq = IUPAC::disambiguate_to_lowest(ref_seq);
-
-    if(ref_offset == 0)
-        return;
-
-    // Make a vector of aligned (ref_pos, read_pos) pairs
-    std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(record);
-
-    if(region_start != -1 && region_end != -1) {
-        trim_aligned_pairs_to_ref_region(aligned_pairs, region_start, region_end);
-    }
-
-    // Trim the aligned pairs to be within the range of the maximum kmer index
-    int max_kmer_idx = sr.read_sequence.size() - K;
-    trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
-
-    if(aligned_pairs.empty())
-        return;
-
-    bool do_base_rc = bam_is_rev(record);
-    bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
-    const int align_stride = 100; // approximately how many reference bases to align to at once
-    const int output_stride = 50; // approximately how many event alignments to output at once
-
+    
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
-
-        // get the event range of the read to re-align
-        int read_kidx_start = aligned_pairs.front().read_pos;
-        int read_kidx_end = aligned_pairs.back().read_pos;
+        EventAlignmentParameters params;
+        params.sr = &sr;
+        params.fai = fai;
+        params.hdr = hdr;
+        params.record = record;
+        params.strand_idx = strand_idx;
         
-        if(do_base_rc) {
-            read_kidx_start = sr.flip_k_strand(read_kidx_start);
-            read_kidx_end = sr.flip_k_strand(read_kidx_end);
+        params.read_idx = read_idx;
+        params.region_start = region_start;
+        params.region_end = region_end;
+
+        std::vector<EventAlignment> alignment = align_read_to_ref(params);
+
+        EventalignSummary summary;
+        if(writer.summary_fp != NULL) {
+            summary = summarize_alignment(sr, strand_idx, params, alignment);
         }
-        
-        assert(read_kidx_start >= 0);
-        assert(read_kidx_end >= 0);
-
-        int first_event = sr.get_closest_event_to(read_kidx_start, strand_idx);
-        int last_event = sr.get_closest_event_to(read_kidx_end, strand_idx);
-        bool forward = first_event < last_event;
-
-        int last_event_output = -1;
-        int curr_start_event = first_event;
-        int curr_start_ref = aligned_pairs.front().ref_pos;
-        int curr_pair_idx = 0;
-        
-        std::vector<EventAlignment> alignment_output;
-
-        while( (forward && curr_start_event < last_event) ||
-               (!forward && curr_start_event > last_event)) {
-
-            // Get the index of the aligned pair approximately align_stride away
-            int end_pair_idx = get_end_pair(aligned_pairs, curr_start_ref + align_stride, curr_pair_idx);
-        
-            int curr_end_ref = aligned_pairs[end_pair_idx].ref_pos;
-            int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
-
-            if(do_base_rc) {
-                curr_end_read = sr.flip_k_strand(curr_end_read);
-            }
-            assert(curr_end_read >= 0);
-
-            std::string ref_subseq = ref_seq.substr(curr_start_ref - ref_offset, 
-                                                    curr_end_ref - curr_start_ref + 1);
-            
-            // Nothing to align to
-            if(ref_subseq.length() < K)
-                break;
-
-            // Set up HMM input
-            HMMInputData input;
-            input.read = &sr;
-            input.anchor_index = 0; // not used here
-            input.event_start_idx = curr_start_event;
-            input.event_stop_idx = sr.get_closest_event_to(curr_end_read, strand_idx);
-
-            // A limitation of the segment-by-segment alignment is that we can't jump
-            // over very large deletions wrt to the reference. The effect of this
-            // is that we can get segments that have very few alignable events. We
-            // just stop processing them for now
-            if(abs(input.event_start_idx - input.event_stop_idx) < 2)
-                break;
-
-            input.strand = strand_idx;
-            input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
-            input.rc = rc_flags[strand_idx];
-            
-            std::vector<AlignmentState> event_alignment = profile_hmm_align(ref_subseq, input);
-            
-            // Output alignment
-            size_t num_output = 0;
-            size_t event_align_idx = 0;
-
-            // If we aligned to the last event, output everything and stop
-            bool last_section = end_pair_idx == aligned_pairs.size() - 1;
-
-            int last_event_output = 0;
-            int last_ref_kmer_output = 0;
-
-            for(; event_align_idx < event_alignment.size() && 
-                  (num_output < output_stride || last_section); event_align_idx++) {
-
-                AlignmentState& as = event_alignment[event_align_idx];
-                if(as.state != 'K' && as.event_idx != curr_start_event) {
-
-                    EventAlignment ea;
-                    
-                    // ref
-                    ea.ref_name = ref_name;
-                    ea.ref_position = curr_start_ref + as.kmer_idx;
-                    ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, K);
-
-                    // event
-                    ea.read_idx = read_idx;
-                    ea.strand_idx = strand_idx;
-                    ea.event_idx = as.event_idx;
-                    ea.rc = input.rc;
-
-                    // store
-                    alignment_output.push_back(ea);
-
-                    // update
-                    last_event_output = as.event_idx;
-                    last_ref_kmer_output = curr_start_ref + as.kmer_idx;
-                    num_output += 1;
-                }
-            }
-
-            // Advance the pair iterator to the ref base
-            curr_start_event = last_event_output;
-            curr_start_ref = last_ref_kmer_output;
-            curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
-        } // for segment
 
         // write to disk
         #pragma omp critical
         {
-            assert(!alignment_output.empty());
             if(opt::output_sam) {
-                emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment_output);
+                emit_event_alignment_sam(writer.sam_fp, sr, hdr, record, alignment);
             } else {
-                emit_event_alignment_tsv(writer.tsv_fp, sr, alignment_output);
+                emit_event_alignment_tsv(writer.tsv_fp, sr, strand_idx, params, alignment);
+            }
+
+            if(writer.summary_fp != NULL && summary.num_events > 0) {
+                fprintf(writer.summary_fp, "%s\t%s\t", read_name.c_str(), strand_idx == 0 ? "template" : "complement");
+                fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_matches, summary.num_skips, summary.num_stays);
+                fprintf(writer.summary_fp, "%.2lf\t%.2lf\t", summary.sum_duration, summary.sum_z_score / summary.num_matches);
+                fprintf(writer.summary_fp, "%d\t%d\n", summary.alignment_edit_distance, summary.reference_span);
             }
         }
-    } // for strands
+    }
+}
+
+std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& params)
+{
+    // Sanity check input parameters
+    assert(params.sr != NULL);
+    assert(params.fai != NULL);
+    assert(params.hdr != NULL);
+    assert(params.record != NULL);
+    assert(params.strand_idx < NUM_STRANDS);
+    assert( (params.region_start == -1 && params.region_end == -1) || (params.region_start <= params.region_end));
+
+    std::vector<EventAlignment> alignment_output;
+
+    // Extract the reference subsequence for the entire alignment
+    int fetched_len = 0;
+    int ref_offset = params.record->core.pos;
+    std::string ref_name(params.hdr->target_name[params.record->core.tid]);
+    std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset, 
+                                                  bam_endpos(params.record), &fetched_len);
+
+    // k from read pore model
+    const uint32_t k = params.sr->pore_model[params.strand_idx].k;
+
+    // If the reference sequence contains ambiguity codes
+    // switch them to the lexicographically lowest base
+    ref_seq = params.alphabet->disambiguate(ref_seq);
+    std::string rc_ref_seq = params.alphabet->reverse_complement(ref_seq);
+
+    if(ref_offset == 0)
+        return alignment_output;
+
+    // Make a vector of aligned (ref_pos, read_pos) pairs
+    std::vector<AlignedPair> aligned_pairs = get_aligned_pairs(params.record);
+
+    if(params.region_start != -1 && params.region_end != -1) {
+        trim_aligned_pairs_to_ref_region(aligned_pairs, params.region_start, params.region_end);
+    }
+
+    // Trim the aligned pairs to be within the range of the maximum kmer index
+    int max_kmer_idx = params.sr->read_sequence.size() - k;
+    trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
+
+    if(aligned_pairs.empty())
+        return alignment_output;
+
+    bool do_base_rc = bam_is_rev(params.record);
+    bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
+    const int align_stride = 100; // approximately how many reference bases to align to at once
+    const int output_stride = 50; // approximately how many event alignments to output at once
+
+    // get the event range of the read to re-align
+    int read_kidx_start = aligned_pairs.front().read_pos;
+    int read_kidx_end = aligned_pairs.back().read_pos;
+    
+    if(do_base_rc) {
+        read_kidx_start = params.sr->flip_k_strand(read_kidx_start);
+        read_kidx_end = params.sr->flip_k_strand(read_kidx_end);
+    }
+    
+    assert(read_kidx_start >= 0);
+    assert(read_kidx_end >= 0);
+
+    int first_event = params.sr->get_closest_event_to(read_kidx_start, params.strand_idx);
+    int last_event = params.sr->get_closest_event_to(read_kidx_end, params.strand_idx);
+    bool forward = first_event < last_event;
+
+    int last_event_output = -1;
+    int curr_start_event = first_event;
+    int curr_start_ref = aligned_pairs.front().ref_pos;
+    int curr_pair_idx = 0;
+
+    while( (forward && curr_start_event < last_event) ||
+           (!forward && curr_start_event > last_event)) {
+
+        // Get the index of the aligned pair approximately align_stride away
+        int end_pair_idx = get_end_pair(aligned_pairs, curr_start_ref + align_stride, curr_pair_idx);
+    
+        int curr_end_ref = aligned_pairs[end_pair_idx].ref_pos;
+        int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
+
+        if(do_base_rc) {
+            curr_end_read = params.sr->flip_k_strand(curr_end_read);
+        }
+        assert(curr_end_read >= 0);
+
+        int s = curr_start_ref - ref_offset;
+        int l = curr_end_ref - curr_start_ref + 1;
+
+        std::string fwd_subseq = ref_seq.substr(s, l);
+        std::string rc_subseq = rc_ref_seq.substr(ref_seq.length() - s - l, l);
+        assert(fwd_subseq.length() == rc_subseq.length());
+
+        HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
+        
+        // Nothing to align to
+        if(hmm_sequence.length() < k)
+            break;
+
+        // Set up HMM input
+        HMMInputData input;
+        input.read = params.sr;
+        input.anchor_index = 0; // not used here
+        input.event_start_idx = curr_start_event;
+        input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
+
+        // A limitation of the segment-by-segment alignment is that we can't jump
+        // over very large deletions wrt to the reference. The effect of this
+        // is that we can get segments that have very few alignable events. We
+        // just stop processing them for now
+        if(abs(input.event_start_idx - input.event_stop_idx) < 2)
+            break;
+
+        input.strand = params.strand_idx;
+        input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
+        input.rc = rc_flags[params.strand_idx];
+        
+        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
+        
+        // Output alignment
+        size_t num_output = 0;
+        size_t event_align_idx = 0;
+
+        // If we aligned to the last event, output everything and stop
+        bool last_section = end_pair_idx == aligned_pairs.size() - 1;
+
+        int last_event_output = 0;
+        int last_ref_kmer_output = 0;
+
+        for(; event_align_idx < event_alignment.size() && 
+              (num_output < output_stride || last_section); event_align_idx++) {
+
+            HMMAlignmentState& as = event_alignment[event_align_idx];
+            if(as.state != 'K' && as.event_idx != curr_start_event) {
+
+                EventAlignment ea;
+                
+                // ref
+                ea.ref_name = ref_name;
+                ea.ref_position = curr_start_ref + as.kmer_idx;
+                ea.ref_kmer = ref_seq.substr(ea.ref_position - ref_offset, k);
+
+                // event
+                ea.read_idx = params.read_idx;
+                ea.strand_idx = params.strand_idx;
+                ea.event_idx = as.event_idx;
+                ea.rc = input.rc;
+
+                // hmm
+                ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, k, input.rc);
+                ea.hmm_state = as.state;
+
+                // store
+                alignment_output.push_back(ea);
+
+                // update
+                last_event_output = as.event_idx;
+                last_ref_kmer_output = curr_start_ref + as.kmer_idx;
+                num_output += 1;
+            }
+        }
+
+        // Advance the pair iterator to the ref base
+        curr_start_event = last_event_output;
+        curr_start_ref = last_ref_kmer_output;
+        curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
+
+#if EVENTALIGN_TRAIN
+        // update training data for read
+        params.sr->parameters[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+        global_training[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
+#endif
+    } // for segment
+    
+    return alignment_output;
 }
 
 void parse_eventalign_options(int argc, char** argv)
@@ -554,6 +714,8 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'v': opt::verbose++; break;
+            case OPT_SCALE_EVENTS: opt::scale_events = true; break;
+            case OPT_SUMMARY: arg >> opt::summary_file; break;
             case OPT_SAM: opt::output_sam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -650,7 +812,7 @@ int eventalign_main(int argc, char** argv)
 #endif
 
     // Initialize output
-    EventalignWriter writer = { NULL, NULL };
+    EventalignWriter writer = { NULL, NULL, NULL };
 
     if(opt::output_sam) {
         writer.sam_fp = hts_open("-", "w");
@@ -658,6 +820,13 @@ int eventalign_main(int argc, char** argv)
     } else {
         writer.tsv_fp = stdout;
         emit_tsv_header(writer.tsv_fp);
+    }
+
+    if(!opt::summary_file.empty()) {
+        writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
+        // header
+        fprintf(writer.summary_fp, "read_name\tstrand\tnum_events\tnum_matches\tnum_skips\tnum_stays\t");
+        fprintf(writer.summary_fp, "total_duration\tavg_z_score\tedit_distance\treference_span\n");
     }
     
     // Initialize iteration
@@ -715,4 +884,9 @@ int eventalign_main(int argc, char** argv)
     if(writer.sam_fp != NULL) {
         hts_close(writer.sam_fp);
     }
+
+    if(writer.summary_fp != NULL) {
+        fclose(writer.summary_fp);
+    }
+    return EXIT_SUCCESS;
 }
