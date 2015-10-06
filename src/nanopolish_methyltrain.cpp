@@ -409,8 +409,6 @@ void train_read(const ModelMap& model_map,
                 bool use_for_training = i > 5 && 
                                         i + 5 < alignment_output.size() &&
                                         alignment_output[i].hmm_state == 'M' &&
-                                        alignment_output[i - 1].hmm_state == 'M' &&
-                                        alignment_output[i + 1].hmm_state == 'M' &&
                                         prev_kmer != "" &&
                                         next_kmer != "";
 
