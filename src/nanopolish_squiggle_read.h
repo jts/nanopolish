@@ -71,6 +71,12 @@ class SquiggleRead
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
         }
+        
+        // Return the observed current level after correcting for drift
+        inline float get_event_stdv(uint32_t event_idx, uint32_t strand) const
+        {
+            return events[strand][event_idx].stdv;
+        }
 
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
@@ -99,6 +105,7 @@ class SquiggleRead
 
         // unique identifier of the read
         std::string read_name;
+        std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
         bool drift_correction_performed;

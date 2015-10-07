@@ -77,6 +77,8 @@ void SquiggleRead::transform()
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
     fast5::File* f_p;
+    this->fast5_path = fast5_path;
+
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
 

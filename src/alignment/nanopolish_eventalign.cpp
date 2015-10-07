@@ -199,8 +199,8 @@ void emit_tsv_header(FILE* fp)
 {
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
-    fprintf(fp, "%s\t%s\t%s\t", "event_index", "event_level_mean", "event_length");
-    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "model_name");
+    fprintf(fp, "%s\t%s\t%s\t%s\t", "event_index", "event_level_mean", "event_stdv", "event_length");
+    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
 
 }
 
@@ -381,34 +381,33 @@ void emit_event_alignment_tsv(FILE* fp,
 
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+        float event_stdv = sr.get_event_stdv(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
         if(opt::scale_events) {
 
             // scale reads to the model
             event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+            fprintf(fp, "%d\t%.2lf\t%3.lf\t%.3lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
 
             // unscaled parameters
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
             PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
-            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
-                                                  model.level_mean, 
-                                                  model.level_stdv, 
-                                                  sr.pore_model[ea.strand_idx].name.c_str());
+            fprintf(fp, "%s\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
+                                              model.level_mean, 
+                                              model.level_stdv);
 
         } else {
 
             // scale model to the reads
             float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
             float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t", ea.event_idx, event_mean, event_duration);
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.3lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
 
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
             GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-            fprintf(fp, "%s\t%.2lf\t%.2lf\t%s\n", ea.model_kmer.c_str(), 
-                                                  model.mean, 
-                                                  model.stdv, 
-                                                  sr.pore_model[ea.strand_idx].name.c_str());
+            fprintf(fp, "%s\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
+                                              model.mean, 
+                                              model.stdv);
         }
     }
 }
@@ -517,10 +516,10 @@ void realign_read(EventalignWriter writer,
             }
 
             if(writer.summary_fp != NULL && summary.num_events > 0) {
-                fprintf(writer.summary_fp, "%s\t%s\t", read_name.c_str(), strand_idx == 0 ? "template" : "complement");
+                fprintf(writer.summary_fp, "%zu\t%s\t%s\t", read_idx, read_name.c_str(), sr.fast5_path.c_str());
+                fprintf(writer.summary_fp, "%s\t%s\t", sr.pore_model[strand_idx].name.c_str(), strand_idx == 0 ? "template" : "complement");
                 fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_matches, summary.num_skips, summary.num_stays);
-                fprintf(writer.summary_fp, "%.2lf\t%.2lf\t", summary.sum_duration, summary.sum_z_score / summary.num_matches);
-                fprintf(writer.summary_fp, "%d\t%d\n", summary.alignment_edit_distance, summary.reference_span);
+                fprintf(writer.summary_fp, "%.2lf\n", summary.sum_duration);
             }
         }
     }
@@ -825,8 +824,8 @@ int eventalign_main(int argc, char** argv)
     if(!opt::summary_file.empty()) {
         writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
         // header
-        fprintf(writer.summary_fp, "read_name\tstrand\tnum_events\tnum_matches\tnum_skips\tnum_stays\t");
-        fprintf(writer.summary_fp, "total_duration\tavg_z_score\tedit_distance\treference_span\n");
+        fprintf(writer.summary_fp, "read_index\tread_name\tfast5_path\tmodel_name\tstrand\tnum_events\t");
+        fprintf(writer.summary_fp, "num_matches\tnum_skips\tnum_stays\ttotal_duration\n");
     }
     
     // Initialize iteration
