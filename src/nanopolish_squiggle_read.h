@@ -21,6 +21,7 @@ struct SquiggleEvent
     float stdv;       // current level stdv
     float start_time; // start time of the event in seconds
     float duration;     // duration of the event in seconds
+    float log_stdv;   // precompute for efficiency
 };
 
 struct IndexPair
@@ -70,6 +71,18 @@ class SquiggleRead
         {
             assert(drift_correction_performed);
             return events[strand][event_idx].mean;
+        }
+
+        // Return the current stdv for the given event
+        inline float get_stdv(uint32_t event_idx, uint32_t strand) const
+        {
+            return events[strand][event_idx].stdv;
+        }
+
+        // Return log of the current stdv for the given event
+        inline float get_log_stdv(uint32_t event_idx, uint32_t strand) const
+        {
+            return events[strand][event_idx].log_stdv;
         }
         
         // Return the observed current level after correcting for drift

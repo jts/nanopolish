@@ -61,6 +61,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
+"      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -77,11 +78,12 @@ namespace opt
     static int scale_events = 0;
     static int batch_size = 128;
     static bool print_read_names;
+    static bool full_output;
 }
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -92,6 +94,7 @@ static const struct option longopts[] = {
     { "threads",          required_argument, NULL, 't' },
     { "summary",          required_argument, NULL, OPT_SUMMARY },
     { "print-read-names", no_argument,       NULL, 'n' },
+    { "stdv",             no_argument,       NULL, OPT_STDV },
     { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",              no_argument,       NULL, OPT_SAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
@@ -712,6 +715,8 @@ void parse_eventalign_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
+            case 'f': opt::full_output = true; break;
+            case OPT_STDV: model_stdv() = true; break;
             case 'v': opt::verbose++; break;
             case OPT_SCALE_EVENTS: opt::scale_events = true; break;
             case OPT_SUMMARY: arg >> opt::summary_file; break;

@@ -24,7 +24,7 @@ void initialize()
 
 void print_usage()
 {
-    printf("usage: nanopolish [command] [options]\n");
+    printf("usage: nanopolish [consensus|eventalign|getmodel] [options]\n");
 }
 
 int main(int argc, char** argv)

@@ -20,9 +20,12 @@ struct PoreModelStateParams
 {
     double level_mean;
     double level_stdv;
-    
     double sd_mean;
     double sd_stdv;
+
+    double level_log_stdv;
+    double sd_lambda;
+    double sd_log_lambda;
 };
 
 //
@@ -44,6 +47,12 @@ class PoreModel
         {
             assert(is_scaled);
             return scaled_params[kmer_rank];
+        }
+
+        inline PoreModelStateParams get_scaled_state(const uint32_t kmer_rank) const
+        {
+            assert(is_scaled);
+            return scaled_state[kmer_rank];
         }
 
         inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const
@@ -87,6 +96,7 @@ class PoreModel
         bool is_scaled;
 
         std::vector<PoreModelStateParams> states;
+        std::vector<PoreModelStateParams> scaled_states;
         std::vector<GaussianParameters> scaled_params;
 };
 
