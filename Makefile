@@ -67,6 +67,15 @@ lib/libhdf5.a:
 	tar -xzf hdf5-1.8.14.tar.gz
 	cd hdf5-1.8.14; ./configure --enable-threadsafe --prefix=`pwd`/..; make; make install
 
+
+# Download and install eigen if not already downloaded
+EIGEN=eigen/INSTALL
+
+$(EIGEN):
+	wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2
+	tar -xjvf 3.2.5.tar.bz2
+	mv eigen-eigen-bdd17ee3b1b3 eigen
+
 #
 # Source files
 #
@@ -98,7 +107,7 @@ include .depend
 	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
 
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN)
 	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 # Link test executable

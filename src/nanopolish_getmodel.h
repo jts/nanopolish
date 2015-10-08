@@ -9,6 +9,6 @@
 #ifndef NANOPOLISH_GETMODEL_H
 #define NANOPOLISH_GETMODEL_H
 
-void getmodel_main(int argc, char** argv);
+int getmodel_main(int argc, char** argv);
 
 #endif

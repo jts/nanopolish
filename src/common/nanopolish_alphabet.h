@@ -9,6 +9,7 @@
 #define NANOPOLISH_ALPHABET_H
 
 #include <string>
+#include <cstring>
 #include <inttypes.h>
 #include <assert.h>
 #include "nanopolish_iupac.h"
@@ -64,6 +65,9 @@ class Alphabet
             return n;
         }
 
+        // does this alphabet contain all of the nucleotides in bases?
+        virtual inline bool contains_all(const char *bases) const = 0;
+
         // reverse complement a string over this alphabet
         virtual std::string reverse_complement(const std::string& seq) const = 0;
 
@@ -103,6 +107,11 @@ struct DNAAlphabet : public Alphabet
         return out;
     }
 
+    // does this alphabet contain all of the nucleotides in bases?
+    virtual inline bool contains_all(const char *bases) const
+    {
+        return strspn(bases, _base) == strlen(bases);
+    }
 };
 
 // DNABaseMap with methyl-cytosine
@@ -183,10 +192,16 @@ struct MethylCpGAlphabet : public Alphabet
         return out;
     }
 
+    // does this alphabet contain all of the nucleotides in bases?
+    virtual inline bool contains_all(const char *bases) const 
+    {
+        return strspn(bases, _base) == strlen(bases);
+    }
 };
 
 // Global alphabet objects that can be re-used
 extern DNAAlphabet gDNAAlphabet;
 extern MethylCpGAlphabet gMCpGAlphabet;
 
+const Alphabet *best_alphabet(const char *bases);
 #endif
