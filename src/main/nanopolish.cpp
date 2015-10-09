@@ -64,6 +64,6 @@ int main(int argc, char** argv)
         if (iter != programs.end()) 
             return iter->second( argc - 1, argv + 1);
         else
-            return print_usage( argc - 1, argv - 1);
+            return print_usage( argc - 1, argv + 1);
     }
 }
