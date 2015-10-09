@@ -450,17 +450,17 @@ void recalibrate_model(SquiggleRead &sr,
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
 }
 
-// Realign the read in event space
-void train_read(const ModelMap& model_map,
-                const Fast5Map& name_map, 
-                const faidx_t* fai, 
-                const bam_hdr_t* hdr, 
-                const bam1_t* record, 
-                size_t read_idx,
-                int region_start,
-                int region_end,
-                size_t round,
-                ModelTrainingMap& training)
+// Update the training data with aligned events from a read
+void add_aligned_events(const ModelMap& model_map,
+                        const Fast5Map& name_map,
+                        const faidx_t* fai,
+                        const bam_hdr_t* hdr,
+                        const bam1_t* record,
+                        size_t read_idx,
+                        int region_start,
+                        int region_end,
+                        size_t round,
+                        ModelTrainingMap& training)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -561,9 +561,7 @@ void train_read(const ModelMap& model_map,
             // Should we use this event for training?
             bool use_for_training = i > 5 && 
                 i + 5 < alignment_output.size() &&
-                alignment_output[i].hmm_state == 'M' &&
-                prev_kmer != "" &&
-                next_kmer != "";
+                alignment_output[i].hmm_state == 'M';
 
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
@@ -727,7 +725,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    train_read(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
+                    add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
                 }
             }
 
