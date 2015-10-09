@@ -99,6 +99,22 @@ class SquiggleRead
             return (level - pore_model[strand].shift) / pore_model[strand].scale;
         }
         
+        inline float get_time(uint32_t event_idx, uint32_t strand) const
+        {
+            return events[strand][event_idx].start_time - events[strand][0].start_time;
+        }
+
+        // Return the observed current level after correcting for drift
+        inline float get_uncorrected_level(uint32_t event_idx, uint32_t strand) const
+        {
+            if (!drift_correction_performed)
+                return events[strand][event_idx].mean;
+            else {
+                double time = get_time(event_idx, strand);
+                return events[strand][event_idx].mean + (time * pore_model[strand].drift);
+            }
+        }
+        
         // Calculate the index of this k-mer on the other strand
         inline int32_t flip_k_strand(int32_t k_idx) const
         {

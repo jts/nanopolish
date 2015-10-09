@@ -20,6 +20,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <cstddef>
 #include "htslib/faidx.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_eventalign.h"
@@ -33,6 +34,9 @@
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+
+#include "nanopolish_scorereads.h"
+#include "../eigen/Eigen/Dense"
 
 //
 // Structs
@@ -190,7 +194,9 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               read the models to be trained from the FOFN\n"
 "      --train-unmethylated             train unmethylated 5-mers instead of methylated\n"
+"  -c  --calibrate                      recalibrate aligned reads to model before training\n"
 "      --no-update-models               do not write out trained models\n"
+"      --output-scores                  optionally output read scores during training\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
@@ -202,6 +208,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 namespace opt
 {
     static unsigned int verbose;
+    static unsigned int calibrate=0;
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
@@ -210,17 +217,19 @@ namespace opt
     static std::string out_suffix = ".methyltrain";
     static bool write_models = true;
     static bool train_unmethylated = false;
+    static bool output_scores = false;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
 }
 
-static const char* shortopts = "r:b:g:t:m:vn";
+static const char* shortopts = "r:b:g:t:m:vnc";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED, OPT_OUTPUT_SCORES };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
+    { "calibrate",          no_argument,       NULL, 'c' },
     { "reads",              required_argument, NULL, 'r' },
     { "bam",                required_argument, NULL, 'b' },
     { "genome",             required_argument, NULL, 'g' },
@@ -228,6 +237,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
+    { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
     { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
     { "train-unmethylated", no_argument,       NULL, OPT_TRAIN_UNMETHYLATED },
     { "progress",           no_argument,       NULL, OPT_PROGRESS },
@@ -318,6 +328,99 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     return curr_mixture;
 }
 
+// recalculate shift, scale, drift, scale_sd from an alignment and the read
+void recalibrate_model(SquiggleRead &sr,
+                       const int strand_idx,
+                       const std::vector<EventAlignment> &alignment_output, 
+                       bool scale_var) 
+{
+    std::vector<double> raw_events, times, level_means, level_stdvs;
+    uint32_t k = sr.pore_model[strand_idx].k;
+
+    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", " 
+    //                                                << sr.pore_model[strand_idx].scale << ", " 
+    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //                                                << sr.pore_model[strand_idx].var   << std::endl;
+
+    // extract necessary vectors from the read and the pore model; note do not want scaled values
+    for ( const auto &ea : alignment_output ) {
+        if(ea.hmm_state == 'M') {
+            std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+
+            raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
+            times.push_back      ( sr.get_time(ea.event_idx, strand_idx) );
+            level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
+            level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
+        }
+    }
+
+    const int minNumEventsToRescale = 500;
+    if (raw_events.size() < minNumEventsToRescale) 
+        return;
+
+    // Assemble linear system corresponding to weighted least squares problem
+    // Can just directly call a weighted least squares solver, but there's enough
+    // structure in our problem it's a little faster just to build the normal eqn
+    // matrices ourselves
+    Eigen::Matrix3d A;
+    Eigen::Vector3d b;
+
+    for (int i=0; i<3; i++) {
+        b(i) = 0.;
+        for (int j=0; j<3; j++)
+            A(i,j) = 0.;
+    }
+
+    for (size_t i=0; i<raw_events.size(); i++) {
+        double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
+        double mu = level_means[i];
+        double t  = times[i];
+        double e  = raw_events[i];
+
+        A(0,0) += inv_var;  A(0,1) += mu*inv_var;    A(0,2) += t*inv_var;
+                            A(1,1) += mu*mu*inv_var; A(1,2) += mu*t*inv_var;
+                                                     A(2,2) += t*t*inv_var;
+
+        b(0) += e*inv_var;
+        b(1) += mu*e*inv_var;
+        b(2) += t*e*inv_var;
+    }
+    A(1,0) = A(0,1);
+    A(2,0) = A(0,2);
+    A(2,1) = A(1,2);
+
+    // perform the linear solve
+    Eigen::Vector3d x = A.fullPivLu().solve(b);
+
+    double shift = x(0);
+    double scale = x(1);
+    double drift = x(2);
+
+    sr.pore_model[strand_idx].shift = shift;
+    sr.pore_model[strand_idx].scale = scale;
+    sr.pore_model[strand_idx].drift = drift;
+
+    if (scale_var) {
+        double var = 0.;
+        for (size_t i=0; i<raw_events.size(); i++) {
+            double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
+            var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
+        }
+        var /= raw_events.size();
+
+        sr.pore_model[strand_idx].var   = var;
+    }
+
+    if (sr.pore_model[strand_idx].is_scaled)
+        sr.pore_model[strand_idx].bake_gaussian_parameters();
+
+    //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", " 
+    //                                                << sr.pore_model[strand_idx].scale << ", " 
+    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //                                                << sr.pore_model[strand_idx].var   << std::endl;
+}
+
 // Realign the read in event space
 void train_read(const ModelMap& model_map,
                 const Fast5Map& name_map, 
@@ -366,40 +469,54 @@ void train_read(const ModelMap& model_map,
         params.region_start = region_start;
         params.region_end = region_end;
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+        if (alignment_output.size() == 0)
+            return;
 
+        // Update pore model based on alignment
+        double orig_score;
+        if (opt::output_scores) {
+            orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+            #pragma omp critical(print)
+            std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+        }
+
+        if ( opt::calibrate ) {
+            recalibrate_model(sr, strand_idx, alignment_output, false);
+
+            if (opt::output_scores) {
+                double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+                #pragma omp critical(print)
+                {
+                    std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Rescaled " << rescaled_score << std::endl;
+                    std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Delta " << rescaled_score-orig_score << std::endl;
+                }
+            }
+        }
         // Update model observations
-        #pragma omp critical
-        {
-            //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
+        //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
-            // Get the training data for this model
-            auto& emission_map = training[curr_model];
+        // Get the training data for this model
+        auto& emission_map = training[curr_model];
+        for(size_t i = 0; i < alignment_output.size(); ++i) {
+            const EventAlignment& ea = alignment_output[i];
+            std::string model_kmer = ea.model_kmer;
 
-            for(size_t i = 0; i < alignment_output.size(); ++i) {
-                const EventAlignment& ea = alignment_output[i];
-                std::string model_kmer = ea.model_kmer;
+            // Grab the previous/next model kmer
+            // If the read is from the same strand as the reference
+            // the next kmer comes from the next alignment_output (and vice-versa)
+            // other the indices are swapped
+            int next_stride = ea.rc ? -1 : 1;
 
-                // Grab the previous/next model kmer
-                // If the read is from the same strand as the reference
-                // the next kmer comes from the next alignment_output (and vice-versa)
-                // other the indices are swapped
-                int next_stride = ea.rc ? -1 : 1;
+            std::string prev_kmer = "";
+            std::string next_kmer = "";
 
-                std::string prev_kmer = "";
-                std::string next_kmer = "";
+            if(i > 0 && i < alignment_output.size() - 1) {
+                assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
+                assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
 
-                if(i > 0 && i < alignment_output.size() - 1) {
-                    assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
-                    assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
-
-                    // check for exactly one base of movement along the reference
-                    if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
-                        next_kmer = alignment_output[i + next_stride].model_kmer;
-                    }
-
-                    if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
-                        prev_kmer = alignment_output[i - next_stride].model_kmer;
-                    }
+                // check for exactly one base of movement along the reference
+                if( abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
+                    next_kmer = alignment_output[i + next_stride].model_kmer;
                 }
 
                 uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
@@ -417,32 +534,36 @@ void train_read(const ModelMap& model_map,
                     StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
                     kmer_summary.events.push_back(std);
                 }
-
-                if(ea.hmm_state == 'M')  {
-                    kmer_summary.num_matches += 1;
-                } else if(ea.hmm_state == 'E') {
-                    kmer_summary.num_stays += 1;
-                }
-
             }
+
+            uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+            auto& kmer_summary = emission_map[rank];
+            
+            // Should we use this event for training?
+            bool use_for_training = i > 5 && 
+                                    i + 5 < alignment_output.size() &&
+                                    alignment_output[i].hmm_state == 'M' &&
+                                    alignment_output[i - 1].hmm_state == 'M' &&
+                                    alignment_output[i + 1].hmm_state == 'M' &&
+                                    prev_kmer != "" &&
+                                    next_kmer != "";
+
+            if(use_for_training) {
+                StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
+                #pragma omp critical(kmer)
+                kmer_summary.events.push_back(std);
+            }
+
+            if(ea.hmm_state == 'M')  {
+                #pragma omp atomic
+                kmer_summary.num_matches += 1;
+            } else if(ea.hmm_state == 'E') {
+                #pragma omp atomic
+                kmer_summary.num_stays += 1;
+            }
+
         }
     } // for strands
-}
-
-ModelMap read_models_fofn(const std::string& fofn_name)
-{
-    ModelMap out;
-    std::ifstream fofn_reader(fofn_name);
-    std::string model_filename;
-
-    while(getline(fofn_reader, model_filename)) {
-        printf("reading %s\n", model_filename.c_str());
-        PoreModel p(model_filename, *mtrain_alphabet);
-        assert(!p.name.empty());
-
-        out[p.name] = p;
-    }
-    return out;
 }
 
 void parse_methyltrain_options(int argc, char** argv)
@@ -459,6 +580,8 @@ void parse_methyltrain_options(int argc, char** argv)
             case 'm': arg >> opt::models_fofn; break;
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
+            case 'c': opt::calibrate = 1; break;
+            case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
@@ -743,7 +866,7 @@ void write_models(ModelMap& models)
         assert(!model_iter->second.model_filename.empty());
         std::string outname   =  model_iter->second.model_filename + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
-        models[model_iter->first].write( outname, *mtrain_alphabet, modelname );
+        models[model_iter->first].write( outname, modelname );
     }
 }
 
@@ -753,10 +876,9 @@ int methyltrain_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn);
+    ModelMap models = read_models_fofn(opt::models_fofn, mtrain_alphabet);
     
-    static size_t TRAINING_ROUNDS = 10;
-
+    const size_t TRAINING_ROUNDS = 10;
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);

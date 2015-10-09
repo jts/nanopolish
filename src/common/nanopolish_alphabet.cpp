@@ -5,7 +5,8 @@
 //
 // nanopolish_alphabet -- support for multiple alphabets
 //
-#include <assert.h>
+#include <cassert>
+#include <vector>
 #include "nanopolish_alphabet.h"
 
 const uint8_t DNAAlphabet::_rank[256] = {
@@ -53,3 +54,15 @@ const uint32_t MethylCpGAlphabet::_size = 5;
 
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;
+
+const Alphabet *best_alphabet(const char *bases)
+{
+    std::vector<const Alphabet *>list = {&gDNAAlphabet, &gMCpGAlphabet};
+
+    for (auto alphabet: list)
+        if (alphabet->contains_all(bases))
+            return alphabet;
+
+    return nullptr;                
+}
+

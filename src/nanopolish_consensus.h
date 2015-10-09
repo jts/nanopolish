@@ -9,6 +9,6 @@
 #ifndef NANOPOLISH_CONSENSUS_H
 #define NANOPOLISH_CONSENSUS_H
 
-void consensus_main(int argc, char** argv);
+int consensus_main(int argc, char** argv);
 
 #endif

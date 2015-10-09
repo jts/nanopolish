@@ -13,6 +13,7 @@
 #include "nanopolish_common.h"
 #include <inttypes.h>
 #include <string>
+#include <map>
 #include "../fast5/src/fast5.hpp"
 
 //
@@ -32,16 +33,16 @@ struct PoreModelStateParams
 class PoreModel
 {
     public:
-        PoreModel(uint32_t _k=5) : is_scaled(false), k(_k) {}
+        PoreModel(uint32_t _k=5) : is_scaled(false), k(_k), pmalphabet(&gDNAAlphabet) {}
 
         // These constructors and the output routine take an alphabet 
         // so that kmers are inserted/written in order
         // nicer might be to store the states as a map from kmer -> state
 
-        PoreModel(const std::string filename, const Alphabet& alphabet=gDNAAlphabet);
-        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet& alphabet=gDNAAlphabet);
+        PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
+        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet=NULL);
 
-        void write(const std::string filename, const Alphabet& alphabet, const std::string modelname="");
+        void write(const std::string filename, const std::string modelname="");
 
         inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
         {
@@ -92,12 +93,17 @@ class PoreModel
         // model. This field stores this data, which might be 0.
         double shift_offset;
 
-        //
         bool is_scaled;
+
+        const Alphabet *pmalphabet; 
 
         std::vector<PoreModelStateParams> states;
         std::vector<PoreModelStateParams> scaled_states;
         std::vector<GaussianParameters> scaled_params;
 };
+
+typedef std::map<std::string, PoreModel> ModelMap;
+
+ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet=nullptr);
 
 #endif
