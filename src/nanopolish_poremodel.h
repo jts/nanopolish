@@ -52,7 +52,7 @@ class PoreModel
         inline PoreModelStateParams get_scaled_state(const uint32_t kmer_rank) const
         {
             assert(is_scaled);
-            return scaled_state[kmer_rank];
+            return scaled_states[kmer_rank];
         }
 
         inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const

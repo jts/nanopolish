@@ -16,9 +16,15 @@
 //#define DEBUG_HMM_EMISSION 1
 
 // From SO: http://stackoverflow.com/questions/10847007/using-the-gaussian-probability-density-function-in-c
+static const float inv_sqrt_2pi = 0.3989422804014327;
+inline float normal_pdf(float x, const GaussianParameters& g)
+{
+    float a = (x - g.mean) / g.stdv;
+    return inv_sqrt_2pi / g.stdv * exp(-0.5f * a * a);
+}
+
 inline float normal_pdf(float x, const PoreModelStateParams& s)
 {
-    static const float inv_sqrt_2pi = 0.3989422804014327;
     float a = (x - s.level_mean) / s.level_stdv;
     return inv_sqrt_2pi / s.level_stdv * exp(-0.5f * a * a);
 }
@@ -34,11 +40,18 @@ inline float z_score(const SquiggleRead& read,
     return (level - model.mean) / model.stdv;
 }
 
+static const float log_inv_sqrt_2pi = log(0.3989422804014327);
 inline float log_normal_pdf(float x, const PoreModelStateParams& s)
 {
-    static const float log_inv_sqrt_2pi = log(0.3989422804014327);
     float a = (x - s.level_mean) / s.level_stdv;
     return log_inv_sqrt_2pi - s.level_log_stdv + (-0.5f * a * a);
+}
+
+
+inline float log_normal_pdf(float x, const GaussianParameters& g)
+{
+    float a = (x - g.mean) / g.stdv;
+    return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
 }
 
 inline float log_invgauss_pdf(float x, float log_x, const PoreModelStateParams& s)
@@ -74,10 +87,12 @@ inline float log_probability_match(const SquiggleRead& read,
     state.level_stdv *= state_scale;
     state.level_log_stdv += log_state_scale;
     float lp = log_normal_pdf(level, state);
-    if (model_stdv())
+
+    if(model_stdv())
     {
         float stdv = read.get_stdv(event_idx, strand);
         float log_stdv = read.get_log_stdv(event_idx, strand);
+        float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
         lp += log_invgauss_pdf(stdv, log_stdv, state);
     }
 

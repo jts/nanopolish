@@ -16,26 +16,29 @@
 void PoreModel::bake_gaussian_parameters()
 {
     scaled_params.resize(states.size());
-    scaled_state.resize(states.size());
+    scaled_states.resize(states.size());
 
     for(int i = 0; i < states.size(); ++i) {
 
-        // as per ONT documents
-        scaled_state[i].level_mean = state[i].level_mean * scale + shift;
-        scaled_state[i].level_stdv = state[i].level_stdv * var;
+        // calculate the derived sd_lambda parameter
+        states[i].sd_lambda = pow(states[i].sd_mean, 3.0) / pow(states[i].sd_stdv, 2.0);
 
-        scaled_state[i].sd_mean = state[i].sd_mean * scale_sd;
-        scaled_state[i].sd_lambda = state[i].sd_lambda * var_sd;
-        scaled_state[i].sd_stdv = sqrt(pow(scaled_state[i].sd_mean, 3) / scaled_state[i].sd_lambda);
+        // as per ONT documents
+        scaled_states[i].level_mean = states[i].level_mean * scale + shift;
+        scaled_states[i].level_stdv = states[i].level_stdv * var;
+
+        scaled_states[i].sd_mean = states[i].sd_mean * scale_sd;
+        scaled_states[i].sd_lambda = states[i].sd_lambda * var_sd;
+        scaled_states[i].sd_stdv = sqrt(pow(scaled_states[i].sd_mean, 3) / scaled_states[i].sd_lambda);
 
         // for efficiency
-        scaled_state[i].level_log_stdv = log(scaled_state[i].level_stdv);
-        scaled_state[i].sd_log_lambda = log(scaled_state[i].sd_lambda);
+        scaled_states[i].level_log_stdv = log(scaled_states[i].level_stdv);
+        scaled_states[i].sd_log_lambda = log(scaled_states[i].sd_lambda);
 
         // for compatibility
-        scaled_params[i].mean = scaled_state[i].level_mean;
-        scaled_params[i].stdv = scaled_state[i].level_stdv;
-        scaled_params[i].log_stdv = scaled_state[i].level_log_stdv;
+        scaled_params[i].mean = scaled_states[i].level_mean;
+        scaled_params[i].stdv = scaled_states[i].level_stdv;
+        scaled_params[i].log_stdv = scaled_states[i].level_log_stdv;
     }
     is_scaled = true;
 }
