@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <set>
+#include <map>
 #include <omp.h>
 #include <getopt.h>
 #include <cstddef>
@@ -167,7 +168,7 @@ struct GaussianMixture
 };
 
 //
-Alphabet* mtrain_alphabet = &gMCpGAlphabet;
+const Alphabet* mtrain_alphabet = NULL;
 
 //
 // Typedefs
@@ -199,9 +200,10 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --output-scores                  optionally output read scores during training\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"  -s, --out-suffix=STR                 name output files like model.out_suffix\n"
+"  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
+"      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --progress                       print out a progress message\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -214,7 +216,8 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
-    static std::string out_suffix = ".methyltrain";
+    static std::string out_suffix = ".trained";
+    static std::string out_fofn = "trained.fofn";
     static bool write_models = true;
     static bool train_unmethylated = false;
     static bool output_scores = false;
@@ -225,7 +228,14 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:m:vnc";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_NO_UPDATE_MODELS, OPT_TRAIN_UNMETHYLATED, OPT_OUTPUT_SCORES };
+enum { OPT_HELP = 1, 
+       OPT_VERSION, 
+       OPT_PROGRESS, 
+       OPT_NO_UPDATE_MODELS, 
+       OPT_TRAIN_UNMETHYLATED, 
+       OPT_OUTPUT_SCORES,
+       OPT_OUT_FOFN
+     };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
@@ -237,6 +247,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
+    { "out-fofn",           required_argument, NULL, OPT_OUT_FOFN },
     { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
     { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
     { "train-unmethylated", no_argument,       NULL, OPT_TRAIN_UNMETHYLATED },
@@ -245,6 +256,24 @@ static const struct option longopts[] = {
     { "version",            no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
+
+std::string get_model_short_name(const std::string& model_name)
+{
+    static std::map< std::string, std::string > model_name_map = {
+        { "r7.3_template_median68pA.model", "t.005" },
+        { "r7.3_complement_median68pA_pop1.model", "c.p1.005" },
+        { "r7.3_complement_median68pA_pop2.model", "c.p2.005" },
+        { "r7.3_e6_70bps_6mer_template_median68pA.model", "t.006" },
+        { "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model", "c.p1.006" },
+        { "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model", "c.p2.006" }
+    };
+    auto iter = model_name_map.find(model_name);
+    if(iter == model_name_map.end()) {
+        fprintf(stderr, "Error: unknown model %s\n", model_name.c_str());
+        exit(EXIT_FAILURE);
+    }
+    return iter->second;
+}
 
 GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& data,
                                        const GaussianMixture& input_mixture)
@@ -497,6 +526,7 @@ void train_read(const ModelMap& model_map,
 
         // Get the training data for this model
         auto& emission_map = training[curr_model];
+
         for(size_t i = 0; i < alignment_output.size(); ++i) {
             const EventAlignment& ea = alignment_output[i];
             std::string model_kmer = ea.model_kmer;
@@ -519,34 +549,21 @@ void train_read(const ModelMap& model_map,
                     next_kmer = alignment_output[i + next_stride].model_kmer;
                 }
 
-                uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
-                auto& kmer_summary = emission_map[rank];
-                
-                // Should we use this event for training?
-                bool use_for_training = i > 5 && 
-                                        i + 5 < alignment_output.size() &&
-                                        alignment_output[i].hmm_state == 'M' &&
-                                        prev_kmer != "" &&
-                                        next_kmer != "";
-
-                if(use_for_training) {
-
-                    StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
-                    kmer_summary.events.push_back(std);
+                if( abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
+                    prev_kmer = alignment_output[i - next_stride].model_kmer;
                 }
             }
 
             uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+            assert(rank < emission_map.size());
             auto& kmer_summary = emission_map[rank];
-            
+
             // Should we use this event for training?
             bool use_for_training = i > 5 && 
-                                    i + 5 < alignment_output.size() &&
-                                    alignment_output[i].hmm_state == 'M' &&
-                                    alignment_output[i - 1].hmm_state == 'M' &&
-                                    alignment_output[i + 1].hmm_state == 'M' &&
-                                    prev_kmer != "" &&
-                                    next_kmer != "";
+                i + 5 < alignment_output.size() &&
+                alignment_output[i].hmm_state == 'M' &&
+                prev_kmer != "" &&
+                next_kmer != "";
 
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
@@ -561,7 +578,6 @@ void train_read(const ModelMap& model_map,
                 #pragma omp atomic
                 kmer_summary.num_stays += 1;
             }
-
         }
     } // for strands
 }
@@ -581,6 +597,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
+            case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
@@ -749,24 +766,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         assert(model_iter != models.end());
 
         std::string model_name = model_training_iter->first;
-        std::string model_short_name = "";
-
-        if(model_name == "r7.3_template_median68pA.model") {
-            model_short_name = "t";
-        } else if(model_name == "r7.3_complement_median68pA_pop1.model") {
-            model_short_name = "c.p1";
-        } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
-            model_short_name = "c.p2";
-        } else if(model_name == "r7.3_e6_70bps_6mer_template_median68pA.model") {
-            model_short_name = "t.006";
-        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model") {
-            model_short_name = "c.p1.006";
-        } else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model") {
-            model_short_name = "c.p2.006";
-        } else {
-            printf("Unknown model: %s\n", model_name.c_str());
-            assert(false);
-        }
+        std::string model_short_name = get_model_short_name(model_name);
 
         trained_models[model_training_iter->first] = model_iter->second;
         PoreModel& new_pm = trained_models[model_training_iter->first];
@@ -827,15 +827,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
             }
 
-            /*
-            if(kmer.find("CG") != std::string::npos) {
-                float mu_prime = summaries[ki].mean_sum / summaries[ki].n;
-                float var_prime = summaries[ki].var_sum / summaries[ki].n;
-                new_pm[ki].level_mean = mu_prime;
-                new_pm[ki].level_stdv = sqrt(var_prime);
-                fprintf(stderr, "%s %s %.2lf %.2lf\n", model_training_iter->first.c_str(), kmer.c_str(), new_pm[ki].level_mean, new_pm[ki].level_stdv);
-            }
-            */
             mtrain_alphabet->lexicographic_next(kmer);
         }
     }
@@ -859,15 +850,21 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
 void write_models(ModelMap& models)
 {
+    // file-of-filenames containing the new models
+    std::ofstream fofn_writer(opt::out_fofn);
+
     // Write the model
     for(auto model_iter = models.begin(); 
              model_iter != models.end(); model_iter++) {
 
         assert(!model_iter->second.model_filename.empty());
-        std::string outname   =  model_iter->second.model_filename + opt::out_suffix;
+        std::string outname   =  get_model_short_name(model_iter->second.name) + opt::out_suffix;
         std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
         models[model_iter->first].write( outname, modelname );
+
+        fofn_writer << outname << "\n";
     }
+
 }
 
 int methyltrain_main(int argc, char** argv)
@@ -876,8 +873,13 @@ int methyltrain_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn, mtrain_alphabet);
+    ModelMap models = read_models_fofn(opt::models_fofn);
     
+    // Set the alphabet for this run to be the auto-detected alphabet
+    // for the first model
+    assert(!models.empty());
+    mtrain_alphabet = models.begin()->second.pmalphabet;
+
     const size_t TRAINING_ROUNDS = 10;
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);

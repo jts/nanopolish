@@ -86,7 +86,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pma
         if (model_line.find("#shift_offset") != std::string::npos) {
             std::string dummy;
             parser >> dummy >> shift_offset;
-            printf("found shift offset of %.2lf\n", shift_offset);
         }
 
         // skip the rest of the header
@@ -193,8 +192,6 @@ void PoreModel::write(const std::string filename, const std::string modelname)
 
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
-
-    printf("SHIFT OFFSET: %.lf\n", shift_offset);
     writer << "#shift_offset\t" << shift_offset << std::endl;
 
     std::string curr_kmer(k,pmalphabet->base(0));
@@ -232,7 +229,6 @@ ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet
         printf("reading %s\n", model_filename.c_str());
         PoreModel p(model_filename, alphabet);
         assert(!p.name.empty());
-
         out[p.name] = p;
     }
     return out;
