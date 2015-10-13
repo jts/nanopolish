@@ -24,7 +24,15 @@ class Alphabet
         // basic functions
         virtual uint8_t rank(char b) const = 0;
         virtual char base(uint8_t r) const = 0;
+        virtual char complement(char b) const = 0;
         virtual uint32_t size() const = 0;
+
+        // support for methylated bases with recognition sequences
+        virtual size_t num_recognition_sites() const = 0;
+        virtual size_t recognition_length() const = 0;
+        virtual const char* get_recognition_site(size_t i) const = 0;
+        virtual const char* get_recognition_site_methylated(size_t i) const = 0;
+        virtual const char* get_recognition_site_methylated_complement(size_t i) const = 0;
 
         // return the lexicographic rank of the kmer amongst all strings of 
         // length k for this alphabet
@@ -65,46 +73,157 @@ class Alphabet
             return n;
         }
 
+        virtual std::string reverse_complement(const std::string& str) const
+        {
+            std::string out(str.length(), 'A');
+            size_t i = 0; // input
+            int j = str.length() - 1; // output
+            while(i < str.length()) {
+                int recognition_index = -1;
+                size_t match_length = 0;
+
+                // Does this location (partially) match a methylated recognition site?
+                for(size_t j = 0; j < num_recognition_sites(); ++j) {
+
+                    // Require the recognition site to be completely matched
+                    size_t cl = std::min((size_t)recognition_length(), str.length() - i);
+                    if(str.compare(i, cl, get_recognition_site_methylated(j), cl) == 0) {
+                        
+                        // Matches a recognition site
+                        recognition_index = j;
+                        match_length = cl;
+                        break;
+                    }
+                }
+
+                // If this subsequence matched a methylated recognition site,
+                // copy the complement of the site to the output
+                if(recognition_index != -1) {
+                    for(size_t k = 0; k < match_length; ++k) {
+                        out[j--] = get_recognition_site_methylated_complement(recognition_index)[k];
+                        i += 1;
+                    }
+                } else {
+                    // complement a single base
+                    assert(str[i] != 'M');
+                    out[j--] = complement(str[i++]);
+                }
+            }
+            return out;
+        }
+
+        // return a new copy of the string with IUPAC ambiguity characters changed
+        virtual std::string disambiguate(const std::string& str) const
+        {
+            std::string out(str);
+            size_t i = 0;
+            while(i < out.length()) {
+                size_t stride = 1;
+                bool is_recognition_site = false;
+
+                // Does this location (partially) match a methylated recognition site?
+                for(size_t j = 0; j < num_recognition_sites(); ++j) {
+
+                    // Require the recognition site to be completely matched
+                    size_t cl = std::min((size_t)recognition_length(), out.length() - i);
+                    if(out.compare(i, cl, get_recognition_site_methylated(j), cl) == 0) {
+                        stride = cl; // skip to end of match
+                        is_recognition_site = true;
+                        break;
+                    }
+                }
+                
+                // disambiguate if not a recognition site
+                if(!is_recognition_site) {
+                    assert(IUPAC::isValid(out[i]));
+                    out[i] = IUPAC::getPossibleSymbols(out[i])[0];
+                    stride = 1;
+                }
+
+                i += stride;
+            }
+            return out;
+        }
+
+        // If the alphabet supports methylated bases, convert str
+        // to a methylated string using the recognition sites
+        virtual std::string methylate(const std::string& str) const
+        {
+            std::string out(str);
+            size_t i = 0;
+            while(i < out.length()) {
+                size_t stride = 1;
+
+                // Does this location match a recognition site?
+                for(size_t j = 0; j < num_recognition_sites(); ++j) {
+
+                    // Require the recognition site to be completely matched
+                    if(str.compare(i, recognition_length(), get_recognition_site(j)) == 0) {
+
+                        // Replace by the methylated version
+                        out.replace(i, recognition_length(), get_recognition_site_methylated(j));
+                        stride = recognition_length(); // skip to end of match
+                        break;
+                    }
+                }
+
+                i += stride;
+            }
+            return out;
+        }
+
+        // Remove methylated bases according to the recognition site
+        std::string unmethylate(const std::string& str) const
+        {
+            std::string out(str);
+            size_t i = 0;
+            while(i < out.length()) {
+                size_t stride = 1;
+
+                // Does this location (partially) match a methylated recognition site?
+                for(size_t j = 0; j < num_recognition_sites(); ++j) {
+
+                    // Require the recognition site to be completely matched
+                    size_t cl = std::min((size_t)recognition_length(), out.length() - i);
+                    if(out.compare(i, cl, get_recognition_site_methylated(j), cl) == 0) {
+
+                        // Replace by the unmethylated version
+                        out.replace(i, cl, get_recognition_site(j), cl);
+                        stride = cl; // skip to end of match
+                        break;
+                    }
+                }
+
+                i += stride;
+            }
+            return out;
+        }
+
         // does this alphabet contain all of the nucleotides in bases?
         virtual inline bool contains_all(const char *bases) const = 0;
-
-        // reverse complement a string over this alphabet
-        virtual std::string reverse_complement(const std::string& seq) const = 0;
-
-        // remove ambiguous nucleotides from the string
-        virtual std::string disambiguate(const std::string& seq) const = 0; 
 };
 
 struct DNAAlphabet : public Alphabet
 {
+    // members
     static const uint8_t _rank[256];
     static const char* _base;
     static const char* _complement;
     static const uint32_t _size;
 
+    // functions
     virtual uint8_t rank(char b) const { return _rank[b]; }
     virtual char base(uint8_t r) const { return _base[r]; }
+    virtual char complement(char b) const { return _complement[_rank[b]]; }
     virtual uint32_t size() const { return _size; }
 
-    virtual std::string reverse_complement(const std::string& seq) const
-    {
-        std::string out(seq.length(), 'A');
-        size_t last_pos = seq.length() - 1;
-        for(int i = last_pos; i >= 0; --i) {
-            out[last_pos - i] = _complement[_rank[seq[i]]];
-        }
-        return out;
-    }
-
-    // return a new copy of the string with ambiguous characters changed
-    virtual std::string disambiguate(const std::string& str) const
-    {
-        std::string out(str);
-        for(size_t i = 0; i < str.length(); ++i) {
-            assert(IUPAC::isValid(str[i]));
-            out[i] = IUPAC::getPossibleSymbols(str[i])[0];
-        }
-        return out;
+    // no methylation in this alphabet
+    virtual size_t num_recognition_sites() const { return 0; }
+    virtual size_t recognition_length() const { return 0; }
+    virtual const char* get_recognition_site(size_t i) const { return NULL; }
+    virtual const char* get_recognition_site_methylated(size_t i) const { return NULL; }
+    virtual const char* get_recognition_site_methylated_complement(size_t i) const { 
+        return NULL;
     }
 
     // does this alphabet contain all of the nucleotides in bases?
@@ -122,74 +241,24 @@ struct MethylCpGAlphabet : public Alphabet
     static const char* _complement;
     static const uint32_t _size;
 
+    // methylation support
+    static const uint32_t _num_recognition_sites;
+    static const uint32_t _recognition_length;
+    static const char* _recognition_sites[];
+    static const char* _recognition_sites_methylated[];
+    static const char* _recognition_sites_methylated_complement[];
+
     virtual uint8_t rank(char b) const { return _rank[b]; }
     virtual char base(uint8_t r) const { return _base[r]; }
+    virtual char complement(char b) const { return _complement[_rank[b]]; }
     virtual uint32_t size() const { return _size; }
 
-    virtual std::string reverse_complement(const std::string& seq) const
-    {
-        std::string out(seq.length(), 'A');
-        size_t i = 0; // input
-        int j = seq.length() - 1; // output
-        while(i < seq.length()) {
-            if(seq[i] == 'M') {
-                
-                out[j--] = 'G';
-                i += 1;
-
-                // CpG methylation model requires M to be followed by G
-                // (if there is space)
-                if(j >= 0) {
-                    assert(i < seq.length());
-                    assert(seq[i] == 'G');
-                    out[j--] = 'M';
-                    ++i;
-                }
-            } else {
-                out[j--] = DNAAlphabet::_complement[DNAAlphabet::_rank[seq[i++]]];
-            }
-        }
-        return out;
-    }
-
-    // return a new copy of the string with ambiguous characters changed
-    virtual std::string disambiguate(const std::string& str) const
-    {
-        std::string out(str);
-        for(size_t i = 0; i < str.length(); ++i) {
-            if(str[i] == 'M' && i != str.length() - 1 && str[i + 1] == 'G') {
-                // CpG site, assume its methylated not an ambiguity symbol
-                out[i] = 'M';
-            } else {
-                assert(IUPAC::isValid(str[i]));
-                out[i] = IUPAC::getPossibleSymbols(str[i])[0];
-            }
-        }
-        return out;
-    }
-
-    // Convert CpGs of the sequence to mCpG
-    std::string methylate(const std::string& str) const
-    {
-        std::string out(str);
-        for(size_t i = 0; i < out.length() - 1; ++i) {
-            if(out[i] == 'C' && out[i + 1] == 'G') {
-                out[i] = 'M';
-            }
-        }
-        return out;
-    }
-
-    // Convert methylated bases to C
-    std::string unmethylate(const std::string& str) const
-    {
-        std::string out(str);
-        for(size_t i = 0; i < out.length(); ++i) {
-            if(out[i] == 'M') {
-                out[i] = 'C';
-            }
-        }
-        return out;
+    virtual size_t num_recognition_sites() const { return _num_recognition_sites; }
+    virtual size_t recognition_length() const { return _recognition_length; }
+    virtual const char* get_recognition_site(size_t i) const { return _recognition_sites[i]; }
+    virtual const char* get_recognition_site_methylated(size_t i) const { return _recognition_sites_methylated[i]; }
+    virtual const char* get_recognition_site_methylated_complement(size_t i) const { 
+        return _recognition_sites_methylated_complement[i]; 
     }
 
     // does this alphabet contain all of the nucleotides in bases?

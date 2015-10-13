@@ -69,13 +69,40 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     }
     REQUIRE(kmer == "TTT");
 
-    // Test the special reverse complement model
-    // for the CpG alphabet
+    // Test the methylate function in the CpG alphabet
+    REQUIRE( mc_alphabet.methylate("C") == "C");
+    REQUIRE( mc_alphabet.methylate("G") == "G");
+    REQUIRE( mc_alphabet.methylate("CG") == "MG");
+    REQUIRE( mc_alphabet.methylate("GC") == "GC");
+    REQUIRE( mc_alphabet.methylate("CGCG") == "MGMG");
+    REQUIRE( mc_alphabet.methylate("AAGCGT") == "AAGMGT");
+    REQUIRE( mc_alphabet.methylate("CGGCGT") == "MGGMGT");
+    REQUIRE( mc_alphabet.methylate("CGCGC") == "MGMGC");
+
+    // Test unmethylate
+    REQUIRE( mc_alphabet.unmethylate("C") == "C");
+    REQUIRE( mc_alphabet.unmethylate("CG") == "CG");
+    REQUIRE( mc_alphabet.unmethylate("M") == "C");
+    REQUIRE( mc_alphabet.unmethylate("MG") == "CG");
+    REQUIRE( mc_alphabet.unmethylate("MT") == "MT");
+
+    // Test disambiguate
+    REQUIRE( mc_alphabet.disambiguate("") == "");
+    REQUIRE( mc_alphabet.disambiguate("M") == "M");
+    REQUIRE( mc_alphabet.disambiguate("MT") == "AT");
+    REQUIRE( mc_alphabet.disambiguate("MG") == "MG");
+    REQUIRE( mc_alphabet.disambiguate("AMG") == "AMG");
+    REQUIRE( mc_alphabet.disambiguate("CAM") == "CAM");
+
+    // Test reverse complement
     REQUIRE( mc_alphabet.reverse_complement("M") == "G");
     REQUIRE( mc_alphabet.reverse_complement("C") == "G");
     REQUIRE( mc_alphabet.reverse_complement("MG") == "MG");
     REQUIRE( mc_alphabet.reverse_complement("AM") == "GT");
     REQUIRE( mc_alphabet.reverse_complement("AMG") == "MGT");
+    REQUIRE( mc_alphabet.reverse_complement("AAAMG") == "MGTTT");
+    REQUIRE( mc_alphabet.reverse_complement("MGMG") == "MGMG");
+    REQUIRE( mc_alphabet.reverse_complement("MGAMG") == "MGTMG");
     REQUIRE( mc_alphabet.reverse_complement("GTACATG") == dna_alphabet.reverse_complement("GTACATG"));
 }
 
