@@ -203,19 +203,25 @@ class Alphabet
         virtual inline bool contains_all(const char *bases) const = 0;
 };
 
+#define BASIC_MEMBER_BOILERPLATE \
+    static const uint8_t _rank[256]; \
+    static const char* _base; \
+    static const char* _complement; \
+    static const uint32_t _size; 
+
+#define BASIC_ACCESSOR_BOILERPLATE \
+    virtual uint8_t rank(char b) const { return _rank[b]; } \
+    virtual char base(uint8_t r) const { return _base[r]; } \
+    virtual char complement(char b) const { return _complement[_rank[b]]; } \
+    virtual uint32_t size() const { return _size; } \
+
 struct DNAAlphabet : public Alphabet
 {
     // members
-    static const uint8_t _rank[256];
-    static const char* _base;
-    static const char* _complement;
-    static const uint32_t _size;
+    BASIC_MEMBER_BOILERPLATE
 
     // functions
-    virtual uint8_t rank(char b) const { return _rank[b]; }
-    virtual char base(uint8_t r) const { return _base[r]; }
-    virtual char complement(char b) const { return _complement[_rank[b]]; }
-    virtual uint32_t size() const { return _size; }
+    BASIC_ACCESSOR_BOILERPLATE
 
     // no methylation in this alphabet
     virtual size_t num_recognition_sites() const { return 0; }
@@ -233,33 +239,34 @@ struct DNAAlphabet : public Alphabet
     }
 };
 
-// DNABaseMap with methyl-cytosine
-struct MethylCpGAlphabet : public Alphabet
-{
-    static const uint8_t _rank[256];
-    static const char* _base;
-    static const char* _complement;
-    static const uint32_t _size;
-
-    // methylation support
-    static const uint32_t _num_recognition_sites;
-    static const uint32_t _recognition_length;
-    static const char* _recognition_sites[];
-    static const char* _recognition_sites_methylated[];
+#define METHYLATION_MEMBER_BOILERPLATE \
+    static const uint32_t _num_recognition_sites; \
+    static const uint32_t _recognition_length; \
+    static const char* _recognition_sites[]; \
+    static const char* _recognition_sites_methylated[]; \
     static const char* _recognition_sites_methylated_complement[];
 
-    virtual uint8_t rank(char b) const { return _rank[b]; }
-    virtual char base(uint8_t r) const { return _base[r]; }
-    virtual char complement(char b) const { return _complement[_rank[b]]; }
-    virtual uint32_t size() const { return _size; }
+#define METHYLATION_ACCESSOR_BOILERPLATE \
+    virtual size_t num_recognition_sites() const { return _num_recognition_sites; } \
+    virtual size_t recognition_length() const { return _recognition_length; } \
+    virtual const char* get_recognition_site(size_t i) const { return _recognition_sites[i]; } \
+    virtual const char* get_recognition_site_methylated(size_t i) const { return _recognition_sites_methylated[i]; } \
+    virtual const char* get_recognition_site_methylated_complement(size_t i) const { \
+        return _recognition_sites_methylated_complement[i]; \
+    } 
 
-    virtual size_t num_recognition_sites() const { return _num_recognition_sites; }
-    virtual size_t recognition_length() const { return _recognition_length; }
-    virtual const char* get_recognition_site(size_t i) const { return _recognition_sites[i]; }
-    virtual const char* get_recognition_site_methylated(size_t i) const { return _recognition_sites_methylated[i]; }
-    virtual const char* get_recognition_site_methylated_complement(size_t i) const { 
-        return _recognition_sites_methylated_complement[i]; 
-    }
+//
+// methyl-cytosine in CG context
+// 
+struct MethylCpGAlphabet : public Alphabet
+{
+    // member variables, expanded by macrocs
+    BASIC_MEMBER_BOILERPLATE
+    METHYLATION_MEMBER_BOILERPLATE
+    
+    // member functions
+    BASIC_ACCESSOR_BOILERPLATE
+    METHYLATION_ACCESSOR_BOILERPLATE
 
     // does this alphabet contain all of the nucleotides in bases?
     virtual inline bool contains_all(const char *bases) const 
