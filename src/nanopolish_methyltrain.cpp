@@ -789,16 +789,16 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             
             // unmethylated component
             double um_rate = 0.05f;
-            std::string um_kmer = gMCpGAlphabet.unmethylate(kmer);
-            size_t um_ki = gMCpGAlphabet.kmer_rank(um_kmer.c_str(), k);
+            std::string um_kmer = mtrain_alphabet->unmethylate(kmer);
+            size_t um_ki = mtrain_alphabet->kmer_rank(um_kmer.c_str(), k);
             GaussianParameters um_params(model_iter->second.get_parameters(um_ki).level_mean, 
-                                           model_iter->second.get_parameters(um_ki).level_stdv);
+                                         model_iter->second.get_parameters(um_ki).level_stdv);
 
             mixture.weights.push_back(um_rate);
             mixture.params.push_back(um_params);
 
             GaussianParameters m_params(model_iter->second.get_parameters(ki).level_mean, 
-                                           model_iter->second.get_parameters(ki).level_stdv);
+                                        model_iter->second.get_parameters(ki).level_stdv);
 
             mixture.weights.push_back(1 - um_rate);
             mixture.params.push_back(m_params);

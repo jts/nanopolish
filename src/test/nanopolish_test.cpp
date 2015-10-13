@@ -27,6 +27,7 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     // DNA alphabet
     DNAAlphabet dna_alphabet;
     MethylCpGAlphabet mc_alphabet;
+    MethylDamAlphabet dam_alphabet;
 
     REQUIRE( dna_alphabet.rank('A') == 0 );
     REQUIRE( dna_alphabet.rank('C') == 1 );
@@ -97,6 +98,7 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     // Test reverse complement
     REQUIRE( mc_alphabet.reverse_complement("M") == "G");
     REQUIRE( mc_alphabet.reverse_complement("C") == "G");
+    REQUIRE( mc_alphabet.reverse_complement("G") == "C");
     REQUIRE( mc_alphabet.reverse_complement("MG") == "MG");
     REQUIRE( mc_alphabet.reverse_complement("AM") == "GT");
     REQUIRE( mc_alphabet.reverse_complement("AMG") == "MGT");
@@ -104,6 +106,59 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( mc_alphabet.reverse_complement("MGMG") == "MGMG");
     REQUIRE( mc_alphabet.reverse_complement("MGAMG") == "MGTMG");
     REQUIRE( mc_alphabet.reverse_complement("GTACATG") == dna_alphabet.reverse_complement("GTACATG"));
+
+    // Dam methylation tests
+    
+    // methylate
+    REQUIRE( dam_alphabet.methylate("") == "");
+    REQUIRE( dam_alphabet.methylate("G") == "G");
+    REQUIRE( dam_alphabet.methylate("GA") == "GA");
+    REQUIRE( dam_alphabet.methylate("GAT") == "GAT");
+    REQUIRE( dam_alphabet.methylate("GATC") == "GMTC");
+    REQUIRE( dam_alphabet.methylate("GATCG") == "GMTCG");
+    REQUIRE( dam_alphabet.methylate("GATCGA") == "GMTCGA");
+    REQUIRE( dam_alphabet.methylate("GATCGAT") == "GMTCGAT");
+    REQUIRE( dam_alphabet.methylate("GATCGATC") == "GMTCGMTC");
+    REQUIRE( dam_alphabet.methylate("GMTCGATC") == "GMTCGMTC");
+    REQUIRE( dam_alphabet.methylate("GMTCGMTC") == "GMTCGMTC");
+
+    // unmethylate
+    REQUIRE( dam_alphabet.unmethylate("M") == "A");
+    REQUIRE( dam_alphabet.unmethylate("MT") == "AT");
+    REQUIRE( dam_alphabet.unmethylate("MTC") == "ATC");
+    REQUIRE( dam_alphabet.unmethylate("GM") == "GA");
+    REQUIRE( dam_alphabet.unmethylate("GMT") == "GAT");
+    REQUIRE( dam_alphabet.unmethylate("GMTC") == "GATC");
+    REQUIRE( dam_alphabet.unmethylate("GMTCG") == "GATCG");
+    REQUIRE( dam_alphabet.unmethylate("GMTCGM") == "GATCGA");
+    REQUIRE( dam_alphabet.unmethylate("GMTCGMTC") == "GATCGATC");
+    REQUIRE( dam_alphabet.unmethylate("GMTCGMT") == "GATCGAT");
+    REQUIRE( dam_alphabet.unmethylate("GMTCGM") == "GATCGA");
+    REQUIRE( dam_alphabet.unmethylate("MA") == "MA");
+    REQUIRE( dam_alphabet.unmethylate("MT") == "AT");
+    REQUIRE( dam_alphabet.unmethylate("GM") == "GA");
+    REQUIRE( dam_alphabet.unmethylate("CM") == "CM");
+
+    // disambiguate
+    REQUIRE( dam_alphabet.disambiguate("") == "");
+    REQUIRE( dam_alphabet.disambiguate("GMTC") == "GMTC");
+    REQUIRE( dam_alphabet.disambiguate("M") == "M");
+    REQUIRE( dam_alphabet.disambiguate("MT") == "MT");
+    REQUIRE( dam_alphabet.disambiguate("MTC") == "MTC");
+    REQUIRE( dam_alphabet.disambiguate("GM") == "GM");
+    REQUIRE( dam_alphabet.disambiguate("GMT") == "GMT");
+    REQUIRE( dam_alphabet.disambiguate("GMA") == "GAA");
+
+    // reverse complement
+    REQUIRE( dam_alphabet.reverse_complement("") == "");
+    REQUIRE( dam_alphabet.reverse_complement("M") == "T");
+    REQUIRE( dam_alphabet.reverse_complement("G") == "C");
+    REQUIRE( dam_alphabet.reverse_complement("GM") == "TC");
+    REQUIRE( dam_alphabet.reverse_complement("GMT") == "MTC");
+    REQUIRE( dam_alphabet.reverse_complement("GMTC") == "GMTC");
+    REQUIRE( dam_alphabet.reverse_complement("MTC") == "GMT");
+    REQUIRE( dam_alphabet.reverse_complement("TC") == "GA");
+    REQUIRE( dam_alphabet.reverse_complement("C") == "G");
 }
 
 TEST_CASE( "string functions", "[string_functions]" ) {

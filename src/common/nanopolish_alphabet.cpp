@@ -38,7 +38,6 @@ const uint32_t DNAAlphabet::_size = 4;
 //
 // methyl-cytosine in CG context
 //
-
 const uint8_t MethylCpGAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -68,9 +67,42 @@ const char* MethylCpGAlphabet::_recognition_sites[] = { "CG" };
 const char* MethylCpGAlphabet::_recognition_sites_methylated[] = { "MG" };
 const char* MethylCpGAlphabet::_recognition_sites_methylated_complement[] = { "GM" };
 
+//
+// Dam methylation: methyl-adenine in GATC context
+//
+const uint8_t MethylDamAlphabet::_rank[256] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,2,0,0,0,0,0,3,0,0,
+    0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+const char* MethylDamAlphabet::_base = "ACGMT";
+const char* MethylDamAlphabet::_complement = "TGCTA";
+const uint32_t MethylDamAlphabet::_size = 5;
+
+const uint32_t MethylDamAlphabet::_num_recognition_sites = 1;
+const uint32_t MethylDamAlphabet::_recognition_length = 4;
+const char* MethylDamAlphabet::_recognition_sites[] = { "GATC" };
+const char* MethylDamAlphabet::_recognition_sites_methylated[] = { "GMTC" };
+const char* MethylDamAlphabet::_recognition_sites_methylated_complement[] = { "CTMG" };
+
 // Global objects
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;
+MethylDamAlphabet gMethylDamAlphabet;
 
 // Select the alphabet that best matches bases
 const Alphabet *best_alphabet(const char *bases)
