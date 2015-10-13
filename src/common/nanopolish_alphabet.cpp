@@ -99,6 +99,38 @@ const char* MethylDamAlphabet::_recognition_sites[] = { "GATC" };
 const char* MethylDamAlphabet::_recognition_sites_methylated[] = { "GMTC" };
 const char* MethylDamAlphabet::_recognition_sites_methylated_complement[] = { "CTMG" };
 
+//
+// Dcm methylation: methyl-cytosine in CCAGG and CCTGG context
+//
+const uint8_t MethylDcmAlphabet::_rank[256] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,2,0,0,0,0,0,3,0,0,
+    0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+const char* MethylDcmAlphabet::_base = "ACGMT";
+const char* MethylDcmAlphabet::_complement = "TGCGA";
+const uint32_t MethylDcmAlphabet::_size = 5;
+
+const uint32_t MethylDcmAlphabet::_num_recognition_sites = 2;
+const uint32_t MethylDcmAlphabet::_recognition_length = 5;
+const char* MethylDcmAlphabet::_recognition_sites[] = { "CCAGG", "CCTGG" };
+const char* MethylDcmAlphabet::_recognition_sites_methylated[] = { "CMAGG", "CMTGG" };
+const char* MethylDcmAlphabet::_recognition_sites_methylated_complement[] = { "GGTMC", "GGAMC" };
+
 // Global objects
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;

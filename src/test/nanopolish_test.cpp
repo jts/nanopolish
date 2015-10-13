@@ -28,6 +28,7 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     DNAAlphabet dna_alphabet;
     MethylCpGAlphabet mc_alphabet;
     MethylDamAlphabet dam_alphabet;
+    MethylDcmAlphabet dcm_alphabet;
 
     REQUIRE( dna_alphabet.rank('A') == 0 );
     REQUIRE( dna_alphabet.rank('C') == 1 );
@@ -80,14 +81,14 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( mc_alphabet.methylate("CGGCGT") == "MGGMGT");
     REQUIRE( mc_alphabet.methylate("CGCGC") == "MGMGC");
 
-    // Test unmethylate
+    // unmethylate
     REQUIRE( mc_alphabet.unmethylate("C") == "C");
     REQUIRE( mc_alphabet.unmethylate("CG") == "CG");
     REQUIRE( mc_alphabet.unmethylate("M") == "C");
     REQUIRE( mc_alphabet.unmethylate("MG") == "CG");
     REQUIRE( mc_alphabet.unmethylate("MT") == "MT");
 
-    // Test disambiguate
+    // disambiguate
     REQUIRE( mc_alphabet.disambiguate("") == "");
     REQUIRE( mc_alphabet.disambiguate("M") == "M");
     REQUIRE( mc_alphabet.disambiguate("MT") == "AT");
@@ -95,11 +96,12 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( mc_alphabet.disambiguate("AMG") == "AMG");
     REQUIRE( mc_alphabet.disambiguate("CAM") == "CAM");
 
-    // Test reverse complement
+    // reverse complement
     REQUIRE( mc_alphabet.reverse_complement("M") == "G");
     REQUIRE( mc_alphabet.reverse_complement("C") == "G");
     REQUIRE( mc_alphabet.reverse_complement("G") == "C");
     REQUIRE( mc_alphabet.reverse_complement("MG") == "MG");
+    REQUIRE( mc_alphabet.reverse_complement("CG") == "CG");
     REQUIRE( mc_alphabet.reverse_complement("AM") == "GT");
     REQUIRE( mc_alphabet.reverse_complement("AMG") == "MGT");
     REQUIRE( mc_alphabet.reverse_complement("AAAMG") == "MGTTT");
@@ -159,6 +161,77 @@ TEST_CASE( "alphabet", "[alphabet]" ) {
     REQUIRE( dam_alphabet.reverse_complement("MTC") == "GMT");
     REQUIRE( dam_alphabet.reverse_complement("TC") == "GA");
     REQUIRE( dam_alphabet.reverse_complement("C") == "G");
+    REQUIRE( dam_alphabet.reverse_complement("GATC") == "GATC");
+    REQUIRE( dam_alphabet.reverse_complement("ATC") == "GAT");
+    REQUIRE( dam_alphabet.reverse_complement("TC") == "GA");
+    REQUIRE( dam_alphabet.reverse_complement("GAT") == "ATC");
+
+    //
+    // Dcm methylation tests
+    //
+
+    // methylate
+    REQUIRE( dcm_alphabet.methylate("") == "");
+    REQUIRE( dcm_alphabet.methylate("C") == "C");
+    REQUIRE( dcm_alphabet.methylate("CC") == "CC");
+
+    // first recognition site
+    REQUIRE( dcm_alphabet.methylate("CCA") == "CCA");
+    REQUIRE( dcm_alphabet.methylate("CCAG") == "CCAG");
+    REQUIRE( dcm_alphabet.methylate("CCAGG") == "CMAGG");
+    REQUIRE( dcm_alphabet.methylate("CAGG") == "CAGG");
+    REQUIRE( dcm_alphabet.methylate("AGG") == "AGG");
+    
+    // second recognition site
+    REQUIRE( dcm_alphabet.methylate("CCT") == "CCT");
+    REQUIRE( dcm_alphabet.methylate("CCTG") == "CCTG");
+    REQUIRE( dcm_alphabet.methylate("CCTGG") == "CMTGG");
+    REQUIRE( dcm_alphabet.methylate("CTGG") == "CTGG");
+    REQUIRE( dcm_alphabet.methylate("TGG") == "TGG");
+
+    // both recognition sites
+    REQUIRE( dcm_alphabet.methylate("CCAGGCCTGG") == "CMAGGCMTGG");
+    REQUIRE( dcm_alphabet.methylate("CCAGGCCTG") == "CMAGGCCTG");
+
+    // unmethylate
+    REQUIRE( dcm_alphabet.unmethylate("M") == "C");
+    REQUIRE( dcm_alphabet.unmethylate("MA") == "CA");
+    REQUIRE( dcm_alphabet.unmethylate("MT") == "CT");
+    REQUIRE( dcm_alphabet.unmethylate("MAG") == "CAG");
+    REQUIRE( dcm_alphabet.unmethylate("MTG") == "CTG");
+    REQUIRE( dcm_alphabet.unmethylate("MAGG") == "CAGG");
+    REQUIRE( dcm_alphabet.unmethylate("MTGG") == "CTGG");
+    
+    REQUIRE( dcm_alphabet.unmethylate("CM") == "CC");
+    REQUIRE( dcm_alphabet.unmethylate("GM") == "GM");
+    REQUIRE( dcm_alphabet.unmethylate("MC") == "MC");
+
+    // disambiguate
+    REQUIRE( dcm_alphabet.disambiguate("") == "");
+    REQUIRE( dcm_alphabet.disambiguate("M") == "M");
+    REQUIRE( dcm_alphabet.disambiguate("CM") == "CM");
+    REQUIRE( dcm_alphabet.disambiguate("GM") == "GA");
+    REQUIRE( dcm_alphabet.disambiguate("MA") == "MA");
+    REQUIRE( dcm_alphabet.disambiguate("MT") == "MT");
+    REQUIRE( dcm_alphabet.disambiguate("MC") == "AC");
+
+    // reverse complement
+    REQUIRE( dcm_alphabet.reverse_complement("") == "");
+    REQUIRE( dcm_alphabet.reverse_complement("M") == "G");
+    REQUIRE( dcm_alphabet.reverse_complement("MT") == "AG");
+    REQUIRE( dcm_alphabet.reverse_complement("MTG") == "MAG");
+    REQUIRE( dcm_alphabet.reverse_complement("MTGG") == "CMAG");
+    
+    REQUIRE( dcm_alphabet.reverse_complement("MA") == "TG");
+    REQUIRE( dcm_alphabet.reverse_complement("MAG") == "MTG");
+    REQUIRE( dcm_alphabet.reverse_complement("MAGG") == "CMTG");
+    
+    REQUIRE( dcm_alphabet.reverse_complement("CM") == "GG");
+    REQUIRE( dcm_alphabet.reverse_complement("CCAGG") == "CCTGG");
+    REQUIRE( dcm_alphabet.reverse_complement("CCTGG") == "CCAGG");
+    REQUIRE( dcm_alphabet.reverse_complement("CMAGG") == "CMTGG");
+    REQUIRE( dcm_alphabet.reverse_complement("CMTGG") == "CMAGG");
+    
 }
 
 TEST_CASE( "string functions", "[string_functions]" ) {
