@@ -135,6 +135,7 @@ const char* MethylDcmAlphabet::_recognition_sites_methylated_complement[] = { "G
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;
 MethylDamAlphabet gMethylDamAlphabet;
+MethylDcmAlphabet gMethylDcmAlphabet;
 
 // Select the alphabet that best matches bases
 const Alphabet *best_alphabet(const char *bases)
