@@ -224,6 +224,7 @@ void test_read(const ModelMap& model_map,
         }
         
         // Batch the CpGs together
+        size_t k = sr.pore_model[T_IDX].k;
         int min_separation = 10;
         size_t curr_idx = 0;
         while(curr_idx < cpg_sites.size()) {
@@ -252,7 +253,9 @@ void test_read(const ModelMap& model_map,
 
                 if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end()) {
 
-                    std::string site_string = ref_seq.substr(cpg_sites[curr_idx] - 3, 5);
+                    size_t site_output_start = cpg_sites[curr_idx] - k + 1;
+                    size_t site_output_end =  cpg_sites[end_idx - 1] + k;
+                    std::string site_string = ref_seq.substr(site_output_start, site_output_end - site_output_start);
                     
                     uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
@@ -332,6 +335,8 @@ void test_read(const ModelMap& model_map,
 
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
+            fprintf(handles.site_writer, "LL_METH_BY_STRAND=%.2lf,%.2lf;;", ss.ll_methylated[0], ss.ll_methylated[1]);
+            fprintf(handles.site_writer, "LL_UNMETH_BY_STRAND=%.2lf,%.2lf;", ss.ll_unmethylated[0], ss.ll_unmethylated[1]);
             fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
 
             ll_ratio_sum_strand[0] += ss.ll_methylated[0] - ss.ll_unmethylated[0];
