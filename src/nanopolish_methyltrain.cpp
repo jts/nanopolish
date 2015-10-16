@@ -873,8 +873,7 @@ int methyltrain_main(int argc, char** argv)
     Fast5Map name_map(opt::reads_file);
     ModelMap models = read_models_fofn(opt::models_fofn);
     
-    // Set the alphabet for this run to be the auto-detected alphabet
-    // for the first model
+    // Set the alphabet for this run to be the alphabet for the first model
     assert(!models.empty());
     mtrain_alphabet = models.begin()->second.pmalphabet;
 

@@ -88,6 +88,15 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pma
             parser >> dummy >> shift_offset;
         }
 
+        // Use the alphabet defined in the header if available
+        if (model_line.find("#alphabet") != std::string::npos) {
+            std::string dummy;
+            std::string alphabet_name;
+            parser >> dummy >> alphabet_name;
+            pmalphabet = get_alphabet_by_name(alphabet_name);
+        }
+
+
         // skip the rest of the header
         if (model_line[0] == '#' || model_line.find("kmer") == 0) {
             continue;

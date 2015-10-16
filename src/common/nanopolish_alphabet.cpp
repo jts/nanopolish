@@ -31,6 +31,7 @@ const uint8_t DNAAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
+const char* DNAAlphabet::_name = "dna";
 const char* DNAAlphabet::_base = "ACGT";
 const char* DNAAlphabet::_complement = "TGCA";
 const uint32_t DNAAlphabet::_size = 4;
@@ -57,6 +58,7 @@ const uint8_t MethylCpGAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
+const char* MethylCpGAlphabet::_name = "CpG";
 const char* MethylCpGAlphabet::_base = "ACGMT";
 const char* MethylCpGAlphabet::_complement = "TGCGA";
 const uint32_t MethylCpGAlphabet::_size = 5;
@@ -89,6 +91,7 @@ const uint8_t MethylDamAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
+const char* MethylDamAlphabet::_name = "dam";
 const char* MethylDamAlphabet::_base = "ACGMT";
 const char* MethylDamAlphabet::_complement = "TGCTA";
 const uint32_t MethylDamAlphabet::_size = 5;
@@ -121,6 +124,7 @@ const uint8_t MethylDcmAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
+const char* MethylDcmAlphabet::_name = "dcm";
 const char* MethylDcmAlphabet::_base = "ACGMT";
 const char* MethylDcmAlphabet::_complement = "TGCGA";
 const uint32_t MethylDcmAlphabet::_size = 5;
@@ -137,15 +141,38 @@ MethylCpGAlphabet gMCpGAlphabet;
 MethylDamAlphabet gMethylDamAlphabet;
 MethylDcmAlphabet gMethylDcmAlphabet;
 
-// Select the alphabet that best matches bases
-const Alphabet *best_alphabet(const char *bases)
+std::vector<const Alphabet*> get_alphabet_list()
 {
-    std::vector<const Alphabet *>list = {&gDNAAlphabet, &gMCpGAlphabet};
+    std::vector<const Alphabet*> list = { &gDNAAlphabet, 
+                                          &gMCpGAlphabet, 
+                                          &gMethylDamAlphabet,
+                                          &gMethylDcmAlphabet };
+    return list;
+}
+
+// Select the alphabet that best matches bases
+const Alphabet* best_alphabet(const char *bases)
+{
+    std::vector<const Alphabet*> list = get_alphabet_list();
 
     for (auto alphabet: list)
         if (alphabet->contains_all(bases))
             return alphabet;
 
     return nullptr;                
+}
+
+// Select the alphabet by name
+const Alphabet* get_alphabet_by_name(const std::string& name)
+{
+    std::vector<const Alphabet*> list = get_alphabet_list();
+
+    for (auto alphabet: list)
+        if (alphabet->get_name() == name)
+            return alphabet;
+    
+    fprintf(stderr, "Error, unknown alphabet name: %s\n", name.c_str());
+    exit(EXIT_FAILURE);
+    return nullptr; 
 }
 
