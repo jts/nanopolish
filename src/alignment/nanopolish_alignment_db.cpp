@@ -31,6 +31,7 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
                             m_sequence_bam(sequence_bam),
                             m_event_bam(event_bam)
 {
+    m_p_model_map = NULL;
     _clear_region();
 }
 
@@ -364,8 +365,25 @@ void AlignmentDB::_load_events_by_region()
 
         // Do we need to load this fast5 file?
         if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
-            m_squiggle_read_map[read_name] = new SquiggleRead(read_name, fast5_path);
+            SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
+
+            // Switch the read to use an alternative kmer model
+            if(m_p_model_map != NULL) {
+                for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+                    std::string curr_model = sr->pore_model[strand_idx].name;
+                    auto model_iter = m_p_model_map->find(curr_model);
+                    if(model_iter != m_p_model_map->end()) {
+                        sr->pore_model[strand_idx].update_states( model_iter->second );
+                    } else {
+                        fprintf(stderr, "Error, alternative model %s not found\n", curr_model.c_str());
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
+
+            m_squiggle_read_map[read_name] = sr;
         }
+
         event_record.sr = m_squiggle_read_map[read_name];
 
         // extract the event stride tag which tells us whether the

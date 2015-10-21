@@ -203,11 +203,11 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 
 int model2idx(const std::string& model_name)
 {
-    if(model_name == "template_median68pA") {
+    if(model_name == "r7.3_template_median68pA.model") {
         return 0;
-    } else if(model_name == "complement_median68pA_pop1") {
+    } else if(model_name == "r7.3_complement_median68pA_pop1.model") {
         return 1;
-    } else if(model_name == "complement_median68pA_pop2") {
+    } else if(model_name == "r7.3_complement_median68pA_pop2.model") {
         return 2;
     } else {
         printf("Unknown model %s\n", model_name.c_str());
@@ -241,7 +241,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             base_lp_by_read[j] = tmp;
             base_lp += tmp;
 
-            int mid = model2idx(input[j].read->model_name[input[j].strand]);
+            int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
             int cid = 2 * mid + input[j].rc;
             base_lp_by_model_strand[cid] += tmp;
             read_counts[cid] += 1;
@@ -282,7 +282,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             {
                 current_lp += tmp;
                 supporting_reads += tmp > base_lp_by_read[j];
-                int mid = model2idx(input[j].read->model_name[input[j].strand]);
+                int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
                 int cid = 2 * mid + input[j].rc;
                 current_lp_by_model_strand[cid] += tmp;
             }
