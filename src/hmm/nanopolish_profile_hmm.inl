@@ -268,6 +268,21 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& sequence,
 {
     PROFILE_FUNC("profile_hmm_fill_generic")
 
+    const char* sequence = _sequence;
+    std::string rc = reverse_complement(_sequence);
+    HMMInputData data = _data;
+    assert( (data.rc && data.event_stride == -1) || (!data.rc && data.event_stride == 1));
+
+    if(data.event_stride == -1) {
+        sequence = rc.c_str();
+        uint32_t tmp = data.event_stop_idx;
+        data.event_stop_idx = data.event_start_idx;
+        data.event_start_idx = tmp;
+        data.event_stride = 1;
+        data.rc = false;
+    }
+    uint32_t e_start = data.event_start_idx;
+    
     const TransitionParameters& parameters = data.read->parameters[data.strand];
 
     // Calculate number of blocks
