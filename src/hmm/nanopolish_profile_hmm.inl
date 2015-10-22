@@ -271,6 +271,7 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
     HMMInputData data = _data;
     assert( (data.rc && data.event_stride == -1) || (!data.rc && data.event_stride == 1));
 
+#if HMM_REVERSE_FIX
     if(data.event_stride == -1) {
         sequence.swap();
         uint32_t tmp = data.event_stop_idx;
@@ -279,6 +280,8 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
         data.event_stride = 1;
         data.rc = false;
     }
+#endif
+
     uint32_t e_start = data.event_start_idx;
     
     const TransitionParameters& parameters = data.read->parameters[data.strand];
