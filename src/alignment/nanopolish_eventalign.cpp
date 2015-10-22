@@ -629,8 +629,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
         HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
         
-        // Nothing to align to
-        if(hmm_sequence.length() < k)
+        // Require a minimum amount of sequence to align to
+        if(hmm_sequence.length() < 2 * k)
             break;
 
         // Set up HMM input
@@ -650,7 +650,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.strand = params.strand_idx;
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
         input.rc = rc_flags[params.strand_idx];
-        
+
         std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
         
         // Output alignment
@@ -692,6 +692,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 // update
                 last_event_output = as.event_idx;
                 last_ref_kmer_output = curr_start_ref + as.kmer_idx;
+
                 num_output += 1;
             }
         }
