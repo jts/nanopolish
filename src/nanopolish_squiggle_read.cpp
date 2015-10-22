@@ -208,3 +208,16 @@ hack:
     delete f_p;
 }
 
+void SquiggleRead::replace_models(const ModelMap& map) {
+    
+    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+        std::string curr_model = this->pore_model[strand_idx].name;
+        auto model_iter = map.find(curr_model);
+        if(model_iter != map.end()) {
+            this->pore_model[strand_idx].update_states( model_iter->second );
+        } else {
+            fprintf(stderr, "Error, alternative model %s not found\n", curr_model.c_str());
+            exit(EXIT_FAILURE);
+        }
+    }
+}
