@@ -206,7 +206,7 @@ void emit_tsv_header(FILE* fp)
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
     fprintf(fp, "%s\t%s\t%s\t%s\t", "event_index", "event_level_mean", "event_stdv", "event_length");
-    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
+    fprintf(fp, "%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
 
 }
 
