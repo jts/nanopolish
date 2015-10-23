@@ -670,8 +670,12 @@ void train_segment(HMMRealignmentInput& window, uint32_t segment_id)
     // Set up the the input data for the HMM
     std::vector<HMMInputData> input = get_input_for_columns(window, start_column, end_column);
 
+    // no training can be performed if there are no reads for this segment
+    if(input.empty()) {
+        return;
+    }
+
     // assume models for all the reads have the same k
-    assert(!input.empty());
     const uint32_t k = input[0].read->pore_model[input[0].strand].k;
 
     std::string segment_sequence = join_sequences_at_kmer(s_m_base, m_e_base, k);
