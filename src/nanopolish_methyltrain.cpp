@@ -742,7 +742,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     progress.end();
 
     std::stringstream training_fn;
-    training_fn << opt::bam_file << ".methyltrain.tsv";
+    training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
     
     std::stringstream summary_fn;
     summary_fn << opt::bam_file << ".methyltrain.summary";
@@ -818,9 +818,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                   trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
             }
                 
-            bool is_m_kmer = kmer.find('M') != std::string::npos;
-            bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
-            if(update_kmer && summaries[ki].events.size() > 100) {
+            //bool is_m_kmer = kmer.find('M') != std::string::npos;
+            //bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
+            if(summaries[ki].events.size() > 100) {
                 new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
                 new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
             }
@@ -877,7 +877,7 @@ int methyltrain_main(int argc, char** argv)
     assert(!models.empty());
     mtrain_alphabet = models.begin()->second.pmalphabet;
 
-    const size_t TRAINING_ROUNDS = 10;
+    const size_t TRAINING_ROUNDS = 5;
     for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
