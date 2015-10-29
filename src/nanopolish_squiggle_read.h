@@ -98,6 +98,12 @@ class SquiggleRead
             float level = get_drift_corrected_level(event_idx, strand);
             return (level - pore_model[strand].shift) / pore_model[strand].scale;
         }
+
+        // Return the observed current level stdv, after correcting for scale
+        inline float get_scaled_level_stdv(uint32_t event_idx, uint32_t strand) const
+        {
+            return events[strand][event_idx].stdv / pore_model[strand].scale_sd;
+        }
         
         inline float get_time(uint32_t event_idx, uint32_t strand) const
         {

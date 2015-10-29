@@ -71,10 +71,12 @@ struct FullStateTrainingData
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
         //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-        this->level_stdv = 0;
+        this->level_stdv = sr.get_scaled_level_stdv(ea.event_idx, ea.strand_idx);
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
         
@@ -86,12 +88,12 @@ struct FullStateTrainingData
 
     static void write_header(FILE* fp)
     {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tread_scale_sd\tread_var_sd\tprev_kmer\tnext_kmer\n");
     }
 
     void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
     {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", 
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\t%s\n",
                     model_name.c_str(), 
                     kmer.c_str(), 
                     level_mean, 
@@ -101,6 +103,8 @@ struct FullStateTrainingData
                     ref_strand,
                     z,
                     read_var,
+                    read_scale_sd,
+                    read_var_sd,
                     prev_kmer.c_str(),
                     next_kmer.c_str());
     }
@@ -113,6 +117,8 @@ struct FullStateTrainingData
     float level_stdv;
     float duration;
     float read_var;
+    float read_scale_sd;
+    float read_var_sd;
 
     int ref_position;
     int ref_strand;
@@ -159,7 +165,8 @@ struct MinimalStateTrainingData
     float read_var;
 };
 
-typedef MinimalStateTrainingData StateTrainingData;
+//typedef MinimalStateTrainingData StateTrainingData;
+typedef FullStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
