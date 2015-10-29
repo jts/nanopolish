@@ -135,38 +135,47 @@ struct MinimalStateTrainingData
     //
     MinimalStateTrainingData(const SquiggleRead& sr,
                              const EventAlignment& ea,
-                             uint32_t rank,
-                             const std::string& prev_kmer,
-                             const std::string& next_kmer)
+                             uint32_t,
+                             const std::string&,
+                             const std::string&)
     {
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
     }
 
     static void write_header(FILE* fp)
     {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tread_var\n");
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd\n");
     }
 
     void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
     {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\n",
-                    model_name.c_str(), 
-                    kmer.c_str(), 
-                    level_mean, 
-                    read_var);
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n",
+                    model_name.c_str(),
+                    kmer.c_str(),
+                    level_mean,
+                    level_stdv,
+                    read_var,
+                    read_scale_sd,
+                    read_var_sd);
     }
 
     //
     // Data
     //
     float level_mean;
+    float level_stdv;
     float read_var;
+    float read_scale_sd;
+    float read_var_sd;
 };
 
-//typedef MinimalStateTrainingData StateTrainingData;
-typedef FullStateTrainingData StateTrainingData;
+typedef MinimalStateTrainingData StateTrainingData;
+//typedef FullStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
