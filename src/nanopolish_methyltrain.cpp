@@ -231,6 +231,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --progress                       print out a progress message\n"
+"      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -260,7 +261,8 @@ enum { OPT_HELP = 1,
        OPT_NO_UPDATE_MODELS, 
        OPT_TRAIN_KMERS, 
        OPT_OUTPUT_SCORES,
-       OPT_OUT_FOFN
+       OPT_OUT_FOFN,
+       OPT_STDV
      };
 
 static const struct option longopts[] = {
@@ -273,6 +275,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
+    { "stdv",               no_argument,       NULL, OPT_STDV },
     { "out-fofn",           required_argument, NULL, OPT_OUT_FOFN },
     { "train-kmers",        required_argument, NULL, OPT_TRAIN_KMERS },
     { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
@@ -622,6 +625,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
+            case OPT_STDV: model_stdv() = true; break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_KMERS: arg >> training_target_str; break;
