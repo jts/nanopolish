@@ -85,12 +85,6 @@ class SquiggleRead
             return events[strand][event_idx].log_stdv;
         }
         
-        // Return the observed current level after correcting for drift
-        inline float get_event_stdv(uint32_t event_idx, uint32_t strand) const
-        {
-            return events[strand][event_idx].stdv;
-        }
-
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
         {
@@ -100,7 +94,7 @@ class SquiggleRead
         }
 
         // Return the observed current level stdv, after correcting for scale
-        inline float get_scaled_level_stdv(uint32_t event_idx, uint32_t strand) const
+        inline float get_scaled_stdv(uint32_t event_idx, uint32_t strand) const
         {
             return events[strand][event_idx].stdv / pore_model[strand].scale_sd;
         }

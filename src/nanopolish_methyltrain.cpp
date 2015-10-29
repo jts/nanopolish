@@ -71,7 +71,7 @@ struct FullStateTrainingData
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
         //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-        this->level_stdv = sr.get_scaled_level_stdv(ea.event_idx, ea.strand_idx);
+        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
