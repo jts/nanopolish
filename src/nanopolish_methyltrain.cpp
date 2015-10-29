@@ -40,6 +40,16 @@
 #include "../eigen/Eigen/Dense"
 
 //
+// Enus
+//
+enum TrainingTarget
+{
+    TT_UNMETHYLATED_KMERS,
+    TT_METHYLATED_KMERS,
+    TT_ALL_KMERS
+};
+
+//
 // Structs
 //
 
@@ -194,7 +204,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               read the models to be trained from the FOFN\n"
-"      --train-unmethylated             train unmethylated 5-mers instead of methylated\n"
+"      --train-kmers=STR                train methylated, unmethylated or all kmers\n"
 "  -c  --calibrate                      recalibrate aligned reads to model before training\n"
 "      --no-update-models               do not write out trained models\n"
 "      --output-scores                  optionally output read scores during training\n"
@@ -218,8 +228,8 @@ namespace opt
     static std::string region;
     static std::string out_suffix = ".trained";
     static std::string out_fofn = "trained.fofn";
+    static TrainingTarget training_target = TT_METHYLATED_KMERS;
     static bool write_models = true;
-    static bool train_unmethylated = false;
     static bool output_scores = false;
     static int progress = 0;
     static int num_threads = 1;
@@ -232,7 +242,7 @@ enum { OPT_HELP = 1,
        OPT_VERSION, 
        OPT_PROGRESS, 
        OPT_NO_UPDATE_MODELS, 
-       OPT_TRAIN_UNMETHYLATED, 
+       OPT_TRAIN_KMERS, 
        OPT_OUTPUT_SCORES,
        OPT_OUT_FOFN
      };
@@ -248,9 +258,9 @@ static const struct option longopts[] = {
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
     { "out-fofn",           required_argument, NULL, OPT_OUT_FOFN },
+    { "train-kmers",        required_argument, NULL, OPT_TRAIN_KMERS },
     { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
     { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
-    { "train-unmethylated", no_argument,       NULL, OPT_TRAIN_UNMETHYLATED },
     { "progress",           no_argument,       NULL, OPT_PROGRESS },
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
@@ -582,6 +592,7 @@ void add_aligned_events(const ModelMap& model_map,
 
 void parse_methyltrain_options(int argc, char** argv)
 {
+    std::string training_target_str = "";
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
@@ -597,7 +608,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 'c': opt::calibrate = 1; break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
-            case OPT_TRAIN_UNMETHYLATED: opt::train_unmethylated = true; break;
+            case OPT_TRAIN_KMERS: arg >> training_target_str; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -641,6 +652,20 @@ void parse_methyltrain_options(int argc, char** argv)
     if(opt::models_fofn.empty()) {
         std::cerr << SUBPROGRAM ": a --models-fofn file must be provided\n";
         die = true;
+    }
+
+    // Parse the training target string
+    if(training_target_str != "") {
+        if(training_target_str == "unmethylated") {
+            opt::training_target = TT_UNMETHYLATED_KMERS;
+        } else if(training_target_str == "methylated") {
+            opt::training_target = TT_METHYLATED_KMERS;
+        } else if(training_target_str == "all") {
+            opt::training_target == TT_ALL_KMERS;
+        } else {
+            std::cerr << SUBPROGRAM ": unknown --train-kmers string\n";
+            die = true;
+        }
     }
 
     if (die) 
@@ -818,8 +843,11 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                   trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
             }
                 
-            //bool is_m_kmer = kmer.find('M') != std::string::npos;
-            //bool update_kmer = (is_m_kmer == !opt::train_unmethylated); 
+            bool is_m_kmer = kmer.find('M') != std::string::npos;
+            bool update_kmer = opt::training_target == TT_ALL_KMERS ||
+                               (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
+                               (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
+
             if(summaries[ki].events.size() > 100) {
                 new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
                 new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
@@ -857,7 +885,7 @@ void write_models(ModelMap& models)
 
         assert(!model_iter->second.model_filename.empty());
         std::string outname   =  get_model_short_name(model_iter->second.name) + opt::out_suffix;
-        std::string modelname =  model_iter->first + (!opt::train_unmethylated ? opt::out_suffix : "");
+        std::string modelname =  model_iter->first + opt::out_suffix;
         models[model_iter->first].write( outname, modelname );
 
         fofn_writer << outname << "\n";
