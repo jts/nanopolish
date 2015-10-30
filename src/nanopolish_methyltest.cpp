@@ -166,7 +166,7 @@ void test_read(const ModelMap& model_map,
         // replace model 
         std::string curr_model = sr.pore_model[strand_idx].name;
 
-        std::string methyl_model = curr_model + ".M.SssI.trained";
+        std::string methyl_model = curr_model + ".M.SssI.ecoli_e2925.trained.model";
         auto model_iter = model_map.find(methyl_model);
 
         if(model_iter != model_map.end()) {
