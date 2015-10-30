@@ -35,6 +35,7 @@
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+#include "logsumset.hpp"
 
 #include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
@@ -194,6 +195,7 @@ struct StateSummary
 struct GaussianMixture
 {
     std::vector<float> weights;
+    std::vector<float> log_weights;
     std::vector<GaussianParameters> params;
 };
 
@@ -320,6 +322,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
 
     size_t n_components = input_mixture.params.size();
     size_t n_data = data.size();
+    double log_n_data = log(n_data);
     assert(input_mixture.weights.size() == n_components);
     GaussianMixture curr_mixture = input_mixture;   
 
@@ -332,65 +335,83 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             new_mixture.weights[j] = 0.0f;
         }
 
-        std::vector<std::vector<double> > resp;
-
-        for(size_t i = 0; i < n_data; ++i) {
-            // Calculate the posterior probability that
-            // data i came from each component of the mixture
-            
-            // P(data i | component j) P(component j)
-            std::vector<double> t(n_components, 0.0f);
-            double t_sum = -INFINITY;
-            for(size_t j = 0; j < n_components; ++j) {
-
+        // compute log_pdfs
+        std::vector< std::vector< double > > log_pdf(n_data);
+        for(size_t i = 0; i < n_data; ++i)
+        {
+            log_pdf[i].resize(n_components);
+            for(size_t j = 0; j < n_components; ++j)
+            {
                 // We need to scale the mixture component parameters by the per-read var factor
+                // TODO: scale  once per round per read (not once per round per event)
                 GaussianParameters scaled_params;
                 scaled_params.mean = curr_mixture.params[j].mean;
                 scaled_params.stdv = data[i].read_var * curr_mixture.params[j].stdv;
                 scaled_params.log_stdv = data[i].log_read_var + curr_mixture.params[j].log_stdv;
+                log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_params);
+            }
+        }
 
-                t[j] = log_normal_pdf(data[i].level_mean, scaled_params) + log(curr_mixture.weights[j]);
-                if(t[j] != -INFINITY && ! std::isnan(t[j])) {
-                    t_sum = add_logs(t_sum, t[j]);
+        // compute responsibilities
+        std::vector< std::vector< double > > log_resp(n_data);
+        for(size_t i = 0; i < n_data; ++i)
+        {
+            log_resp[i].resize(n_components);
+            std::multiset< double > denom_terms{-INFINITY};
+            for(size_t j = 0; j < n_components; ++j)
+            {
+                double v = log_pdf[i][j] + curr_mixture.log_weights[j];
+                log_resp[i][j] = v;
+                if(v != -INFINITY and not std::isnan(v))
+                {
+                    denom_terms.insert(v);
                 }
             }
-
-            // store P(component j | data i)
-            for(size_t j = 0; j < n_components; ++j) {
-                t[j] = exp(t[j] - t_sum);
-                new_mixture.weights[j] += t[j];
-            }
-            resp.push_back(t);
-        }
-        
-        for(size_t j = 0; j < n_components; ++j) {
-            new_mixture.weights[j] /= n_data;
-        }
-
-        // Calculate mean
-        for(size_t i = 0; i < n_data; ++i) {
-            for(size_t j = 0; j < n_components; ++j) {
-                double w_ij = resp[i][j];
-                mean_sum[j] += w_ij * data[i].level_mean;
+            double log_denom = logsumset{}(denom_terms);
+            for(size_t j = 0; j < n_components; ++j)
+            {
+                log_resp[i][j] -= log_denom;
             }
         }
-        
+
+        // update weights
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            std::multiset< double > terms{-INFINITY};
+            for (size_t i = 0; i < n_data; ++i)
+            {
+                terms.insert(log_resp[i][j]);
+            }
+            double log_nj = logsumset{}(terms);
+            new_mixture.log_weights[j] = log_nj - log_n_data;
+            new_mixture.weights[j] = exp(new_mixture.log_weights[j]);
+        }
+
+        // update means & vars
         std::vector<double> new_mean(2);
-        for(size_t j = 0; j < n_components; ++j) {
-            new_mean[j] = mean_sum[j] / (n_data * new_mixture.weights[j]);
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            std::multiset< double > terms{-INFINITY};
+            for (size_t i = 0; i < n_data; ++i)
+            {
+                // TODO: avoid log
+                terms.insert(log_resp[i][j] + log(data[i].level_mean));
+            }
+            double v = logsumset{}(terms);
+            new_mean[j] = exp(v) / (n_data * new_mixture.weights[j]);
         }
 
-        // Calculate variance
-        for(size_t i = 0; i < n_data; ++i) {
-            for(size_t j = 0; j < n_components; ++j) {
-                double w_ij = resp[i][j];
-                var_sum[j] += w_ij * pow( (data[i].level_mean - new_mean[j]) / data[i].read_var, 2.0);
-            }
-        }
-        
+        // update stdvs
         std::vector<double> new_var(2);
-        for(size_t j = 0; j < n_components; ++j) {
-            new_var[j] = var_sum[j] / (n_data * new_mixture.weights[j]);
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            std::multiset< double > terms{-INFINITY};
+            for (size_t i = 0; i < n_data; ++i)
+            {
+                terms.insert(log_resp[i][j] + 2.0 * log(data[i].level_mean - new_mean[j]));
+            }
+            double v = logsumset{}(terms);
+            new_var[j] = exp(v) / (n_data * new_mixture.weights[j]);
         }
 
         for(size_t j = 0; j < n_components; ++j) {
@@ -968,12 +989,14 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                          model_iter->second.get_parameters(um_ki).level_stdv);
 
             mixture.weights.push_back(um_rate);
+            mixture.log_weights.push_back(log(um_rate));
             mixture.params.push_back(um_params);
 
             GaussianParameters m_params(model_iter->second.get_parameters(ki).level_mean, 
                                         model_iter->second.get_parameters(ki).level_stdv);
 
             mixture.weights.push_back(1 - um_rate);
+            mixture.log_weights.push_back(log(1 - um_rate));
             mixture.params.push_back(m_params);
  
             if(opt::verbose > 1) {
