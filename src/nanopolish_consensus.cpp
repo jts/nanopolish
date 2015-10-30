@@ -561,7 +561,7 @@ std::string join_sequences_at_kmer(const std::string& a, const std::string& b, c
     return a + b.substr(k);
 }
 
-void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
+void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id, const uint32_t k)
 {
     // The structure of the data looks like this:
 
@@ -594,11 +594,11 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id)
 
     // set up the input data for the HMM
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
-    
-    // assume models for all the reads have the same k
-    assert(!data.empty());
-    const uint32_t k = data[0].read->pore_model[data[0].strand].k;
 
+    if(opt::verbose > 0) {
+        fprintf(stderr, "correcting segment %zu with %zu reads\n", segment_id, data.size());
+    }
+    
     // The current consensus sequence
     std::string original = join_sequences_at_kmer(s_m_base, m_e_base, k);
     std::string base = original;
@@ -711,6 +711,10 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
         assert(!window.original_sequence.empty());
         return window.original_sequence;
     }
+    
+    if(opt::verbose > 0) {
+        fprintf(stderr, "correcting window %s:%d-%d with %zu reads\n", contig.c_str(), start_base, end_base, window.reads.size());
+    }
 
     //
     // Train the HMM
@@ -749,7 +753,7 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
         }
 
         // run the consensus algorithm for this segment
-        run_splice_segment(window, segment_id);
+        run_splice_segment(window, segment_id, k);
 
         // run_splice_segment updates the base_sequence of the current anchor, grab it and append
         std::string base = window.anchored_columns[segment_id].base_sequence;
