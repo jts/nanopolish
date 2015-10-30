@@ -412,24 +412,74 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
 
     for (size_t iteration = 0; iteration < 10; ++iteration)
     {
-        auto new_mix = crt_mix;
-
-        // compute gaussian responsibilities: p( kmer_k | x_i )
-        std::vector< std::vector< double > > g_resp(n_data, std::vector< double >(n_components, 0.0));
-        /*
+        // compute all pdfs
+        std::vector< std::vector< std::pair< double, double > > > log_pdf(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
+            log_pdf[i].resize(n_components);
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                PoreModelStateParams scaled_params = in_mix.params[k];
+                scaled_params.level_stdv *= data[i].read_var;
+                scaled_params.set_sd_lambda(scaled_params.sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
+                scaled_params.update_logs();
+                log_pdf[i][k].first = log_normal_pdf(data[i].level_mean, scaled_params);
+                log_pdf[i][k].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
+            }
+        }
+
+        // compute gaussian weights
+        std::vector< std::vector< double > > g_weights(n_data);
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            g_weights.resize(n_components);
             double denom = 0.0;
             for (size_t k = 0; k < n_components; ++k)
             {
-                
-                g_resp[i][k] = in_mix.weights[k] // ...
+                g_weights[i][k] = in_mix.weights[k] * exp(log_pdf[i][k].first);
+                denom += g_weights[i][k];
+            }
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                g_weights[i][k] /= denom;
             }
         }
-        */
 
+        // compute inverse gaussian weights (responsibilities)
+        std::vector< std::vector< double > > ig_weights(n_data);
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            ig_weights.resize(n_components);
+            double denom = 0.0;
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                ig_weights[i][k] = g_weights[i][k] * exp(log_pdf[i][k].second);
+                denom += ig_weights[i][k];
+            }
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                ig_weights[i][k] /= denom;
+            }
+        }
+
+        // update mix
+        auto new_mix = crt_mix;
+        for (size_t k = 0; k < n_components; ++k)
+        {
+            double numer = 0.0;
+            double denom = 0.0;
+            for (size_t i = 0; i < n_data; ++i)
+            {
+                double x = ig_weights[i][k] * (in_mix.params[k].sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
+                numer += x * data[i].level_stdv;
+                denom += x;
+            }
+            new_mix.params[k].sd_mean = numer / denom;
+            new_mix.params[k].set_sd_lambda(new_mix.params[k].sd_lambda); // keep lambda constant, update stdv
+            new_mix.params[k].update_logs();
+        }
         std::swap(crt_mix, new_mix);
-    }
+    } // for iteration
 
     return crt_mix;
 } // train_ig_mixture
@@ -923,6 +973,13 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
                 // run training
                 trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
+                if (opt::verbose > 1)
+                {
+                    std::cerr << "IG_INIT_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " "
+                              << ig_mix.params[0].sd_mean << " " << ig_mix.params[1].sd_mean << std::endl
+                              << " IG_TRAINED_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " "
+                              << trained_ig_mix.params[0].sd_mean << " " << trained_ig_mix.params[1].sd_mean << std::endl;
+                }
             }
 
             bool is_m_kmer = kmer.find('M') != std::string::npos;
@@ -938,6 +995,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
                     new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
                 }
+                new_pm.states[ki].update_logs();
             }
 
             mtrain_alphabet->lexicographic_next(kmer);
