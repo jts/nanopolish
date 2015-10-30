@@ -195,8 +195,8 @@ struct GaussianMixture
 
 struct IG_Mixture
 {
-    std::vector< float > weights;
-    std::vector< std::pair< float, float > > params; // pairs (eta, lambda)
+    std::vector< double > weights;
+    std::vector< PoreModelStateParams > params;
 }; // struct IG_Mixture
 
 //
@@ -403,7 +403,19 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
     {
         auto new_mix = crt_mix;
 
-        // TODO
+        // compute gaussian responsibilities: p( kmer_k | x_i )
+        std::vector< std::vector< double > > g_resp(n_data, std::vector(n_components, 0.0));
+        /*
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            double denom = 0.0;
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                
+                g_resp[i][k] = in_mix.weights[k] // ...
+            }
+        }
+        */
 
         std::swap(crt_mix, new_mix);
     }
@@ -895,11 +907,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 // weights
                 ig_mix.weights.push_back(um_rate);
                 ig_mix.weights.push_back(1 - um_rate);
-                // params
-                ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki).sd_mean,
-                                           model_iter->second.get_parameters(um_ki).sd_lambda);
-                ig_mix.params.emplace_back(model_iter->second.get_parameters(ki).sd_mean,
-                                           model_iter->second.get_parameters(ki).sd_lambda);
+                // g_params
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
+                // run training
                 trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
             }
 
@@ -913,8 +924,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
                 if (model_stdv())
                 {
-                    new_pm.states[ki].sd_mean = trained_ig_mix.params[1].first;
-                    new_pm.states[ki].sd_lambda = trained_ig_mix.params[1].second;
+                    new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
+                    new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
                 }
             }
 
