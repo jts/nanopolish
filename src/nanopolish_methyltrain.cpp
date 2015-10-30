@@ -193,6 +193,12 @@ struct GaussianMixture
     std::vector<GaussianParameters> params;
 };
 
+struct IG_Mixture
+{
+    std::vector< float > weights;
+    std::vector< std::pair< float, float > > params; // pairs (eta, lambda)
+}; // struct IG_Mixture
+
 //
 const Alphabet* mtrain_alphabet = NULL;
 
@@ -385,6 +391,25 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     }
     return curr_mixture;
 }
+
+IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const IG_Mixture& in_mix)
+{
+    size_t n_components = in_mix.params.size();
+    assert(in_mix.weights.size() == n_components);
+    size_t n_data = data.size();
+    auto crt_mix = in_mix;
+
+    for (size_t iteration = 0; iteration < 10; ++iteration)
+    {
+        auto new_mix = crt_mix;
+
+        // TODO
+
+        std::swap(crt_mix, new_mix);
+    }
+
+    return crt_mix;
+} // train_ig_mixture
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
@@ -862,7 +887,22 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                   trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
                                                                   trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
             }
-                
+
+            IG_Mixture trained_ig_mix;
+            if (model_stdv())
+            {
+                IG_Mixture ig_mix;
+                // weights
+                ig_mix.weights.push_back(um_rate);
+                ig_mix.weights.push_back(1 - um_rate);
+                // params
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki).sd_mean,
+                                           model_iter->second.get_parameters(um_ki).sd_lambda);
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(ki).sd_mean,
+                                           model_iter->second.get_parameters(ki).sd_lambda);
+                trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
+            }
+
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
@@ -871,6 +911,11 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             if(summaries[ki].events.size() > 100) {
                 new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
                 new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
+                if (model_stdv())
+                {
+                    new_pm.states[ki].sd_mean = trained_ig_mix.params[1].first;
+                    new_pm.states[ki].sd_lambda = trained_ig_mix.params[1].second;
+                }
             }
 
             mtrain_alphabet->lexicographic_next(kmer);
