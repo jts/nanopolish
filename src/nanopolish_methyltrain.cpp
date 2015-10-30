@@ -425,6 +425,13 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
                 scaled_params.update_logs();
                 log_pdf[i][k].first = log_normal_pdf(data[i].level_mean, scaled_params);
                 log_pdf[i][k].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
+                if (opt::verbose > 2)
+                {
+                    std::cerr << "TRAIN_IG_MIXTURE log_pdf "
+                              << i << " k " << k << " "
+                              << std::scientific << log_pdf[i][k].first << " "
+                              << std::scientific << log_pdf[i][k].second << std::endl;
+                }
             }
         }
 
@@ -432,16 +439,24 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
         std::vector< std::vector< double > > g_weights(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
-            g_weights.resize(n_components);
+            g_weights[i].resize(n_components);
             double denom = 0.0;
             for (size_t k = 0; k < n_components; ++k)
             {
-                g_weights[i][k] = in_mix.weights[k] * exp(log_pdf[i][k].first);
+                double pdf = exp(log_pdf[i][k].first);
+                g_weights[i][k] = in_mix.weights[k] * pdf;
                 denom += g_weights[i][k];
+                std::cerr << "TRAIN_IG_MIXTURE g_weights " << i << " " << k << " " << pdf << " " << g_weights[i][k] << " " << denom << std::endl;
             }
             for (size_t k = 0; k < n_components; ++k)
             {
                 g_weights[i][k] /= denom;
+            }
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE g_weights "
+                          << i << " "
+                          << std::scientific << g_weights[i][0] << " " << std::scientific << g_weights[i][1] << std::endl;
             }
         }
 
@@ -449,7 +464,7 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
         std::vector< std::vector< double > > ig_weights(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
-            ig_weights.resize(n_components);
+            ig_weights[i].resize(n_components);
             double denom = 0.0;
             for (size_t k = 0; k < n_components; ++k)
             {
@@ -459,6 +474,12 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
             for (size_t k = 0; k < n_components; ++k)
             {
                 ig_weights[i][k] /= denom;
+            }
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE ig_weights "
+                          << i << " "
+                          << std::scientific << ig_weights[i][0] << " " << std::scientific << ig_weights[i][1] << std::endl;
             }
         }
 
@@ -916,7 +937,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         uint32_t k = new_pm.k;
         std::string kmer(k, 'A');
         const std::vector<StateSummary>& summaries = model_training_iter->second;
-        for(size_t ki = 0; ki < summaries.size(); ++ki) {
+        for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
@@ -925,6 +946,15 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write to the summary file
             fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
+
+            bool is_m_kmer = kmer.find('M') != std::string::npos;
+            bool update_kmer = opt::training_target == TT_ALL_KMERS ||
+                               (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
+                               (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
+            if (not update_kmer or summaries[ki].events.size() <= 100)
+            {
+                continue;
+            }
 
             GaussianMixture mixture;
 
@@ -961,8 +991,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                   trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
             }
 
-            IG_Mixture trained_ig_mix;
-            if (model_stdv())
+            new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
+            new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
+
+            if (model_stdv() and round > 0)
             {
                 IG_Mixture ig_mix;
                 // weights
@@ -972,33 +1004,20 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
                 // run training
-                trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
+                auto trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
                 if (opt::verbose > 1)
                 {
-                    std::cerr << "IG_INIT_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " "
-                              << ig_mix.params[0].sd_mean << " " << ig_mix.params[1].sd_mean << std::endl
-                              << " IG_TRAINED_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " "
-                              << trained_ig_mix.params[0].sd_mean << " " << trained_ig_mix.params[1].sd_mean << std::endl;
+                    std::cerr << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                              << std::scientific << ig_mix.params[0].sd_mean << " "
+                              << std::scientific << ig_mix.params[1].sd_mean << "]" << std::endl
+                              << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                              << std::scientific << trained_ig_mix.params[0].sd_mean << " "
+                              << std::scientific << trained_ig_mix.params[1].sd_mean << "]" << std::endl;
                 }
+                // updates
+                new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
+                new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
             }
-
-            bool is_m_kmer = kmer.find('M') != std::string::npos;
-            bool update_kmer = opt::training_target == TT_ALL_KMERS ||
-                               (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
-                               (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
-
-            if(summaries[ki].events.size() > 100) {
-                new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
-                new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
-                if (model_stdv())
-                {
-                    new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
-                    new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
-                }
-                new_pm.states[ki].update_logs();
-            }
-
-            mtrain_alphabet->lexicographic_next(kmer);
         }
     }
 
