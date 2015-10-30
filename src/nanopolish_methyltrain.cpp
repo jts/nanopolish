@@ -75,6 +75,7 @@ struct FullStateTrainingData
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->log_read_var = log(this->read_var);
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
         
@@ -113,6 +114,7 @@ struct FullStateTrainingData
     float level_stdv;
     float duration;
     float read_var;
+    float log_read_var;
 
     int ref_position;
     int ref_strand;
@@ -136,6 +138,7 @@ struct MinimalStateTrainingData
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->log_read_var = log(this->read_var);
     }
 
     static void write_header(FILE* fp)
@@ -157,6 +160,7 @@ struct MinimalStateTrainingData
     //
     float level_mean;
     float read_var;
+    float log_read_var;
 };
 
 typedef MinimalStateTrainingData StateTrainingData;
@@ -313,7 +317,14 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             std::vector<double> t(n_components, 0.0f);
             double t_sum = -INFINITY;
             for(size_t j = 0; j < n_components; ++j) {
-                t[j] = log_normal_pdf(data[i].level_mean, curr_mixture.params[j]) + log(curr_mixture.weights[j]);
+
+                // We need to scale the mixture component parameters by the per-read var factor
+                GaussianParameters scaled_params;
+                scaled_params.mean = curr_mixture.params[j].mean;
+                scaled_params.stdv = data[i].read_var * curr_mixture.params[j].stdv;
+                scaled_params.log_stdv = data[i].log_read_var + curr_mixture.params[j].log_stdv;
+
+                t[j] = log_normal_pdf(data[i].level_mean, scaled_params) + log(curr_mixture.weights[j]);
                 if(t[j] != -INFINITY && ! std::isnan(t[j])) {
                     t_sum = add_logs(t_sum, t[j]);
                 }
