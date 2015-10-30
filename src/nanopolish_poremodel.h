@@ -27,6 +27,31 @@ struct PoreModelStateParams
     double level_log_stdv;
     double sd_lambda;
     double sd_log_lambda;
+
+    PoreModelStateParams& operator = (const fast5::Model_Entry& e)
+    {
+        level_mean = e.level_mean;
+        level_stdv = e.level_stdv;
+        sd_mean = e.sd_mean;
+        set_sd_stdv(e.sd_stdv);
+        return *this;
+    }
+
+    void set_sd_stdv(double _sd_stdv)
+    {
+        sd_stdv = _sd_stdv;
+        sd_lambda = pow(sd_mean, 3.0) / pow(sd_stdv, 2.0);
+    }
+    void set_sd_lambda(double _sd_lambda)
+    {
+        sd_lambda = _sd_lambda;
+        sd_stdv = pow(pow(sd_mean, 3.0) / sd_lambda, .5);
+    }
+    void update_logs()
+    {
+        level_log_stdv = log(level_stdv);
+        sd_log_lambda = log(sd_lambda);
+    }
 };
 
 //

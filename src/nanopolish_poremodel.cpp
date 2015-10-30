@@ -20,20 +20,14 @@ void PoreModel::bake_gaussian_parameters()
 
     for(int i = 0; i < states.size(); ++i) {
 
-        // calculate the derived sd_lambda parameter
-        states[i].sd_lambda = pow(states[i].sd_mean, 3.0) / pow(states[i].sd_stdv, 2.0);
-
         // as per ONT documents
         scaled_states[i].level_mean = states[i].level_mean * scale + shift;
         scaled_states[i].level_stdv = states[i].level_stdv * var;
-
         scaled_states[i].sd_mean = states[i].sd_mean * scale_sd;
-        scaled_states[i].sd_lambda = states[i].sd_lambda * var_sd;
-        scaled_states[i].sd_stdv = sqrt(pow(scaled_states[i].sd_mean, 3) / scaled_states[i].sd_lambda);
+        scaled_states[i].set_sd_lambda(states[i].sd_lambda * var_sd);
 
         // for efficiency
-        scaled_states[i].level_log_stdv = log(scaled_states[i].level_stdv);
-        scaled_states[i].sd_log_lambda = log(scaled_states[i].sd_lambda);
+        scaled_states[i].update_logs();
 
         // for compatibility
         scaled_params[i].mean = scaled_states[i].level_mean;
@@ -145,10 +139,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
         const fast5::Model_Entry& curr = model[mi];
 
         std::string stringkmer(curr.kmer);
-        kmers[stringkmer] = { static_cast<float>(curr.level_mean),
-                              static_cast<float>(curr.level_stdv),
-                              static_cast<float>(curr.sd_mean),
-                              static_cast<float>(curr.sd_stdv) };
+        kmers[stringkmer] = curr;
         add_found_bases(bases, curr.kmer);
     }
 
