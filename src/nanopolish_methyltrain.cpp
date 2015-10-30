@@ -75,6 +75,7 @@ struct FullStateTrainingData
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->log_read_var = log(this->read_var);
         this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
         this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
         this->ref_position = ea.ref_position;
@@ -117,6 +118,7 @@ struct FullStateTrainingData
     float level_stdv;
     float duration;
     float read_var;
+    float log_read_var;
     float read_scale_sd;
     float read_var_sd;
 
@@ -143,6 +145,7 @@ struct MinimalStateTrainingData
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
         this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
+        this->log_read_var = log(this->read_var);
         this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
         this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
     }
@@ -170,6 +173,7 @@ struct MinimalStateTrainingData
     float level_mean;
     float level_stdv;
     float read_var;
+    float log_read_var;
     float read_scale_sd;
     float read_var_sd;
 };
@@ -338,7 +342,14 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             std::vector<double> t(n_components, 0.0f);
             double t_sum = -INFINITY;
             for(size_t j = 0; j < n_components; ++j) {
-                t[j] = log_normal_pdf(data[i].level_mean, curr_mixture.params[j]) + log(curr_mixture.weights[j]);
+
+                // We need to scale the mixture component parameters by the per-read var factor
+                GaussianParameters scaled_params;
+                scaled_params.mean = curr_mixture.params[j].mean;
+                scaled_params.stdv = data[i].read_var * curr_mixture.params[j].stdv;
+                scaled_params.log_stdv = data[i].log_read_var + curr_mixture.params[j].log_stdv;
+
+                t[j] = log_normal_pdf(data[i].level_mean, scaled_params) + log(curr_mixture.weights[j]);
                 if(t[j] != -INFINITY && ! std::isnan(t[j])) {
                     t_sum = add_logs(t_sum, t[j]);
                 }
@@ -404,7 +415,7 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
         auto new_mix = crt_mix;
 
         // compute gaussian responsibilities: p( kmer_k | x_i )
-        std::vector< std::vector< double > > g_resp(n_data, std::vector(n_components, 0.0));
+        std::vector< std::vector< double > > g_resp(n_data, std::vector< double >(n_components, 0.0));
         /*
         for (size_t i = 0; i < n_data; ++i)
         {
