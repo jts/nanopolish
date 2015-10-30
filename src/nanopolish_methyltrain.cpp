@@ -71,11 +71,13 @@ struct FullStateTrainingData
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
         //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
-        this->level_stdv = 0;
+        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
         this->log_read_var = log(this->read_var);
+        this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
         
@@ -87,12 +89,12 @@ struct FullStateTrainingData
 
     static void write_header(FILE* fp)
     {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tprev_kmer\tnext_kmer\n");
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tread_scale_sd\tread_var_sd\tprev_kmer\tnext_kmer\n");
     }
 
     void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
     {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%s\t%s\n", 
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\t%s\n",
                     model_name.c_str(), 
                     kmer.c_str(), 
                     level_mean, 
@@ -102,6 +104,8 @@ struct FullStateTrainingData
                     ref_strand,
                     z,
                     read_var,
+                    read_scale_sd,
+                    read_var_sd,
                     prev_kmer.c_str(),
                     next_kmer.c_str());
     }
@@ -115,6 +119,8 @@ struct FullStateTrainingData
     float duration;
     float read_var;
     float log_read_var;
+    float read_scale_sd;
+    float read_var_sd;
 
     int ref_position;
     int ref_strand;
@@ -131,39 +137,49 @@ struct MinimalStateTrainingData
     //
     MinimalStateTrainingData(const SquiggleRead& sr,
                              const EventAlignment& ea,
-                             uint32_t rank,
-                             const std::string& prev_kmer,
-                             const std::string& next_kmer)
+                             uint32_t,
+                             const std::string&,
+                             const std::string&)
     {
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
         this->log_read_var = log(this->read_var);
+        this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
     }
 
     static void write_header(FILE* fp)
     {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tread_var\n");
+        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd\n");
     }
 
     void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
     {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\n",
-                    model_name.c_str(), 
-                    kmer.c_str(), 
-                    level_mean, 
-                    read_var);
+        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n",
+                    model_name.c_str(),
+                    kmer.c_str(),
+                    level_mean,
+                    level_stdv,
+                    read_var,
+                    read_scale_sd,
+                    read_var_sd);
     }
 
     //
     // Data
     //
     float level_mean;
+    float level_stdv;
     float read_var;
     float log_read_var;
+    float read_scale_sd;
+    float read_var_sd;
 };
 
 typedef MinimalStateTrainingData StateTrainingData;
+//typedef FullStateTrainingData StateTrainingData;
 
 struct StateSummary
 {
@@ -180,6 +196,12 @@ struct GaussianMixture
     std::vector<float> weights;
     std::vector<GaussianParameters> params;
 };
+
+struct IG_Mixture
+{
+    std::vector< double > weights;
+    std::vector< PoreModelStateParams > params;
+}; // struct IG_Mixture
 
 //
 const Alphabet* mtrain_alphabet = NULL;
@@ -219,6 +241,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --progress                       print out a progress message\n"
+"      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -248,7 +271,8 @@ enum { OPT_HELP = 1,
        OPT_NO_UPDATE_MODELS, 
        OPT_TRAIN_KMERS, 
        OPT_OUTPUT_SCORES,
-       OPT_OUT_FOFN
+       OPT_OUT_FOFN,
+       OPT_STDV
      };
 
 static const struct option longopts[] = {
@@ -261,6 +285,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
+    { "stdv",               no_argument,       NULL, OPT_STDV },
     { "out-fofn",           required_argument, NULL, OPT_OUT_FOFN },
     { "train-kmers",        required_argument, NULL, OPT_TRAIN_KMERS },
     { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
@@ -377,6 +402,108 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     }
     return curr_mixture;
 }
+
+IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const IG_Mixture& in_mix)
+{
+    size_t n_components = in_mix.params.size();
+    assert(in_mix.weights.size() == n_components);
+    size_t n_data = data.size();
+    auto crt_mix = in_mix;
+
+    for (size_t iteration = 0; iteration < 10; ++iteration)
+    {
+        // compute all pdfs
+        std::vector< std::vector< std::pair< double, double > > > log_pdf(n_data);
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            log_pdf[i].resize(n_components);
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                PoreModelStateParams scaled_params = in_mix.params[k];
+                scaled_params.level_stdv *= data[i].read_var;
+                scaled_params.set_sd_lambda(scaled_params.sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
+                scaled_params.update_logs();
+                log_pdf[i][k].first = log_normal_pdf(data[i].level_mean, scaled_params);
+                log_pdf[i][k].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
+                if (opt::verbose > 2)
+                {
+                    std::cerr << "TRAIN_IG_MIXTURE log_pdf "
+                              << i << " k " << k << " "
+                              << std::scientific << log_pdf[i][k].first << " "
+                              << std::scientific << log_pdf[i][k].second << std::endl;
+                }
+            }
+        }
+
+        // compute gaussian weights
+        std::vector< std::vector< double > > g_weights(n_data);
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            g_weights[i].resize(n_components);
+            double denom = 0.0;
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                double pdf = exp(log_pdf[i][k].first);
+                g_weights[i][k] = in_mix.weights[k] * pdf;
+                denom += g_weights[i][k];
+                std::cerr << "TRAIN_IG_MIXTURE g_weights " << i << " " << k << " " << pdf << " " << g_weights[i][k] << " " << denom << std::endl;
+            }
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                g_weights[i][k] /= denom;
+            }
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE g_weights "
+                          << i << " "
+                          << std::scientific << g_weights[i][0] << " " << std::scientific << g_weights[i][1] << std::endl;
+            }
+        }
+
+        // compute inverse gaussian weights (responsibilities)
+        std::vector< std::vector< double > > ig_weights(n_data);
+        for (size_t i = 0; i < n_data; ++i)
+        {
+            ig_weights[i].resize(n_components);
+            double denom = 0.0;
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                ig_weights[i][k] = g_weights[i][k] * exp(log_pdf[i][k].second);
+                denom += ig_weights[i][k];
+            }
+            for (size_t k = 0; k < n_components; ++k)
+            {
+                ig_weights[i][k] /= denom;
+            }
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE ig_weights "
+                          << i << " "
+                          << std::scientific << ig_weights[i][0] << " " << std::scientific << ig_weights[i][1] << std::endl;
+            }
+        }
+
+        // update mix
+        auto new_mix = crt_mix;
+        for (size_t k = 0; k < n_components; ++k)
+        {
+            double numer = 0.0;
+            double denom = 0.0;
+            for (size_t i = 0; i < n_data; ++i)
+            {
+                double x = ig_weights[i][k] * (in_mix.params[k].sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
+                numer += x * data[i].level_stdv;
+                denom += x;
+            }
+            new_mix.params[k].sd_mean = numer / denom;
+            new_mix.params[k].set_sd_lambda(new_mix.params[k].sd_lambda); // keep lambda constant, update stdv
+            new_mix.params[k].update_logs();
+        }
+        std::swap(crt_mix, new_mix);
+    } // for iteration
+
+    return crt_mix;
+} // train_ig_mixture
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
@@ -617,6 +744,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
+            case OPT_STDV: model_stdv() = true; break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_KMERS: arg >> training_target_str; break;
@@ -809,7 +937,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         uint32_t k = new_pm.k;
         std::string kmer(k, 'A');
         const std::vector<StateSummary>& summaries = model_training_iter->second;
-        for(size_t ki = 0; ki < summaries.size(); ++ki) {
+        for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
@@ -818,6 +946,15 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write to the summary file
             fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
+
+            bool is_m_kmer = kmer.find('M') != std::string::npos;
+            bool update_kmer = opt::training_target == TT_ALL_KMERS ||
+                               (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
+                               (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
+            if (not update_kmer or summaries[ki].events.size() <= 100)
+            {
+                continue;
+            }
 
             GaussianMixture mixture;
 
@@ -853,18 +990,34 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                                                   trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
                                                                   trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
             }
-                
-            bool is_m_kmer = kmer.find('M') != std::string::npos;
-            bool update_kmer = opt::training_target == TT_ALL_KMERS ||
-                               (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
-                               (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
 
-            if(summaries[ki].events.size() > 100) {
-                new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
-                new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
+            new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
+            new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
+
+            if (model_stdv() and round > 0)
+            {
+                IG_Mixture ig_mix;
+                // weights
+                ig_mix.weights.push_back(um_rate);
+                ig_mix.weights.push_back(1 - um_rate);
+                // g_params
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
+                // run training
+                auto trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
+                if (opt::verbose > 1)
+                {
+                    std::cerr << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                              << std::scientific << ig_mix.params[0].sd_mean << " "
+                              << std::scientific << ig_mix.params[1].sd_mean << "]" << std::endl
+                              << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                              << std::scientific << trained_ig_mix.params[0].sd_mean << " "
+                              << std::scientific << trained_ig_mix.params[1].sd_mean << "]" << std::endl;
+                }
+                // updates
+                new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
+                new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
             }
-
-            mtrain_alphabet->lexicographic_next(kmer);
         }
     }
 

@@ -16,3 +16,7 @@ hdf5-*/
 include/
 lib/
 share/
+
+3.2.5.tar.bz2
+eigen/
+local*

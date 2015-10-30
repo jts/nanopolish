@@ -384,7 +384,7 @@ void emit_event_alignment_tsv(FILE* fp,
 
         // event information
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
-        float event_stdv = sr.get_event_stdv(ea.event_idx, ea.strand_idx);
+        float event_stdv = sr.get_stdv(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
         if(opt::scale_events) {
 
