@@ -202,6 +202,7 @@ struct GaussianMixture
 struct IG_Mixture
 {
     std::vector< double > weights;
+    std::vector< double > log_weights;
     std::vector< PoreModelStateParams > params;
 }; // struct IG_Mixture
 
@@ -451,91 +452,113 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
     for (size_t iteration = 0; iteration < 10; ++iteration)
     {
         // compute all pdfs
+        //
+        //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
+        //   pdf[i][j].second = invgauss(eta_j, lambda_j * ( read_var_sd_i / read_var_scale_i ), level_stdv_i)
+        //
         std::vector< std::vector< std::pair< double, double > > > log_pdf(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
             log_pdf[i].resize(n_components);
-            for (size_t k = 0; k < n_components; ++k)
+            for (size_t j = 0; j < n_components; ++j)
             {
-                PoreModelStateParams scaled_params = in_mix.params[k];
+                PoreModelStateParams scaled_params = in_mix.params[j];
                 scaled_params.level_stdv *= data[i].read_var;
                 scaled_params.set_sd_lambda(scaled_params.sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
                 scaled_params.update_logs();
-                log_pdf[i][k].first = log_normal_pdf(data[i].level_mean, scaled_params);
-                log_pdf[i][k].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
+                log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_params);
+                log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
                 if (opt::verbose > 2)
                 {
                     std::cerr << "TRAIN_IG_MIXTURE log_pdf "
-                              << i << " k " << k << " "
-                              << std::scientific << log_pdf[i][k].first << " "
-                              << std::scientific << log_pdf[i][k].second << std::endl;
+                              << i << " " << j << " "
+                              << std::scientific << log_pdf[i][j].first << " "
+                              << std::scientific << log_pdf[i][j].second << std::endl;
                 }
             }
         }
 
         // compute gaussian weights
-        std::vector< std::vector< double > > g_weights(n_data);
+        //
+        //   g_weights[i][j] := ( w_j * pdf[i][j].first ) / sum_k ( w_k * pdf[i][k].first )
+        //
+        std::vector< std::vector< double > > log_g_weights(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
-            g_weights[i].resize(n_components);
-            double denom = 0.0;
-            for (size_t k = 0; k < n_components; ++k)
+            log_g_weights[i].resize(n_components);
+            std::multiset< double > terms{-INFINITY};
+            for (size_t j = 0; j < n_components; ++j)
             {
-                double pdf = exp(log_pdf[i][k].first);
-                g_weights[i][k] = in_mix.weights[k] * pdf;
-                denom += g_weights[i][k];
-                std::cerr << "TRAIN_IG_MIXTURE g_weights " << i << " " << k << " " << pdf << " " << g_weights[i][k] << " " << denom << std::endl;
+                double v = in_mix.log_weights[j] + log_pdf[i][j].first;
+                log_g_weights[i][j] = v;
+                if (not std::isnan(v))
+                {
+                    terms.insert(v);
+                }
             }
-            for (size_t k = 0; k < n_components; ++k)
+            double log_denom = logsumset{}(terms);
+            for (size_t j = 0; j < n_components; ++j)
             {
-                g_weights[i][k] /= denom;
-            }
-            if (opt::verbose > 2)
-            {
-                std::cerr << "TRAIN_IG_MIXTURE g_weights "
-                          << i << " "
-                          << std::scientific << g_weights[i][0] << " " << std::scientific << g_weights[i][1] << std::endl;
+                log_g_weights[i][j] -= log_denom;
+                if (opt::verbose > 2)
+                {
+                    std::cerr << "TRAIN_IG_MIXTURE g_weights "
+                              << i << " " << j << " " << std::scientific << exp(log_g_weights[i][j]) << std::endl;
+                }
             }
         }
 
         // compute inverse gaussian weights (responsibilities)
-        std::vector< std::vector< double > > ig_weights(n_data);
+        //
+        //   ig_weights[i][j] := ( g_weights[i][j] * pdf[i][j].second ) / sum_k ( g_weights[i][k] * pdf[i][k].second )
+        //
+        std::vector< std::vector< double > > log_ig_weights(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
-            ig_weights[i].resize(n_components);
-            double denom = 0.0;
-            for (size_t k = 0; k < n_components; ++k)
+            log_ig_weights[i].resize(n_components);
+            std::multiset< double > terms{-INFINITY};
+            for (size_t j = 0; j < n_components; ++j)
             {
-                ig_weights[i][k] = g_weights[i][k] * exp(log_pdf[i][k].second);
-                denom += ig_weights[i][k];
+                double v = log_g_weights[i][j] + log_pdf[i][j].second;
+                log_ig_weights[i][j] = v;
+                if (not std::isnan(v))
+                {
+                    terms.insert(v);
+                }
             }
-            for (size_t k = 0; k < n_components; ++k)
+            double log_denom = logsumset{}(terms);
+            for (size_t j = 0; j < n_components; ++j)
             {
-                ig_weights[i][k] /= denom;
-            }
-            if (opt::verbose > 2)
-            {
-                std::cerr << "TRAIN_IG_MIXTURE ig_weights "
-                          << i << " "
-                          << std::scientific << ig_weights[i][0] << " " << std::scientific << ig_weights[i][1] << std::endl;
+                log_ig_weights[i][j] -= log_denom;
+                if (opt::verbose > 2)
+                {
+                    std::cerr << "TRAIN_IG_MIXTURE ig_weights "
+                              << i << " " << j << " " << std::scientific << exp(log_ig_weights[i][j]) << std::endl;
+                }
             }
         }
 
-        // update mix
+        // update eta
+        //
+        //   eta_j := sum_i ( ig_weigts[i][j] * lambda'_ij * level_stdv_i ) / sum_i ( ig_weights[i][j] * lambda'_ij )
+        //   lambda'_ij := lambda_j * ( read_var_sd_i / read_var_scale_i )
+        //
         auto new_mix = crt_mix;
-        for (size_t k = 0; k < n_components; ++k)
+        for (size_t j = 0; j < n_components; ++j)
         {
-            double numer = 0.0;
-            double denom = 0.0;
+            std::multiset< double > numer_terms{-INFINITY};
+            std::multiset< double > denom_terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i)
             {
-                double x = ig_weights[i][k] * (in_mix.params[k].sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
-                numer += x * data[i].level_stdv;
-                denom += x;
+                double v = log_ig_weights[i][j] + in_mix.params[j].sd_log_lambda + log(data[i].read_var_sd / data[i].read_scale_sd);
+                numer_terms.insert(v + log(data[i].level_stdv));
+                denom_terms.insert(v);
             }
-            new_mix.params[k].sd_mean = numer / denom;
-            new_mix.params[k].set_sd_lambda(new_mix.params[k].sd_lambda); // keep lambda constant, update stdv
-            new_mix.params[k].update_logs();
+            double log_numer = logsumset{}(numer_terms);
+            double log_denom = logsumset{}(denom_terms);
+            new_mix.params[j].sd_mean = exp(log_numer - log_denom);
+            new_mix.params[j].set_sd_lambda(new_mix.params[j].sd_lambda); // keep lambda constant, update stdv
+            new_mix.params[j].update_logs();
         }
         std::swap(crt_mix, new_mix);
     } // for iteration
@@ -1039,7 +1062,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 IG_Mixture ig_mix;
                 // weights
                 ig_mix.weights.push_back(um_rate);
+                ig_mix.log_weights.push_back(log(um_rate));
                 ig_mix.weights.push_back(1 - um_rate);
+                ig_mix.log_weights.push_back(log(1 - um_rate));
                 // g_params
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
