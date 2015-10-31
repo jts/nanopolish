@@ -335,7 +335,7 @@ void test_read(const ModelMap& model_map,
 
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
-            fprintf(handles.site_writer, "LL_METH_BY_STRAND=%.2lf,%.2lf;;", ss.ll_methylated[0], ss.ll_methylated[1]);
+            fprintf(handles.site_writer, "LL_METH_BY_STRAND=%.2lf,%.2lf;", ss.ll_methylated[0], ss.ll_methylated[1]);
             fprintf(handles.site_writer, "LL_UNMETH_BY_STRAND=%.2lf,%.2lf;", ss.ll_unmethylated[0], ss.ll_unmethylated[1]);
             fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
 

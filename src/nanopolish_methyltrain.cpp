@@ -800,7 +800,7 @@ void parse_methyltrain_options(int argc, char** argv)
         } else if(training_target_str == "methylated") {
             opt::training_target = TT_METHYLATED_KMERS;
         } else if(training_target_str == "all") {
-            opt::training_target == TT_ALL_KMERS;
+            opt::training_target = TT_ALL_KMERS;
         } else {
             std::cerr << SUBPROGRAM ": unknown --train-kmers string\n";
             die = true;
@@ -951,7 +951,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
-            if (not update_kmer or summaries[ki].events.size() <= 100)
+            if (not update_kmer or summaries[ki].events.size() < 100)
             {
                 continue;
             }
