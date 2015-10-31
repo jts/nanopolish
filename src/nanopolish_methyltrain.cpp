@@ -336,6 +336,9 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         }
 
         // compute log_pdfs
+        //
+        //   pdf[i][j] := gauss(mu_j, sigma_j * read_var_i, level_mean_i)
+        //
         std::vector< std::vector< double > > log_pdf(n_data);
         for(size_t i = 0; i < n_data; ++i)
         {
@@ -353,6 +356,9 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         }
 
         // compute responsibilities
+        //
+        //   resp[i][j] := ( w_j * pdf[i][j] ) / sum_k ( w_k * pdf[i][k] )
+        //
         std::vector< std::vector< double > > log_resp(n_data);
         for(size_t i = 0; i < n_data; ++i)
         {
@@ -362,7 +368,7 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             {
                 double v = log_pdf[i][j] + curr_mixture.log_weights[j];
                 log_resp[i][j] = v;
-                if(v != -INFINITY and not std::isnan(v))
+                if (not std::isnan(v))
                 {
                     denom_terms.insert(v);
                 }
@@ -375,6 +381,9 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         }
 
         // update weights
+        //
+        //   w'[j] := sum_i resp[i][j] / n_data
+        //
         for (size_t j = 0; j < n_components; ++j)
         {
             std::multiset< double > terms{-INFINITY};
@@ -387,7 +396,11 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             new_mixture.weights[j] = exp(new_mixture.log_weights[j]);
         }
 
-        // update means & vars
+        // update means
+        //
+        //   mu_j := sum_i ( resp[i][j] * level_mean_i ) / sum_i resp[i][j]
+        //         = sum_i ( resp[i][j] * level_mean_i ) / ( w'[j] * n_data )
+        //
         std::vector<double> new_mean(2);
         for (size_t j = 0; j < n_components; ++j)
         {
@@ -402,13 +415,17 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         }
 
         // update stdvs
+        //
+        //   var_j := sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / sum_i resp[i][j]
+        //          = sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / ( w'[j] * n_data )
+        //
         std::vector<double> new_var(2);
         for (size_t j = 0; j < n_components; ++j)
         {
             std::multiset< double > terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i)
             {
-                terms.insert(log_resp[i][j] + 2.0 * log(data[i].level_mean - new_mean[j]));
+                terms.insert(log_resp[i][j] + 2.0 * log(abs(data[i].level_mean - new_mean[j])));
             }
             double v = logsumset{}(terms);
             new_var[j] = exp(v) / (n_data * new_mixture.weights[j]);
