@@ -86,15 +86,15 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
 
         // update stdvs
         //
-        //   var_j := sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / sum_i resp[i][j]
-        //          = sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / ( w'[j] * n_data )
+        //   var_j := sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / read_var_i )^2 ) / sum_i resp[i][j]
+        //          = sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / read_var_i )^2 ) / ( w'[j] * n_data )
         //
         vector< float > new_log_var(2);
         for (size_t j = 0; j < n_components; ++j) {
             multiset< float > numer_terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i) {
                 float v = std::abs(data[i].level_mean - std::exp(new_log_mean[j]));
-                numer_terms.insert(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0f * std::log(v) : 0.0f));
+                numer_terms.insert(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0 * (std::log(v) - data[i].log_read_var) : 0.0));
             }
             float log_numer = logsumset{}(numer_terms);
             new_log_var[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
