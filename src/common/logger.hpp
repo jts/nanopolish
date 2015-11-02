@@ -1,7 +1,7 @@
 //-----------------------------------------------
 // Copyright 2013 Ontario Institute for Cancer Research
 // Written by Matei David (mdavid@oicr.on.ca)
-// Released under the GPL license
+// Released under the MIT license
 //-----------------------------------------------
 
 // Logger mechanism
@@ -16,8 +16,12 @@
 // - "LOG" macro
 //
 // To use:
-// - In source code, write:
+// - In source code, use:
 //
+//     LOG(info) << "hello" << endl;
+//     // or 
+//     LOG("main", info) << "hello" << endl;
+//     // or 
 //     LOG("main", info, sink_os) << "hello" << endl;
 //
 //   Here, "main" is the facility (a string) and info is the message level.
@@ -214,7 +218,11 @@ private:
 /**
  * LOG macro
  *
- * LOG(facility, level_spec, sink) << message
+ * Synopsis:
+ *   LOG(facility, level_spec, sink) << message
+ *   LOG(facility, level_spec) << message
+ *   LOG(level_spec) << message
+ *
  *   `facility`   : string
  *   `level_spec` : integer, string, or logger level
  *   `sink`       : sink ostream
@@ -248,6 +256,5 @@ private:
 #define __NARGS(...) __NARGS_AUX(__VA_ARGS__, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0)
 
 #define LOG(...) __LOG_aux1(__NARGS(__VA_ARGS__), __VA_ARGS__)
-
 
 #endif
