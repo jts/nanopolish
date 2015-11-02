@@ -19,10 +19,9 @@ struct logsumset
             s.erase(s.begin());
             Float_Type b = *s.begin();
             s.erase(s.begin());
-            assert(b <= 0);
-            assert(a <= b);
+            assert(not std::isnan(a) and not std::isnan(b));
 #ifdef LOG
-            if (b - a > 16.0 and b > -80)
+            if (b - a > 15.7 and b > -80)
             {
                 LOG("logsumset", warning)
                     << "precision loss: a=" << a << " b=" << b << std::endl;
