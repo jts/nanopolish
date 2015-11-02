@@ -33,10 +33,11 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
-#include "logsumset.hpp"
+#include "logger.hpp"
 
 #include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
@@ -55,120 +56,6 @@ enum TrainingTarget
 // Structs
 //
 
-// The state training data comes in two different
-// sizes Full and Minimal. The model training functions
-// only actually need the Minimal data but for exploration
-// the Full data is useful so left as an option.
-
-struct MinimalStateTrainingData
-{
-    //
-    // Functions
-    //
-    MinimalStateTrainingData(const SquiggleRead& sr,
-                          const EventAlignment& ea,
-                          uint32_t,
-                          const std::string&,
-                          const std::string&)
-    {
-        // scale the observation to the expected pore model
-        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
-        this->log_level_mean = std::log(this->level_mean);
-        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
-        this->log_level_stdv = std::log(this->level_stdv);
-        this->read_var = sr.pore_model[ea.strand_idx].var;
-        this->log_read_var = std::log(this->read_var);
-        this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
-        this->log_read_scale_sd = std::log(this->read_scale_sd);
-        this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
-        this->log_read_var_sd = std::log(this->read_var_sd);
-    }
-
-    static void write_header(std::ostream& os)
-    {
-        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd";
-    }
-
-    void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
-    {
-        os << model_name << '\t'
-           << kmer << '\t'
-           << std::fixed << std::setprecision(2) << level_mean << '\t'
-           << level_stdv << '\t'
-           << read_var << '\t'
-           << read_scale_sd << '\t'
-           << read_var_sd;
-    }
-
-    //
-    // Data
-    //
-    float level_mean;
-    float log_level_mean;
-    float level_stdv;
-    float log_level_stdv;
-    float read_var;
-    float log_read_var;
-    float read_scale_sd;
-    float log_read_scale_sd;
-    float read_var_sd;
-    float log_read_var_sd;
-}; // struct MinimalStateTrainingData
-
-struct FullStateTrainingData
-    : public MinimalStateTrainingData
-{
-    //
-    // Functions
-    //
-    FullStateTrainingData(const SquiggleRead& sr,
-                          const EventAlignment& ea,
-                          uint32_t rank,
-                          const std::string& prev_kmer,
-                          const std::string& next_kmer)
-        : MinimalStateTrainingData(sr, ea, rank, prev_kmer, next_kmer)
-    {
-        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
-        this->ref_position = ea.ref_position;
-        this->ref_strand = ea.rc;
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
-        this->prev_kmer = prev_kmer;
-        this->next_kmer = next_kmer;
-    }
-
-    static void write_header(std::ostream& os)
-    {
-        MinimalStateTrainingData::write_header(os);
-        os << "duration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
-    }
-
-    void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
-    {
-        MinimalStateTrainingData::write_tsv(os, model_name, kmer);
-        os << duration << '\t'
-           << ref_position << '\t'
-           << ref_strand << '\t'
-           << z << '\t'
-           << prev_kmer << '\t'
-           << next_kmer;
-    }
-
-    //
-    // Data
-    //
-    float duration;
-    int ref_position;
-    int ref_strand;
-    float z;
-    std::string prev_kmer;
-    std::string next_kmer;
-}; //struct FullStateTrainingData
-
-
-typedef MinimalStateTrainingData StateTrainingData;
-//typedef FullStateTrainingData StateTrainingData;
-
 struct StateSummary
 {
     StateSummary() { num_matches = 0; num_skips = 0; num_stays = 0; }
@@ -178,18 +65,6 @@ struct StateSummary
     int num_skips;
     int num_stays;
 };
-
-struct GaussianMixture
-{
-    std::vector<float> log_weights;
-    std::vector<PoreModelStateParams> params;
-};
-
-struct IG_Mixture
-{
-    std::vector< float > log_weights;
-    std::vector< PoreModelStateParams > params;
-}; // struct IG_Mixture
 
 //
 const Alphabet* mtrain_alphabet = NULL;
@@ -260,7 +135,8 @@ enum { OPT_HELP = 1,
        OPT_TRAIN_KMERS, 
        OPT_OUTPUT_SCORES,
        OPT_OUT_FOFN,
-       OPT_STDV
+       OPT_STDV,
+       OPT_LOG_LEVEL
      };
 
 static const struct option longopts[] = {
@@ -281,6 +157,7 @@ static const struct option longopts[] = {
     { "progress",           no_argument,       NULL, OPT_PROGRESS },
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
+    { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
     { NULL, 0, NULL, 0 }
 };
 
@@ -301,226 +178,6 @@ std::string get_model_short_name(const std::string& model_name)
     }
     return iter->second;
 }
-
-GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& data,
-                                       const GaussianMixture& input_mixture)
-{
-
-    size_t n_components = input_mixture.params.size();
-    size_t n_data = data.size();
-    float log_n_data = std::log(n_data);
-    assert(input_mixture.log_weights.size() == n_components);
-    GaussianMixture curr_mixture = input_mixture;
-
-    for(size_t iteration = 0; iteration < 10; ++iteration) {
-        GaussianMixture new_mixture = curr_mixture;
-
-        // compute log_pdfs
-        //
-        //   pdf[i][j] := gauss(mu_j, sigma_j * read_var_i, level_mean_i)
-        //
-        std::vector< std::vector< float > > log_pdf(n_data);
-        for(size_t i = 0; i < n_data; ++i) {
-            log_pdf[i].resize(n_components);
-            for(size_t j = 0; j < n_components; ++j) {
-                // We need to scale the mixture component parameters by the per-read var factor
-                PoreModelStateParams scaled_state = curr_mixture.params[j];
-                scaled_state.level_stdv *= data[i].read_var;
-                scaled_state.level_log_stdv += data[i].log_read_var;
-                log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_state);
-                assert(not std::isnan(log_pdf[i][j]));
-            }
-        }
-
-        // compute responsibilities
-        //
-        //   resp[i][j] := ( w_j * pdf[i][j] ) / sum_k ( w_k * pdf[i][k] )
-        //
-        std::vector< std::vector< float > > log_resp(n_data);
-        for(size_t i = 0; i < n_data; ++i) {
-            log_resp[i].resize(n_components);
-            std::multiset< float > denom_terms{-INFINITY};
-            for(size_t j = 0; j < n_components; ++j) {
-                float v = log_pdf[i][j] + curr_mixture.log_weights[j];
-                log_resp[i][j] = v;
-                denom_terms.insert(v);
-            }
-            float log_denom = logsumset{}(denom_terms);
-            for(size_t j = 0; j < n_components; ++j) {
-                log_resp[i][j] -= log_denom;
-            }
-        }
-
-        // update weights
-        //
-        //   w'[j] := sum_i resp[i][j] / n_data
-        //
-        for (size_t j = 0; j < n_components; ++j) {
-            std::multiset< float > numer_terms{-INFINITY};
-            for (size_t i = 0; i < n_data; ++i) {
-                numer_terms.insert(log_resp[i][j]);
-            }
-            float log_numer = logsumset{}(numer_terms);
-            new_mixture.log_weights[j] = log_numer - log_n_data;
-        }
-
-        // update means
-        //
-        //   mu_j := sum_i ( resp[i][j] * level_mean_i ) / sum_i resp[i][j]
-        //         = sum_i ( resp[i][j] * level_mean_i ) / ( w'[j] * n_data )
-        //
-        std::vector< float > new_log_mean(2);
-        for (size_t j = 0; j < n_components; ++j) {
-            std::multiset< float > numer_terms{-INFINITY};
-            for (size_t i = 0; i < n_data; ++i) {
-                numer_terms.insert(log_resp[i][j] + data[i].log_level_mean);
-            }
-            float log_numer = logsumset{}(numer_terms);
-            new_log_mean[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
-        }
-
-        // update stdvs
-        //
-        //   var_j := sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / sum_i resp[i][j]
-        //          = sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / ( w'[j] * n_data )
-        //
-        std::vector< float > new_log_var(2);
-        for (size_t j = 0; j < n_components; ++j) {
-            std::multiset< float > numer_terms{-INFINITY};
-            for (size_t i = 0; i < n_data; ++i) {
-                float v = std::abs(data[i].level_mean - std::exp(new_log_mean[j]));
-                numer_terms.insert(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0f * std::log(v) : 0.0f));
-            }
-            float log_numer = logsumset{}(numer_terms);
-            new_log_var[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
-        }
-
-        for(size_t j = 0; j < n_components; ++j) {
-            new_mixture.params[j].level_mean = std::exp(new_log_mean[j]);
-            new_mixture.params[j].level_log_stdv = .5 * new_log_var[j];
-            new_mixture.params[j].level_stdv = std::exp(new_mixture.params[j].level_log_stdv);
-            //fprintf(stderr, "MIXTURE\t%zu\t%.2lf\t%.2lf\t%.2lf\n", j, curr_mixture.weights[j], curr_mixture.params[j].mean, curr_mixture.params[j].stdv);
-        }
-
-        curr_mixture = new_mixture;
-    }
-    return curr_mixture;
-}
-
-IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const IG_Mixture& in_mix)
-{
-    size_t n_components = in_mix.params.size();
-    assert(in_mix.log_weights.size() == n_components);
-    size_t n_data = data.size();
-    auto crt_mix = in_mix;
-
-    // compute gaussian pdfs
-    //
-    //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
-    //
-    std::vector< std::vector< std::pair< float, float > > > log_pdf(n_data);
-    for (size_t i = 0; i < n_data; ++i) {
-        log_pdf[i].resize(n_components);
-        for (size_t j = 0; j < n_components; ++j) {
-            PoreModelStateParams scaled_state = in_mix.params[j];
-            scaled_state.level_stdv *= data[i].read_var;
-            scaled_state.level_log_stdv += data[i].log_read_var;
-            log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_state);
-            assert(not std::isnan(log_pdf[i][j].first));
-            if (opt::verbose > 2) {
-                std::cerr << "TRAIN_IG_MIXTURE log_gauss_pdf "
-                          << i << " " << j << " " << std::scientific << log_pdf[i][j].first << std::endl;
-            }
-        }
-    }
-
-    // compute gaussian weights
-    //
-    //   g_weights[i][j] := ( w_j * pdf[i][j].first ) / sum_k ( w_k * pdf[i][k].first )
-    //
-    std::vector< std::vector< float > > log_g_weights(n_data);
-    for (size_t i = 0; i < n_data; ++i) {
-        log_g_weights[i].resize(n_components);
-        std::multiset< float > denom_terms{-INFINITY};
-        for (size_t j = 0; j < n_components; ++j) {
-            float v = in_mix.log_weights[j] + log_pdf[i][j].first;
-            log_g_weights[i][j] = v;
-            denom_terms.insert(v);
-        }
-        float log_denom = logsumset{}(denom_terms);
-        for (size_t j = 0; j < n_components; ++j) {
-            log_g_weights[i][j] -= log_denom;
-            if (opt::verbose > 2) {
-                std::cerr << "TRAIN_IG_MIXTURE g_weights "
-                          << i << " " << j << " " << std::scientific << std::exp(log_g_weights[i][j]) << std::endl;
-            }
-        }
-    }
-
-    for (size_t iteration = 0; iteration < 10; ++iteration) {
-        // compute inverse gaussian pdfs
-        //
-        //   pdf[i][j].second = invgauss(eta_j, lambda_j * ( read_var_sd_i / read_var_scale_i ), level_stdv_i)
-        //
-        for (size_t i = 0; i < n_data; ++i) {
-            for (size_t j = 0; j < n_components; ++j) {
-                PoreModelStateParams scaled_state = in_mix.params[j];
-                scaled_state.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
-                scaled_state.sd_log_lambda += data[i].log_read_var_sd - data[i].log_read_scale_sd;
-                log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, data[i].log_level_stdv, scaled_state);
-                assert(not std::isnan(log_pdf[i][j].second));
-                if (opt::verbose > 2) {
-                    std::cerr << "TRAIN_IG_MIXTURE log_invgauss_pdf "
-                              << i << " " << j << " " << std::scientific << log_pdf[i][j].second << std::endl;
-                }
-            }
-        }
-        // compute inverse gaussian weights (responsibilities)
-        //
-        //   ig_weights[i][j] := ( g_weights[i][j] * pdf[i][j].second ) / sum_k ( g_weights[i][k] * pdf[i][k].second )
-        //
-        std::vector< std::vector< float > > log_ig_weights(n_data);
-        for (size_t i = 0; i < n_data; ++i) {
-            log_ig_weights[i].resize(n_components);
-            std::multiset< float > denom_terms{-INFINITY};
-            for (size_t j = 0; j < n_components; ++j) {
-                float v = log_g_weights[i][j] + log_pdf[i][j].second;
-                log_ig_weights[i][j] = v;
-                denom_terms.insert(v);
-            }
-            float log_denom = logsumset{}(denom_terms);
-            for (size_t j = 0; j < n_components; ++j) {
-                log_ig_weights[i][j] -= log_denom;
-                if (opt::verbose > 2) {
-                    std::cerr << "TRAIN_IG_MIXTURE ig_weights "
-                              << i << " " << j << " " << std::scientific << std::exp(log_ig_weights[i][j]) << std::endl;
-                }
-            }
-        }
-
-        // update eta
-        //
-        //   eta_j := sum_i ( ig_weigts[i][j] * lambda'_ij * level_stdv_i ) / sum_i ( ig_weights[i][j] * lambda'_ij )
-        //   lambda'_ij := lambda_j * ( read_var_sd_i / read_var_scale_i )
-        //
-        auto new_mix = crt_mix;
-        for (size_t j = 0; j < n_components; ++j) {
-            std::multiset< float > numer_terms{-INFINITY};
-            std::multiset< float > denom_terms{-INFINITY};
-            for (size_t i = 0; i < n_data; ++i) {
-                float v = log_ig_weights[i][j] + in_mix.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
-                numer_terms.insert(v + data[i].log_level_stdv);
-                denom_terms.insert(v);
-            }
-            float log_numer = logsumset{}(numer_terms);
-            float log_denom = logsumset{}(denom_terms);
-            new_mix.params[j].sd_mean = std::exp(log_numer - log_denom);
-        }
-        std::swap(crt_mix, new_mix);
-    } // for iteration
-
-    return crt_mix;
-} // train_ig_mixture
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 void recalibrate_model(SquiggleRead &sr,
@@ -773,6 +430,9 @@ void parse_methyltrain_options(int argc, char** argv)
             case OPT_VERSION:
                 std::cout << METHYLTRAIN_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
+            case OPT_LOG_LEVEL:
+                Logger::set_level_from_option(arg.str());
+                break;
         }
     }
 
@@ -1004,25 +664,25 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             new_pm.states[ki] = trained_mixture.params[1];
 
             if (model_stdv() and round > 0) {
-                IG_Mixture ig_mix;
+                InvGaussianMixture ig_mixture;
                 // weights
-                ig_mix.log_weights.push_back(std::log(um_rate));
-                ig_mix.log_weights.push_back(std::log(1 - um_rate));
+                ig_mixture.log_weights.push_back(std::log(um_rate));
+                ig_mixture.log_weights.push_back(std::log(1 - um_rate));
                 // g_params
-                ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
-                ig_mix.params.emplace_back(model_iter->second.get_parameters(ki));
+                ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                ig_mixture.params.emplace_back(model_iter->second.get_parameters(ki));
                 // run training
-                auto trained_ig_mix = train_ig_mixture(summaries[ki].events, ig_mix);
+                auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
                 if (opt::verbose > 1) {
                     std::cerr << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << ig_mix.params[0].sd_mean << " "
-                              << std::scientific << ig_mix.params[1].sd_mean << "]" << std::endl
+                              << std::scientific << ig_mixture.params[0].sd_mean << " "
+                              << std::scientific << ig_mixture.params[1].sd_mean << "]" << std::endl
                               << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << trained_ig_mix.params[0].sd_mean << " "
-                              << std::scientific << trained_ig_mix.params[1].sd_mean << "]" << std::endl;
+                              << std::scientific << trained_ig_mixture.params[0].sd_mean << " "
+                              << std::scientific << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
                 }
                 // update state
-                new_pm.states[ki] = trained_ig_mix.params[1];
+                new_pm.states[ki] = trained_ig_mixture.params[1];
                 new_pm.states[ki].set_sd_lambda(new_pm.states[ki].sd_lambda); // update stdv
                 new_pm.states[ki].update_logs();
             }
