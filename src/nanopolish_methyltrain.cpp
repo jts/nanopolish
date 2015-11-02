@@ -69,19 +69,21 @@ struct FullStateTrainingData
                           const std::string& prev_kmer,
                           const std::string& next_kmer)
     {
-        // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
-        //this->event_stdv = sr.events[strand_idx][ea.event_idx].stdv / sr.pore_model[strand_idx].scale_sd;
+        this->log_level_mean = log(this->level_mean);
         this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
-        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
-        
+        this->log_level_stdv = log(this->level_stdv);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
         this->log_read_var = log(this->read_var);
         this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->log_read_scale_sd = log(this->read_scale_sd);
         this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
+        this->log_read_var_sd = log(this->read_var_sd);
+
+        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
-        
+
         GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
         this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
         this->prev_kmer = prev_kmer;
@@ -116,13 +118,17 @@ struct FullStateTrainingData
     //
 
     float level_mean;
+    float log_level_mean;
     float level_stdv;
-    float duration;
+    float log_level_stdv;
     float read_var;
     float log_read_var;
     float read_scale_sd;
+    float log_read_scale_sd;
     float read_var_sd;
+    float log_read_var_sd;
 
+    float duration;
     int ref_position;
     int ref_strand;
 
@@ -144,11 +150,15 @@ struct MinimalStateTrainingData
     {
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
+        this->log_level_mean = log(this->level_mean);
         this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
+        this->log_level_stdv = log(this->level_stdv);
         this->read_var = (float)sr.pore_model[ea.strand_idx].var;
         this->log_read_var = log(this->read_var);
         this->read_scale_sd = (float)sr.pore_model[ea.strand_idx].scale_sd;
+        this->log_read_scale_sd = log(this->read_scale_sd);
         this->read_var_sd = (float)sr.pore_model[ea.strand_idx].var_sd;
+        this->log_read_var_sd = log(this->read_var_sd);
     }
 
     static void write_header(FILE* fp)
@@ -172,11 +182,15 @@ struct MinimalStateTrainingData
     // Data
     //
     float level_mean;
+    float log_level_mean;
     float level_stdv;
+    float log_level_stdv;
     float read_var;
     float log_read_var;
     float read_scale_sd;
+    float log_read_scale_sd;
     float read_var_sd;
+    float log_read_var_sd;
 };
 
 typedef MinimalStateTrainingData StateTrainingData;
@@ -194,14 +208,12 @@ struct StateSummary
 
 struct GaussianMixture
 {
-    std::vector<float> weights;
     std::vector<float> log_weights;
-    std::vector<GaussianParameters> params;
+    std::vector<PoreModelStateParams> params;
 };
 
 struct IG_Mixture
 {
-    std::vector< double > weights;
     std::vector< double > log_weights;
     std::vector< PoreModelStateParams > params;
 }; // struct IG_Mixture
@@ -324,17 +336,12 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
     size_t n_components = input_mixture.params.size();
     size_t n_data = data.size();
     double log_n_data = log(n_data);
-    assert(input_mixture.weights.size() == n_components);
-    GaussianMixture curr_mixture = input_mixture;   
+    assert(input_mixture.log_weights.size() == n_components);
+    GaussianMixture curr_mixture = input_mixture;
 
-    for(size_t iteration = 0; iteration < 10; ++iteration) {
-        std::vector<double> mean_sum(n_components, 0.0f);
-        std::vector<double> var_sum(n_components, 0.0f);
-        
+    for(size_t iteration = 0; iteration < 10; ++iteration)
+    {
         GaussianMixture new_mixture = curr_mixture;
-        for(size_t j = 0; j < n_components; ++j) {
-            new_mixture.weights[j] = 0.0f;
-        }
 
         // compute log_pdfs
         //
@@ -347,12 +354,10 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             for(size_t j = 0; j < n_components; ++j)
             {
                 // We need to scale the mixture component parameters by the per-read var factor
-                // TODO: scale  once per round per read (not once per round per event)
-                GaussianParameters scaled_params;
-                scaled_params.mean = curr_mixture.params[j].mean;
-                scaled_params.stdv = data[i].read_var * curr_mixture.params[j].stdv;
-                scaled_params.log_stdv = data[i].log_read_var + curr_mixture.params[j].log_stdv;
-                log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_params);
+                PoreModelStateParams scaled_state = curr_mixture.params[j];
+                scaled_state.level_stdv *= data[i].read_var;
+                scaled_state.level_log_stdv += data[i].log_read_var;
+                log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_state);
             }
         }
 
@@ -394,7 +399,6 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
             }
             double log_nj = logsumset{}(terms);
             new_mixture.log_weights[j] = log_nj - log_n_data;
-            new_mixture.weights[j] = exp(new_mixture.log_weights[j]);
         }
 
         // update means
@@ -402,17 +406,16 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         //   mu_j := sum_i ( resp[i][j] * level_mean_i ) / sum_i resp[i][j]
         //         = sum_i ( resp[i][j] * level_mean_i ) / ( w'[j] * n_data )
         //
-        std::vector<double> new_mean(2);
+        std::vector<double> new_log_mean(2);
         for (size_t j = 0; j < n_components; ++j)
         {
             std::multiset< double > terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i)
             {
-                // TODO: avoid log
-                terms.insert(log_resp[i][j] + log(data[i].level_mean));
+                terms.insert(log_resp[i][j] + data[i].log_level_mean);
             }
             double v = logsumset{}(terms);
-            new_mean[j] = exp(v) / (n_data * new_mixture.weights[j]);
+            new_log_mean[j] = v - (log_n_data + new_mixture.log_weights[j]);
         }
 
         // update stdvs
@@ -420,20 +423,22 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
         //   var_j := sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / sum_i resp[i][j]
         //          = sum_i ( resp[i][j] * ( level_mean_i - mu_j )^2 ) / ( w'[j] * n_data )
         //
-        std::vector<double> new_var(2);
+        std::vector<double> new_log_var(2);
         for (size_t j = 0; j < n_components; ++j)
         {
             std::multiset< double > terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i)
             {
-                terms.insert(log_resp[i][j] + 2.0 * log(abs(data[i].level_mean - new_mean[j])));
+                terms.insert(log_resp[i][j] + 2.0 * log(abs(data[i].level_mean - exp(new_log_mean[j]))));
             }
             double v = logsumset{}(terms);
-            new_var[j] = exp(v) / (n_data * new_mixture.weights[j]);
+            new_log_var[j] = v - (log_n_data + new_mixture.log_weights[j]);
         }
 
         for(size_t j = 0; j < n_components; ++j) {
-            new_mixture.params[j] = GaussianParameters(new_mean[j], sqrt(new_var[j]));
+            new_mixture.params[j].level_mean = exp(new_log_mean[j]);
+            new_mixture.params[j].level_log_stdv = .5 * new_log_var[j];
+            new_mixture.params[j].level_stdv = exp(new_mixture.params[j].level_log_stdv);
             //fprintf(stderr, "MIXTURE\t%zu\t%.2lf\t%.2lf\t%.2lf\n", j, curr_mixture.weights[j], curr_mixture.params[j].mean, curr_mixture.params[j].stdv);
         }
 
@@ -445,69 +450,83 @@ GaussianMixture train_gaussian_mixture(const std::vector<StateTrainingData>& dat
 IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const IG_Mixture& in_mix)
 {
     size_t n_components = in_mix.params.size();
-    assert(in_mix.weights.size() == n_components);
+    assert(in_mix.log_weights.size() == n_components);
     size_t n_data = data.size();
     auto crt_mix = in_mix;
 
+    // compute gaussian pdfs
+    //
+    //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
+    //
+    std::vector< std::vector< std::pair< double, double > > > log_pdf(n_data);
+    for (size_t i = 0; i < n_data; ++i)
+    {
+        log_pdf[i].resize(n_components);
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            PoreModelStateParams scaled_state = in_mix.params[j];
+            scaled_state.level_stdv *= data[i].read_var;
+            scaled_state.level_log_stdv += data[i].log_read_var;
+            log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_state);
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE log_gauss_pdf "
+                          << i << " " << j << " " << std::scientific << log_pdf[i][j].first << std::endl;
+            }
+        }
+    }
+
+    // compute gaussian weights
+    //
+    //   g_weights[i][j] := ( w_j * pdf[i][j].first ) / sum_k ( w_k * pdf[i][k].first )
+    //
+    std::vector< std::vector< double > > log_g_weights(n_data);
+    for (size_t i = 0; i < n_data; ++i)
+    {
+        log_g_weights[i].resize(n_components);
+        std::multiset< double > terms{-INFINITY};
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            double v = in_mix.log_weights[j] + log_pdf[i][j].first;
+            log_g_weights[i][j] = v;
+            if (not std::isnan(v))
+            {
+                terms.insert(v);
+            }
+        }
+        double log_denom = logsumset{}(terms);
+        for (size_t j = 0; j < n_components; ++j)
+        {
+            log_g_weights[i][j] -= log_denom;
+            if (opt::verbose > 2)
+            {
+                std::cerr << "TRAIN_IG_MIXTURE g_weights "
+                          << i << " " << j << " " << std::scientific << exp(log_g_weights[i][j]) << std::endl;
+            }
+        }
+    }
+
     for (size_t iteration = 0; iteration < 10; ++iteration)
     {
-        // compute all pdfs
+        // compute inverse gaussian pdfs
         //
-        //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
         //   pdf[i][j].second = invgauss(eta_j, lambda_j * ( read_var_sd_i / read_var_scale_i ), level_stdv_i)
         //
-        std::vector< std::vector< std::pair< double, double > > > log_pdf(n_data);
         for (size_t i = 0; i < n_data; ++i)
         {
-            log_pdf[i].resize(n_components);
             for (size_t j = 0; j < n_components; ++j)
             {
-                PoreModelStateParams scaled_params = in_mix.params[j];
-                scaled_params.level_stdv *= data[i].read_var;
-                scaled_params.set_sd_lambda(scaled_params.sd_lambda * data[i].read_var_sd / data[i].read_scale_sd);
-                scaled_params.update_logs();
-                log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_params);
-                log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, log(data[i].level_stdv), scaled_params);
+                PoreModelStateParams scaled_state = in_mix.params[j];
+                scaled_state.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
+                scaled_state.sd_log_lambda += data[i].log_read_var_sd - data[i].log_read_scale_sd;
+                log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, data[i].log_level_stdv, scaled_state);
                 if (opt::verbose > 2)
                 {
-                    std::cerr << "TRAIN_IG_MIXTURE log_pdf "
-                              << i << " " << j << " "
-                              << std::scientific << log_pdf[i][j].first << " "
-                              << std::scientific << log_pdf[i][j].second << std::endl;
+                    std::cerr << "TRAIN_IG_MIXTURE log_invgauss_pdf "
+                              << i << " " << j << " " << std::scientific << log_pdf[i][j].second << std::endl;
                 }
             }
         }
-
-        // compute gaussian weights
-        //
-        //   g_weights[i][j] := ( w_j * pdf[i][j].first ) / sum_k ( w_k * pdf[i][k].first )
-        //
-        std::vector< std::vector< double > > log_g_weights(n_data);
-        for (size_t i = 0; i < n_data; ++i)
-        {
-            log_g_weights[i].resize(n_components);
-            std::multiset< double > terms{-INFINITY};
-            for (size_t j = 0; j < n_components; ++j)
-            {
-                double v = in_mix.log_weights[j] + log_pdf[i][j].first;
-                log_g_weights[i][j] = v;
-                if (not std::isnan(v))
-                {
-                    terms.insert(v);
-                }
-            }
-            double log_denom = logsumset{}(terms);
-            for (size_t j = 0; j < n_components; ++j)
-            {
-                log_g_weights[i][j] -= log_denom;
-                if (opt::verbose > 2)
-                {
-                    std::cerr << "TRAIN_IG_MIXTURE g_weights "
-                              << i << " " << j << " " << std::scientific << exp(log_g_weights[i][j]) << std::endl;
-                }
-            }
-        }
-
         // compute inverse gaussian weights (responsibilities)
         //
         //   ig_weights[i][j] := ( g_weights[i][j] * pdf[i][j].second ) / sum_k ( g_weights[i][k] * pdf[i][k].second )
@@ -550,15 +569,13 @@ IG_Mixture train_ig_mixture(const std::vector< StateTrainingData >& data, const 
             std::multiset< double > denom_terms{-INFINITY};
             for (size_t i = 0; i < n_data; ++i)
             {
-                double v = log_ig_weights[i][j] + in_mix.params[j].sd_log_lambda + log(data[i].read_var_sd / data[i].read_scale_sd);
-                numer_terms.insert(v + log(data[i].level_stdv));
+                double v = log_ig_weights[i][j] + in_mix.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
+                numer_terms.insert(v + data[i].log_level_stdv);
                 denom_terms.insert(v);
             }
             double log_numer = logsumset{}(numer_terms);
             double log_denom = logsumset{}(denom_terms);
             new_mix.params[j].sd_mean = exp(log_numer - log_denom);
-            new_mix.params[j].set_sd_lambda(new_mix.params[j].sd_lambda); // keep lambda constant, update stdv
-            new_mix.params[j].update_logs();
         }
         std::swap(crt_mix, new_mix);
     } // for iteration
@@ -1025,45 +1042,34 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             double um_rate = 0.05f;
             std::string um_kmer = mtrain_alphabet->unmethylate(kmer);
             size_t um_ki = mtrain_alphabet->kmer_rank(um_kmer.c_str(), k);
-            GaussianParameters um_params(model_iter->second.get_parameters(um_ki).level_mean, 
-                                         model_iter->second.get_parameters(um_ki).level_stdv);
 
-            mixture.weights.push_back(um_rate);
             mixture.log_weights.push_back(log(um_rate));
-            mixture.params.push_back(um_params);
+            mixture.params.push_back(model_iter->second.get_parameters(um_ki));
 
-            GaussianParameters m_params(model_iter->second.get_parameters(ki).level_mean, 
-                                        model_iter->second.get_parameters(ki).level_stdv);
-
-            mixture.weights.push_back(1 - um_rate);
             mixture.log_weights.push_back(log(1 - um_rate));
-            mixture.params.push_back(m_params);
- 
+            mixture.params.push_back(model_iter->second.get_parameters(ki));
+
             if(opt::verbose > 1) {
-                           
                 fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                                                                  mixture.weights[0], mixture.params[0].mean, mixture.params[0].stdv,
-                                                                  mixture.weights[1], mixture.params[1].mean, mixture.params[1].stdv);
+                    exp(mixture.log_weights[0]), mixture.params[0].level_mean, mixture.params[0].level_stdv,
+                    exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
             }
 
             GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
-            
+
             if(opt::verbose > 1) {
                 fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                                                                  trained_mixture.weights[0], trained_mixture.params[0].mean, trained_mixture.params[0].stdv,
-                                                                  trained_mixture.weights[1], trained_mixture.params[1].mean, trained_mixture.params[1].stdv);
+                    exp(trained_mixture.log_weights[0]), trained_mixture.params[0].level_mean, trained_mixture.params[0].level_stdv,
+                    exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
             }
 
-            new_pm.states[ki].level_mean = trained_mixture.params[1].mean;
-            new_pm.states[ki].level_stdv = trained_mixture.params[1].stdv;
+            new_pm.states[ki] = trained_mixture.params[1];
 
             if (model_stdv() and round > 0)
             {
                 IG_Mixture ig_mix;
                 // weights
-                ig_mix.weights.push_back(um_rate);
                 ig_mix.log_weights.push_back(log(um_rate));
-                ig_mix.weights.push_back(1 - um_rate);
                 ig_mix.log_weights.push_back(log(1 - um_rate));
                 // g_params
                 ig_mix.params.emplace_back(model_iter->second.get_parameters(um_ki));
@@ -1079,9 +1085,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                               << std::scientific << trained_ig_mix.params[0].sd_mean << " "
                               << std::scientific << trained_ig_mix.params[1].sd_mean << "]" << std::endl;
                 }
-                // updates
-                new_pm.states[ki].sd_mean = trained_ig_mix.params[1].sd_mean;
-                new_pm.states[ki].set_sd_lambda(trained_ig_mix.params[1].sd_lambda);
+                // update state
+                new_pm.states[ki] = trained_ig_mix.params[1];
+                new_pm.states[ki].set_sd_lambda(new_pm.states[ki].sd_lambda); // update stdv
+                new_pm.states[ki].update_logs();
             }
         }
     }
