@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 #include <set>
 #include <map>
 #include <omp.h>
@@ -58,84 +59,6 @@ enum TrainingTarget
 // sizes Full and Minimal. The model training functions
 // only actually need the Minimal data but for exploration
 // the Full data is useful so left as an option.
-struct FullStateTrainingData
-{
-    //
-    // Functions
-    //
-    FullStateTrainingData(const SquiggleRead& sr,
-                          const EventAlignment& ea,
-                          uint32_t rank,
-                          const std::string& prev_kmer,
-                          const std::string& next_kmer)
-    {
-        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
-        this->log_level_mean = std::log(this->level_mean);
-        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
-        this->log_level_stdv = std::log(this->level_stdv);
-        this->read_var = sr.pore_model[ea.strand_idx].var;
-        this->log_read_var = std::log(this->read_var);
-        this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
-        this->log_read_scale_sd = std::log(this->read_scale_sd);
-        this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
-        this->log_read_var_sd = std::log(this->read_var_sd);
-
-        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
-        this->ref_position = ea.ref_position;
-        this->ref_strand = ea.rc;
-
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
-        this->prev_kmer = prev_kmer;
-        this->next_kmer = next_kmer;
-    }
-
-    static void write_header(FILE* fp)
-    {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tduration\tref_pos\tref_strand\tz\tread_var\tread_scale_sd\tread_var_sd\tprev_kmer\tnext_kmer\n");
-    }
-
-    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
-    {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.3lf\t%d\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\t%s\n",
-                    model_name.c_str(), 
-                    kmer.c_str(), 
-                    level_mean, 
-                    level_stdv,
-                    duration,
-                    ref_position,
-                    ref_strand,
-                    z,
-                    read_var,
-                    read_scale_sd,
-                    read_var_sd,
-                    prev_kmer.c_str(),
-                    next_kmer.c_str());
-    }
-
-    //
-    // Data
-    //
-
-    float level_mean;
-    float log_level_mean;
-    float level_stdv;
-    float log_level_stdv;
-    float read_var;
-    float log_read_var;
-    float read_scale_sd;
-    float log_read_scale_sd;
-    float read_var_sd;
-    float log_read_var_sd;
-
-    float duration;
-    int ref_position;
-    int ref_strand;
-
-    float z;
-    std::string prev_kmer;
-    std::string next_kmer;
-};
 
 struct MinimalStateTrainingData
 {
@@ -143,10 +66,10 @@ struct MinimalStateTrainingData
     // Functions
     //
     MinimalStateTrainingData(const SquiggleRead& sr,
-                             const EventAlignment& ea,
-                             uint32_t,
-                             const std::string&,
-                             const std::string&)
+                          const EventAlignment& ea,
+                          uint32_t,
+                          const std::string&,
+                          const std::string&)
     {
         // scale the observation to the expected pore model
         this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
@@ -161,21 +84,20 @@ struct MinimalStateTrainingData
         this->log_read_var_sd = std::log(this->read_var_sd);
     }
 
-    static void write_header(FILE* fp)
+    static void write_header(std::ostream& os)
     {
-        fprintf(fp, "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd\n");
+        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd";
     }
 
-    void write_tsv(FILE* fp, const std::string& model_name, const std::string& kmer) const
+    void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
-        fprintf(fp, "%s\t%s\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n",
-                    model_name.c_str(),
-                    kmer.c_str(),
-                    level_mean,
-                    level_stdv,
-                    read_var,
-                    read_scale_sd,
-                    read_var_sd);
+        os << model_name << '\t'
+           << kmer << '\t'
+           << std::fixed << std::setprecision(2) << level_mean << '\t'
+           << level_stdv << '\t'
+           << read_var << '\t'
+           << read_scale_sd << '\t'
+           << read_var_sd;
     }
 
     //
@@ -191,7 +113,58 @@ struct MinimalStateTrainingData
     float log_read_scale_sd;
     float read_var_sd;
     float log_read_var_sd;
-};
+}; // struct MinimalStateTrainingData
+
+struct FullStateTrainingData
+    : public MinimalStateTrainingData
+{
+    //
+    // Functions
+    //
+    FullStateTrainingData(const SquiggleRead& sr,
+                          const EventAlignment& ea,
+                          uint32_t rank,
+                          const std::string& prev_kmer,
+                          const std::string& next_kmer)
+        : MinimalStateTrainingData(sr, ea, rank, prev_kmer, next_kmer)
+    {
+        this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
+        this->ref_position = ea.ref_position;
+        this->ref_strand = ea.rc;
+        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
+        this->prev_kmer = prev_kmer;
+        this->next_kmer = next_kmer;
+    }
+
+    static void write_header(std::ostream& os)
+    {
+        MinimalStateTrainingData::write_header(os);
+        os << "duration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
+    }
+
+    void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
+    {
+        MinimalStateTrainingData::write_tsv(os, model_name, kmer);
+        os << duration << '\t'
+           << ref_position << '\t'
+           << ref_strand << '\t'
+           << z << '\t'
+           << prev_kmer << '\t'
+           << next_kmer;
+    }
+
+    //
+    // Data
+    //
+    float duration;
+    int ref_position;
+    int ref_strand;
+    float z;
+    std::string prev_kmer;
+    std::string next_kmer;
+}; //struct FullStateTrainingData
+
 
 typedef MinimalStateTrainingData StateTrainingData;
 //typedef FullStateTrainingData StateTrainingData;
@@ -955,11 +928,11 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     summary_fn << opt::bam_file << ".methyltrain.summary";
 
     FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
-    FILE* training_fp = fopen(training_fn.str().c_str(), "w");
+    std::ofstream training_ofs(training_fn.str());
 
     // training header
-    StateTrainingData::write_header(training_fp);
-    
+    StateTrainingData::write_header(training_ofs);
+
     // Process the training results
     ModelMap trained_models;
     
@@ -984,7 +957,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                summaries[ki].events[ei].write_tsv(training_fp, model_short_name, kmer);
+                summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
+                training_ofs << std::endl;
             }
 
             // write to the summary file
@@ -1067,7 +1041,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
-    fclose(training_fp);
     fclose(summary_fp);
     return trained_models;
 }

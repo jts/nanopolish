@@ -17,10 +17,11 @@ struct logsumset
         while (s.size() > 1)
         {
             Float_Type a = *s.begin();
+            assert(not std::isnan(a));
             s.erase(s.begin());
             Float_Type b = *s.begin();
+            assert(not std::isnan(b));
             s.erase(s.begin());
-            assert(not std::isnan(a) and not std::isnan(b));
 #ifdef LOG
             if (b - a > 15.7 and b > -80)
             {
