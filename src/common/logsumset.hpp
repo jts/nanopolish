@@ -2,6 +2,7 @@
 #define __LOGSUMSET_HPP
 
 #include <cassert>
+#include <cmath>
 #include <set>
 
 #include "logsum.h"
