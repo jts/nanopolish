@@ -31,7 +31,7 @@ const uint8_t DNAAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
-const char* DNAAlphabet::_name = "dna";
+const char* DNAAlphabet::_name = "nucleotide";
 const char* DNAAlphabet::_base = "ACGT";
 const char* DNAAlphabet::_complement = "TGCA";
 const uint32_t DNAAlphabet::_size = 4;
@@ -58,7 +58,7 @@ const uint8_t MethylCpGAlphabet::_rank[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
-const char* MethylCpGAlphabet::_name = "CpG";
+const char* MethylCpGAlphabet::_name = "cpg";
 const char* MethylCpGAlphabet::_base = "ACGMT";
 const char* MethylCpGAlphabet::_complement = "TGCGA";
 const uint32_t MethylCpGAlphabet::_size = 5;
