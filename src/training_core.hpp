@@ -20,6 +20,7 @@ struct MinimalStateTrainingData
     //
     // Functions
     //
+    MinimalStateTrainingData() = default;
     MinimalStateTrainingData(const SquiggleRead& sr,
                              const EventAlignment& ea,
                              uint32_t,
@@ -76,6 +77,7 @@ struct FullStateTrainingData
     //
     // Functions
     //
+    FullStateTrainingData() = default;
     FullStateTrainingData(const SquiggleRead& sr,
                           const EventAlignment& ea,
                           uint32_t rank,
