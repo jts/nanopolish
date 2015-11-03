@@ -97,13 +97,13 @@ struct FullStateTrainingData
     static void write_header(std::ostream& os)
     {
         MinimalStateTrainingData::write_header(os);
-        os << "duration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
+        os << "\tduration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
         MinimalStateTrainingData::write_tsv(os, model_name, kmer);
-        os << duration << '\t'
+        os << '\t' << duration << '\t'
            << ref_position << '\t'
            << ref_strand << '\t'
            << z << '\t'
