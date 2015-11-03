@@ -592,6 +592,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
     // training header
     StateTrainingData::write_header(training_ofs);
+    training_ofs << std::endl;
 
     // Process the training results
     ModelMap trained_models;
