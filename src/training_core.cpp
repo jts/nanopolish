@@ -8,6 +8,13 @@ using std::vector;
 using std::multiset;
 using std::endl;
 
+const bool use_multiset_logsum = 
+#ifndef USE_MULTISET_LOGSUM
+    false;
+#else
+    true;
+#endif
+
 GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, const GaussianMixture& input_mixture)
 {
 
@@ -44,13 +51,13 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
         vector< vector< float > > log_resp(n_data);
         for(size_t i = 0; i < n_data; ++i) {
             log_resp[i].resize(n_components);
-            multiset< float > denom_terms{-INFINITY};
+            logsumset< float > denom_terms(use_multiset_logsum);
             for(size_t j = 0; j < n_components; ++j) {
                 float v = log_pdf[i][j] + curr_mixture.log_weights[j];
                 log_resp[i][j] = v;
-                denom_terms.insert(v);
+                denom_terms.add(v);
             }
-            float log_denom = logsumset{}(denom_terms);
+            float log_denom = denom_terms.val();
             for(size_t j = 0; j < n_components; ++j) {
                 log_resp[i][j] -= log_denom;
             }
@@ -61,11 +68,11 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
         //   w'[j] := sum_i resp[i][j] / n_data
         //
         for (size_t j = 0; j < n_components; ++j) {
-            multiset< float > numer_terms{-INFINITY};
+            logsumset< float > numer_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
-                numer_terms.insert(log_resp[i][j]);
+                numer_terms.add(log_resp[i][j]);
             }
-            float log_numer = logsumset{}(numer_terms);
+            float log_numer = numer_terms.val();
             new_mixture.log_weights[j] = log_numer - log_n_data;
         }
 
@@ -76,11 +83,11 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
         //
         vector< float > new_log_mean(2);
         for (size_t j = 0; j < n_components; ++j) {
-            multiset< float > numer_terms{-INFINITY};
+            logsumset< float > numer_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
-                numer_terms.insert(log_resp[i][j] + data[i].log_level_mean);
+                numer_terms.add(log_resp[i][j] + data[i].log_level_mean);
             }
-            float log_numer = logsumset{}(numer_terms);
+            float log_numer = numer_terms.val();
             new_log_mean[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
         }
 
@@ -91,12 +98,12 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
         //
         vector< float > new_log_var(2);
         for (size_t j = 0; j < n_components; ++j) {
-            multiset< float > numer_terms{-INFINITY};
+            logsumset< float > numer_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
                 float v = std::abs(data[i].level_mean - std::exp(new_log_mean[j]));
-                numer_terms.insert(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0 * (std::log(v) - data[i].log_read_var) : 0.0));
+                numer_terms.add(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0 * (std::log(v) - data[i].log_read_var) : 0.0));
             }
-            float log_numer = logsumset{}(numer_terms);
+            float log_numer = numer_terms.val();
             new_log_var[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
         }
 
@@ -147,13 +154,13 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
     vector< vector< float > > log_g_weights(n_data);
     for (size_t i = 0; i < n_data; ++i) {
         log_g_weights[i].resize(n_components);
-        multiset< float > denom_terms{-INFINITY};
+        logsumset< float > denom_terms(use_multiset_logsum);
         for (size_t j = 0; j < n_components; ++j) {
             float v = in_mixture.log_weights[j] + log_pdf[i][j].first;
             log_g_weights[i][j] = v;
-            denom_terms.insert(v);
+            denom_terms.add(v);
         }
-        float log_denom = logsumset{}(denom_terms);
+        float log_denom = denom_terms.val();
         for (size_t j = 0; j < n_components; ++j) {
             log_g_weights[i][j] -= log_denom;
             LOG("training_core", debug)
@@ -184,13 +191,13 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
         vector< vector< float > > log_ig_weights(n_data);
         for (size_t i = 0; i < n_data; ++i) {
             log_ig_weights[i].resize(n_components);
-            multiset< float > denom_terms{-INFINITY};
+            logsumset< float > denom_terms(use_multiset_logsum);
             for (size_t j = 0; j < n_components; ++j) {
                 float v = log_g_weights[i][j] + log_pdf[i][j].second;
                 log_ig_weights[i][j] = v;
-                denom_terms.insert(v);
+                denom_terms.add(v);
             }
-            float log_denom = logsumset{}(denom_terms);
+            float log_denom = denom_terms.val();
             for (size_t j = 0; j < n_components; ++j) {
                 log_ig_weights[i][j] -= log_denom;
                 LOG("training_core", debug)
@@ -205,15 +212,15 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
         //
         auto new_mixture = crt_mixture;
         for (size_t j = 0; j < n_components; ++j) {
-            multiset< float > numer_terms{-INFINITY};
-            multiset< float > denom_terms{-INFINITY};
+            logsumset< float > numer_terms(use_multiset_logsum);
+            logsumset< float > denom_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
                 float v = log_ig_weights[i][j] + in_mixture.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
-                numer_terms.insert(v + data[i].log_level_stdv);
-                denom_terms.insert(v);
+                numer_terms.add(v + data[i].log_level_stdv);
+                denom_terms.add(v);
             }
-            float log_numer = logsumset{}(numer_terms);
-            float log_denom = logsumset{}(denom_terms);
+            float log_numer = numer_terms.val();
+            float log_denom = denom_terms.val();
             new_mixture.params[j].sd_mean = std::exp(log_numer - log_denom);
             LOG("training_core", info)
                 << "new_mixture " << iteration << " " << j << " "
