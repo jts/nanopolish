@@ -276,6 +276,8 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
 
 TEST_CASE( "hmm", "[hmm]") {
 
+    p7_FLogsumInit();
+
     // read the FAST5
     SquiggleRead sr("test_read", "test/data/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch8_file30_strand.fast5");
     sr.transform();
@@ -315,7 +317,7 @@ TEST_CASE( "hmm", "[hmm]") {
         "EMMMMMMMMKMKKMMMMMMMEMMMMMKMMMMMKMEMMMMMKMMMMMEEEEEEEEM";
 
     double expected_viterbi_last_state[2] = { -237.7690734863, -266.2348022461 };
-    double expected_forward[2] = { -221.1331481934, -262.7491455078 };
+    double expected_forward[2] = { -216.053604126, -254.2341003418 };
 
     for(int si = 0; si <= 1; ++si) {
 
