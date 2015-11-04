@@ -612,18 +612,35 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
         // Update means for each kmer
         uint32_t k = new_pm.k;
-        std::string kmer(k, 'A');
         const std::vector<StateSummary>& summaries = model_training_iter->second;
-        for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
 
-            // write a training file
-            for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
-                training_ofs << std::endl;
+        // Generate the complete set of kmers
+        std::string gen_kmer(k, 'A');
+        std::vector<std::string> all_kmers;
+        for(size_t ki = 0; ki < summaries.size(); ++ki) {
+            all_kmers.push_back(gen_kmer);
+            mtrain_alphabet->lexicographic_next(gen_kmer);
+        }
+        assert(gen_kmer == std::string(k, 'A'));
+        assert(all_kmers.front() == std::string(k, 'A'));
+        assert(all_kmers.back() == std::string(k, 'T'));
+
+        #pragma omp parallel for
+        for(size_t ki = 0; ki < summaries.size(); ++ki) {
+            
+            std::string kmer = all_kmers[ki];
+
+            // write the observed values to a tsv file
+            #pragma omp critical
+            {
+                for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
+                    summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
+                    training_ofs << std::endl;
+                }
+
+                // write to the summary file
+                fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
             }
-
-            // write to the summary file
-            fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
 
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
@@ -662,6 +679,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     std::exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
             }
 
+            #pragma omp critical
             new_pm.states[ki] = trained_mixture.params[1];
 
             if (model_stdv() and round > 0) {
@@ -682,10 +700,14 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                               << std::scientific << trained_ig_mixture.params[0].sd_mean << " "
                               << std::scientific << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
                 }
+
                 // update state
-                new_pm.states[ki] = trained_ig_mixture.params[1];
-                new_pm.states[ki].set_sd_lambda(new_pm.states[ki].sd_lambda); // update stdv
-                new_pm.states[ki].update_logs();
+                #pragma omp critical
+                {
+                    new_pm.states[ki] = trained_ig_mixture.params[1];
+                    new_pm.states[ki].set_sd_lambda(new_pm.states[ki].sd_lambda); // update stdv
+                    new_pm.states[ki].update_logs();
+                }
             }
         }
     }
