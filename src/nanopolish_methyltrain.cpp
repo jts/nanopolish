@@ -633,7 +633,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 continue;
             }
 
-            GaussianMixture mixture;
+            ParamMixture mixture;
 
             // train a mixture model where a minority of k-mers aren't methylated
             
@@ -654,7 +654,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
             }
 
-            GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
+            ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
 
             if(opt::verbose > 1) {
                 fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
@@ -665,7 +665,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             new_pm.states[ki] = trained_mixture.params[1];
 
             if (model_stdv() and round > 0) {
-                InvGaussianMixture ig_mixture;
+                ParamMixture ig_mixture;
                 // weights
                 ig_mixture.log_weights.push_back(std::log(um_rate));
                 ig_mixture.log_weights.push_back(std::log(1 - um_rate));

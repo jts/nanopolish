@@ -125,20 +125,14 @@ struct FullStateTrainingData
 typedef MinimalStateTrainingData StateTrainingData;
 //typedef FullStateTrainingData StateTrainingData;
 
-struct GaussianMixture
+struct ParamMixture
 {
     std::vector< float > log_weights;
     std::vector< PoreModelStateParams > params;
-}; // struct GaussianMixture
-
-struct InvGaussianMixture
-{
-    std::vector< float > log_weights;
-    std::vector< PoreModelStateParams > params;
-}; // struct InvGaussianMixture
+}; // struct ParamMixture
 
 // training functions
-GaussianMixture    train_gaussian_mixture   (const std::vector< StateTrainingData >& data, const GaussianMixture&    input_mixture);
-InvGaussianMixture train_invgaussian_mixture(const std::vector< StateTrainingData >& data, const InvGaussianMixture& input_mixture);
+ParamMixture train_gaussian_mixture   (const std::vector< StateTrainingData >& data, const ParamMixture& input_mixture);
+ParamMixture train_invgaussian_mixture(const std::vector< StateTrainingData >& data, const ParamMixture& input_mixture);
 
 #endif

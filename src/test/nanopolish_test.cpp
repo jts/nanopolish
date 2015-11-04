@@ -10,7 +10,6 @@
 #include <string>
 #include <array>
 #include <vector>
-#include <chrono>
 #include <random>
 
 #include "logsum.h"
@@ -341,35 +340,18 @@ TEST_CASE( "hmm", "[hmm]") {
 }
 
 std::vector< StateTrainingData >
-generate_training_data(const std::vector< float >& weight,
-                       const std::vector< float >& mu,
-                       const std::vector< float >& sigma,
-                       const std::vector< float >& eta,
-                       const std::vector< float >& lambda,
+generate_training_data(const ParamMixture& mixture,
                        const std::array< float, 2 >& read_var_rg,
                        const std::array< float, 2 >& read_scale_sd_rg,
                        const std::array< float, 2 >& read_var_sd_rg,
                        size_t n_data)
 {
     // check parameter sizes
-    size_t n_components = weight.size();
-    assert(mu.size() == n_components);
-    assert(sigma.size() == n_components);
-    assert(eta.size() == n_components);
-    assert(lambda.size() == n_components);
+    size_t n_components = mixture.log_weights.size();
+    assert(mixture.params.size() == n_components);
     assert(read_var_rg[0] < read_var_rg[1]);
     assert(read_scale_sd_rg[0] < read_scale_sd_rg[1]);
     assert(read_var_sd_rg[0] < read_var_sd_rg[1]);
-    // set up unscaled states
-    std::vector< PoreModelStateParams > params(n_components);
-    for (size_t j = 0; j < n_components; ++j)
-    {
-        params[j].level_mean = mu[j];
-        params[j].level_stdv = sigma[j];
-        params[j].sd_mean = eta[j];
-        params[j].set_sd_lambda(lambda[j]);
-        params[j].update_logs();
-    }
     // set random seed
     //seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     // catch takes care of managing the random seed
@@ -379,12 +361,18 @@ generate_training_data(const std::vector< float >& weight,
     typedef std::normal_distribution< float > normal_dist;
     typedef inverse_gaussian_distribution< float > inverse_gaussian_dist;
     // generate data
-    std::vector< StateTrainingData > data;
-    data.resize(n_data);
+    std::vector< float > weights(n_components);
+    for (size_t j = 0; j < n_components; ++j)
+    {
+        weights[j] = std::exp(mixture.log_weights[j]);
+        LOG("gen_data", debug) << "weights " << j << " "
+            << std::fixed << std::setprecision(2) << mixture.log_weights[j] << " " << weights[j] << std::endl;
+    }
+    std::vector< StateTrainingData > data(n_data);
     for (size_t i = 0; i < n_data; ++i)
     {
         // draw population
-        size_t j = discrete_dist(weight.begin(), weight.end())(rg);
+        size_t j = discrete_dist(weights.begin(), weights.end())(rg);
         assert(0 <= j and j < n_components);
         // draw read_var
         data[i].read_var = uniform_dist(read_var_rg[0], read_var_rg[1])(rg);
@@ -399,7 +387,7 @@ generate_training_data(const std::vector< float >& weight,
         data[i].log_read_var_sd = std::log(data[i].read_var_sd);
         assert(read_var_sd_rg[0] <= data[i].read_var_sd and data[i].read_var_sd < read_var_sd_rg[1]);
         // scale the state
-        auto scaled_params = params[j];
+        auto scaled_params = mixture.params[j];
         scaled_params.level_stdv *= data[i].read_var;
         scaled_params.level_log_stdv += data[i].log_read_var;
         scaled_params.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
@@ -415,6 +403,7 @@ generate_training_data(const std::vector< float >& weight,
 
 TEST_CASE("training", "[training]")
 {
+    p7_FLogsumInit();
     const unsigned n_data = 1000;
     const float um_rate = .2;
     PoreModelStateParams um_params;
@@ -427,17 +416,18 @@ TEST_CASE("training", "[training]")
     // first, we test gaussian training only
     SECTION("gaussian")
     {
-        auto data = generate_training_data(
-            { .05f, .95f }, // weight
-            { um_params.level_mean, um_params.level_mean + 5.0 }, // mu
-            { um_params.level_stdv, um_params.level_stdv }, // sigma
-            { um_params.sd_mean, um_params.sd_mean }, // eta
-            { um_params.sd_lambda, um_params.sd_lambda }, // lambda
+        ParamMixture gen_mixture;
+        gen_mixture.log_weights.push_back(std::log(um_rate));
+        gen_mixture.log_weights.push_back(std::log(1 - um_rate));
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params[1].level_mean += 5.0;
+        auto data = generate_training_data(gen_mixture,
             { .5f, 1.5f }, // read_var_rg
             { .5f, 1.5f }, // read_scale_sd_rg
             { .5f, 1.5f }, // read_var_sd_rg
             n_data);
-        GaussianMixture in_mixture;
+        ParamMixture in_mixture;
         in_mixture.log_weights.push_back(std::log(um_rate));
         in_mixture.log_weights.push_back(std::log(1 - um_rate));
         in_mixture.params.push_back(um_params);
