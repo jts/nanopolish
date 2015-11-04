@@ -435,6 +435,7 @@ TEST_CASE("training", "[training]")
         in_mixture.log_weights.push_back(std::log(1 - um_rate));
         in_mixture.params.push_back(um_params);
         in_mixture.params.push_back(um_params);
+        in_mixture.params[1].level_stdv += 1.0;
         auto out_mixture = train_gaussian_mixture(data, in_mixture);
         CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate ).epsilon(.05) );
         CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + 5.0 ).epsilon(1.0) );
