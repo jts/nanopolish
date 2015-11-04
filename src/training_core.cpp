@@ -143,6 +143,13 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
     size_t n_data = data.size();
     auto crt_mixture = in_mixture;
 
+    for (size_t j = 0; j < n_components; ++j) {
+        LOG("training_core", debug)
+            << "in_mixture " << j << " "
+            << std::fixed << std::setprecision(5) << std::exp(in_mixture.log_weights[j]) << " "
+            << std::setprecision(5) << in_mixture.params[j].sd_mean << endl;
+    }
+
     // compute gaussian pdfs
     //
     //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
@@ -193,7 +200,7 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
         //
         for (size_t i = 0; i < n_data; ++i) {
             for (size_t j = 0; j < n_components; ++j) {
-                PoreModelStateParams scaled_state = in_mixture.params[j];
+                PoreModelStateParams scaled_state = crt_mixture.params[j];
                 scaled_state.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
                 scaled_state.sd_log_lambda += data[i].log_read_var_sd - data[i].log_read_scale_sd;
                 log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, data[i].log_level_stdv, scaled_state);
@@ -237,7 +244,7 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
             logsumset< float > numer_terms(use_multiset_logsum);
             logsumset< float > denom_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
-                float v = log_ig_weights[i][j] + in_mixture.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
+                float v = log_ig_weights[i][j] + crt_mixture.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
                 numer_terms.add(v + data[i].log_level_stdv);
                 denom_terms.add(v);
             }
@@ -247,7 +254,7 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
             LOG("training_core", debug)
                 << "new_mixture " << iteration << " " << j << " "
                 << std::fixed << std::setprecision(5) << std::exp(new_mixture.log_weights[j]) << " "
-                << std::setprecision(3) << new_mixture.params[j].sd_mean << endl;
+                << std::setprecision(5) << new_mixture.params[j].sd_mean << endl;
         }
         std::swap(crt_mixture, new_mixture);
     } // for iteration
