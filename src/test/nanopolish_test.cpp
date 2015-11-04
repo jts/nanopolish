@@ -363,24 +363,25 @@ generate_training_data(const ParamMixture& mixture,
                                << std::fixed << std::setprecision(2) << weights[j] << " ("
                                << mixture.log_weights[j] << ")" << std::endl;
     }
+    std::vector< float > level_mean_sum(n_components, 0.0);
+    std::vector< float > sd_mean_sum(n_components, 0.0);
+    std::vector< size_t > population_size(n_components, 0);
     std::vector< StateTrainingData > data(n_data);
     for (size_t i = 0; i < n_data; ++i)
     {
         // draw population
         size_t j = discrete_dist(weights.begin(), weights.end())(rg);
+        ++population_size[j];
         assert(0 <= j and j < n_components);
         // draw read_var
         data[i].read_var = uniform_dist(read_var_rg[0], read_var_rg[1])(rg);
         data[i].log_read_var = std::log(data[i].read_var);
-        assert(read_var_rg[0] <= data[i].read_var and data[i].read_var < read_var_rg[1]);
         // draw read_scale_sd
         data[i].read_scale_sd = uniform_dist(read_scale_sd_rg[0], read_scale_sd_rg[1])(rg);
         data[i].log_read_scale_sd = std::log(data[i].read_scale_sd);
-        assert(read_scale_sd_rg[0] <= data[i].read_scale_sd and data[i].read_scale_sd < read_scale_sd_rg[1]);
         // draw read_var_sd
         data[i].read_var_sd = uniform_dist(read_var_sd_rg[0], read_var_sd_rg[1])(rg);
         data[i].log_read_var_sd = std::log(data[i].read_var_sd);
-        assert(read_var_sd_rg[0] <= data[i].read_var_sd and data[i].read_var_sd < read_var_sd_rg[1]);
         // scale the state
         auto scaled_params = mixture.params[j];
         scaled_params.level_stdv *= data[i].read_var;
@@ -392,6 +393,22 @@ generate_training_data(const ParamMixture& mixture,
         data[i].log_level_mean = std::log(data[i].level_mean);
         data[i].level_stdv = inverse_gaussian_dist(scaled_params.sd_mean, scaled_params.sd_lambda)(rg);
         data[i].log_level_stdv = std::log(data[i].level_stdv);
+        level_mean_sum[j] += data[i].level_mean;
+        sd_mean_sum[j] += data[i].level_stdv;
+        LOG("gen_data", debug1)
+            << "data " << i << " " << j << " "
+            << data[i].level_mean << " "
+            << data[i].level_stdv << " "
+            << data[i].read_var << " "
+            << data[i].read_scale_sd << " "
+            << data[i].read_var_sd << std::endl;
+    }
+    for (size_t j = 0; j < n_components; ++j)
+    {
+        LOG("gen_data", debug)
+            << "population " << j << " "
+            << std::fixed << std::setprecision(3) << level_mean_sum[j] / population_size[j] << " "
+            << sd_mean_sum[j] / population_size[j] << std::endl;
     }
     return data;
 }
@@ -399,24 +416,26 @@ generate_training_data(const ParamMixture& mixture,
 TEST_CASE("training", "[training]")
 {
     const unsigned n_data = 1000;
-    const float um_rate = .2;
+    const float um_rate = .1;
     PoreModelStateParams um_params;
     um_params.level_mean = 65.0;
     um_params.level_stdv = 1.0;
-    um_params.sd_mean = 1.8;
-    um_params.set_sd_lambda(40.0);
+    um_params.sd_mean = 0.8;
+    um_params.set_sd_lambda(7.0);
     um_params.update_logs();
-    //Logger::set_default_level(level_wrapper::debug1);
+    Logger::set_default_level(level_wrapper::debug1);
 
     // first, we test gaussian training only
     SECTION("gaussian")
     {
+        float delta_um_rate = .05;
+        float delta_level_mean = 10.0;
         ParamMixture gen_mixture;
-        gen_mixture.log_weights.push_back(std::log(um_rate));
-        gen_mixture.log_weights.push_back(std::log(1 - um_rate));
+        gen_mixture.log_weights.push_back(std::log(um_rate + delta_um_rate));
+        gen_mixture.log_weights.push_back(std::log(1 - (um_rate + delta_um_rate)));
         gen_mixture.params.push_back(um_params);
         gen_mixture.params.push_back(um_params);
-        gen_mixture.params[1].level_mean += 5.0;
+        gen_mixture.params[1].level_mean += delta_level_mean;
         auto data = generate_training_data(gen_mixture,
             { .5f, 1.5f }, // read_var_rg
             { .5f, 1.5f }, // read_scale_sd_rg
@@ -427,9 +446,93 @@ TEST_CASE("training", "[training]")
         in_mixture.log_weights.push_back(std::log(1 - um_rate));
         in_mixture.params.push_back(um_params);
         in_mixture.params.push_back(um_params);
+        // encourage the second component to capture points not well fit by the first
         in_mixture.params[1].level_stdv += 1.0;
         auto out_mixture = train_gaussian_mixture(data, in_mixture);
-        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate ).epsilon(.05) );
-        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + 5.0 ).epsilon(1.0) );
+        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
+        CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
+    }
+
+    // next, we test inverse gaussian training for the case where the gaussians are distinct
+    SECTION("inverse_gaussian_1")
+    {
+        float delta_um_rate = .05;
+        float delta_level_mean = 10.0;
+        float delta_sd_mean = 0.1;
+        ParamMixture gen_mixture;
+        gen_mixture.log_weights.push_back(std::log(um_rate + delta_um_rate));
+        gen_mixture.log_weights.push_back(std::log(1 - (um_rate + delta_um_rate)));
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params[1].level_mean += delta_level_mean;
+        gen_mixture.params[1].sd_mean += delta_sd_mean;
+        gen_mixture.params[1].set_sd_lambda(gen_mixture.params[1].sd_lambda);
+        gen_mixture.params[1].update_logs();
+        auto data = generate_training_data(gen_mixture,
+            { .5f, 1.5f }, // read_var_rg
+            { 1.0f, 1.001f }, // read_scale_sd_rg
+            { 1.0f, 1.001f }, // read_var_sd_rg
+            n_data);
+        ParamMixture in_mixture;
+        in_mixture.log_weights.push_back(std::log(um_rate));
+        in_mixture.log_weights.push_back(std::log(1 - um_rate));
+        in_mixture.params.push_back(um_params);
+        in_mixture.params.push_back(um_params);
+        // encourage the second component to capture points not well fit by the first
+        in_mixture.params[1].level_stdv += 1.0;
+        in_mixture.params[1].set_sd_stdv(in_mixture.params[1].sd_stdv + 1.0);
+        in_mixture.params[1].update_logs();
+        auto mid_mixture = train_gaussian_mixture(data, in_mixture);
+        CHECK( std::exp(mid_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
+        CHECK( mid_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
+        CHECK( mid_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
+        auto out_mixture = train_invgaussian_mixture(data, mid_mixture);
+        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
+        CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[0].sd_mean == Approx( um_params.sd_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[1].sd_mean == Approx( um_params.sd_mean + delta_sd_mean ).epsilon(.05) );
+    }
+
+    // next, we test inverse gaussian training for the case where the gaussians are very similar
+    SECTION("inverse_gaussian_2")
+    {
+        float delta_um_rate = .05;
+        float delta_level_mean = .1;
+        float delta_sd_mean = 0.1;
+        ParamMixture gen_mixture;
+        gen_mixture.log_weights.push_back(std::log(um_rate + delta_um_rate));
+        gen_mixture.log_weights.push_back(std::log(1 - (um_rate + delta_um_rate)));
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params.push_back(um_params);
+        gen_mixture.params[1].level_mean += delta_level_mean;
+        gen_mixture.params[1].sd_mean += delta_sd_mean;
+        gen_mixture.params[1].set_sd_lambda(gen_mixture.params[1].sd_lambda);
+        gen_mixture.params[1].update_logs();
+        auto data = generate_training_data(gen_mixture,
+            { .5f, 1.5f }, // read_var_rg
+            { 1.0f, 1.001f }, // read_scale_sd_rg
+            { 1.0f, 1.001f }, // read_var_sd_rg
+            n_data);
+        ParamMixture in_mixture;
+        in_mixture.log_weights.push_back(std::log(um_rate));
+        in_mixture.log_weights.push_back(std::log(1 - um_rate));
+        in_mixture.params.push_back(um_params);
+        in_mixture.params.push_back(um_params);
+        // encourage the second component to capture points not well fit by the first
+        in_mixture.params[1].level_stdv += 1.0;
+        in_mixture.params[1].set_sd_stdv(in_mixture.params[1].sd_stdv + 1.0);
+        in_mixture.params[1].update_logs();
+        auto mid_mixture = train_gaussian_mixture(data, in_mixture);
+        CHECK( std::exp(mid_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
+        CHECK( mid_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
+        CHECK( mid_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
+        auto out_mixture = train_invgaussian_mixture(data, mid_mixture);
+        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
+        CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[0].sd_mean == Approx( um_params.sd_mean ).epsilon(.05) );
+        CHECK( out_mixture.params[1].sd_mean == Approx( um_params.sd_mean + delta_sd_mean ).epsilon(.05) );
     }
 }
