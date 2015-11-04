@@ -22,13 +22,6 @@
 #include "invgauss.hpp"
 #include "logger.hpp"
 
-// This code needs to be run before any of the program logic
-// It sets up pre-computed values and caches
-void initialize()
-{
-    p7_FLogsumInit();
-}
-
 TEST_CASE( "alphabet", "[alphabet]" ) {
 
     // DNA alphabet
@@ -405,7 +398,6 @@ generate_training_data(const ParamMixture& mixture,
 
 TEST_CASE("training", "[training]")
 {
-    p7_FLogsumInit();
     const unsigned n_data = 1000;
     const float um_rate = .2;
     PoreModelStateParams um_params;
