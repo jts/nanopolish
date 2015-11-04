@@ -276,8 +276,6 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
 
 TEST_CASE( "hmm", "[hmm]") {
 
-    p7_FLogsumInit();
-
     // read the FAST5
     SquiggleRead sr("test_read", "test/data/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch8_file30_strand.fast5");
     sr.transform();
