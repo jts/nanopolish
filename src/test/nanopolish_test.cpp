@@ -20,6 +20,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "training_core.hpp"
 #include "invgauss.hpp"
+#include "logger.hpp"
 
 // This code needs to be run before any of the program logic
 // It sets up pre-computed values and caches
@@ -366,7 +367,8 @@ generate_training_data(const ParamMixture& mixture,
     {
         weights[j] = std::exp(mixture.log_weights[j]);
         LOG("gen_data", debug) << "weights " << j << " "
-            << std::fixed << std::setprecision(2) << mixture.log_weights[j] << " " << weights[j] << std::endl;
+                               << std::fixed << std::setprecision(2) << weights[j] << " ("
+                               << mixture.log_weights[j] << ")" << std::endl;
     }
     std::vector< StateTrainingData > data(n_data);
     for (size_t i = 0; i < n_data; ++i)
@@ -412,6 +414,7 @@ TEST_CASE("training", "[training]")
     um_params.sd_mean = 1.8;
     um_params.set_sd_lambda(40.0);
     um_params.update_logs();
+    //Logger::set_default_level(level_wrapper::debug1);
 
     // first, we test gaussian training only
     SECTION("gaussian")
