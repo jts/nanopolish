@@ -42,10 +42,20 @@ struct MinimalStateTrainingData
 
     static void write_header(std::ostream& os)
     {
+        write_header_nonl(os);
+        os << std::endl;
+    }
+    static void write_header_nonl(std::ostream& os)
+    {
         os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
+    {
+        write_tsv(os, model_name, kmer);
+        os << std::endl;
+    }
+    void write_tsv_nonl(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
         os << model_name << '\t'
            << kmer << '\t'
@@ -96,13 +106,23 @@ struct FullStateTrainingData
 
     static void write_header(std::ostream& os)
     {
-        MinimalStateTrainingData::write_header(os);
+        write_header_nonl(os);
+        os << std::endl;
+    }
+    static void write_header_nonl(std::ostream& os)
+    {
+        MinimalStateTrainingData::write_header_nonl(os);
         os << "\tduration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
-        MinimalStateTrainingData::write_tsv(os, model_name, kmer);
+        write_tsv(os, model_name, kmer);
+        os << std::endl;
+    }
+    void write_tsv_nonl(std::ostream& os, const std::string& model_name, const std::string& kmer) const
+    {
+        MinimalStateTrainingData::write_tsv_nonl(os, model_name, kmer);
         os << '\t' << duration << '\t'
            << ref_position << '\t'
            << ref_strand << '\t'

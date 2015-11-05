@@ -592,7 +592,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
     // training header
     StateTrainingData::write_header(training_ofs);
-    training_ofs << std::endl;
 
     // Process the training results
     ModelMap trained_models;
@@ -619,7 +618,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
                 summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
-                training_ofs << std::endl;
             }
 
             // write to the summary file
