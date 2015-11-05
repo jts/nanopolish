@@ -38,6 +38,7 @@
 #include "profiler.h"
 #include "progress.h"
 #include "logger.hpp"
+#include "pfor.hpp"
 
 #include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
@@ -490,6 +491,32 @@ void parse_methyltrain_options(int argc, char** argv)
     }
 }
 
+struct Training_PFor_Structs
+{
+    struct Input
+    {
+        std::string kmer;
+        size_t ki;
+    };
+    struct Chunk_Output
+    {
+        ~Chunk_Output() {
+            if (training_sink_osp()) (*training_sink_osp()) << training_os.str();
+            if (summary_sink_osp()) (*summary_sink_osp()) << summary_os.str();
+        }
+        std::ostringstream training_os;
+        std::ostringstream summary_os;
+        static std::ostream*& training_sink_osp() {
+            static std::ostream* _training_sink_osp = nullptr;
+            return _training_sink_osp;
+        }
+        static std::ostream*& summary_sink_osp() {
+            static std::ostream* _summary_sink_osp = nullptr;
+            return _summary_sink_osp;
+        }
+    };
+};
+
 ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
 {
     // Initialize the training summary stats for each kmer for each model
@@ -587,7 +614,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     std::stringstream summary_fn;
     summary_fn << opt::bam_file << ".methyltrain.summary";
 
-    FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
+    std::ofstream summary_ofs(summary_fn.str());
     std::ofstream training_ofs(training_fn.str());
 
     // training header
@@ -609,26 +636,60 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         trained_models[model_training_iter->first] = model_iter->second;
         PoreModel& new_pm = trained_models[model_training_iter->first];
 
+        const std::vector<StateSummary>& summaries = model_training_iter->second;
+
         // Update means for each kmer
         uint32_t k = new_pm.k;
-        std::string kmer(k, 'A');
-        const std::vector<StateSummary>& summaries = model_training_iter->second;
-        for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
+        //std::string kmer(k, 'A');
+        //for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
+
+        //
+        // parallel for
+        //
+        Training_PFor_Structs::Input crt_input;
+        crt_input.ki = 0;
+        crt_input.kmer = std::string(k, 'A');
+        Training_PFor_Structs::Chunk_Output::training_sink_osp() = &training_ofs;
+        Training_PFor_Structs::Chunk_Output::summary_sink_osp() = &summary_ofs;
+        pfor< Training_PFor_Structs >(
+             nullptr, // do_before
+             [&] (Training_PFor_Structs::Input& in) {
+                 if (crt_input.ki >= summaries.size())
+                 {
+                     return false;
+                 }
+                 else
+                 {
+                     in = crt_input;
+                     ++crt_input.ki;
+                     mtrain_alphabet->lexicographic_next(crt_input.kmer);
+                     return true;
+                 }
+             },
+             [&] (Training_PFor_Structs::Input& in, Training_PFor_Structs::Chunk_Output& out)
+             {
+                 size_t& ki = in.ki;
+                 std::string kmer = in.kmer;
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
+                summaries[ki].events[ei].write_tsv(out.training_os, model_short_name, kmer);
             }
 
             // write to the summary file
-            fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
+            out.summary_os << model_short_name << '\t'
+                           << kmer << '\t'
+                           << summaries[ki].num_matches << '\t'
+                           << summaries[ki].num_skips << '\t'
+                           << summaries[ki].num_stays << std::endl;
 
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
             if (not update_kmer or summaries[ki].events.size() < 100) {
-                continue;
+                //continue;
+                return;
             }
 
             ParamMixture mixture;
@@ -646,19 +707,25 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             mixture.log_weights.push_back(std::log(1 - um_rate));
             mixture.params.push_back(model_iter->second.get_parameters(ki));
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(mixture.log_weights[0]), mixture.params[0].level_mean, mixture.params[0].level_stdv,
-                    std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
-            }
+            LOG("methyltrain", debug)
+                << "INIT__MIX " << model_training_iter->first << '\t' << kmer << "\t["
+                << std::fixed << std::setprecision(2) << std::exp(mixture.log_weights[0]) << ' '
+                << mixture.params[0].level_mean << ' '
+                << mixture.params[0].level_stdv << "]\t["
+                << std::exp(mixture.log_weights[1]) << ' '
+                << mixture.params[1].level_mean << ' '
+                << mixture.params[1].level_stdv << "]" << std::endl;
 
             ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(trained_mixture.log_weights[0]), trained_mixture.params[0].level_mean, trained_mixture.params[0].level_stdv,
-                    std::exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
-            }
+            LOG("methyltrain", debug)
+                << "TRAIN_MIX " << model_training_iter->first << '\t' << kmer << "\t["
+                << std::fixed << std::setprecision(2) << std::exp(trained_mixture.log_weights[0]) << ' '
+                << trained_mixture.params[0].level_mean << ' '
+                << trained_mixture.params[0].level_stdv << "]\t["
+                << std::exp(trained_mixture.log_weights[1]) << ' '
+                << trained_mixture.params[1].level_mean << ' '
+                << trained_mixture.params[1].level_stdv << "]" << std::endl;
 
             new_pm.states[ki] = trained_mixture.params[1];
 
@@ -682,10 +749,12 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm.states[ki] = trained_ig_mixture.params[1];
                 new_pm.states[ki].update_sd_stdv();
                 new_pm.states[ki].update_logs();
-            }
-        }
-    }
-
+            } // if model_stdv()
+             }, // process_item
+             nullptr, // do_after
+             opt::num_threads,
+             1); // pfor
+    } // model_training_iter
 
     // cleanup records
     for(size_t i = 0; i < records.size(); ++i) {
@@ -698,7 +767,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
-    fclose(summary_fp);
     return trained_models;
 }
 
