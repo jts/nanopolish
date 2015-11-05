@@ -33,18 +33,19 @@ struct PoreModelStateParams
         level_mean = e.level_mean;
         level_stdv = e.level_stdv;
         sd_mean = e.sd_mean;
-        set_sd_stdv(e.sd_stdv);
+        sd_stdv = e.sd_stdv;
+        update_sd_lambda();
         return *this;
     }
 
-    void set_sd_stdv(double _sd_stdv)
+    // update sd_lambda based on sd_mean & sd_stdv
+    void update_sd_lambda()
     {
-        sd_stdv = _sd_stdv;
         sd_lambda = pow(sd_mean, 3.0) / pow(sd_stdv, 2.0);
     }
-    void set_sd_lambda(double _sd_lambda)
+    // update sd_stdv based on sd_mean & sd_lambda
+    void update_sd_stdv()
     {
-        sd_lambda = _sd_lambda;
         sd_stdv = pow(pow(sd_mean, 3.0) / sd_lambda, .5);
     }
     void update_logs()

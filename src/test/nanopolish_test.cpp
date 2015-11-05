@@ -420,7 +420,8 @@ TEST_CASE("training", "[training]")
     um_params.level_mean = 65.0;
     um_params.level_stdv = 1.0;
     um_params.sd_mean = 0.8;
-    um_params.set_sd_lambda(7.0);
+    um_params.sd_lambda = 7.0;
+    um_params.update_sd_stdv();
     um_params.update_logs();
     Logger::set_default_level(level_wrapper::debug1);
 
@@ -463,7 +464,7 @@ TEST_CASE("training", "[training]")
         gen_mixture.params.push_back(um_params);
         gen_mixture.params[1].level_mean += delta_level_mean;
         gen_mixture.params[1].sd_mean += delta_sd_mean;
-        gen_mixture.params[1].set_sd_lambda(gen_mixture.params[1].sd_lambda);
+        gen_mixture.params[1].update_sd_stdv();
         gen_mixture.params[1].update_logs();
         auto data = generate_training_data(gen_mixture, n_data);
         ParamMixture in_mixture;
@@ -499,7 +500,7 @@ TEST_CASE("training", "[training]")
         gen_mixture.params.push_back(um_params);
         gen_mixture.params[1].level_mean += delta_level_mean;
         gen_mixture.params[1].sd_mean += delta_sd_mean;
-        gen_mixture.params[1].set_sd_lambda(gen_mixture.params[1].sd_lambda);
+        gen_mixture.params[1].update_sd_stdv();
         gen_mixture.params[1].update_logs();
         auto data = generate_training_data(gen_mixture, n_data);
         ParamMixture in_mixture;

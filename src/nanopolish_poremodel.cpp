@@ -24,7 +24,8 @@ void PoreModel::bake_gaussian_parameters()
         scaled_states[i].level_mean = states[i].level_mean * scale + shift;
         scaled_states[i].level_stdv = states[i].level_stdv * var;
         scaled_states[i].sd_mean = states[i].sd_mean * scale_sd;
-        scaled_states[i].set_sd_lambda(states[i].sd_lambda * var_sd);
+        scaled_states[i].sd_lambda = states[i].sd_lambda * var_sd;
+        scaled_states[i].update_sd_stdv();
 
         // for efficiency
         scaled_states[i].update_logs();
