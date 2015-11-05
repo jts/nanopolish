@@ -664,27 +664,24 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
             new_pm.states[ki] = trained_mixture.params[1];
 
-            if (model_stdv() and round > 0) {
+            if (model_stdv()) {
                 ParamMixture ig_mixture;
                 // weights
-                ig_mixture.log_weights.push_back(std::log(um_rate));
-                ig_mixture.log_weights.push_back(std::log(1 - um_rate));
-                // g_params
+                ig_mixture.log_weights = trained_mixture.log_weights;
+                // states
                 ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
-                ig_mixture.params.emplace_back(model_iter->second.get_parameters(ki));
+                ig_mixture.params.emplace_back(trained_mixture.params[1]);
                 // run training
                 auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
-                if (opt::verbose > 1) {
-                    std::cerr << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << ig_mixture.params[0].sd_mean << " "
-                              << std::scientific << ig_mixture.params[1].sd_mean << "]" << std::endl
-                              << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << trained_ig_mixture.params[0].sd_mean << " "
-                              << std::scientific << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
-                }
+                LOG("methyltrain", debug)
+                    << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                    << std::fixed << std::setprecision(5) << ig_mixture.params[0].sd_mean << " "
+                    << ig_mixture.params[1].sd_mean << "]" << std::endl
+                    << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                    << trained_ig_mixture.params[0].sd_mean << " "
+                    << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
                 // update state
                 new_pm.states[ki] = trained_ig_mixture.params[1];
-                new_pm.states[ki].sd_lambda = new_pm.states[ki].sd_lambda;
                 new_pm.states[ki].update_sd_stdv();
                 new_pm.states[ki].update_logs();
             }
