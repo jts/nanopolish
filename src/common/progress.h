@@ -9,7 +9,9 @@
 #ifndef PROGRESS_H
 #define PROGRESS_H
 
-#include <time.h>
+#include <iostream>
+#include <string>
+#include <chrono>
 
 class Progress
 {
@@ -17,13 +19,7 @@ class Progress
         
         Progress(const std::string message) : m_message(message), m_os(std::cerr)
         {
-#if HAVE_CLOCK_GETTIME            
-            timespec start;
-            clock_gettime(CLOCK_REALTIME, &start);
-            m_start_time = start.tv_sec;
-#else
-            m_start_time = 0;
-#endif
+            m_start_time = std::chrono::system_clock::now();
         }
 
         // derived from: http://stackoverflow.com/a/14539953/378881
@@ -60,23 +56,19 @@ class Progress
             std::cerr << std::endl;
         }
 
-        double get_elapsed_seconds() const
+        size_t get_elapsed_seconds() const
         {
             // get current time
-#if HAVE_CLOCK_GETTIME            
-            timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
-            return now.tv_sec - m_start_time;
-#else
-            return 0;
-#endif
+            auto now_time = std::chrono::system_clock::now();
+            auto elapsed = std::chrono::duration_cast< std::chrono::seconds >(now_time - m_start_time);
+            return elapsed.count();
         }
 
     private:
 
         std::ostream& m_os;
         std::string m_message;
-        size_t m_start_time;
+        std::chrono::system_clock::time_point m_start_time;
 };
 
 #endif

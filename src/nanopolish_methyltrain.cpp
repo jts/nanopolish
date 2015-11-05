@@ -601,7 +601,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         }
 
         if(opt::progress) {
-            fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
+            fprintf(stderr, "Realigned %zu reads in %lus\r", num_reads_realigned, progress.get_elapsed_seconds());
         }
     } while(result >= 0);
     
