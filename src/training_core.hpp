@@ -52,7 +52,7 @@ struct MinimalStateTrainingData
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
-        write_tsv(os, model_name, kmer);
+        write_tsv_nonl(os, model_name, kmer);
         os << std::endl;
     }
     void write_tsv_nonl(std::ostream& os, const std::string& model_name, const std::string& kmer) const
