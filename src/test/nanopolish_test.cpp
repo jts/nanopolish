@@ -423,7 +423,7 @@ TEST_CASE("training", "[training]")
     um_params.sd_lambda = 7.0;
     um_params.update_sd_stdv();
     um_params.update_logs();
-    Logger::set_default_level(level_wrapper::debug1);
+    //Logger::set_default_level(level_wrapper::debug);
 
     // first, we test gaussian training only
     SECTION("gaussian")
