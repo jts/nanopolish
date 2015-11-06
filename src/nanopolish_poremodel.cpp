@@ -100,6 +100,8 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pma
         std::string kmer;
         PoreModelStateParams params;
         parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
+        params.update_sd_lambda();
+        params.update_logs();
 
         kmers[kmer] = params;
         add_found_bases(bases, kmer.c_str());
