@@ -10,6 +10,7 @@
 #ifndef __PFOR_HPP
 #define __PFOR_HPP
 
+#include <cassert>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -17,8 +18,7 @@
 #include <functional>
 #include <thread>
 #include <mutex>
-#include <cassert>
-
+#include <chrono>
 
 /// C++11 implementation of a parallel for loop that can re-sort its output.
 ///
@@ -64,13 +64,22 @@
 /// @param num_threads Number of worker threads to spawn.
 /// @param chunk_size Number of items each thread should process in one chunk.
 template < typename Input, typename Chunk_Output >
-void pfor(std::function< void(void) > do_before,
+void pfor(unsigned num_threads,
+          size_t chunk_size,
           std::function< bool(Input&) > get_item,
           std::function< void(Input&, Chunk_Output&) > process_item,
-          std::function< void(void) > do_after,
-          unsigned num_threads,
+          std::function< void(size_t, size_t) > progress_report = nullptr,
+          size_t progress_count = 0);
+
+template < typename Input, typename Chunk_Output >
+void pfor(unsigned num_threads,
           size_t chunk_size,
-          size_t chunk_progress = 0);
+          std::function< bool(Input&) > get_item,
+          std::function< void(Input&, Chunk_Output&) > process_item,
+          std::function< void(void) > do_before,
+          std::function< void(void) > do_after,
+          std::function< void(size_t, size_t) > progress_report = nullptr,
+          size_t progress_count = 0);
 
 /// @cond
 namespace detail
@@ -102,33 +111,34 @@ using Output_Heap = std::priority_queue< Chunk_Output_Wrapper< Chunk_Output >*,
                                     std::vector< Chunk_Output_Wrapper< Chunk_Output >* >,
                                     Chunk_Output_Wrapper_Ptr_Comparator< Chunk_Output > >;
 
-template < typename Chunk_Output >
+template < typename Input, typename Chunk_Output >
 struct Common_Storage
 {
-    Common_Storage() : cid_in(0), cid_out(0) {}
+    std::function< bool(Input&) > get_item;
+    std::function< void(Input&, Chunk_Output&) > process_item;
+    std::function< void(void) > do_before;
+    std::function< void(void) > do_after;
+    std::function< void(size_t, size_t) > progress_report;
+    size_t chunk_size;
+    size_t progress_count;
+    size_t item_count;
     size_t cid_in;
     size_t cid_out;
+    std::chrono::system_clock::time_point start_time;
     std::mutex input_mutex;
     std::mutex output_mutex;
     Output_Heap< Chunk_Output > h;
 }; // struct Common_Storage
 
 template < typename Input, typename Chunk_Output >
-void do_work(std::function< void(void) > do_before,
-             std::function< bool(Input&) > get_item,
-             std::function< void(Input&, Chunk_Output&) > process_item,
-             std::function< void(void) > do_after,
-             size_t chunk_size,
-             size_t chunk_progress,
-             unsigned tid,
-             std::reference_wrapper< Common_Storage< Chunk_Output > > cs_wrap)
+void do_work(unsigned tid, std::reference_wrapper< Common_Storage< Input, Chunk_Output > > cs_wrap)
 {
-    Common_Storage< Chunk_Output >& cs = cs_wrap;
-    std::vector< Input > buff(chunk_size);
+    Common_Storage< Input, Chunk_Output >& cs = cs_wrap;
+    std::vector< Input > buff(cs.chunk_size);
     size_t load = 0;
     size_t cid;
     bool done = false;
-    if (do_before) do_before();
+    if (cs.do_before) cs.do_before();
     while (not done)
     {
         load = 0;
@@ -136,15 +146,11 @@ void do_work(std::function< void(void) > do_before,
         {
             std::lock_guard< std::mutex > input_lock(cs.input_mutex);
             cid = cs.cid_in++;
-            while (load < chunk_size and get_item(buff[load]))
+            while (load < cs.chunk_size and cs.get_item(buff[load]))
             {
                 ++load;
             }
-            done = (load < chunk_size);
-            if (load > 0)
-            {
-                static_cast< void >(chunk_progress);
-            }
+            done = (load < cs.chunk_size);
         }
         // parallel work
         if (load == 0)
@@ -154,11 +160,18 @@ void do_work(std::function< void(void) > do_before,
         Chunk_Output_Wrapper< Chunk_Output >* cow_p = new Chunk_Output_Wrapper< Chunk_Output >(tid, cid);
         for (size_t i = 0; i < load; ++i)
         {
-            process_item(buff[i], *cow_p);
+            cs.process_item(buff[i], *cow_p);
         }
         // output critical section
         {
             std::lock_guard< std::mutex > output_lock(cs.output_mutex);
+            cs.item_count += load;
+            if (cs.progress_report and cs.item_count % cs.progress_count == 0)
+            {
+                auto crt_time = std::chrono::system_clock::now();
+                auto elapsed = std::chrono::duration_cast< std::chrono::seconds >(crt_time - cs.start_time);
+                cs.progress_report(cs.item_count, elapsed.count());
+            }
             cs.h.push(cow_p);
             while (cs.h.size() > 0)
             {
@@ -174,34 +187,62 @@ void do_work(std::function< void(void) > do_before,
             }
         }
     }
-    if (do_after) do_after();
+    if (cs.do_after) cs.do_after();
 } // do_work()
 
 } // namespace detail
 /// @endcond
 
 template < typename Input, typename Chunk_Output >
-void pfor(std::function< void(void) > do_before,
+void pfor(unsigned num_threads,
+          size_t chunk_size,
           std::function< bool(Input&) > get_item,
           std::function< void(Input&, Chunk_Output&) > process_item,
+          std::function< void(void) > do_before,
           std::function< void(void) > do_after,
-          unsigned num_threads,
-          size_t chunk_size,
-          size_t chunk_progress)
+          std::function< void(size_t, size_t) > progress_report,
+          size_t progress_count)
 {
     std::vector< std::thread > thread_v;
-    detail::Common_Storage< Chunk_Output > cs;
+    detail::Common_Storage< Input, Chunk_Output > cs;
+    cs.get_item = get_item;
+    cs.process_item = process_item;
+    cs.do_before = do_before;
+    cs.do_after = do_after;
+    cs.progress_report = progress_report;
+    cs.chunk_size = chunk_size;
+    if (progress_count == 0) progress_count = 10 * num_threads * chunk_size;
+    cs.progress_count = std::max(progress_count / chunk_size, (size_t)1) * chunk_size;
+    cs.item_count = 0;
+    cs.cid_in = 0;
+    cs.cid_out = 0;
+    cs.start_time = std::chrono::system_clock::now();
     for (unsigned i = 0; i < num_threads; ++i)
     {
-        thread_v.emplace_back(detail::do_work< Input, Chunk_Output >,
-                              do_before, get_item, process_item, do_after,
-                              chunk_size, chunk_progress,
-                              i, std::ref(cs));
+        thread_v.emplace_back(detail::do_work< Input, Chunk_Output >, i, std::ref(cs));
     }
     for (auto& t : thread_v)
     {
         t.join();
     }
+    if (cs.progress_report)
+    {
+        auto crt_time = std::chrono::system_clock::now();
+        auto elapsed = std::chrono::duration_cast< std::chrono::seconds >(crt_time - cs.start_time);
+        cs.progress_report(cs.item_count, elapsed.count());
+    }
+} // pfor()
+
+template < typename Input, typename Chunk_Output >
+void pfor(unsigned num_threads,
+          size_t chunk_size,
+          std::function< bool(Input&) > get_item,
+          std::function< void(Input&, Chunk_Output&) > process_item,
+          std::function< void(size_t, size_t) > progress_report,
+          size_t progress_count)
+{
+    pfor< Input, Chunk_Output >(
+        num_threads, chunk_size, get_item, process_item, nullptr, nullptr, progress_report, progress_count);
 } // pfor()
 
 #endif

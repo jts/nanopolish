@@ -594,24 +594,32 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     //
     // parallel for
     //
+    LOG("methyltrain", info)
+        << "Remapping reads using " << opt::num_threads << " threads" << std::endl;
     size_t crt_read_idx = 0;
     pfor< Mapping_PFor_Structs::Input, Mapping_PFor_Structs::Chunk_Output >(
-        nullptr, // do_before
-        [&] (Mapping_PFor_Structs::Input& in) { // get_item
+        opt::num_threads,
+        10,
+        // get_item
+        [&] (Mapping_PFor_Structs::Input& in) {
             auto res = sam_itr_next(bam_fh, itr, in.bam_rec_p) >= 0;
             if (res) in.read_idx = crt_read_idx++;
             return res;
         },
-        [&] (Mapping_PFor_Structs::Input& in, Mapping_PFor_Structs::Chunk_Output& out) { // process_item
+        // process_item
+        [&] (Mapping_PFor_Structs::Input& in, Mapping_PFor_Structs::Chunk_Output& out) {
             bam1_t* record = in.bam_rec_p;
             size_t read_idx = in.read_idx;
             if( (record->core.flag & BAM_FUNMAP) == 0) {
                 add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
             }
         },
-        nullptr, // do_after
-        opt::num_threads,
-        10);
+        // progress_report
+        [&] (size_t items, size_t seconds) {
+            std::clog << "Processed " << std::setw(9) << std::right << items << " reads in "
+                      << std::setw(9) << std::right << seconds << " seconds\r";
+        });
+    std::clog << std::endl;
 
     std::stringstream training_fn;
     training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
@@ -651,29 +659,34 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         //
         // parallel for
         //
+        LOG("methyltrain", info)
+            << "Training model " << model_name << " using " << opt::num_threads << " threads" << std::endl;
         Training_PFor_Structs::Input crt_input;
         crt_input.ki = 0;
         crt_input.kmer = std::string(k, 'A');
         Training_PFor_Structs::Chunk_Output::training_sink_osp() = &training_ofs;
         Training_PFor_Structs::Chunk_Output::summary_sink_osp() = &summary_ofs;
         pfor< Training_PFor_Structs::Input, Training_PFor_Structs::Chunk_Output >(
-             nullptr, // do_before
-             [&] (Training_PFor_Structs::Input& in) { // get_item
-                 if (crt_input.ki >= summaries.size())
-                 {
-                     return false;
-                 }
-                 else
-                 {
-                     in = crt_input;
-                     ++crt_input.ki;
-                     mtrain_alphabet->lexicographic_next(crt_input.kmer);
-                     return true;
-                 }
-             },
-             [&] (Training_PFor_Structs::Input& in, Training_PFor_Structs::Chunk_Output& out) { // process_item
-                 size_t& ki = in.ki;
-                 std::string kmer = in.kmer;
+            opt::num_threads,
+            10,
+            // get_item
+            [&] (Training_PFor_Structs::Input& in) {
+                if (crt_input.ki >= summaries.size())
+                {
+                    return false;
+                }
+                else
+                {
+                    in = crt_input;
+                    ++crt_input.ki;
+                    mtrain_alphabet->lexicographic_next(crt_input.kmer);
+                    return true;
+                }
+            },
+            // process_item
+            [&] (Training_PFor_Structs::Input& in, Training_PFor_Structs::Chunk_Output& out) {
+                size_t& ki = in.ki;
+                std::string kmer = in.kmer;
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
@@ -754,10 +767,12 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm.states[ki].update_sd_stdv();
                 new_pm.states[ki].update_logs();
             } // if model_stdv()
-             }, // process_item
-             nullptr, // do_after
-             opt::num_threads,
-             10); // pfor
+            }, // process_item
+            [&] (size_t items, size_t seconds) {
+                std::clog << "Processed " << std::setw(9) << std::right << items << " kmers in "
+                          << std::setw(9) << std::right << seconds << " seconds\r";
+            }); // pfor
+            std::clog << std::endl;
     } // model_training_iter
 
     // cleanup
