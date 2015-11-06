@@ -767,8 +767,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
                 // update state
                 new_pm.states[ki] = trained_ig_mixture.params[1];
-                new_pm.states[ki].update_sd_stdv();
-                new_pm.states[ki].update_logs();
             } // if model_stdv()
             }, // process_item
             // progress_report

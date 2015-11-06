@@ -251,6 +251,8 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
             float log_numer = numer_terms.val();
             float log_denom = denom_terms.val();
             new_mixture.params[j].sd_mean = std::exp(log_numer - log_denom);
+            new_mixture.params[j].update_sd_stdv();
+            new_mixture.params[j].update_logs();
             LOG("training_core", debug)
                 << "new_mixture " << iteration << " " << j << " "
                 << std::fixed << std::setprecision(5) << std::exp(new_mixture.log_weights[j]) << " "
