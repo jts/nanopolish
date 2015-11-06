@@ -499,6 +499,10 @@ void parse_methyltrain_options(int argc, char** argv)
         std::cout << "\n" << METHYLTRAIN_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
+
+    if (not opt::region.empty()) {
+        fprintf(stderr, "Region: %s\n", opt::region.c_str());
+    }
 }
 
 struct Mapping_PFor_Structs
@@ -578,7 +582,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
     } else {
 
-        fprintf(stderr, "Region: %s\n", opt::region.c_str());
         itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
         hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
     }
@@ -594,12 +597,11 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     //
     // parallel for
     //
-    LOG("methyltrain", info)
-        << "Remapping reads using " << opt::num_threads << " threads" << std::endl;
+    std::clog << "Processing reads using " << opt::num_threads << " threads" << std::endl;
     size_t crt_read_idx = 0;
     pfor< Mapping_PFor_Structs::Input, Mapping_PFor_Structs::Chunk_Output >(
         opt::num_threads,
-        10,
+        1,
         // get_item
         [&] (Mapping_PFor_Structs::Input& in) {
             auto res = sam_itr_next(bam_fh, itr, in.bam_rec_p) >= 0;
@@ -607,7 +609,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             return res;
         },
         // process_item
-        [&] (Mapping_PFor_Structs::Input& in, Mapping_PFor_Structs::Chunk_Output& out) {
+        [&] (Mapping_PFor_Structs::Input& in, Mapping_PFor_Structs::Chunk_Output&) {
             bam1_t* record = in.bam_rec_p;
             size_t read_idx = in.read_idx;
             if( (record->core.flag & BAM_FUNMAP) == 0) {
@@ -616,8 +618,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         },
         // progress_report
         [&] (size_t items, size_t seconds) {
-            std::clog << "Processed " << std::setw(9) << std::right << items << " reads in "
-                      << std::setw(9) << std::right << seconds << " seconds\r";
+            std::clog << "Processed " << std::setw(6) << std::right << items << " reads in "
+                      << std::setw(6) << std::right << seconds << " seconds\r";
         });
     std::clog << std::endl;
 
@@ -659,8 +661,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         //
         // parallel for
         //
-        LOG("methyltrain", info)
-            << "Training model " << model_name << " using " << opt::num_threads << " threads" << std::endl;
+        std::clog << "Training model " << model_name << " using " << opt::num_threads << " threads" << std::endl;
         Training_PFor_Structs::Input crt_input;
         crt_input.ki = 0;
         crt_input.kmer = std::string(k, 'A');
@@ -769,8 +770,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             } // if model_stdv()
             }, // process_item
             [&] (size_t items, size_t seconds) {
-                std::clog << "Processed " << std::setw(9) << std::right << items << " kmers in "
-                          << std::setw(9) << std::right << seconds << " seconds\r";
+                std::clog << "Processed " << std::setw(6) << std::right << items << " kmers in "
+                          << std::setw(6) << std::right << seconds << " seconds\r";
             }); // pfor
             std::clog << std::endl;
     } // model_training_iter
