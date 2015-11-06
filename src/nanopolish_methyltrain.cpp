@@ -601,7 +601,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     size_t crt_read_idx = 0;
     pfor< Mapping_PFor_Structs::Input, Mapping_PFor_Structs::Chunk_Output >(
         opt::num_threads,
-        1,
+        10,
         // get_item
         [&] (Mapping_PFor_Structs::Input& in) {
             auto res = sam_itr_next(bam_fh, itr, in.bam_rec_p) >= 0;
@@ -620,7 +620,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         [&] (size_t items, size_t seconds) {
             std::clog << "Processed " << std::setw(6) << std::right << items << " reads in "
                       << std::setw(6) << std::right << seconds << " seconds\r";
-        });
+        },
+        // progress_count
+        100);
     std::clog << std::endl;
 
     std::stringstream training_fn;
@@ -669,7 +671,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         Training_PFor_Structs::Chunk_Output::summary_sink_osp() = &summary_ofs;
         pfor< Training_PFor_Structs::Input, Training_PFor_Structs::Chunk_Output >(
             opt::num_threads,
-            10,
+            50,
             // get_item
             [&] (Training_PFor_Structs::Input& in) {
                 if (crt_input.ki >= summaries.size())
@@ -769,10 +771,13 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 new_pm.states[ki].update_logs();
             } // if model_stdv()
             }, // process_item
+            // progress_report
             [&] (size_t items, size_t seconds) {
                 std::clog << "Processed " << std::setw(6) << std::right << items << " kmers in "
                           << std::setw(6) << std::right << seconds << " seconds\r";
-            }); // pfor
+            },
+            // progress_count
+            1000); // pfor
             std::clog << std::endl;
     } // model_training_iter
 
