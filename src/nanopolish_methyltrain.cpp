@@ -20,7 +20,7 @@
 #include <iomanip>
 #include <set>
 #include <map>
-#include <omp.h>
+#include <thread>
 #include <getopt.h>
 #include <cstddef>
 #include "htslib/faidx.h"
@@ -326,10 +326,13 @@ void add_aligned_events(const ModelMap& model_map,
 
         // Update pore model based on alignment
         double orig_score;
+        static std::mutex print_mutex;
         if (opt::output_scores) {
             orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-            #pragma omp critical(print)
-            std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+            {
+                std::lock_guard< std::mutex > lock(print_mutex);
+                std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+            }
         }
 
         if ( opt::calibrate ) {
@@ -337,8 +340,8 @@ void add_aligned_events(const ModelMap& model_map,
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-                #pragma omp critical(print)
                 {
+                    std::lock_guard< std::mutex > lock(print_mutex);
                     std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Rescaled " << rescaled_score << std::endl;
                     std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Delta " << rescaled_score-orig_score << std::endl;
                 }
@@ -386,18 +389,25 @@ void add_aligned_events(const ModelMap& model_map,
                 i + 5 < alignment_output.size() &&
                 alignment_output[i].hmm_state == 'M';
 
+            static std::mutex kmer_mutex;
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
-                #pragma omp critical(kmer)
-                kmer_summary.events.push_back(std);
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    kmer_summary.events.push_back(std);
+                }
             }
 
             if(ea.hmm_state == 'M')  {
-                #pragma omp atomic
-                kmer_summary.num_matches += 1;
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    ++kmer_summary.num_matches;
+                }
             } else if(ea.hmm_state == 'E') {
-                #pragma omp atomic
-                kmer_summary.num_stays += 1;
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    ++kmer_summary.num_stays;
+                }
             }
         }
     } // for strands
@@ -491,6 +501,20 @@ void parse_methyltrain_options(int argc, char** argv)
     }
 }
 
+struct Mapping_PFor_Structs
+{
+    struct Input
+    {
+        Input() { bam_rec_p = bam_init1(); }
+        ~Input() { bam_destroy1(bam_rec_p); }
+        bam1_t* bam_rec_p;
+        size_t read_idx;
+    };
+    struct Chunk_Output
+    {
+    };
+}; // struct Mapping_PFor_Structs
+
 struct Training_PFor_Structs
 {
     struct Input
@@ -515,7 +539,7 @@ struct Training_PFor_Structs
             return _summary_sink_osp;
         }
     };
-};
+}; // struct Training_PFor_Structs
 
 ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
 {
@@ -567,46 +591,27 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     }
 #endif
 
-    // Initialize iteration
-    std::vector<bam1_t*> records(opt::batch_size, NULL);
-    for(size_t i = 0; i < records.size(); ++i) {
-        records[i] = bam_init1();
-    }
-
-    int result;
-    size_t num_reads_realigned = 0;
-    size_t num_records_buffered = 0;
-    Progress progress("[methyltrain]");
-
-    do {
-        assert(num_records_buffered < records.size());
-        
-        // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
-        num_records_buffered += result >= 0;
-
-        // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
-            for(size_t i = 0; i < num_records_buffered; ++i) {
-                bam1_t* record = records[i];
-                size_t read_idx = num_reads_realigned + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
-                }
+    //
+    // parallel for
+    //
+    size_t crt_read_idx = 0;
+    pfor< Mapping_PFor_Structs::Input, Mapping_PFor_Structs::Chunk_Output >(
+        nullptr, // do_before
+        [&] (Mapping_PFor_Structs::Input& in) { // get_item
+            auto res = sam_itr_next(bam_fh, itr, in.bam_rec_p) >= 0;
+            if (res) in.read_idx = crt_read_idx++;
+            return res;
+        },
+        [&] (Mapping_PFor_Structs::Input& in, Mapping_PFor_Structs::Chunk_Output& out) { // process_item
+            bam1_t* record = in.bam_rec_p;
+            size_t read_idx = in.read_idx;
+            if( (record->core.flag & BAM_FUNMAP) == 0) {
+                add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
             }
-
-            num_reads_realigned += num_records_buffered;
-            num_records_buffered = 0;
-        }
-
-        if(opt::progress) {
-            fprintf(stderr, "Realigned %zu reads in %lus\r", num_reads_realigned, progress.get_elapsed_seconds());
-        }
-    } while(result >= 0);
-    
-    assert(num_records_buffered == 0);
-    progress.end();
+        },
+        nullptr, // do_after
+        opt::num_threads,
+        10);
 
     std::stringstream training_fn;
     training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
@@ -651,9 +656,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         crt_input.kmer = std::string(k, 'A');
         Training_PFor_Structs::Chunk_Output::training_sink_osp() = &training_ofs;
         Training_PFor_Structs::Chunk_Output::summary_sink_osp() = &summary_ofs;
-        pfor< Training_PFor_Structs >(
+        pfor< Training_PFor_Structs::Input, Training_PFor_Structs::Chunk_Output >(
              nullptr, // do_before
-             [&] (Training_PFor_Structs::Input& in) {
+             [&] (Training_PFor_Structs::Input& in) { // get_item
                  if (crt_input.ki >= summaries.size())
                  {
                      return false;
@@ -666,8 +671,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                      return true;
                  }
              },
-             [&] (Training_PFor_Structs::Input& in, Training_PFor_Structs::Chunk_Output& out)
-             {
+             [&] (Training_PFor_Structs::Input& in, Training_PFor_Structs::Chunk_Output& out) { // process_item
                  size_t& ki = in.ki;
                  std::string kmer = in.kmer;
 
@@ -753,13 +757,8 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
              }, // process_item
              nullptr, // do_after
              opt::num_threads,
-             1); // pfor
+             10); // pfor
     } // model_training_iter
-
-    // cleanup records
-    for(size_t i = 0; i < records.size(); ++i) {
-        bam_destroy1(records[i]);
-    }
 
     // cleanup
     sam_itr_destroy(itr);

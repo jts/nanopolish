@@ -63,11 +63,10 @@
 /// @param do_after Function executed by each thread after all work.
 /// @param num_threads Number of worker threads to spawn.
 /// @param chunk_size Number of items each thread should process in one chunk.
-//template < typename Input, typename Chunk_Output >
-template < typename PFor_Structs >
+template < typename Input, typename Chunk_Output >
 void pfor(std::function< void(void) > do_before,
-          std::function< bool(typename PFor_Structs::Input&) > get_item,
-          std::function< void(typename PFor_Structs::Input&, typename PFor_Structs::Chunk_Output&) > process_item,
+          std::function< bool(Input&) > get_item,
+          std::function< void(Input&, Chunk_Output&) > process_item,
           std::function< void(void) > do_after,
           unsigned num_threads,
           size_t chunk_size,
@@ -181,21 +180,20 @@ void do_work(std::function< void(void) > do_before,
 } // namespace detail
 /// @endcond
 
-//template < typename Input, typename Chunk_Output >
-template < typename PFor_Structs >
+template < typename Input, typename Chunk_Output >
 void pfor(std::function< void(void) > do_before,
-          std::function< bool(typename PFor_Structs::Input&) > get_item,
-          std::function< void(typename PFor_Structs::Input&, typename PFor_Structs::Chunk_Output&) > process_item,
+          std::function< bool(Input&) > get_item,
+          std::function< void(Input&, Chunk_Output&) > process_item,
           std::function< void(void) > do_after,
           unsigned num_threads,
           size_t chunk_size,
           size_t chunk_progress)
 {
     std::vector< std::thread > thread_v;
-    detail::Common_Storage< typename PFor_Structs::Chunk_Output > cs;
+    detail::Common_Storage< Chunk_Output > cs;
     for (unsigned i = 0; i < num_threads; ++i)
     {
-        thread_v.emplace_back(detail::do_work< typename PFor_Structs::Input, typename PFor_Structs::Chunk_Output >,
+        thread_v.emplace_back(detail::do_work< Input, Chunk_Output >,
                               do_before, get_item, process_item, do_after,
                               chunk_size, chunk_progress,
                               i, std::ref(cs));
