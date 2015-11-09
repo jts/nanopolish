@@ -20,7 +20,7 @@
 #include <iomanip>
 #include <set>
 #include <map>
-#include <omp.h>
+#include <thread>
 #include <getopt.h>
 #include <cstddef>
 #include "htslib/faidx.h"
@@ -38,6 +38,7 @@
 #include "profiler.h"
 #include "progress.h"
 #include "logger.hpp"
+#include "pfor.hpp"
 
 #include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
@@ -325,10 +326,13 @@ void add_aligned_events(const ModelMap& model_map,
 
         // Update pore model based on alignment
         double orig_score;
+        static std::mutex print_mutex;
         if (opt::output_scores) {
             orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-            #pragma omp critical(print)
-            std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+            {
+                std::lock_guard< std::mutex > lock(print_mutex);
+                std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
+            }
         }
 
         if ( opt::calibrate ) {
@@ -336,8 +340,8 @@ void add_aligned_events(const ModelMap& model_map,
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
-                #pragma omp critical(print)
                 {
+                    std::lock_guard< std::mutex > lock(print_mutex);
                     std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Rescaled " << rescaled_score << std::endl;
                     std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Delta " << rescaled_score-orig_score << std::endl;
                 }
@@ -385,18 +389,25 @@ void add_aligned_events(const ModelMap& model_map,
                 i + 5 < alignment_output.size() &&
                 alignment_output[i].hmm_state == 'M';
 
+            static std::mutex kmer_mutex;
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
-                #pragma omp critical(kmer)
-                kmer_summary.events.push_back(std);
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    kmer_summary.events.push_back(std);
+                }
             }
 
             if(ea.hmm_state == 'M')  {
-                #pragma omp atomic
-                kmer_summary.num_matches += 1;
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    ++kmer_summary.num_matches;
+                }
             } else if(ea.hmm_state == 'E') {
-                #pragma omp atomic
-                kmer_summary.num_stays += 1;
+                {
+                    std::lock_guard< std::mutex > lock(kmer_mutex);
+                    ++kmer_summary.num_stays;
+                }
             }
         }
     } // for strands
@@ -488,7 +499,18 @@ void parse_methyltrain_options(int argc, char** argv)
         std::cout << "\n" << METHYLTRAIN_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
+
+    if (not opt::region.empty()) {
+        fprintf(stderr, "Region: %s\n", opt::region.c_str());
+    }
 }
+
+struct BAM_Record
+{
+    BAM_Record() { bam_rec_p = bam_init1(); }
+    ~BAM_Record() { bam_destroy1(bam_rec_p); }
+    bam1_t* bam_rec_p;
+};
 
 ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
 {
@@ -527,7 +549,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
     } else {
 
-        fprintf(stderr, "Region: %s\n", opt::region.c_str());
         itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
         hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
     }
@@ -540,46 +561,37 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     }
 #endif
 
-    // Initialize iteration
-    std::vector<bam1_t*> records(opt::batch_size, NULL);
-    for(size_t i = 0; i < records.size(); ++i) {
-        records[i] = bam_init1();
-    }
-
-    int result;
-    size_t num_reads_realigned = 0;
-    size_t num_records_buffered = 0;
-    Progress progress("[methyltrain]");
-
-    do {
-        assert(num_records_buffered < records.size());
-        
-        // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
-        num_records_buffered += result >= 0;
-
-        // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
-            for(size_t i = 0; i < num_records_buffered; ++i) {
-                bam1_t* record = records[i];
-                size_t read_idx = num_reads_realigned + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
-                }
+    //
+    // parallel for
+    //
+    std::clog << "Processing reads using " << opt::num_threads << " threads" << std::endl;
+    typedef std::pair< BAM_Record, size_t > Processing_Input;
+    size_t crt_read_idx = 0;
+    pfor::pfor< Processing_Input >(
+        opt::num_threads,
+        10,
+        // get_item
+        [&] (Processing_Input& in) {
+            auto res = sam_itr_next(bam_fh, itr, in.first.bam_rec_p) >= 0;
+            if (res) in.second = crt_read_idx++;
+            return res;
+        },
+        // process_item
+        [&] (Processing_Input& in) {
+            bam1_t*& record = in.first.bam_rec_p;
+            size_t& read_idx = in.second;
+            if( (record->core.flag & BAM_FUNMAP) == 0) {
+                add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
             }
-
-            num_reads_realigned += num_records_buffered;
-            num_records_buffered = 0;
-        }
-
-        if(opt::progress) {
-            fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
-        }
-    } while(result >= 0);
-    
-    assert(num_records_buffered == 0);
-    progress.end();
+        },
+        // progress_report
+        [&] (size_t items, size_t seconds) {
+            std::clog << "Processed " << std::setw(6) << std::right << items << " reads in "
+                      << std::setw(6) << std::right << seconds << " seconds\r";
+        },
+        // progress_count
+        100);
+    std::clog << std::endl;
 
     std::stringstream training_fn;
     training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
@@ -587,7 +599,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     std::stringstream summary_fn;
     summary_fn << opt::bam_file << ".methyltrain.summary";
 
-    FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
+    std::ofstream summary_ofs(summary_fn.str());
     std::ofstream training_ofs(training_fn.str());
 
     // training header
@@ -609,26 +621,65 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         trained_models[model_training_iter->first] = model_iter->second;
         PoreModel& new_pm = trained_models[model_training_iter->first];
 
+        const std::vector<StateSummary>& summaries = model_training_iter->second;
+
         // Update means for each kmer
         uint32_t k = new_pm.k;
-        std::string kmer(k, 'A');
-        const std::vector<StateSummary>& summaries = model_training_iter->second;
-        for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
+        //std::string kmer(k, 'A');
+        //for(size_t ki = 0; ki < summaries.size(); ++ki, mtrain_alphabet->lexicographic_next(kmer)) {
+
+        //
+        // parallel for
+        //
+        std::clog << "Training model " << model_name << " using " << opt::num_threads << " threads" << std::endl;
+        typedef std::pair< size_t, std::string > Training_Input;
+        typedef std::pair< std::ostringstream, std::ostringstream > Training_Chunk_Output;
+        Training_Input crt_input;
+        crt_input.first = 0;
+        crt_input.second = std::string(k, 'A');
+        pfor::pfor< Training_Input, Training_Chunk_Output >(
+            opt::num_threads,
+            50,
+            // get_item
+            [&] (Training_Input& in) {
+                if (crt_input.first >= summaries.size())
+                {
+                    return false;
+                }
+                else
+                {
+                    in = crt_input;
+                    ++crt_input.first;
+                    mtrain_alphabet->lexicographic_next(crt_input.second);
+                    return true;
+                }
+            },
+            // process_item
+            [&] (Training_Input& in, Training_Chunk_Output& out) {
+                size_t& ki = in.first;
+                std::string& kmer = in.second;
+                std::ostringstream& training_os = out.first;
+                std::ostringstream& summary_os = out.second;
 
             // write a training file
             for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
-                summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
+                summaries[ki].events[ei].write_tsv(training_os, model_short_name, kmer);
             }
 
             // write to the summary file
-            fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
+            summary_os << model_short_name << '\t'
+                       << kmer << '\t'
+                       << summaries[ki].num_matches << '\t'
+                       << summaries[ki].num_skips << '\t'
+                       << summaries[ki].num_stays << std::endl;
 
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
             if (not update_kmer or summaries[ki].events.size() < 100) {
-                continue;
+                //continue;
+                return;
             }
 
             ParamMixture mixture;
@@ -646,19 +697,25 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             mixture.log_weights.push_back(std::log(1 - um_rate));
             mixture.params.push_back(model_iter->second.get_parameters(ki));
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(mixture.log_weights[0]), mixture.params[0].level_mean, mixture.params[0].level_stdv,
-                    std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
-            }
+            LOG("methyltrain", debug)
+                << "INIT__MIX " << model_training_iter->first << '\t' << kmer << "\t["
+                << std::fixed << std::setprecision(2) << std::exp(mixture.log_weights[0]) << ' '
+                << mixture.params[0].level_mean << ' '
+                << mixture.params[0].level_stdv << "]\t["
+                << std::exp(mixture.log_weights[1]) << ' '
+                << mixture.params[1].level_mean << ' '
+                << mixture.params[1].level_stdv << "]" << std::endl;
 
             ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(trained_mixture.log_weights[0]), trained_mixture.params[0].level_mean, trained_mixture.params[0].level_stdv,
-                    std::exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
-            }
+            LOG("methyltrain", debug)
+                << "TRAIN_MIX " << model_training_iter->first << '\t' << kmer << "\t["
+                << std::fixed << std::setprecision(2) << std::exp(trained_mixture.log_weights[0]) << ' '
+                << trained_mixture.params[0].level_mean << ' '
+                << trained_mixture.params[0].level_stdv << "]\t["
+                << std::exp(trained_mixture.log_weights[1]) << ' '
+                << trained_mixture.params[1].level_mean << ' '
+                << trained_mixture.params[1].level_stdv << "]" << std::endl;
 
             new_pm.states[ki] = trained_mixture.params[1];
 
@@ -680,15 +737,22 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
                 // update state
                 new_pm.states[ki] = trained_ig_mixture.params[1];
-            }
-        }
-    }
-
-
-    // cleanup records
-    for(size_t i = 0; i < records.size(); ++i) {
-        bam_destroy1(records[i]);
-    }
+            } // if model_stdv()
+            }, // process_item
+            // output_chunk
+            [&] (Training_Chunk_Output& out) {
+                training_ofs << out.first.str();
+                summary_ofs << out.second.str();
+            },
+            // progress_report
+            [&] (size_t items, size_t seconds) {
+                std::clog << "Processed " << std::setw(6) << std::right << items << " kmers in "
+                          << std::setw(6) << std::right << seconds << " seconds\r";
+            },
+            // progress_count
+            1000); // pfor
+            std::clog << std::endl;
+    } // model_training_iter
 
     // cleanup
     sam_itr_destroy(itr);
@@ -696,7 +760,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
-    fclose(summary_fp);
     return trained_models;
 }
 
