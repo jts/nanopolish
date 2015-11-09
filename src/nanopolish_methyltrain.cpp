@@ -592,7 +592,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
     // training header
     StateTrainingData::write_header(training_ofs);
-    training_ofs << std::endl;
 
     // Process the training results
     ModelMap trained_models;
@@ -650,7 +649,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 continue;
             }
 
-            GaussianMixture mixture;
+            ParamMixture mixture;
 
             // train a mixture model where a minority of k-mers aren't methylated
             
@@ -671,7 +670,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
             }
 
-            GaussianMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
+            ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
 
             if(opt::verbose > 1) {
                 fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
@@ -682,36 +681,32 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             #pragma omp critical
             new_pm.states[ki] = trained_mixture.params[1];
 
-            if (model_stdv() and round > 0) {
-                InvGaussianMixture ig_mixture;
+            if (model_stdv()) {
+                ParamMixture ig_mixture;
                 // weights
-                ig_mixture.log_weights.push_back(std::log(um_rate));
-                ig_mixture.log_weights.push_back(std::log(1 - um_rate));
-                // g_params
+                ig_mixture.log_weights = trained_mixture.log_weights;
+                // states
                 ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
-                ig_mixture.params.emplace_back(model_iter->second.get_parameters(ki));
+                ig_mixture.params.emplace_back(trained_mixture.params[1]);
                 // run training
                 auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
-                if (opt::verbose > 1) {
-                    std::cerr << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << ig_mixture.params[0].sd_mean << " "
-                              << std::scientific << ig_mixture.params[1].sd_mean << "]" << std::endl
-                              << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                              << std::scientific << trained_ig_mixture.params[0].sd_mean << " "
-                              << std::scientific << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
-                }
 
+                LOG("methyltrain", debug)
+                    << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                    << std::fixed << std::setprecision(5) << ig_mixture.params[0].sd_mean << " "
+                    << ig_mixture.params[1].sd_mean << "]" << std::endl
+                    << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                    << trained_ig_mixture.params[0].sd_mean << " "
+                    << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
+                
                 // update state
                 #pragma omp critical
                 {
                     new_pm.states[ki] = trained_ig_mixture.params[1];
-                    new_pm.states[ki].set_sd_lambda(new_pm.states[ki].sd_lambda); // update stdv
-                    new_pm.states[ki].update_logs();
                 }
             }
         }
     }
-
 
     // cleanup records
     for(size_t i = 0; i < records.size(); ++i) {

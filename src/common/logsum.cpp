@@ -93,6 +93,9 @@ p7_FLogsumError(float a, float b)
   return (exp(approx) - exp(exact));
 }
 
+struct Init_Caller { Init_Caller() { p7_FLogsumInit(); } };
+Init_Caller init_object;
+
 /*****************************************************************
  * 2. Benchmark driver.
  *****************************************************************/

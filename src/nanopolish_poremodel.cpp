@@ -24,7 +24,8 @@ void PoreModel::bake_gaussian_parameters()
         scaled_states[i].level_mean = states[i].level_mean * scale + shift;
         scaled_states[i].level_stdv = states[i].level_stdv * var;
         scaled_states[i].sd_mean = states[i].sd_mean * scale_sd;
-        scaled_states[i].set_sd_lambda(states[i].sd_lambda * var_sd);
+        scaled_states[i].sd_lambda = states[i].sd_lambda * var_sd;
+        scaled_states[i].update_sd_stdv();
 
         // for efficiency
         scaled_states[i].update_logs();
@@ -99,6 +100,8 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pma
         std::string kmer;
         PoreModelStateParams params;
         parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
+        params.update_sd_lambda();
+        params.update_logs();
 
         kmers[kmer] = params;
         add_found_bases(bases, kmer.c_str());
