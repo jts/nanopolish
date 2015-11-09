@@ -9,14 +9,15 @@
 #ifndef __PFOR_HPP
 #define __PFOR_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <functional>
 #include <mutex>
 #include <queue>
-#include <vector>
 #include <thread>
 #include <type_traits>
+#include <vector>
 
 namespace pfor
 {
@@ -330,14 +331,13 @@ void pfor(unsigned num_threads,
 #ifdef PFOR_SAMPLE
 /*
 
-Compile:
+Compile with:
 
-g++ -std=c++11 -D PFOR_SAMPLE -x c++ pfor.hpp -o pfor
+g++ -std=c++11 -pthread -D PFOR_SAMPLE -x c++ pfor.hpp -o pfor
 
 */
 
 #include <iostream>
-#include <iomanip>
 #include <sstream>
 
 using namespace std;
@@ -391,7 +391,7 @@ int main()
         // process_item
         [&] (unsigned& i, std::ostringstream& os) {
             thread::id this_id = this_thread::get_id();
-            os << setw(3) << right << this_id << ": " << i << "*" << i << "=" << i*i << endl;
+            os << this_id << ": " << i << "*" << i << "=" << i*i << endl;
         },
         // output_chunk
         [&] (std::ostringstream& os) {
