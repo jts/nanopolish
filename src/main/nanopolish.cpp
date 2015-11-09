@@ -31,14 +31,6 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"scorereads",  scorereads_main} 
 };
 
-// This code needs to be run before any of the program logic
-// It sets up pre-computed values and caches
-
-void initialize()
-{
-    p7_FLogsumInit();
-}
-
 int print_usage(int argc, char **argv)
 {
     std::cout << "usage: nanopolish [command] [options]" << std::endl;
@@ -52,8 +44,6 @@ int print_usage(int argc, char **argv)
 
 int main(int argc, char** argv)
 {
-    initialize();
-
     if(argc <= 1) {
         printf("error: no command provided\n");
         print_usage(argc - 1 , argv + 1);

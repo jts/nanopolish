@@ -20,6 +20,7 @@ struct MinimalStateTrainingData
     //
     // Functions
     //
+    MinimalStateTrainingData() = default;
     MinimalStateTrainingData(const SquiggleRead& sr,
                              const EventAlignment& ea,
                              uint32_t,
@@ -41,10 +42,20 @@ struct MinimalStateTrainingData
 
     static void write_header(std::ostream& os)
     {
+        write_header_nonl(os);
+        os << std::endl;
+    }
+    static void write_header_nonl(std::ostream& os)
+    {
         os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
+    {
+        write_tsv(os, model_name, kmer);
+        os << std::endl;
+    }
+    void write_tsv_nonl(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
         os << model_name << '\t'
            << kmer << '\t'
@@ -76,6 +87,7 @@ struct FullStateTrainingData
     //
     // Functions
     //
+    FullStateTrainingData() = default;
     FullStateTrainingData(const SquiggleRead& sr,
                           const EventAlignment& ea,
                           uint32_t rank,
@@ -94,14 +106,24 @@ struct FullStateTrainingData
 
     static void write_header(std::ostream& os)
     {
-        MinimalStateTrainingData::write_header(os);
-        os << "duration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
+        write_header_nonl(os);
+        os << std::endl;
+    }
+    static void write_header_nonl(std::ostream& os)
+    {
+        MinimalStateTrainingData::write_header_nonl(os);
+        os << "\tduration\tref_pos\tref_strand\tz\tprev_kmer\tnext_kmer";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
     {
-        MinimalStateTrainingData::write_tsv(os, model_name, kmer);
-        os << duration << '\t'
+        write_tsv(os, model_name, kmer);
+        os << std::endl;
+    }
+    void write_tsv_nonl(std::ostream& os, const std::string& model_name, const std::string& kmer) const
+    {
+        MinimalStateTrainingData::write_tsv_nonl(os, model_name, kmer);
+        os << '\t' << duration << '\t'
            << ref_position << '\t'
            << ref_strand << '\t'
            << z << '\t'
@@ -123,20 +145,14 @@ struct FullStateTrainingData
 typedef MinimalStateTrainingData StateTrainingData;
 //typedef FullStateTrainingData StateTrainingData;
 
-struct GaussianMixture
+struct ParamMixture
 {
     std::vector< float > log_weights;
     std::vector< PoreModelStateParams > params;
-}; // struct GaussianMixture
-
-struct InvGaussianMixture
-{
-    std::vector< float > log_weights;
-    std::vector< PoreModelStateParams > params;
-}; // struct InvGaussianMixture
+}; // struct ParamMixture
 
 // training functions
-GaussianMixture    train_gaussian_mixture   (const std::vector< StateTrainingData >& data, const GaussianMixture&    input_mixture);
-InvGaussianMixture train_invgaussian_mixture(const std::vector< StateTrainingData >& data, const InvGaussianMixture& input_mixture);
+ParamMixture train_gaussian_mixture   (const std::vector< StateTrainingData >& data, const ParamMixture& input_mixture);
+ParamMixture train_invgaussian_mixture(const std::vector< StateTrainingData >& data, const ParamMixture& input_mixture);
 
 #endif

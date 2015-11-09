@@ -15,17 +15,16 @@ const bool use_multiset_logsum =
     true;
 #endif
 
-GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, const GaussianMixture& input_mixture)
+ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, const ParamMixture& input_mixture)
 {
-
     size_t n_components = input_mixture.params.size();
     size_t n_data = data.size();
     float log_n_data = std::log(n_data);
     assert(input_mixture.log_weights.size() == n_components);
-    GaussianMixture curr_mixture = input_mixture;
+    ParamMixture curr_mixture = input_mixture;
 
     for(size_t iteration = 0; iteration < 10; ++iteration) {
-        GaussianMixture new_mixture = curr_mixture;
+        ParamMixture new_mixture = curr_mixture;
 
         // compute log_pdfs
         //
@@ -41,6 +40,10 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
                 scaled_state.level_log_stdv += data[i].log_read_var;
                 log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_state);
                 assert(not std::isnan(log_pdf[i][j]));
+                LOG("training_core", debug1)
+                    << "pdf " << i << " " << j << " "
+                    << std::scientific << std::exp(log_pdf[i][j]) << " ("
+                    << std::fixed << std::setprecision(2) << log_pdf[i][j] << ")" << endl;
             }
         }
 
@@ -53,13 +56,23 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
             log_resp[i].resize(n_components);
             logsumset< float > denom_terms(use_multiset_logsum);
             for(size_t j = 0; j < n_components; ++j) {
-                float v = log_pdf[i][j] + curr_mixture.log_weights[j];
+                float v = curr_mixture.log_weights[j] + log_pdf[i][j];
                 log_resp[i][j] = v;
                 denom_terms.add(v);
+                LOG("training_core", debug1)
+                    << "resp_numer " << i << " " << j << " "
+                    << std::scientific << std::exp(v) << " ("
+                    << std::fixed << std::setprecision(2) << v << ")" << endl;
             }
             float log_denom = denom_terms.val();
+            LOG("training_core", debug1) << "resp_denom " << i << " "
+                << std::scientific << log_denom << " " << std::exp(log_denom) << std::endl;
             for(size_t j = 0; j < n_components; ++j) {
                 log_resp[i][j] -= log_denom;
+                LOG("training_core", debug1)
+                    << "resp " << i << " " << j << " "
+                    << std::fixed << std::setprecision(5) << std::exp(log_resp[i][j]) << " ("
+                    << std::fixed << std::setprecision(2) << log_resp[i][j] << ")" << endl;
             }
         }
 
@@ -111,10 +124,11 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
             new_mixture.params[j].level_mean = std::exp(new_log_mean[j]);
             new_mixture.params[j].level_log_stdv = .5 * new_log_var[j];
             new_mixture.params[j].level_stdv = std::exp(new_mixture.params[j].level_log_stdv);
-            LOG("training_core", info)
+            LOG("training_core", debug)
                 << "new_mixture " << iteration << " " << j << " "
-                << std::fixed << std::setprecision(2) << std::exp(new_mixture.log_weights[j]) << " "
-                << new_mixture.params[j].level_mean << " " << new_mixture.params[j].level_stdv << endl;
+                << std::fixed << std::setprecision(5) << std::exp(new_mixture.log_weights[j]) << " "
+                << std::setprecision(3) << new_mixture.params[j].level_mean << " "
+                << new_mixture.params[j].level_stdv << endl;
         }
 
         curr_mixture = new_mixture;
@@ -122,12 +136,19 @@ GaussianMixture train_gaussian_mixture(const vector< StateTrainingData >& data, 
     return curr_mixture;
 }
 
-InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, const InvGaussianMixture& in_mixture)
+ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, const ParamMixture& in_mixture)
 {
     size_t n_components = in_mixture.params.size();
     assert(in_mixture.log_weights.size() == n_components);
     size_t n_data = data.size();
     auto crt_mixture = in_mixture;
+
+    for (size_t j = 0; j < n_components; ++j) {
+        LOG("training_core", debug)
+            << "in_mixture " << j << " "
+            << std::fixed << std::setprecision(5) << std::exp(in_mixture.log_weights[j]) << " "
+            << std::setprecision(5) << in_mixture.params[j].sd_mean << endl;
+    }
 
     // compute gaussian pdfs
     //
@@ -142,8 +163,10 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
             scaled_state.level_log_stdv += data[i].log_read_var;
             log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_state);
             assert(not std::isnan(log_pdf[i][j].first));
-            LOG("training_core", debug)
-                << "log_gauss_pdf " << i << " " << j << " " << std::scientific << log_pdf[i][j].first << endl;
+            LOG("training_core", debug1)
+                << "gauss_pdf " << i << " " << j << " "
+                << std::scientific << std::exp(log_pdf[i][j].first) << " ("
+                << std::fixed << std::setprecision(2) << log_pdf[i][j].first << ")" << endl;
         }
     }
 
@@ -163,8 +186,10 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
         float log_denom = denom_terms.val();
         for (size_t j = 0; j < n_components; ++j) {
             log_g_weights[i][j] -= log_denom;
-            LOG("training_core", debug)
-                << "g_weights " << i << " " << j << " " << std::scientific << std::exp(log_g_weights[i][j]) << endl;
+            LOG("training_core", debug1)
+                << "g_weights " << i << " " << j << " "
+                << std::fixed << std::setprecision(5) << std::exp(log_g_weights[i][j]) << " ("
+                << std::fixed << std::setprecision(2) << log_g_weights[i][j] << ")" << endl;
         }
     }
 
@@ -175,13 +200,15 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
         //
         for (size_t i = 0; i < n_data; ++i) {
             for (size_t j = 0; j < n_components; ++j) {
-                PoreModelStateParams scaled_state = in_mixture.params[j];
+                PoreModelStateParams scaled_state = crt_mixture.params[j];
                 scaled_state.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
                 scaled_state.sd_log_lambda += data[i].log_read_var_sd - data[i].log_read_scale_sd;
                 log_pdf[i][j].second = log_invgauss_pdf(data[i].level_stdv, data[i].log_level_stdv, scaled_state);
                 assert(not std::isnan(log_pdf[i][j].second));
-                LOG("training_core", debug)
-                    << "log_invgauss_pdf " << i << " " << j << " " << std::scientific << log_pdf[i][j].second << endl;
+                LOG("training_core", debug1)
+                    << "invgauss_pdf " << i << " " << j << " "
+                    << std::scientific << std::exp(log_pdf[i][j].second) << " ("
+                    << std::fixed << std::setprecision(2) << log_pdf[i][j].second << ")" << endl;
             }
         }
         // compute inverse gaussian weights (responsibilities)
@@ -200,8 +227,10 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
             float log_denom = denom_terms.val();
             for (size_t j = 0; j < n_components; ++j) {
                 log_ig_weights[i][j] -= log_denom;
-                LOG("training_core", debug)
-                    << "ig_weights " << i << " " << j << " " << std::scientific << std::exp(log_ig_weights[i][j]) << endl;
+                LOG("training_core", debug1)
+                    << "ig_weights " << i << " " << j << " "
+                    << std::fixed << std::setprecision(5) << std::exp(log_ig_weights[i][j]) << " ("
+                    << std::fixed << std::setprecision(2) << log_ig_weights[i][j] << ")" << endl;
             }
         }
 
@@ -215,17 +244,19 @@ InvGaussianMixture train_invgaussian_mixture(const vector< StateTrainingData >& 
             logsumset< float > numer_terms(use_multiset_logsum);
             logsumset< float > denom_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
-                float v = log_ig_weights[i][j] + in_mixture.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
+                float v = log_ig_weights[i][j] + crt_mixture.params[j].sd_log_lambda + (data[i].log_read_var_sd - data[i].log_read_scale_sd);
                 numer_terms.add(v + data[i].log_level_stdv);
                 denom_terms.add(v);
             }
             float log_numer = numer_terms.val();
             float log_denom = denom_terms.val();
             new_mixture.params[j].sd_mean = std::exp(log_numer - log_denom);
-            LOG("training_core", info)
+            new_mixture.params[j].update_sd_stdv();
+            new_mixture.params[j].update_logs();
+            LOG("training_core", debug)
                 << "new_mixture " << iteration << " " << j << " "
-                << std::fixed << std::setprecision(2) << std::exp(new_mixture.log_weights[j]) << " "
-                << new_mixture.params[j].sd_mean << endl;
+                << std::fixed << std::setprecision(5) << std::exp(new_mixture.log_weights[j]) << " "
+                << std::setprecision(5) << new_mixture.params[j].sd_mean << endl;
         }
         std::swap(crt_mixture, new_mixture);
     } // for iteration
