@@ -104,4 +104,4 @@ for contig_name in sorted(segments_by_name.keys()):
         assembly = merge_into_consensus(assembly, sequence, OVERLAP_LENGTH)
     
     # Write final assembly
-    print(">%s\n%s\n" % (contig_name, assembly))
+    print(">%s\n%s" % (contig_name, assembly))
