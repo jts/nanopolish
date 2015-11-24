@@ -705,8 +705,10 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
 {
     const int minor_segment_stride = 50;
     HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
+    uint32_t num_segments = window.anchored_columns.size();
 
-    if(window.reads.empty()) {
+    // If there are not reads or not enough segments do not try to call a consensus sequence
+    if(window.reads.empty() || num_segments < 3) {
         // No data for this window, just return the original sequence as the consensus
         assert(!window.original_sequence.empty());
         return window.original_sequence;
@@ -730,7 +732,6 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     std::string reference = "";
     std::string consensus = "";
 
-    uint32_t num_segments = window.anchored_columns.size();
     uint32_t start_segment_id = 0;
 
     // Copy the base segments before they are updated
