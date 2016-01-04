@@ -84,11 +84,12 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
     // Check if an alternative analysis group is present in the read name
     int group_id = -1;
+    /*
     size_t bc_2d_pos = read_name.find("Basecall_2D");
     if(bc_2d_pos != std::string::npos) {
         int ret = sscanf(read_name.substr(bc_2d_pos).c_str(), "Basecall_2D_%03d_2d", &group_id);
     } 
-    
+    */
     // default to 0 group
     if(group_id == -1) {
         group_id = 0;
