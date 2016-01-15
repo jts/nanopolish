@@ -156,7 +156,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::vector<fast5::Event_Entry>& f5_events)
 {
     const uint32_t k = pore_model[T_IDX].k;
-    
+    assert(f5_events.size() == events[strand].size());
+
     // initialize - one entry per read kmer
     uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
