@@ -28,3 +28,17 @@ std::vector<std::string> split(std::string in, char delimiter)
     out.push_back(in.substr(lastPos));
     return out;
 }
+
+bool ends_with(const std::string& str, const std::string& suffix)
+{
+    if(suffix.empty()) {
+        return true;
+    }
+
+    size_t pos = str.find(suffix);
+    if(pos == std::string::npos) {
+        return false;
+    }
+    return pos + suffix.size() == str.length();
+}
+

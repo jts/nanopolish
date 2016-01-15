@@ -14,6 +14,15 @@
 #include "nanopolish_transition_parameters.h"
 #include <string>
 
+// the type of the read 
+// do not change as template must always be 0 and complement 1
+enum SquiggleReadType
+{
+    SRT_TEMPLATE = 0,
+    SRT_COMPLEMENT,
+    SRT_2D
+};
+
 // The raw event data for a read
 struct SquiggleEvent
 {
@@ -137,6 +146,7 @@ class SquiggleRead
 
         // unique identifier of the read
         std::string read_name;
+        SquiggleReadType read_type;
         std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
@@ -157,6 +167,10 @@ class SquiggleRead
     private:
         
         SquiggleRead(const SquiggleRead&) {}
+
+        //
+        void build_event_map_1d(fast5::File* f_p, uint32_t strand, std::vector<fast5::Event_Entry>& f5_events);
+        void build_event_map_2d(fast5::File* f_p);
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;

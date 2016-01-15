@@ -500,6 +500,12 @@ void realign_read(EventalignWriter writer,
     }
     
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
+        
+        // Do not align this strand if it was not sequenced
+        if(sr.events[strand_idx].empty()) {
+            continue;
+        }
+
         EventAlignmentParameters params;
         params.sr = &sr;
         params.fai = fai;

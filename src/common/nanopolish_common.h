@@ -108,4 +108,8 @@ inline double add_logs(const double a, const double b)
 // split a string based on a delimiter
 std::vector<std::string> split(std::string in, char delimiter);
 
+// returns true if the provided string ends with the given suffix
+bool ends_with(const std::string& str, const std::string& suffix);
+
+
 #endif
