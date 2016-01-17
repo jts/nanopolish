@@ -274,6 +274,12 @@ hack:
 void SquiggleRead::replace_models(const ModelMap& map) {
     
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+
+        // only replace this model if the strand was loaded
+        if(! (read_type == SRT_2D || read_type == strand_idx) ) {
+            continue;
+        }
+
         std::string curr_model = this->pore_model[strand_idx].name;
         auto model_iter = map.find(curr_model);
         if(model_iter != map.end()) {
