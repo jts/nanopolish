@@ -79,6 +79,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -m, --min-candidate-frequency=F      alternative bases in F proporation of aligned reads are candidate variants (default 0.2)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
 "      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
+"      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -90,6 +91,7 @@ namespace opt
     static std::string genome_file;
     static std::string output_file;
     static std::string candidates_file;
+    static std::string models_fofn;
     static std::string window;
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
@@ -100,7 +102,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY, OPT_CALC_ALL_SUPPORT };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY, OPT_CALC_ALL_SUPPORT, OPT_MODELS_FOFN };
 
 static const struct option longopts[] = {
     { "verbose",                 no_argument,       NULL, 'v' },
@@ -113,6 +115,7 @@ static const struct option longopts[] = {
     { "threads",                 required_argument, NULL, 't' },
     { "min-candidate-frequency", required_argument, NULL, 'm' },
     { "candidates",              required_argument, NULL, 'c' },
+    { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
@@ -213,7 +216,7 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
     return out;
 }
 
-Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end, const ModelMap& models)
 {
     const int BUFFER = 20;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
@@ -222,6 +225,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
+    if(!models.empty()) {
+        alignments.set_alternative_model(&models);
+    }
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
     Haplotype derived_haplotype(contig,
                                 alignments.get_region_start(),
@@ -320,6 +326,7 @@ void parse_call_variants_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
@@ -372,6 +379,11 @@ int call_variants_main(int argc, char** argv)
     parse_call_variants_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
+    ModelMap models;
+    if(!opt::models_fofn.empty()) {
+        models = read_models_fofn(opt::models_fofn);
+    }
+
     // Parse the window string
     // Replace ":" and "-" with spaces to make it parseable with stringstream
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
@@ -397,7 +409,7 @@ int call_variants_main(int argc, char** argv)
     fprintf(stderr, "TODO: train model\n");
     fprintf(stderr, "TODO: filter data\n");
 
-    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
+    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, models);
 
     std::vector<Variant> variants = haplotype.get_variants();
     for(size_t vi = 0; vi < variants.size(); vi++) {

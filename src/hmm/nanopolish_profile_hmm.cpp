@@ -128,6 +128,16 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
     profile_hmm_fill_generic(sequence, data, e_start, flags, output);
 
     // Traverse the backtrack matrix to compute the results
+    int traversal_stride = data.event_stride;
+
+#if HMM_REVERSE_FIX
+    // Hack to support the fixed HMM
+    // TODO: clean up
+    traversal_stride = 1;
+    if(data.event_stride == -1) {
+        e_start = data.event_stop_idx;
+    }
+#endif
     
     // start from the last event matched to the last kmer
     uint32_t row = n_rows - 1;
@@ -135,7 +145,7 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
 
     while(row > 0) {
         
-        uint32_t event_idx = e_start + (row - 1) * data.event_stride;
+        uint32_t event_idx = e_start + (row - 1) * traversal_stride;
         uint32_t block = col / PS_NUM_STATES;
         assert(block > 0);
         assert(get(vm, row, col) != -INFINITY);
@@ -181,8 +191,21 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
         col = PS_NUM_STATES * (kmer_idx + 1) + next_ps;
     }
 
+
+#if HMM_REVERSE_FIX
+    // change the strand of the kmer indices if we aligned to the reverse strand
+    if(data.event_stride == -1) {
+        for(size_t ai = 0; ai < alignment.size(); ++ai) {
+            size_t k_idx = alignment[ai].kmer_idx;
+            alignment[ai].kmer_idx = sequence.length() - k_idx - k;
+        }
+    } else {
+        std::reverse(alignment.begin(), alignment.end());
+    }
+#else
     //
     std::reverse(alignment.begin(), alignment.end());
+#endif
 
     //
     free_matrix(vm);

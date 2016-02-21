@@ -43,6 +43,8 @@ class HMMInputSequence
         //
         size_t length() const { return m_seq.length(); }
 
+        // swap sequence and its reverse complement
+        void swap() { m_seq.swap(m_rc_seq); }
 
         // returns the i-th kmer of the sequence
         inline std::string get_kmer(uint32_t i, uint32_t k, bool do_rc) const
