@@ -383,7 +383,8 @@ void add_aligned_events(const ModelMap& model_map,
             // Should we use this event for training?
             bool use_for_training = i > 5 && 
                 i + 5 < alignment_output.size() &&
-                alignment_output[i].hmm_state == 'M';
+                alignment_output[i].hmm_state == 'M' &&
+                sr.get_duration( alignment_output[i].event_idx, strand_idx) >= 0.01;
 
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
@@ -723,7 +724,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     return trained_models;
 }
 
-void write_models(ModelMap& models)
+void write_models(ModelMap& models, int round)
 {
     // file-of-filenames containing the new models
     std::ofstream fofn_writer(opt::out_fofn);
@@ -733,7 +734,10 @@ void write_models(ModelMap& models)
              model_iter != models.end(); model_iter++) {
 
         assert(!model_iter->second.model_filename.empty());
-        std::string outname   =  get_model_short_name(model_iter->second.name) + opt::out_suffix;
+        std::stringstream round_ss;
+        round_ss << round;
+
+        std::string outname   =  get_model_short_name(model_iter->second.name) + opt::out_suffix; 
         std::string modelname =  model_iter->first + opt::out_suffix;
         models[model_iter->first].write( outname, modelname );
 
@@ -759,7 +763,7 @@ int methyltrain_main(int argc, char** argv)
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
         if(opt::write_models) {
-            write_models(trained_models);
+            write_models(trained_models, round);
         }
         models = trained_models;
     }
