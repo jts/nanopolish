@@ -62,6 +62,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
 "      --stdv                           enable stdv modelling\n"
+"      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -72,6 +73,7 @@ namespace opt
     static std::string genome_file;
     static std::string region;
     static std::string summary_file;
+    static std::string models_fofn;
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
@@ -83,7 +85,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV, OPT_MODELS_FOFN };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -93,6 +95,7 @@ static const struct option longopts[] = {
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
     { "summary",          required_argument, NULL, OPT_SUMMARY },
+    { "models-fofn",      required_argument, NULL, OPT_MODELS_FOFN },
     { "print-read-names", no_argument,       NULL, 'n' },
     { "stdv",             no_argument,       NULL, OPT_STDV },
     { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
@@ -292,7 +295,8 @@ void emit_event_alignment_sam(htsFile* fp,
                               const bam1_t* base_record, 
                               const std::vector<EventAlignment>& alignments)
 {
-    assert(!alignments.empty());
+    //assert(!alignments.empty());
+	if(alignments.empty()) return;
     bam1_t* event_record = bam_init1();
     
     // Variable-length data
@@ -476,7 +480,8 @@ void realign_read(EventalignWriter writer,
                   const bam1_t* record, 
                   size_t read_idx,
                   int region_start,
-                  int region_end)
+                  int region_end,
+                  const ModelMap& models)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -484,7 +489,11 @@ void realign_read(EventalignWriter writer,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
-    
+    if(!models.empty()) {
+        sr.replace_models(models);
+    }
+
+
     if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 
                 read_name.c_str(), sr.events[0].size(), sr.events[1].size());
@@ -623,8 +632,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
         HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
         
-        // Nothing to align to
-        if(hmm_sequence.length() < k)
+        // Require a minimum amount of sequence to align to
+        if(hmm_sequence.length() < 2 * k)
             break;
 
         // Set up HMM input
@@ -644,7 +653,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.strand = params.strand_idx;
         input.event_stride = input.event_start_idx < input.event_stop_idx ? 1 : -1;
         input.rc = rc_flags[params.strand_idx];
-        
+
         std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
         
         // Output alignment
@@ -686,6 +695,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 // update
                 last_event_output = as.event_idx;
                 last_ref_kmer_output = curr_start_ref + as.kmer_idx;
+
                 num_output += 1;
             }
         }
@@ -720,6 +730,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 'f': opt::full_output = true; break;
             case OPT_STDV: model_stdv() = true; break;
             case 'v': opt::verbose++; break;
+            case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_SCALE_EVENTS: opt::scale_events = true; break;
             case OPT_SUMMARY: arg >> opt::summary_file; break;
             case OPT_SAM: opt::output_sam = true; break;
@@ -775,6 +786,11 @@ int eventalign_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
+    
+    ModelMap models;
+    if(!opt::models_fofn.empty()) {
+        models = read_models_fofn(opt::models_fofn);
+    }
 
     // Open the BAM and iterate over reads
 
@@ -860,7 +876,7 @@ int eventalign_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end, models);
                 }
             }
 
