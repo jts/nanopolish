@@ -12,6 +12,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
+#include "nanopolish_model_names.h"
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -203,22 +204,9 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 
 int model2idx(const std::string& model_name)
 {
-    if(model_name == "r7.3_template_median68pA.model" ||
-       model_name == "r7.3_e6_70bps_6mer_template_median68pA.model") {
-        return 0;
-    } else if(model_name == "r7.3_complement_median68pA_pop1.model" ||
-       model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model") {
-        return 1;
-    } else if(model_name == "r7.3_complement_median68pA_pop2.model" ||
-       model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model") {
-        return 2;
-    } else {
-        printf("Unknown model %s\n", model_name.c_str());
-        assert(false);
-        return -1;
-    }
+    ModelMetadata model_data = get_model_metadata_from_name(model_name);
+    return model_data.model_idx;
 }
-
 
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 

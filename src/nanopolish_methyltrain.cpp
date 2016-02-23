@@ -33,6 +33,7 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
+#include "nanopolish_model_names.h"
 #include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -163,20 +164,8 @@ static const struct option longopts[] = {
 
 std::string get_model_short_name(const std::string& model_name)
 {
-    static std::map< std::string, std::string > model_name_map = {
-        { "r7.3_template_median68pA.model", "t.005" },
-        { "r7.3_complement_median68pA_pop1.model", "c.p1.005" },
-        { "r7.3_complement_median68pA_pop2.model", "c.p2.005" },
-        { "r7.3_e6_70bps_6mer_template_median68pA.model", "t.006" },
-        { "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model", "c.p1.006" },
-        { "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model", "c.p2.006" }
-    };
-    auto iter = model_name_map.find(model_name);
-    if(iter == model_name_map.end()) {
-        fprintf(stderr, "Error: unknown model %s\n", model_name.c_str());
-        exit(EXIT_FAILURE);
-    }
-    return iter->second;
+    ModelMetadata model_data = get_model_metadata_from_name(model_name);
+    return model_data.short_name;
 }
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
