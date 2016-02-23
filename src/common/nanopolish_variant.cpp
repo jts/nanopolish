@@ -7,9 +7,12 @@
 //
 #include <algorithm>
 #include <map>
+#include <iterator>
+#include <iomanip>
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
+#include "nanopolish_model_names.h"
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -199,6 +202,12 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
     return selected_variants;
 }
 
+int model2idx(const std::string& model_name)
+{
+    ModelMetadata model_data = get_model_metadata_from_name(model_name);
+    return model_data.model_idx;
+}
+
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 
                                         const std::vector<HMMInputData>& input,
@@ -207,9 +216,10 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     size_t num_variants = candidate_variants.size();
     size_t num_haplotypes = 1 << num_variants;
     
-    double base_lp_by_strand[2] = { 0.0f, 0.0f };
-    double base_lp_by_rc[2] = { 0.0f, 0.0f };
     double base_lp = 0.0f;
+    double base_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+    int read_counts[6] = { 0, 0, 0, 0, 0, 0 };
+
     std::vector<double> base_lp_by_read(input.size()); 
     
     #pragma omp parallel for
@@ -221,8 +231,11 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         {
             base_lp_by_read[j] = tmp;
             base_lp += tmp;
-            base_lp_by_strand[input[j].strand] += tmp;
-            base_lp_by_rc[input[j].rc] += tmp;
+
+            int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
+            int cid = 2 * mid + input[j].rc;
+            base_lp_by_model_strand[cid] += tmp;
+            read_counts[cid] += 1;
         }
     }
 
@@ -249,20 +262,20 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         
         // score the haplotype
         double current_lp = 0.0f;
-        double current_lp_by_strand[2] = { 0.0f, 0.0f };
-        double current_lp_by_rc[2] = { 0.0f, 0.0f };
-
+        double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         size_t supporting_reads = 0;
 
         #pragma omp parallel for
         for(size_t j = 0; j < input.size(); ++j) {
             double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
+
             #pragma omp critical
             {
                 current_lp += tmp;
                 supporting_reads += tmp > base_lp_by_read[j];
-                current_lp_by_strand[input[j].strand] += tmp;
-                current_lp_by_rc[input[j].rc] += tmp;
+                int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
+                int cid = 2 * mid + input[j].rc;
+                current_lp_by_model_strand[cid] += tmp;
             }
         }
 
@@ -276,10 +289,38 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 v.add_info("TotalReads", input.size());
                 v.add_info("SupportingReads", supporting_reads);
                 v.add_info("SupportFraction", (double)supporting_reads / input.size());
+
+                // Annotate variants with qualities from the three possible models
+                std::string names[3] = { "Template", "Comp.P1", "Comp.P2" };
+
+                for(int mid = 0; mid < 3; mid++) {
+                    int cid = 2 * mid;
+                    double s0 = current_lp_by_model_strand[cid] - base_lp_by_model_strand[cid];
+                    int c0 = read_counts[cid];
+
+                    double s1 = current_lp_by_model_strand[cid + 1] - base_lp_by_model_strand[cid + 1];
+                    int c1 = read_counts[cid + 1];
+
+                    std::stringstream ss;
+                    ss << std::setprecision(4) << s0 / c0 << "," << s1 / c1;
+                    v.add_info(names[mid], ss.str());
+                }
+
+                /*
                 v.add_info("TemplateQuality", current_lp_by_strand[0] - base_lp_by_strand[0]);
                 v.add_info("ComplementQuality", current_lp_by_strand[1] - base_lp_by_strand[1]);
                 v.add_info("ForwardQuality", current_lp_by_rc[0] - base_lp_by_rc[0]);
                 v.add_info("ReverseQuality", current_lp_by_rc[1] - base_lp_by_rc[1]);
+                v.add_info("TAvgQuality", (current_lp_by_model[0] - base_lp_by_model[0]) / model_count[0]);
+                v.add_info("C1AvgQuality", (current_lp_by_model[1] - base_lp_by_model[1]) / model_count[1]);
+                v.add_info("C2AvgQuality", (current_lp_by_model[2] - base_lp_by_model[2]) / model_count[2]);
+                */
+
+                std::stringstream counts;
+                std::ostream_iterator<int> rc_out(counts, ",");
+                std::copy(std::begin(read_counts), std::end(read_counts), rc_out);
+                std::string rc_str = counts.str();
+                v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
                 v.quality = best_lp - base_lp;
             }
         }

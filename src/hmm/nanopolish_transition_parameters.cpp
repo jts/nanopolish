@@ -11,6 +11,7 @@
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_squiggle_read.h"
+#include "nanopolish_model_names.h"
 
 TransitionParameters::TransitionParameters()
 {
@@ -49,21 +50,16 @@ TransitionParameters::~TransitionParameters()
 void TransitionParameters::initialize(const std::string& model_name)
 {
     is_initialized = true;
+    ModelMetadata model_data = get_model_metadata_from_name(model_name);
 
-    if(model_name == "r7.3_template_median68pA.model" ||
-       model_name == "r7.3_complement_median68pA_pop1.model" || 
-       model_name == "r7.3_complement_median68pA_pop2.model") 
-    {
+    if(model_data.kit == KV_SQK005) {
         initialize_sqkmap005();
-    } 
-    else if(model_name == "r7.3_e6_70bps_6mer_template_median68pA.model")
-    {
-        initialize_sqkmap006_template();
-    } 
-    else if(model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model" ||
-            model_name == "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model")
-    {
-        initialize_sqkmap006_complement();
+    } else if(model_data.kit == KV_SQK006) {
+        if(model_data.strand_idx == T_IDX) {
+            initialize_sqkmap006_template();
+        } else {
+            initialize_sqkmap006_complement();
+        }
     } else {
         printf("Warning: unknown model: %s\n", model_name.c_str());
         initialize_sqkmap005();
