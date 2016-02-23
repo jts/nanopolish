@@ -295,8 +295,8 @@ void emit_event_alignment_sam(htsFile* fp,
                               const bam1_t* base_record, 
                               const std::vector<EventAlignment>& alignments)
 {
-    //assert(!alignments.empty());
-	if(alignments.empty()) return;
+    if(alignments.empty())
+        return;
     bam1_t* event_record = bam_init1();
     
     // Variable-length data

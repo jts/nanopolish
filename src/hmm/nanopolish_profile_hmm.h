@@ -16,7 +16,7 @@
 #include "nanopolish_emissions.h"
 #include "nanopolish_hmm_input_sequence.h"
 
-#define HMM_REVERSE_FIX 1
+//#define HMM_REVERSE_FIX 1
 
 //
 // High level algorithms
