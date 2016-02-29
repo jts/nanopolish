@@ -125,6 +125,12 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
+
+    // Constants that determine which events to use for training
+    static float min_event_duration = 0.01;
+    static int min_distance_from_alignment_end = 5;
+    static int min_number_of_events_to_train = 100;
+    static int num_training_rounds = 5;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
@@ -146,7 +152,6 @@ static const struct option longopts[] = {
     { "reads",              required_argument, NULL, 'r' },
     { "bam",                required_argument, NULL, 'b' },
     { "genome",             required_argument, NULL, 'g' },
-    { "window",             required_argument, NULL, 'w' },
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "out-suffix",         required_argument, NULL, 's' },
@@ -332,8 +337,6 @@ void add_aligned_events(const ModelMap& model_map,
                 }
             }
         }
-        // Update model observations
-        //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
 
         // Get the training data for this model
         auto& emission_map = training[curr_model];
@@ -342,7 +345,7 @@ void add_aligned_events(const ModelMap& model_map,
             const EventAlignment& ea = alignment_output[i];
             std::string model_kmer = ea.model_kmer;
 
-            // Grab the previous/next model kmer
+            // Grab the previous/next model kmer from the alignment_output table.
             // If the read is from the same strand as the reference
             // the next kmer comes from the next alignment_output (and vice-versa)
             // other the indices are swapped
@@ -352,10 +355,12 @@ void add_aligned_events(const ModelMap& model_map,
             std::string next_kmer = "";
 
             if(i > 0 && i < alignment_output.size() - 1) {
+
+                // check that the event indices are correct for the next expected position
                 assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
                 assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
 
-                // check for exactly one base of movement along the reference
+                // only set the previous/next when there was exactly one base of movement along the referenc
                 if( std::abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
                     next_kmer = alignment_output[i + next_stride].model_kmer;
                 }
@@ -365,15 +370,18 @@ void add_aligned_events(const ModelMap& model_map,
                 }
             }
 
+            // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
             uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
             assert(rank < emission_map.size());
             auto& kmer_summary = emission_map[rank];
 
-            // Should we use this event for training?
-            bool use_for_training = i > 5 && 
-                i + 5 < alignment_output.size() &&
+            // We only use this event for training if its not at the end of the alignment
+            // (to avoid bad alignments around the read edges) and if its not too short (to
+            // avoid bad measurements from effecting the levels too much)
+            bool use_for_training = i > opt::min_distance_from_alignment_end &&
+                i + opt::min_distance_from_alignment_end < alignment_output.size() &&
                 alignment_output[i].hmm_state == 'M' &&
-                sr.get_duration( alignment_output[i].event_idx, strand_idx) >= 0.01;
+                sr.get_duration( alignment_output[i].event_idx, strand_idx) >= opt::min_event_duration;
 
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
@@ -485,7 +493,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
     for(auto model_iter = models.begin(); model_iter != models.end(); model_iter++) {
-        std::vector<StateSummary> summaries(model_iter->second.get_num_states()); // one per kmer in the model
+        std::vector<StateSummary> summaries(model_iter->second.get_num_states()); // one entry per kmer in the model
         model_training_data[model_iter->first] = summaries;
     }
 
@@ -516,7 +524,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         // TODO: is this valid?
         itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
     } else {
-
         fprintf(stderr, "Region: %s\n", opt::region.c_str());
         itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
         hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
@@ -571,25 +578,31 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     assert(num_records_buffered == 0);
     progress.end();
 
-    std::stringstream training_fn;
-    training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
     
+    // open the summary file
     std::stringstream summary_fn;
     summary_fn << opt::bam_file << ".methyltrain.summary";
-
     FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
+    fprintf(summary_fp, "model_short_name\tkmer\tnum_matches\tnum_skips\t"
+                         "num_stays\tnum_events_for_training\twas_trained\t"
+                         "trained_level_mean\ttrained_level_stdv\n");
+
+    // open the tsv file with the raw training data
+    std::stringstream training_fn;
+    training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
     std::ofstream training_ofs(training_fn.str());
 
-    // training header
+    // write out a header for the training data
     StateTrainingData::write_header(training_ofs);
 
     // Process the training results
     ModelMap trained_models;
     
+    // iterate over models: template, complement_pop1, complement_pop2
     for(auto model_training_iter = model_training_data.begin(); 
              model_training_iter != model_training_data.end(); model_training_iter++) {
         
-        // Initialize trained model from input model
+        // Initialize the trained model from the input model
         auto model_iter = models.find(model_training_iter->first);
         assert(model_iter != models.end());
 
@@ -597,9 +610,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         std::string model_short_name = get_model_short_name(model_name);
 
         trained_models[model_training_iter->first] = model_iter->second;
-        PoreModel& new_pm = trained_models[model_training_iter->first];
 
-        // Update means for each kmer
+        // Get a convienance variable for the PoreModel that we will train
+        PoreModel& new_pm = trained_models[model_training_iter->first];
         uint32_t k = new_pm.k;
         const std::vector<StateSummary>& summaries = model_training_iter->second;
 
@@ -614,9 +627,10 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
         assert(all_kmers.front() == std::string(k, 'A'));
         assert(all_kmers.back() == std::string(k, 'T'));
 
+        // Update means for each kmer
         #pragma omp parallel for
         for(size_t ki = 0; ki < summaries.size(); ++ki) {
-            
+            assert(ki < all_kmers.size());
             std::string kmer = all_kmers[ki];
 
             // write the observed values to a tsv file
@@ -627,73 +641,83 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     training_ofs << std::endl;
                 }
 
-                // write to the summary file
-                fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\n", model_short_name.c_str(), kmer.c_str(), summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays);
             }
 
             bool is_m_kmer = kmer.find('M') != std::string::npos;
             bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
-            if (not update_kmer or summaries[ki].events.size() < 100) {
-                continue;
-            }
-
-            ParamMixture mixture;
-
-            // train a mixture model where a minority of k-mers aren't methylated
+            bool trained = false;
             
-            // unmethylated component
-            float um_rate = 0.05f;
-            std::string um_kmer = mtrain_alphabet->unmethylate(kmer);
-            size_t um_ki = mtrain_alphabet->kmer_rank(um_kmer.c_str(), k);
+            // only train if there are a sufficient number of events for this kmer
+            if(update_kmer && summaries[ki].events.size() >= opt::min_number_of_events_to_train) {
 
-            mixture.log_weights.push_back(std::log(um_rate));
-            mixture.params.push_back(model_iter->second.get_parameters(um_ki));
+                // train a mixture model where a minority of k-mers aren't methylated
+                ParamMixture mixture;
+                
+                // unmethylated component
+                float um_rate = 0.05f;
+                std::string um_kmer = mtrain_alphabet->unmethylate(kmer);
+                size_t um_ki = mtrain_alphabet->kmer_rank(um_kmer.c_str(), k);
 
-            mixture.log_weights.push_back(std::log(1 - um_rate));
-            mixture.params.push_back(model_iter->second.get_parameters(ki));
+                // initialize the mixture weights and gaussian parameters for each component
+                mixture.log_weights.push_back(std::log(um_rate));
+                mixture.params.push_back(model_iter->second.get_parameters(um_ki));
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(mixture.log_weights[0]), mixture.params[0].level_mean, mixture.params[0].level_stdv,
-                    std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
-            }
+                mixture.log_weights.push_back(std::log(1 - um_rate));
+                mixture.params.push_back(model_iter->second.get_parameters(ki));
 
-            ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
+                if(opt::verbose > 1) {
+                    fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                        std::exp(mixture.log_weights[0]), mixture.params[0].level_mean, mixture.params[0].level_stdv,
+                        std::exp(mixture.log_weights[1]), mixture.params[1].level_mean, mixture.params[1].level_stdv);
+                }
 
-            if(opt::verbose > 1) {
-                fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
-                    std::exp(trained_mixture.log_weights[0]), trained_mixture.params[0].level_mean, trained_mixture.params[0].level_stdv,
-                    std::exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
+                ParamMixture trained_mixture = train_gaussian_mixture(summaries[ki].events, mixture);
+
+                if(opt::verbose > 1) {
+                    fprintf(stderr, "TRAIN_MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
+                        std::exp(trained_mixture.log_weights[0]), trained_mixture.params[0].level_mean, trained_mixture.params[0].level_stdv,
+                        std::exp(trained_mixture.log_weights[1]), trained_mixture.params[1].level_mean, trained_mixture.params[1].level_stdv);
+                }
+
+                #pragma omp critical
+                new_pm.states[ki] = trained_mixture.params[1];
+
+                if (model_stdv()) {
+                    ParamMixture ig_mixture;
+                    // weights
+                    ig_mixture.log_weights = trained_mixture.log_weights;
+                    // states
+                    ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                    ig_mixture.params.emplace_back(trained_mixture.params[1]);
+                    // run training
+                    auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
+
+                    LOG("methyltrain", debug)
+                        << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                        << std::fixed << std::setprecision(5) << ig_mixture.params[0].sd_mean << " "
+                        << ig_mixture.params[1].sd_mean << "]" << std::endl
+                        << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
+                        << trained_ig_mixture.params[0].sd_mean << " "
+                        << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
+
+                    // update state
+                    #pragma omp critical
+                    {
+                        new_pm.states[ki] = trained_ig_mixture.params[1];
+                    }
+                }
+
+                trained = true;
             }
 
             #pragma omp critical
-            new_pm.states[ki] = trained_mixture.params[1];
-
-            if (model_stdv()) {
-                ParamMixture ig_mixture;
-                // weights
-                ig_mixture.log_weights = trained_mixture.log_weights;
-                // states
-                ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
-                ig_mixture.params.emplace_back(trained_mixture.params[1]);
-                // run training
-                auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
-
-                LOG("methyltrain", debug)
-                    << "IG_INIT__MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                    << std::fixed << std::setprecision(5) << ig_mixture.params[0].sd_mean << " "
-                    << ig_mixture.params[1].sd_mean << "]" << std::endl
-                    << "IG_TRAIN_MIX " << model_training_iter->first.c_str() << " " << kmer.c_str() << " ["
-                    << trained_ig_mixture.params[0].sd_mean << " "
-                    << trained_ig_mixture.params[1].sd_mean << "]" << std::endl;
-                
-                // update state
-                #pragma omp critical
-                {
-                    new_pm.states[ki] = trained_ig_mixture.params[1];
-                }
+            {
+                fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\t%zu\t%d\t%.2lf\t%.2lf\n",
+                                        model_short_name.c_str(), kmer.c_str(), 
+                                        summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays, 
+                                        summaries[ki].events.size(), trained, new_pm.states[ki].level_mean, new_pm.states[ki].level_stdv);
             }
         }
     }
@@ -730,6 +754,7 @@ void write_models(ModelMap& models, int round)
         std::string modelname =  model_iter->first + opt::out_suffix;
         models[model_iter->first].write( outname, modelname );
 
+        // write the name of the trained model in the fofn
         fofn_writer << outname << "\n";
     }
 
@@ -747,8 +772,7 @@ int methyltrain_main(int argc, char** argv)
     assert(!models.empty());
     mtrain_alphabet = models.begin()->second.pmalphabet;
 
-    const size_t TRAINING_ROUNDS = 5;
-    for(size_t round = 0; round < TRAINING_ROUNDS; round++) {
+    for(size_t round = 0; round < opt::num_training_rounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
         ModelMap trained_models = train_one_round(models, name_map, round);
         if(opt::write_models) {
