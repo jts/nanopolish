@@ -282,7 +282,7 @@ void add_aligned_events(const ModelMap& model_map,
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         
-        // replace model with the training model
+        // replace the model that is built into the read with the current trained model
         std::string curr_model = sr.pore_model[strand_idx].name;
         auto model_iter = model_map.find(curr_model);
 
