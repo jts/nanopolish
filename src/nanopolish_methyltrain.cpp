@@ -249,7 +249,7 @@ void recalibrate_model(SquiggleRead &sr,
         }
         var /= raw_events.size();
 
-        sr.pore_model[strand_idx].var   = var;
+        sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
     }
 
     if (sr.pore_model[strand_idx].is_scaled)
@@ -321,7 +321,7 @@ void add_aligned_events(const ModelMap& model_map,
         }
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output, false);
+            recalibrate_model(sr, strand_idx, alignment_output, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
