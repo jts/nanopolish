@@ -581,7 +581,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     
     // open the summary file
     std::stringstream summary_fn;
-    summary_fn << opt::bam_file << ".methyltrain.summary";
+    summary_fn << "methyltrain" << opt::out_suffix << ".summary";
     FILE* summary_fp = fopen(summary_fn.str().c_str(), "w");
     fprintf(summary_fp, "model_short_name\tkmer\tnum_matches\tnum_skips\t"
                          "num_stays\tnum_events_for_training\twas_trained\t"
@@ -589,7 +589,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
 
     // open the tsv file with the raw training data
     std::stringstream training_fn;
-    training_fn << opt::bam_file << ".round" << round << ".methyltrain.tsv";
+    training_fn << "methyltrain" << opt::out_suffix << ".round" << round << ".events.tsv";
     std::ofstream training_ofs(training_fn.str());
 
     // write out a header for the training data
@@ -638,7 +638,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
             {
                 for(size_t ei = 0; ei < summaries[ki].events.size(); ++ei) {
                     summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
-                    training_ofs << std::endl;
                 }
 
             }
