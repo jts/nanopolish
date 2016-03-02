@@ -127,7 +127,7 @@ namespace opt
     static int batch_size = 128;
 
     // Constants that determine which events to use for training
-    static float min_event_duration = 0.01;
+    static float min_event_duration = 0.005;
     static int min_distance_from_alignment_end = 5;
     static int min_number_of_events_to_train = 100;
     static int num_training_rounds = 5;
@@ -647,7 +647,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
             bool trained = false;
-            
+
             // only train if there are a sufficient number of events for this kmer
             if(update_kmer && summaries[ki].events.size() >= opt::min_number_of_events_to_train) {
 
