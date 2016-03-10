@@ -3,7 +3,7 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_methyltrain -- train a methylation model
+// nanopolish_methyltest -- test CpG sites for methylation
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,7 +85,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 
 static const char *METHYLTEST_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Train a methylation model\n"
+"Test CpG sites for methylation\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
@@ -129,19 +129,8 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
-// Expand the event indices outwards
-void bump(HMMInputData& data, int amount)
-{
-    if(data.event_start_idx < data.event_stop_idx) {
-        data.event_start_idx -= amount;
-        data.event_stop_idx += amount;
-    } else {
-        data.event_start_idx += amount;
-        data.event_stop_idx -= amount;
-    }
-}
-// Realign the read in event space
-void test_read(const ModelMap& model_map,
+// Test CpG sites in this read for methylation
+void calculate_methylation_for_read(const ModelMap& model_map,
                const Fast5Map& name_map, 
                const faidx_t* fai, 
                const bam_hdr_t* hdr, 
@@ -152,9 +141,9 @@ void test_read(const ModelMap& model_map,
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     std::string fast5_path = name_map.get_path(read_name);
-
-    // load read
     SquiggleRead sr(read_name, fast5_path);
+
+    // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
@@ -163,7 +152,8 @@ void test_read(const ModelMap& model_map,
         std::vector<int> site_ends;
         std::vector<int> site_count;
 
-        // replace model 
+        // replace the baked-in pore model with the methylation model
+        // (including unmethylated kmers) for this strand
         std::string curr_model = sr.pore_model[strand_idx].name;
 
         std::string methyl_model = curr_model + ".ecoli_er2925.pcr_MSssI.timp.021216.alphabet_cpg.model";
@@ -175,8 +165,10 @@ void test_read(const ModelMap& model_map,
             fprintf(stderr, "Error, methylated model %s not found\n", methyl_model.c_str());
             exit(EXIT_FAILURE);
         }
+        
+        size_t k = sr.pore_model[strand_idx].k;
 
-        // Align to the new model
+        // Align in event space using the new model
         EventAlignmentParameters params;
         params.sr = &sr;
         params.fai = fai;
@@ -191,8 +183,6 @@ void test_read(const ModelMap& model_map,
             continue;
         std::string contig = alignment_output.front().ref_name.c_str();
         
-        //emit_event_alignment_tsv(stdout, sr, params, alignment_output);
-        
         // Convert the EventAlignment to a map between reference positions and events
         std::vector<AlignedPair> event_aligned_pairs;
         for(size_t i = 0; i < alignment_output.size(); ++i) {
@@ -205,13 +195,13 @@ void test_read(const ModelMap& model_map,
         int ref_start_pos = event_aligned_pairs.front().ref_pos;
         int ref_end_pos = event_aligned_pairs.back().ref_pos;
 
+        // Extract the reference sequence for this region
         int fetched_len = 0;
         assert(ref_end_pos >= ref_start_pos);
-
-        // Extract the reference sequence for this region
         std::string ref_seq = get_reference_region_ts(params.fai, contig.c_str(), ref_start_pos, 
                                                   ref_end_pos, &fetched_len);
         
+        // Remove non-ACGT bases from this reference segment
         ref_seq = gDNAAlphabet.disambiguate(ref_seq);
 
         // Scan the sequence for CpGs
@@ -223,12 +213,12 @@ void test_read(const ModelMap& model_map,
             }
         }
         
-        // Batch the CpGs together
-        size_t k = sr.pore_model[T_IDX].k;
+        // Batch the CpGs together into groups that are separated by some minimum distance
         int min_separation = 10;
         size_t curr_idx = 0;
         while(curr_idx < cpg_sites.size()) {
-
+            
+            // Find the endpoint of this group of sites
             size_t end_idx = curr_idx + 1;
             while(end_idx < cpg_sites.size()) {
                 if(cpg_sites[end_idx] - cpg_sites[end_idx - 1] > min_separation)
@@ -236,6 +226,7 @@ void test_read(const ModelMap& model_map,
                 end_idx += 1; 
             }
 
+            // the coordinates on the reference substring for this group of sites
             int sub_start_pos = cpg_sites[curr_idx] - min_separation;
             int sub_end_pos = cpg_sites[end_idx - 1] + min_separation;
 
@@ -244,20 +235,19 @@ void test_read(const ModelMap& model_map,
                 std::string subseq = ref_seq.substr(sub_start_pos, sub_end_pos - sub_start_pos + 1);
                 std::string rc_subseq = mtest_alphabet->reverse_complement(subseq);
 
+                // using the reference-to-event map, look up the event indices for this segment
                 AlignedPairRefLBComp lb_comp;
                 AlignedPairConstIter start_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
                                                                    sub_start_pos + ref_start_pos, lb_comp);
 
                 AlignedPairConstIter stop_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
-                                                                   sub_end_pos + ref_start_pos, lb_comp);
-
+                                                                  sub_end_pos + ref_start_pos, lb_comp);
+                
+                // Only process this region if the the read is aligned within the boundaries
+                // and the span between the start/end is not unusually short
                 if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end() &&
                     abs(start_iter->read_pos - stop_iter->read_pos) > 10) 
                 {
-
-                    size_t site_output_start = cpg_sites[curr_idx] - k + 1;
-                    size_t site_output_end =  cpg_sites[end_idx - 1] + k;
-                    std::string site_string = ref_seq.substr(site_output_start, site_output_end - site_output_start);
                     
                     uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
@@ -270,23 +260,20 @@ void test_read(const ModelMap& model_map,
                     data.event_start_idx = start_iter->read_pos;
                     data.event_stop_idx = stop_iter->read_pos;
                     data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
-                    
-
+                 
+                    // Calculate the likelihood of the unmethylated sequence
                     HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
                     double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
 
-                    // Methylate the CpGs in the sequence and score again
-                    std::string mcpg_subseq = gMCpGAlphabet.methylate(subseq);
-                    std::string rc_mcpg_subseq = gMCpGAlphabet.reverse_complement(mcpg_subseq);
+                    // Methylate all CpGs in the sequence and score again
+                    std::string mcpg_subseq = mtest_alphabet->methylate(subseq);
+                    std::string rc_mcpg_subseq = mtest_alphabet->reverse_complement(mcpg_subseq);
                     
-                    //printf("m_subs: %s\n", mcpg_subseq.c_str());
-                    //printf("m_rc_s: %s\n", rc_mcpg_subseq.c_str());
-                    
+                    // Calculate the likelihood of the methylated sequence
                     HMMInputSequence methylated(mcpg_subseq, rc_mcpg_subseq, mtest_alphabet);
                     double methylated_score = profile_hmm_score(methylated, data, hmm_flags);
-                    double diff = methylated_score - unmethylated_score;
 
-                    ScoredSite ss;
+                    // Aggregate score
                     int start_position = cpg_sites[curr_idx] + ref_start_pos;
                     auto iter = site_score_map.find(start_position);
                     if(iter == site_score_map.end()) {
@@ -296,23 +283,20 @@ void test_read(const ModelMap& model_map,
                         ss.start_position = start_position;
                         ss.end_position = cpg_sites[end_idx - 1] + ref_start_pos;
                         ss.n_cpg = end_idx - curr_idx;
-                        ss.sequence = site_string;
+
+                        // extract the CpG site(s) with a k-mers worth of surrounding context
+                        size_t site_output_start = cpg_sites[curr_idx] - k + 1;
+                        size_t site_output_end =  cpg_sites[end_idx - 1] + k;
+                        ss.sequence = ref_seq.substr(site_output_start, site_output_end - site_output_start);
+                    
+                        // insert into the map    
                         iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
                     }
                     
+                    // set strand-specific score
+                    // upon output below the strand scores will be summed
                     iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
                     iter->second.ll_methylated[strand_idx] = methylated_score;
-
-                    /*
-                    // Debug alignments
-                    printf("Forward unmethylated: %.2lf\n", unmethylated_score);
-                    printf("Forward methylated: %.2lf\n", methylated_score);
-                    std::vector<HMMAlignmentState> um_align = profile_hmm_align(unmethylated, data, hmm_flags);
-                    print_alignment("unmethylated", start_position, 0, unmethylated, data, um_align);
-                    
-                    std::vector<HMMAlignmentState> m_align = profile_hmm_align(methylated, data, hmm_flags);
-                    print_alignment("methylated", start_position, 0, methylated, data, m_align);
-                    */
                 }
             }
 
@@ -322,10 +306,12 @@ void test_read(const ModelMap& model_map,
     
     #pragma omp critical(methyltest_write)
     {
+        // these variables are sums over all sites within a read
         double ll_ratio_sum_strand[2] = { 0.0f, 0.0f };
         double ll_ratio_sum_both = 0;
         size_t num_positive = 0;
 
+        // write all sites for this read
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
             const ScoredSite& ss = iter->second;
@@ -508,7 +494,7 @@ int methyltest_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_processed + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    test_read(models, name_map, fai, hdr, record, read_idx, handles);
+                    calculate_methylation_for_read(models, name_map, fai, hdr, record, read_idx, handles);
                 }
             }
 
