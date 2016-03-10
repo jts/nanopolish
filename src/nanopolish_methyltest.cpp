@@ -251,7 +251,9 @@ void test_read(const ModelMap& model_map,
                 AlignedPairConstIter stop_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
                                                                    sub_end_pos + ref_start_pos, lb_comp);
 
-                if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end()) {
+                if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end() &&
+                    abs(start_iter->read_pos - stop_iter->read_pos) > 10) 
+                {
 
                     size_t site_output_start = cpg_sites[curr_idx] - k + 1;
                     size_t site_output_end =  cpg_sites[end_idx - 1] + k;
@@ -267,8 +269,9 @@ void test_read(const ModelMap& model_map,
                     data.rc = alignment_output.front().rc;
                     data.event_start_idx = start_iter->read_pos;
                     data.event_stop_idx = stop_iter->read_pos;
-                    data.event_stride = data.event_start_idx < data.event_stop_idx ? 1 : -1;
+                    data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
                     
+
                     HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
                     double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
 
@@ -334,17 +337,17 @@ void test_read(const ModelMap& model_map,
             num_positive += diff > 0;
 
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
-            fprintf(handles.site_writer, "LL_METH=%.2lf;LL_UNMETH=%.2lf;LL_RATIO=%.2lf;", sum_ll_m, sum_ll_u, diff);
-            fprintf(handles.site_writer, "LL_METH_BY_STRAND=%.2lf,%.2lf;", ss.ll_methylated[0], ss.ll_methylated[1]);
-            fprintf(handles.site_writer, "LL_UNMETH_BY_STRAND=%.2lf,%.2lf;", ss.ll_unmethylated[0], ss.ll_unmethylated[1]);
-            fprintf(handles.site_writer, "N_CPG=%d;SEQUENCE=%s\n", ss.n_cpg, ss.sequence.c_str());
+            fprintf(handles.site_writer, "LogLikMeth=%.2lf;LogLikUnmeth=%.2lf;LogLikRatio=%.2lf;", sum_ll_m, sum_ll_u, diff);
+            fprintf(handles.site_writer, "LogLikMethByStrand=%.2lf,%.2lf;", ss.ll_methylated[0], ss.ll_methylated[1]);
+            fprintf(handles.site_writer, "LogLikUnmethByStrand=%.2lf,%.2lf;", ss.ll_unmethylated[0], ss.ll_unmethylated[1]);
+            fprintf(handles.site_writer, "NumCpGs=%d;Sequence=%s\n", ss.n_cpg, ss.sequence.c_str());
 
             ll_ratio_sum_strand[0] += ss.ll_methylated[0] - ss.ll_unmethylated[0];
             ll_ratio_sum_strand[1] += ss.ll_methylated[1] - ss.ll_unmethylated[1];
             ll_ratio_sum_both += diff;
         }
         std::string complement_model = sr.pore_model[C_IDX].name;
-        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\t%s\tNUM_POSITIVE=%zu\n", fast5_path.c_str(), ll_ratio_sum_both, site_score_map.size(), complement_model.c_str(), num_positive);
+        fprintf(handles.read_writer, "%s\t%.2lf\t%zu\t%s\tNumPositive=%zu\n", fast5_path.c_str(), ll_ratio_sum_both, site_score_map.size(), complement_model.c_str(), num_positive);
     
         for(size_t si = 0; si < NUM_STRANDS; ++si) {
             std::string model = sr.pore_model[si].name;
