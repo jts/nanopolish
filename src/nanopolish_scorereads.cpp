@@ -132,7 +132,7 @@ double model_score(SquiggleRead &sr,
         std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
                                                       ref_end_pos, &fetched_len);
 
-        if (fetched_len <= sr.pore_model[strand_idx].k)
+        if (fetched_len <= (int)sr.pore_model[strand_idx].k)
             continue;
 
         const Alphabet *alphabet = sr.pore_model[strand_idx].pmalphabet;

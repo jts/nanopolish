@@ -18,8 +18,8 @@
 
 struct RecognitionMatch
 {
-    int offset; // the matched position in the recognition site
-    int length; // the length of the match, 0 indicates no match
+    unsigned offset; // the matched position in the recognition site
+    unsigned length; // the length of the match, 0 indicates no match
     bool covers_methylated_site; // does the match cover an M base?
 };
 

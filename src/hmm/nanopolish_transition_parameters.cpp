@@ -23,8 +23,8 @@ TransitionParameters::TransitionParameters()
 
     //
     allocate_matrix(td.state_transitions, 3, 3);
-    for(int i = 0; i < td.state_transitions.n_rows; ++i) {
-        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+    for(unsigned i = 0; i < td.state_transitions.n_rows; ++i) {
+        for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
             set(td.state_transitions, i, j, 0);
         }
     }
@@ -312,7 +312,7 @@ void TransitionParameters::train()
     double p_me_not_k = (double)me / sum_m_not_k;
 
     size_t sum_e = 0;
-    for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+    for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
         sum_e += get(td.state_transitions, statechar2index('E'), j);
     }
     

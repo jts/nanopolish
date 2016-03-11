@@ -340,7 +340,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
 
     for(int k = 1; k <= maxk; ++k) {
 
-        for(int pi = 0; pi < paths.size(); ++pi) {
+        for(unsigned pi = 0; pi < paths.size(); ++pi) {
     
             std::string first(k, 'A');
             std::string extension = first;

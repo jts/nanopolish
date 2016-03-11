@@ -122,15 +122,15 @@ namespace opt
     static TrainingTarget training_target = TT_METHYLATED_KMERS;
     static bool write_models = true;
     static bool output_scores = false;
-    static int progress = 0;
-    static int num_threads = 1;
-    static int batch_size = 128;
+    static unsigned progress = 0;
+    static unsigned num_threads = 1;
+    static unsigned batch_size = 128;
 
     // Constants that determine which events to use for training
     static float min_event_duration = 0.005;
-    static int min_distance_from_alignment_end = 5;
-    static int min_number_of_events_to_train = 100;
-    static int num_training_rounds = 5;
+    static unsigned min_distance_from_alignment_end = 5;
+    static unsigned min_number_of_events_to_train = 100;
+    static unsigned num_training_rounds = 5;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";

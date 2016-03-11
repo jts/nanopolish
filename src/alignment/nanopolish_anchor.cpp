@@ -109,7 +109,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 read_kidx = sr.flip_k_strand(read_kidx);
 
             // If the aligned base is beyong the start of the last k-mer of the read, skip
-            if(read_kidx >= sr.read_sequence.size() - k + 1) {
+            if(read_kidx >= (int)(sr.read_sequence.size() - k + 1)) {
                 continue;
             }
 
@@ -117,8 +117,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
 
             assert(template_idx != -1 && complement_idx != -1);
-            assert(template_idx < sr.events[T_IDX].size());
-            assert(complement_idx < sr.events[C_IDX].size());
+            assert(template_idx < (int)sr.events[T_IDX].size());
+            assert(complement_idx < (int)sr.events[C_IDX].size());
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
@@ -196,7 +196,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             
             // base, these sequences need to overlap by k - 1 bases
             int base_length = stride + k;
-            if(ai * stride + base_length > fetched_len)
+            if((int)ai * stride + base_length > fetched_len)
                 base_length = fetched_len - ai * stride;
 
             column.base_sequence = std::string(ref_segment + ai * stride, base_length);

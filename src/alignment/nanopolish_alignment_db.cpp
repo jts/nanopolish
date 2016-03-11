@@ -210,7 +210,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         size_t count = iter->second.second;
         size_t d = depth[v.ref_position - start_position];
         double f = (double)count / d;
-        if(f >= min_frequency && d >= min_depth) {
+        if(f >= min_frequency && (int)d >= min_depth) {
             v.add_info("BaseCalledReadsWithVariant", count);
             v.add_info("BaseCalledFrequency", f);
             variants.push_back(v);

@@ -198,8 +198,8 @@ hack:
                 }
                 erfb.indices[si].stop = incoming_idx;
 
-                assert(erfb.indices[si].start < events[si].size());
-                assert(erfb.indices[si].stop < events[si].size());
+                assert(erfb.indices[si].start < (int)events[si].size());
+                assert(erfb.indices[si].stop < (int)events[si].size());
             }
         }
         //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);

@@ -172,7 +172,7 @@ void trim_aligned_pairs_to_ref_region(std::vector<AlignedPair>& aligned_pairs, i
 // that is not greater than ref_pos_max. It starts the search at pair_idx
 int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max, int pair_idx)
 {
-    while(pair_idx < aligned_pairs.size()) {
+    while(pair_idx < (int)aligned_pairs.size()) {
         if(aligned_pairs[pair_idx].ref_pos > ref_pos_max)
             return pair_idx - 1;
         pair_idx += 1;
@@ -660,7 +660,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         size_t event_align_idx = 0;
 
         // If we aligned to the last event, output everything and stop
-        bool last_section = end_pair_idx == aligned_pairs.size() - 1;
+        bool last_section = end_pair_idx == (int)aligned_pairs.size() - 1;
 
         int last_event_output = 0;
         int last_ref_kmer_output = 0;
@@ -669,7 +669,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
               (num_output < output_stride || last_section); event_align_idx++) {
 
             HMMAlignmentState& as = event_alignment[event_align_idx];
-            if(as.state != 'K' && as.event_idx != curr_start_event) {
+            if(as.state != 'K' && (int)as.event_idx != curr_start_event) {
 
                 EventAlignment ea;
                 

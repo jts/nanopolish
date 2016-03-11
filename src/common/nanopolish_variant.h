@@ -58,7 +58,7 @@ struct Variant
         assert(!ref_name.empty());
         assert(!ref_seq.empty());
         assert(!alt_seq.empty());
-        assert(ref_position >= 0);
+        //assert(ref_position >= 0);
         assert(quality >= 0.0f);
     }
 
