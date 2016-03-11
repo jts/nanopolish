@@ -23,8 +23,8 @@ class HMMInputSequence
     
         // constructors
         HMMInputSequence(const std::string& seq) : 
-                             m_seq(seq),
-                             m_alphabet(&gDNAAlphabet)
+                             m_alphabet(&gDNAAlphabet),
+                             m_seq(seq)
         {
             m_rc_seq = m_alphabet->reverse_complement(seq);
         }
@@ -32,9 +32,9 @@ class HMMInputSequence
         HMMInputSequence(const std::string& fwd,
                          const std::string& rc,
                          const Alphabet* alphabet) : 
+                             m_alphabet(alphabet),
                              m_seq(fwd),
-                             m_rc_seq(rc),
-                             m_alphabet(alphabet)
+                             m_rc_seq(rc)
         {
 
         }

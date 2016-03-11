@@ -50,7 +50,7 @@ void add_found_bases(char *known, const char *kmer) {
     return;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pmalphabet(alphabet), is_scaled(false)
+PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_scaled(false), pmalphabet(alphabet)
 {
     model_filename = filename;
     std::ifstream model_reader(filename);

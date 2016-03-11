@@ -26,10 +26,10 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
                          const std::string& event_bam) :
-                            m_fast5_name_map(reads_file),
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
-                            m_event_bam(event_bam)
+                            m_event_bam(event_bam),
+                            m_fast5_name_map(reads_file)
 {
     m_p_model_map = NULL;
     _clear_region();
