@@ -190,7 +190,7 @@ hack:
                 uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
                 
                 // no event for this strand, nothing to update
-                if(incoming_idx == -1)
+                if(incoming_idx == -1) // TODO: check this
                     continue;
 
                 if(erfb.indices[si].start == -1) {

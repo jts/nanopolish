@@ -540,7 +540,7 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
             fprintf(stderr, "OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
         }
 
-        double threshold = model_stdv() ? 7.0f : 3.5f;
+        double threshold = model_stdv() ? 7.0f : 3.5f; // TODO: check
         if(fabs(lp_per_event) < 7.0f) {
             out_rs.push_back(rs);
         }
