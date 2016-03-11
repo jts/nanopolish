@@ -882,4 +882,5 @@ int consensus_main(int argc, char** argv)
     if(out_fp != stdout) {
         fclose(out_fp);
     }
+    return 0;
 }

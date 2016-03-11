@@ -384,5 +384,6 @@ int scorereads_main(int argc, char** argv)
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
+    return 0;
 }
 
