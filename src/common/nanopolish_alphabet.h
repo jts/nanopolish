@@ -246,9 +246,9 @@ class Alphabet
 
 #define BASIC_ACCESSOR_BOILERPLATE \
     virtual std::string get_name() const { return _name; } \
-    virtual uint8_t rank(char b) const { return _rank[b]; } \
+    virtual uint8_t rank(char b) const { return _rank[(int)b]; }        \
     virtual char base(uint8_t r) const { return _base[r]; } \
-    virtual char complement(char b) const { return _complement[_rank[b]]; } \
+    virtual char complement(char b) const { return _complement[_rank[(int)b]]; } \
     virtual uint32_t size() const { return _size; } \
 
 struct DNAAlphabet : public Alphabet

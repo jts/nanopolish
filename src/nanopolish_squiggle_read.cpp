@@ -116,8 +116,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
             events[si][ei] = { static_cast<float>(f5_event.mean), 
                                static_cast<float>(f5_event.stdv), 
                                static_cast<float>(f5_event.start), 
-                               static_cast<float>(f5_event.length) };
-            events[si][ei].log_stdv = log(events[si][ei].stdv);
+                               static_cast<float>(f5_event.length),
+                               static_cast<float>(log(f5_event.stdv)) };
         }
     }
 

@@ -59,7 +59,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     std::vector<std::vector<std::string>> read_substrings;
 
     // kmer size of pore model
-    uint32_t k;
+    uint32_t k = 0;
 
     // Load the SquiggleReads aligned to this region and the bases
     // that are mapped to our reference anchoring positions
@@ -227,8 +227,8 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride
     std::vector<AlignedPair> out;
 
     // This code is derived from bam_fillmd1_core
-    uint8_t *ref = NULL;
-    uint8_t *seq = bam_get_seq(record);
+    //uint8_t *ref = NULL;
+    //uint8_t *seq = bam_get_seq(record);
     uint32_t *cigar = bam_get_cigar(record);
     const bam1_core_t *c = &record->core;
 

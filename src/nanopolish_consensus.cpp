@@ -596,7 +596,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id, const 
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
 
     if(opt::verbose > 0) {
-        fprintf(stderr, "correcting segment %zu with %zu reads\n", segment_id, data.size());
+        fprintf(stderr, "correcting segment %u with %zu reads\n", segment_id, data.size());
     }
     
     // The current consensus sequence

@@ -318,7 +318,7 @@ void add_aligned_events(const ModelMap& model_map,
             return;
 
         // Update pore model based on alignment
-        double orig_score;
+        double orig_score = -INFINITY;
         if (opt::output_scores) {
             orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
             #pragma omp critical(print)

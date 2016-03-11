@@ -19,7 +19,7 @@
 //
 #define FOFN_SUFFIX ".fast5.fofn"
 
-KSEQ_INIT(gzFile, gzread);
+KSEQ_INIT(gzFile, gzread)
 
 Fast5Map::Fast5Map(const std::string& fasta_filename)
 {

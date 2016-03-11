@@ -25,6 +25,6 @@ namespace IUPAC
     // Returns a string defining the possible unambiguous bases for each symbol
     // in the alphabet
     std::string getPossibleSymbols(char c);
-};
+}
 
 #endif

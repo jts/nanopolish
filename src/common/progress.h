@@ -15,7 +15,7 @@ class Progress
 {
     public:
         
-        Progress(const std::string message) : m_message(message), m_os(std::cerr)
+        Progress(const std::string message) : m_os(std::cerr), m_message(message)
         {
 #if HAVE_CLOCK_GETTIME            
             timespec start;

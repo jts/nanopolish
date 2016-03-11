@@ -138,6 +138,8 @@ class ProfileHMMViterbiOutput
                 from = PS_KMER_SKIP;
             else if(max == s)
                 from = PS_PRE_SOFT;
+            else // should not be reached, but silences uninitialized warnings
+                from = 0;
             set(*p_bm, row, col, from);
         }
         
