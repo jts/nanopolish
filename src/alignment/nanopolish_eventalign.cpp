@@ -431,7 +431,7 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
     size_t prev_ref_pos = std::string::npos;
     
     // the number of unique reference positions seen in the alignment
-    size_t num_unique_ref_pos = 0;
+    //size_t num_unique_ref_pos = 0;
 
     for(size_t i = 0; i < alignments.size(); ++i) {
 
@@ -604,7 +604,6 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     int last_event = params.sr->get_closest_event_to(read_kidx_end, params.strand_idx);
     bool forward = first_event < last_event;
 
-    int last_event_output = -1;
     int curr_start_event = first_event;
     int curr_start_ref = aligned_pairs.front().ref_pos;
     int curr_pair_idx = 0;

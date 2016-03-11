@@ -161,7 +161,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::map<std::string, std::pair<Variant, int>> map;
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
-    size_t num_aligned_reads = 0;
+    //size_t num_aligned_reads = 0;
 
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& record = m_sequence_records[i];

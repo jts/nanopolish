@@ -262,9 +262,9 @@ struct DNAAlphabet : public Alphabet
     // no methylation in this alphabet
     virtual size_t num_recognition_sites() const { return 0; }
     virtual size_t recognition_length() const { return 0; }
-    virtual const char* get_recognition_site(size_t i) const { return NULL; }
-    virtual const char* get_recognition_site_methylated(size_t i) const { return NULL; }
-    virtual const char* get_recognition_site_methylated_complement(size_t i) const { 
+    virtual const char* get_recognition_site(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated_complement(size_t) const { 
         return NULL;
     }
 

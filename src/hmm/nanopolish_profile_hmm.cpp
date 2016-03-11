@@ -28,9 +28,9 @@ void profile_hmm_forward_initialize(FloatMatrix& fm)
 // Terminate the forward algorithm by calculating
 // the probability of transitioning to the end state
 // for all columns and a given row
-float profile_hmm_forward_terminate(const FloatMatrix& fm,
-                                    const FloatMatrix& tm,
-                                    uint32_t row)
+float profile_hmm_forward_terminate(const FloatMatrix&,
+                                    const FloatMatrix&,
+                                    uint32_t)
 {
     assert(false);
     return -INFINITY;

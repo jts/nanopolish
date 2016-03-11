@@ -31,7 +31,7 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"scorereads",  scorereads_main} 
 };
 
-int print_usage(int argc, char **argv)
+int print_usage(int, char **)
 {
     std::cout << "usage: nanopolish [command] [options]" << std::endl;
     std::cout << "  valid commands: " << std::endl;

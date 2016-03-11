@@ -175,7 +175,7 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
     }        
 
     // set k
-    uint32_t k = sr.pore_model[strand_idx].k;
+    //uint32_t k = sr.pore_model[strand_idx].k;
 
     // Align to the new model
     EventAlignmentParameters params;

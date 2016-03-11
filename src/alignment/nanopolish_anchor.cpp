@@ -238,7 +238,7 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride
 
     // query pos is an index in the query string that is recorded in the bam
     // we record this as a sanity check
-    int query_pos = 0;
+    //int query_pos = 0;
     
     int ref_pos = c->pos;
 

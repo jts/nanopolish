@@ -226,7 +226,9 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
     const uint32_t k = pm.k;
 
     size_t n_kmers = sequence.length() - k + 1;
+#ifdef PRINT_TRAINING_MESSAGES
     uint32_t strand_idx = 0;
+#endif
     char prev_s = 'M';
 
     for(size_t pi = 0; pi < alignment.size(); ++pi) {
@@ -273,17 +275,17 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
             add_transition_observation(prev_s, s);
 
             // emission
-            float level = data.read->get_drift_corrected_level(ei, data.strand);
-            float sd = data.read->events[data.strand][ei].stdv;
-            float duration = data.read->get_duration(ei, data.strand);
+            //float level = data.read->get_drift_corrected_level(ei, data.strand);
+            //float sd = data.read->events[data.strand][ei].stdv;
+            //float duration = data.read->get_duration(ei, data.strand);
             if(ki >= n_kmers)
                 printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
             
             assert(ki < n_kmers);
-            uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
+            //uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
         
-            GaussianParameters model = pm.get_scaled_parameters(rank);
-            float norm_level = (level - model.mean) / model.stdv;
+            //GaussianParameters model = pm.get_scaled_parameters(rank);
+            //float norm_level = (level - model.mean) / model.stdv;
 
             prev_s = s;
         }

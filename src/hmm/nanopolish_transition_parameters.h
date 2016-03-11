@@ -91,7 +91,7 @@ class TransitionParameters
         void initialize_sqkmap006_complement();
 
         // Not allowed
-        TransitionParameters(const TransitionParameters& other) {}
+        TransitionParameters(const TransitionParameters&) {}
 
         // Calculate which bin of the skip probability table this level difference falls in
         inline size_t get_skip_bin(double k_level1, double k_level2) const
