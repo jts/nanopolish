@@ -187,12 +187,12 @@ hack:
             fast5::Event_Alignment_Entry& eae = event_alignments[i];
             
             for(uint32_t si = 0; si <= 1; ++si) {
-                uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
+                int incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
                 
                 // no event for this strand, nothing to update
-                if(incoming_idx == -1) // TODO: check this
+                if(incoming_idx == -1) {
                     continue;
-
+                }
                 if(erfb.indices[si].start == -1) {
                     erfb.indices[si].start = incoming_idx;        
                 }
