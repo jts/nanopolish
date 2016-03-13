@@ -109,7 +109,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 read_kidx = sr.flip_k_strand(read_kidx);
 
             // If the aligned base is beyong the start of the last k-mer of the read, skip
-            if(read_kidx >= (int)(sr.read_sequence.size() - k + 1)) {
+            if(read_kidx < 0 || read_kidx >= (int)(sr.read_sequence.size() - k + 1)) {
                 continue;
             }
 
