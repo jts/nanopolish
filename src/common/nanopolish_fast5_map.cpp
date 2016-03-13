@@ -19,7 +19,7 @@
 //
 #define FOFN_SUFFIX ".fast5.fofn"
 
-KSEQ_INIT(gzFile, gzread);
+KSEQ_INIT(gzFile, gzread)
 
 Fast5Map::Fast5Map(const std::string& fasta_filename)
 {
@@ -29,7 +29,7 @@ Fast5Map::Fast5Map(const std::string& fasta_filename)
     struct stat fofn_file_s;
     struct stat fasta_file_s;
     int fofn_ret = stat(fofn_filename.c_str(), &fofn_file_s);
-    int fasta_ret = stat(fasta_filename.c_str(), &fasta_file_s);
+    stat(fasta_filename.c_str(), &fasta_file_s);
 
     // Use the stored fofn if its available and newer than the fasta
     if(fofn_ret == 0 && fofn_file_s.st_mtime > fasta_file_s.st_mtime) {

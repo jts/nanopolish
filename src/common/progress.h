@@ -15,7 +15,7 @@ class Progress
 {
     public:
         
-        Progress(const std::string message) : m_message(message), m_os(std::cerr)
+        Progress(const std::string message) : m_os(std::cerr), m_message(message)
         {
 #if HAVE_CLOCK_GETTIME            
             timespec start;
@@ -31,8 +31,8 @@ class Progress
         {
 
             // print 
-            int max_leader = 40;
-            int bar_width = 50;
+            unsigned max_leader = 40;
+            unsigned bar_width = 50;
 
             std::string leader;
             if(m_message.size() > max_leader) {
@@ -43,13 +43,13 @@ class Progress
             
             m_os << leader << " [";
             
-            int pos = bar_width * progress;
-            for (int i = 0; i < bar_width; ++i) {
+            unsigned pos = bar_width * progress;
+            for (unsigned i = 0; i < bar_width; ++i) {
                 if (i < pos) m_os << "=";
                 else if (i == pos) m_os << ">";
                 else m_os << " ";
             }
-            m_os << "] " << int(progress * 100.0) << "% in " << get_elapsed_seconds() << "s\r";
+            m_os << "] " << unsigned(progress * 100.0) << "% in " << get_elapsed_seconds() << "s\r";
             m_os.flush();
         }
         

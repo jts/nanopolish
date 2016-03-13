@@ -26,10 +26,10 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
                          const std::string& event_bam) :
-                            m_fast5_name_map(reads_file),
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
-                            m_event_bam(event_bam)
+                            m_event_bam(event_bam),
+                            m_fast5_name_map(reads_file)
 {
     m_p_model_map = NULL;
     _clear_region();
@@ -161,7 +161,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::map<std::string, std::pair<Variant, int>> map;
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
-    size_t num_aligned_reads = 0;
+    //size_t num_aligned_reads = 0;
 
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& record = m_sequence_records[i];
@@ -210,7 +210,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         size_t count = iter->second.second;
         size_t d = depth[v.ref_position - start_position];
         double f = (double)count / d;
-        if(f >= min_frequency && d >= min_depth) {
+        if(f >= min_frequency && (int)d >= min_depth) {
             v.add_info("BaseCalledReadsWithVariant", count);
             v.add_info("BaseCalledFrequency", f);
             variants.push_back(v);

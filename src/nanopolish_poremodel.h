@@ -59,7 +59,7 @@ struct PoreModelStateParams
 class PoreModel
 {
     public:
-        PoreModel(uint32_t _k=5) : is_scaled(false), k(_k), pmalphabet(&gDNAAlphabet) {}
+        PoreModel(uint32_t _k=5) : k(_k), is_scaled(false), pmalphabet(&gDNAAlphabet) {}
 
         // These constructors and the output routine take an alphabet 
         // so that kmers are inserted/written in order

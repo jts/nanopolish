@@ -93,7 +93,7 @@ inline float log_probability_match(const SquiggleRead& read,
         float stdv = read.get_stdv(event_idx, strand);
         float log_stdv = read.get_log_stdv(event_idx, strand);
         float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
-        lp += log_invgauss_pdf(stdv, log_stdv, state);
+        lp += lp_stdv;
     }
 
 #if DEBUG_HMM_EMISSION
@@ -114,9 +114,9 @@ inline float log_probability_event_insert(const SquiggleRead& read,
     return log_probability_match(read, kmer_rank, event_idx, strand, scale, log_scale);
 }
 
-inline float log_probability_background(const SquiggleRead& read,
-                                        uint32_t event_idx,
-                                        uint8_t strand)
+inline float log_probability_background(const SquiggleRead&,
+                                        uint32_t,
+                                        uint8_t)
 {
     return -3.0f;
 }

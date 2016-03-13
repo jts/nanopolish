@@ -220,7 +220,6 @@ bool sortIndexedPathScoreDesc(const IndexedPathScore& a, const IndexedPathScore&
 void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
 {
     PROFILE_FUNC("score_paths")
-    double MIN_FIT = INFINITY;
     size_t CULL_RATE = 5;
     double CULL_MIN_SCORE = -30.0f;
     double CULL_MIN_IMPROVED_FRACTION = 0.2f;
@@ -254,7 +253,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
             fprintf(stderr, "Scoring %d\n", ri);
         }
 
-        const HMMInputData& data = input[ri];
+        //const HMMInputData& data = input[ri];
         std::vector<IndexedPathScore> result(paths.size());
 
         // Score all paths
@@ -306,6 +305,7 @@ void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
     std::stable_sort(paths.begin(), paths.end(), sortPathConsScoreDesc);
 
 #if DEBUG_PATH_SELECTION
+    double MIN_FIT = INFINITY;
     for(size_t pi = 0; pi < paths.size(); ++pi) {
 
         // Calculate the length of the matching prefix with the initial sequence
@@ -340,7 +340,7 @@ void extend_paths(PathConsVector& paths, int maxk = 2)
 
     for(int k = 1; k <= maxk; ++k) {
 
-        for(int pi = 0; pi < paths.size(); ++pi) {
+        for(unsigned pi = 0; pi < paths.size(); ++pi) {
     
             std::string first(k, 'A');
             std::string extension = first;
@@ -540,8 +540,8 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
             fprintf(stderr, "OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
         }
 
-        double threshold = model_stdv() ? 7.0f : 3.5f;
-        if(fabs(lp_per_event) < 7.0f) {
+        double threshold = model_stdv() ? 7.0f : 3.5f; // TODO: check
+        if(fabs(lp_per_event) < threshold) {
             out_rs.push_back(rs);
         }
     }
@@ -596,7 +596,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id, const 
     std::vector<HMMInputData> data = get_input_for_columns(window, start_column, end_column);
 
     if(opt::verbose > 0) {
-        fprintf(stderr, "correcting segment %zu with %zu reads\n", segment_id, data.size());
+        fprintf(stderr, "correcting segment %u with %zu reads\n", segment_id, data.size());
     }
     
     // The current consensus sequence
@@ -882,4 +882,5 @@ int consensus_main(int argc, char** argv)
     if(out_fp != stdout) {
         fclose(out_fp);
     }
+    return 0;
 }

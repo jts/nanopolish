@@ -207,8 +207,8 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
         Variant v(line);
 
         if(v.ref_name == contig &&
-           v.ref_position >= region_start &&
-           v.ref_position <= region_end) 
+           (int)v.ref_position >= region_start &&
+           (int)v.ref_position <= region_end) 
         {
             out.push_back(v);
         }
@@ -242,7 +242,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     }
 
     // Step 2. Add variants to the haplotypes
-    size_t calling_span = 10;
+    int calling_span = 10;
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
  
@@ -419,4 +419,5 @@ int call_variants_main(int argc, char** argv)
     if(out_fp != stdout) {
         fclose(out_fp);
     }
+    return 0;
 }

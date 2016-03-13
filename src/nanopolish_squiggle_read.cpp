@@ -116,8 +116,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
             events[si][ei] = { static_cast<float>(f5_event.mean), 
                                static_cast<float>(f5_event.stdv), 
                                static_cast<float>(f5_event.start), 
-                               static_cast<float>(f5_event.length) };
-            events[si][ei].log_stdv = log(events[si][ei].stdv);
+                               static_cast<float>(f5_event.length),
+                               static_cast<float>(log(f5_event.stdv)) };
         }
     }
 
@@ -187,19 +187,19 @@ hack:
             fast5::Event_Alignment_Entry& eae = event_alignments[i];
             
             for(uint32_t si = 0; si <= 1; ++si) {
-                uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
+                int incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
                 
                 // no event for this strand, nothing to update
-                if(incoming_idx == -1)
+                if(incoming_idx == -1) {
                     continue;
-
+                }
                 if(erfb.indices[si].start == -1) {
                     erfb.indices[si].start = incoming_idx;        
                 }
                 erfb.indices[si].stop = incoming_idx;
 
-                assert(erfb.indices[si].start < events[si].size());
-                assert(erfb.indices[si].stop < events[si].size());
+                assert(erfb.indices[si].start < (int)events[si].size());
+                assert(erfb.indices[si].stop < (int)events[si].size());
             }
         }
         //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);

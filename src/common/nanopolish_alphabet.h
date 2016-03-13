@@ -18,8 +18,8 @@
 
 struct RecognitionMatch
 {
-    int offset; // the matched position in the recognition site
-    int length; // the length of the match, 0 indicates no match
+    unsigned offset; // the matched position in the recognition site
+    unsigned length; // the length of the match, 0 indicates no match
     bool covers_methylated_site; // does the match cover an M base?
 };
 
@@ -246,9 +246,9 @@ class Alphabet
 
 #define BASIC_ACCESSOR_BOILERPLATE \
     virtual std::string get_name() const { return _name; } \
-    virtual uint8_t rank(char b) const { return _rank[b]; } \
+    virtual uint8_t rank(char b) const { return _rank[(int)b]; }        \
     virtual char base(uint8_t r) const { return _base[r]; } \
-    virtual char complement(char b) const { return _complement[_rank[b]]; } \
+    virtual char complement(char b) const { return _complement[_rank[(int)b]]; } \
     virtual uint32_t size() const { return _size; } \
 
 struct DNAAlphabet : public Alphabet
@@ -262,9 +262,9 @@ struct DNAAlphabet : public Alphabet
     // no methylation in this alphabet
     virtual size_t num_recognition_sites() const { return 0; }
     virtual size_t recognition_length() const { return 0; }
-    virtual const char* get_recognition_site(size_t i) const { return NULL; }
-    virtual const char* get_recognition_site_methylated(size_t i) const { return NULL; }
-    virtual const char* get_recognition_site_methylated_complement(size_t i) const { 
+    virtual const char* get_recognition_site(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated_complement(size_t) const { 
         return NULL;
     }
 

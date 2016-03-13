@@ -120,4 +120,5 @@ int getmodel_main(int argc, char** argv)
             gDNAAlphabet.lexicographic_next(kmer); // advance kmer
         }
     }
+    return 0;
 }

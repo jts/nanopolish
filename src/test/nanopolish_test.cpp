@@ -371,7 +371,7 @@ generate_training_data(const ParamMixture& mixture, size_t n_data,
         // draw population
         size_t j = discrete_dist(weights.begin(), weights.end())(rg);
         ++population_size[j];
-        assert(0 <= j and j < n_components);
+        assert(j < n_components);
         // draw read_var
         data[i].read_var = uniform_dist(read_var_rg[0], read_var_rg[1])(rg);
         data[i].log_read_var = std::log(data[i].read_var);

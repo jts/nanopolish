@@ -81,7 +81,7 @@ class ProfileHMMForwardOutput
         }
 
         // add in the probability of ending the alignment at row,col
-        inline void update_end(float v, uint32_t row, uint32_t col)
+        inline void update_end(float v, uint32_t, uint32_t)
         {
             lp_end = add_logs(lp_end, v);
         }
@@ -138,6 +138,8 @@ class ProfileHMMViterbiOutput
                 from = PS_KMER_SKIP;
             else if(max == s)
                 from = PS_PRE_SOFT;
+            else // should not be reached, but silences uninitialized warnings
+                from = 0;
             set(*p_bm, row, col, from);
         }
         
@@ -262,7 +264,7 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 template<class ProfileHMMOutput>
 inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
                                       const HMMInputData& _data,
-                                      const uint32_t _e_start,
+                                      const uint32_t,
                                       uint32_t flags,
                                       ProfileHMMOutput& output)
 {

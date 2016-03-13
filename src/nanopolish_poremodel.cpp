@@ -18,7 +18,7 @@ void PoreModel::bake_gaussian_parameters()
     scaled_params.resize(states.size());
     scaled_states.resize(states.size());
 
-    for(int i = 0; i < states.size(); ++i) {
+    for(unsigned i = 0; i < states.size(); ++i) {
 
         // as per ONT documents
         scaled_states[i].level_mean = states[i].level_mean * scale + shift;
@@ -40,7 +40,7 @@ void PoreModel::bake_gaussian_parameters()
 
 void add_found_bases(char *known, const char *kmer) {
     char newbase[2];
-    int posn;
+    unsigned posn;
     newbase[1] = '\0';
 
     while ( (posn = strspn(kmer, known)) != strlen(kmer) ){
@@ -50,14 +50,14 @@ void add_found_bases(char *known, const char *kmer) {
     return;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pmalphabet(alphabet), is_scaled(false)
+PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_scaled(false), pmalphabet(alphabet)
 {
     model_filename = filename;
     std::ifstream model_reader(filename);
     std::string model_line;
 
     bool firstKmer = true;
-    int ninserted = 0;
+    unsigned ninserted = 0;
 
     shift_offset = 0.0f;
 
