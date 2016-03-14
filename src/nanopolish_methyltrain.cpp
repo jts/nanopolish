@@ -654,17 +654,22 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 // train a mixture model where a minority of k-mers aren't methylated
                 ParamMixture mixture;
                 
-                // unmethylated component
-                float um_rate = 0.05f;
+                float incomplete_methylation_rate = 0.05f;
                 std::string um_kmer = mtrain_alphabet->unmethylate(kmer);
                 size_t um_ki = mtrain_alphabet->kmer_rank(um_kmer.c_str(), k);
-
-                // initialize the mixture weights and gaussian parameters for each component
-                mixture.log_weights.push_back(std::log(um_rate));
-                mixture.params.push_back(model_iter->second.get_parameters(um_ki));
-
-                mixture.log_weights.push_back(std::log(1 - um_rate));
+                
+                // Initialize the training parameters. If this is a kmer containing
+                // a methylation site we train a two component mixture, otherwise
+                // just fit a gaussian
+                float major_weight = is_m_kmer ? 1 - incomplete_methylation_rate : 1.0f;
+                mixture.log_weights.push_back(log(major_weight));
                 mixture.params.push_back(model_iter->second.get_parameters(ki));
+                
+                if(is_m_kmer) {
+                    // add second unmethylated component
+                    mixture.log_weights.push_back(std::log(incomplete_methylation_rate));
+                    mixture.params.push_back(model_iter->second.get_parameters(um_ki));
+                }
 
                 if(opt::verbose > 1) {
                     fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_training_iter->first.c_str(), kmer.c_str(), 
@@ -681,15 +686,18 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 }
 
                 #pragma omp critical
-                new_pm.states[ki] = trained_mixture.params[1];
+                new_pm.states[ki] = trained_mixture.params[0];
 
                 if (model_stdv()) {
                     ParamMixture ig_mixture;
                     // weights
                     ig_mixture.log_weights = trained_mixture.log_weights;
                     // states
-                    ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
-                    ig_mixture.params.emplace_back(trained_mixture.params[1]);
+                    ig_mixture.params.emplace_back(trained_mixture.params[0]);
+
+                    if(is_m_kmer) {
+                        ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                    }
                     // run training
                     auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
 
@@ -704,7 +712,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     // update state
                     #pragma omp critical
                     {
-                        new_pm.states[ki] = trained_ig_mixture.params[1];
+                        new_pm.states[ki] = trained_ig_mixture.params[0];
                     }
                 }
 
