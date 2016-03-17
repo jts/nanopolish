@@ -171,7 +171,22 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         AlignedPairConstIter start_iter;
         AlignedPairConstIter stop_iter;
         _find_iter_by_ref_bounds(record.aligned_bases, start_position, stop_position, start_iter, stop_iter);
-        
+            
+        // Increment the depth over this region
+        int depth_start = start_iter->ref_pos;
+        int depth_end = stop_iter == record.aligned_bases.end() ?
+            record.aligned_bases.back().ref_pos : stop_iter->ref_pos;
+
+        // clamp
+        depth_start = std::max(depth_start, start_position);
+        depth_end = std::min(depth_end, stop_position);
+
+        for(; depth_start < depth_end; ++depth_start) {
+            assert(depth_start >= start_position);
+            assert(depth_start - start_position < depth.size());
+            depth[depth_start - start_position]++;
+        }
+
         //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos, 
         //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
         
@@ -182,6 +197,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
             if(rp < start_position || rp > stop_position) {
                 continue;
             }
+
 
             char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
             char ab = record.sequence[start_iter->read_pos];
