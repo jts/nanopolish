@@ -3,7 +3,7 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_scorereads -- train a methylation model
+// nanopolish_scorereads -- score reads against an alignment, model
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +48,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 
 static const char *SCOREREADS_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Train a methylation model\n"
+"Score reads against an alignment, model\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
