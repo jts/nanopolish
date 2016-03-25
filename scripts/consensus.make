@@ -12,7 +12,7 @@ READS_BASE=$(basename $(READS))
 #
 # A pipeline to recompute a consensus sequence for an assembly
 #
-all: $(READS_BASE).pp.sorted.bam $(READS_BASE).pp.sorted.bam.bai
+all: $(READS_BASE).pp.sorted.bam $(READS_BASE).pp.sorted.bam.bai $(ASSEMBLY).fai
 
 #
 # Preprocess the reads to make a name map
@@ -48,3 +48,9 @@ $(ASSEMBLY).bwt: $(ASSEMBLY)
 #
 %.sorted.bam.bai: %.sorted.bam
 	samtools index $^
+
+#
+# Index assembly
+#
+$(ASSEMBLY).fai: $(ASSEMBLY)
+	samtools faidx $<
