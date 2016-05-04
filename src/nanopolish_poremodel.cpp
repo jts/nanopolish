@@ -99,7 +99,10 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
 
         std::string kmer;
         PoreModelStateParams params;
+
+        // ig_lambda (R9), weight currently not read
         parser >> kmer >> params.level_mean >> params.level_stdv >> params.sd_mean >> params.sd_stdv;
+
         params.update_sd_lambda();
         params.update_logs();
 

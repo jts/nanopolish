@@ -16,7 +16,8 @@
 enum KitVersion
 {
     KV_SQK005,
-    KV_SQK006
+    KV_SQK006,
+    KV_SQK007
 };
 
 // The parameters of a gaussian distribution

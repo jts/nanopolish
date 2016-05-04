@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
+#include "nanopolish_pore_model_set.h"
 #include "src/fast5.hpp"
 
 //
@@ -76,6 +77,7 @@ void SquiggleRead::transform()
 //
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
+    printf("fast5: %s\n", fast5_path.c_str());
     fast5::File* f_p;
     this->fast5_path = fast5_path;
 
@@ -119,8 +121,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
             continue;
         }
 
-        // Load the pore model for this strand
-        pore_model[si] = PoreModel( f_p, si );
+        // R9 change: load pore model from external file
+        // Currently we use template for everything
+        std::string r9_model_name = "r9.template.model";
+        pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
 
         // initialize transition parameters
         parameters[si].initialize(pore_model[si].name);
@@ -196,8 +200,8 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
     std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_event_alignments();
     assert(!read_sequence.empty());
 
-    const uint32_t k = pore_model[T_IDX].k;
-    assert(pore_model[C_IDX].k == k);
+    // R9 change: use k from the event table as this might not match the pore model
+    const uint32_t k = strlen(event_alignments[0].kmer);
 
     uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
@@ -213,7 +217,6 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
 
     while(start_ea_idx < event_alignments.size()) {
 
-hack:
         uint32_t prev_kidx = read_kidx;
 
         // Advance the kmer index until we have found the read kmer
@@ -222,17 +225,6 @@ hack:
               strncmp(event_alignments[start_ea_idx].kmer, 
                      read_sequence.c_str() + read_kidx, k) != 0) {
             read_kidx += 1;
-        }
-
-        // In the most recent version of metrichor occasionally
-        // a kmer will be present in the alignment table
-        // that is not in the 2D read. This awful hack
-        // will skip such k-mers. It is not a long-term
-        // solution, only until metrichor is fixed.
-        if(read_kidx - prev_kidx > 10) {
-            start_ea_idx += 1;
-            read_kidx = prev_kidx;
-            goto hack;
         }
 
         // Advance the event alignment end index to the last tuple
