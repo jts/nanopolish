@@ -28,6 +28,12 @@
 #include "profiler.h"
 
 //
+// Typedefs
+//
+typedef std::vector<StateTrainingData> TrainingDataVector;
+typedef std::vector<TrainingDataVector> KmerTrainingData;
+
+//
 // Getopt
 //
 #define SUBPROGRAM "trainmodel"
@@ -100,6 +106,75 @@ void parse_trainmodel_options(int argc, char** argv)
     opt::fofn_file = argv[optind++];
 }
 
+std::vector<EventAlignment> generate_alignment_to_basecalls(const SquiggleRead* read, 
+                                                            const size_t k,
+                                                            const size_t strand_idx,
+                                                            const std::vector<bool>* use_kmer = NULL)
+{
+    size_t num_kmers_in_alphabet = gDNAAlphabet.get_num_strings(k);
+    std::vector<EventAlignment> alignment;
+    const std::string& read_sequence = read->read_sequence;
+    size_t n_kmers = read_sequence.size() - k + 1;
+    for(size_t ki = 0; ki < n_kmers; ++ki) {
+
+        IndexPair event_range_for_kmer = read->base_to_event_map[ki].indices[strand_idx];
+        
+        // skip kmers without events and with multiple events
+        if(event_range_for_kmer.start == -1 || 
+           event_range_for_kmer.start != event_range_for_kmer.stop) {
+            continue;
+        }
+
+        std::string kmer = read_sequence.substr(ki, k);
+        size_t kmer_rank = gDNAAlphabet.kmer_rank(kmer.c_str(), k);
+        assert(kmer_rank < num_kmers_in_alphabet);
+
+        size_t event_idx = event_range_for_kmer.start;
+        
+        // Check if this kmer is marked as being useful
+        if(use_kmer == NULL || use_kmer->at(kmer_rank)) {
+            EventAlignment ea;
+            // ref data
+            ea.ref_name = ""; // not needed
+            ea.ref_kmer = kmer;
+            ea.ref_position = ki;
+            ea.read_idx = -1; // not needed
+            ea.strand_idx = strand_idx;
+            ea.event_idx = event_idx;
+            ea.rc = false;
+            ea.model_kmer = kmer;
+            ea.hmm_state = 'M'; // recalibration code only uses "M" alignments
+            alignment.push_back(ea);
+        }
+    }
+
+    return alignment;
+}
+
+KmerTrainingData alignment_to_training_data(const SquiggleRead* read,
+                                            const std::vector<EventAlignment>& alignment,
+                                            const size_t k,
+                                            size_t read_idx)
+{
+    size_t num_kmers_in_alphabet = gDNAAlphabet.get_num_strings(k);
+    KmerTrainingData kmer_training_data(num_kmers_in_alphabet);
+
+    for(auto const& a : alignment) {
+        size_t kmer_rank = gDNAAlphabet.kmer_rank(a.model_kmer.c_str(), k);
+        assert(kmer_rank < num_kmers_in_alphabet);
+
+        double level = read->events[a.strand_idx][a.event_idx].mean;
+        double stdv = read->events[a.strand_idx][a.event_idx].stdv;
+
+        StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var);
+        kmer_training_data[kmer_rank].push_back(std);
+        
+        //fprintf(tsv_writer, "%zu\t%s\t%.2lf\t%.5lf\n", read_idx, kmer.c_str(), level, read->events[training_strand][event_idx].duration);
+    }
+    return kmer_training_data;
+}
+
+
 int trainmodel_main(int argc, char** argv)
 {
     parse_trainmodel_options(argc, argv);
@@ -120,62 +195,32 @@ int trainmodel_main(int argc, char** argv)
     size_t num_kmers = gDNAAlphabet.get_num_strings(basecalled_k);
     unsigned int training_strand = T_IDX; // template training for now
 
-    typedef std::vector<StateTrainingData> TrainingDataVector;
-    typedef std::vector<TrainingDataVector> KmerTrainingData;
-
     // This vector is indexed by read, then kmer, then event
     std::vector<KmerTrainingData> read_training_data;
+
+    FILE* tsv_writer = fopen("trainmodel.tsv", "w");
+    fprintf(tsv_writer, "read_idx\tkmer\tlevel_mean\tduration\n");
 
     size_t read_idx = 0;
     for(auto* read : reads) {
         
-        // Initialize a vector-of-vectors to hold training data for this read
-        read_training_data.push_back(KmerTrainingData());
-        KmerTrainingData& kmer_training_data = read_training_data.back();
+        // extract alignment of events to k-mers
+        std::vector<EventAlignment> alignment = 
+            generate_alignment_to_basecalls(read, 
+                                            basecalled_k,
+                                            training_strand,
+                                            NULL);
 
-        // Initialize the events-by-kmer vector 
-        kmer_training_data.resize(num_kmers);
-        printf("KTD: %zu\n", kmer_training_data.size());
 
-        const std::string& read_sequence = read->read_sequence;
-        size_t n_kmers = read_sequence.size() - basecalled_k + 1;
-        for(size_t ki = 0; ki < n_kmers; ++ki) {
+        // convert the alignment into model training data for this read
+        KmerTrainingData training_data = 
+            alignment_to_training_data(read, 
+                                       alignment,
+                                       basecalled_k,
+                                       read_idx);
 
-            IndexPair event_range_for_kmer = read->base_to_event_map[ki].indices[training_strand];
-            
-            // skip kmers without events and with multiple events
-            if(event_range_for_kmer.start == -1 || 
-               event_range_for_kmer.start != event_range_for_kmer.stop) {
-                continue;
-            }
-
-            std::string kmer = read_sequence.substr(ki, basecalled_k);
-            size_t kmer_rank = gDNAAlphabet.kmer_rank(kmer.c_str(), basecalled_k);
-            assert(kmer_rank < num_kmers);
-
-            size_t event_idx = event_range_for_kmer.start;
-            double level = read->events[training_strand][event_idx].mean;
-            double stdv = read->events[training_strand][event_idx].stdv;
-
-            printf("read: %zu kmer: %s ki: %zu lvl: %.2lf dur: %.5lf\n", read_idx, kmer.c_str(), kmer_rank, level, read->events[training_strand][event_idx].duration);
-            StateTrainingData std(level, stdv, read->pore_model[training_strand].var);
-            kmer_training_data[kmer_rank].push_back(std);
-        }
-
+        read_training_data.push_back(training_data);
         read_idx++;
-        /*
-        std::string kmer(basecalled_k, 'A');
-        for(size_t ki = 0; ki < num_kmers; ki++) {
-            size_t num_events = kmer_training_data[ki].size();
-            printf("%s:", kmer.c_str());
-            for(size_t ei = 0; ei < num_events; ++ei) {
-                printf("%.2lf\t", kmer_training_data[ki][ei].level_mean);
-            }
-            printf("\n");
-
-            gDNAAlphabet.lexicographic_next(kmer);
-        }
-        */
     }
 
     // Select the read with the most events as the "baseline" read for generating the model
@@ -251,43 +296,14 @@ int trainmodel_main(int argc, char** argv)
     // Recalibrate read
     for(auto* read: reads) {
 
-        // We generate a vector of event-to-kmer mapping to use the recalibration linear solver
-        std::vector<EventAlignment> alignment;
-        const std::string& read_sequence = read->read_sequence;
-        size_t n_kmers = read_sequence.size() - basecalled_k + 1;
-        for(size_t ki = 0; ki < n_kmers; ++ki) {
+        // generate an alignment between the RNN output and the basecalled read
+        std::vector<EventAlignment> alignment = 
+            generate_alignment_to_basecalls(read, 
+                                            basecalled_k,
+                                            training_strand,
+                                            &use_kmer);
 
-            IndexPair event_range_for_kmer = read->base_to_event_map[ki].indices[training_strand];
-            
-            // skip kmers without events and with multiple events
-            if(event_range_for_kmer.start == -1 || 
-               event_range_for_kmer.start != event_range_for_kmer.stop) {
-                continue;
-            }
-
-            std::string kmer = read_sequence.substr(ki, basecalled_k);
-            size_t kmer_rank = gDNAAlphabet.kmer_rank(kmer.c_str(), basecalled_k);
-            assert(kmer_rank < num_kmers);
-
-            size_t event_idx = event_range_for_kmer.start;
-            
-            // Only use this kmer if it is part of the initial model
-            if(use_kmer[kmer_rank]) {
-                EventAlignment ea;
-                // ref data
-                ea.ref_name = ""; // not needed
-                ea.ref_kmer = kmer;
-                ea.ref_position = ki;
-                ea.read_idx = -1; // not needed
-                ea.strand_idx = training_strand;
-                ea.event_idx = event_idx;
-                ea.rc = false;
-                ea.model_kmer = kmer;
-                ea.hmm_state = 'M'; // recalibration code only uses "M" alignments
-                alignment.push_back(ea);
-            }
-        }
-
+        // recalibrate shift/scale/etc
         recalibrate_model(*read, 
                           training_strand,
                           alignment,
