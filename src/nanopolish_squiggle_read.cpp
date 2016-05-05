@@ -121,6 +121,14 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
             continue;
         }
         
+        // Initialize to default scaling parameters
+        pore_model[si].shift = 0.0;
+        pore_model[si].scale = 1.0;
+        pore_model[si].drift = 0.0;
+        pore_model[si].var = 1.0;
+        pore_model[si].scale_sd = 1.0;
+        pore_model[si].var_sd = 1.0;
+
         /*
         // R9 change: load pore model from external file
         // Currently we use template for everything
