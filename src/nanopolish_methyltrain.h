@@ -17,7 +17,8 @@
 
 void recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
-                       const std::vector<EventAlignment> &alignment_output, 
+                       const std::vector<EventAlignment> &alignment_output,
+                       const Alphabet* alphabet,
                        bool scale_var);
 
 int methyltrain_main(int argc, char** argv);

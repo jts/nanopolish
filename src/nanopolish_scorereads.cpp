@@ -355,7 +355,7 @@ int scorereads_main(int argc, char** argv)
 
                         // Update pore model based on alignment
                         if ( opt::calibrate ) 
-                            recalibrate_model(sr, strand_idx, ao, false);
+                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false);
 
                         double score = model_score(sr, strand_idx, fai, ao, 500);
                         if (score > 0) 

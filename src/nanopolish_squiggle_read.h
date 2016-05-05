@@ -134,11 +134,12 @@ class SquiggleRead
         // Transform each event by correcting for current drift
         void transform();
 
-        // get the index of the event tht is nearest to the given kmer 
+        // get the index of the event that is nearest to the given kmer 
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
         // replace the pore models with the models specified in the map
         void replace_models(const ModelMap& map);
+        void replace_model(size_t strand_idx, const PoreModel& model);
 
         //
         // Data

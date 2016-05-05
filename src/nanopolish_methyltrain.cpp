@@ -177,6 +177,7 @@ std::string get_model_short_name(const std::string& model_name)
 void recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output, 
+                       const Alphabet* alphabet,
                        bool scale_var) 
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
@@ -190,8 +191,8 @@ void recalibrate_model(SquiggleRead &sr,
     // extract necessary vectors from the read and the pore model; note do not want scaled values
     for ( const auto &ea : alignment_output ) {
         if(ea.hmm_state == 'M') {
-            std::string model_kmer = ea.rc ? mtrain_alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-            uint32_t rank = mtrain_alphabet->kmer_rank(model_kmer.c_str(), k);
+            std::string model_kmer = ea.rc ? alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
 
             raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
             times.push_back      ( sr.get_time(ea.event_idx, strand_idx) );
@@ -326,7 +327,7 @@ void add_aligned_events(const ModelMap& model_map,
         }
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output, true);
+            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);

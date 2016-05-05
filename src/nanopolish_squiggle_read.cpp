@@ -120,7 +120,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         if(! (read_type == SRT_2D || read_type == si) ) {
             continue;
         }
-
+        
+        /*
         // R9 change: load pore model from external file
         // Currently we use template for everything
         std::string r9_model_name = "r9.template.model";
@@ -128,9 +129,14 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
         // initialize transition parameters
         parameters[si].initialize(pore_model[si].name);
-    
+        */
+
         // Load the events for this strand
+        // JS HACK to work with Nick's R9 test data
+        fprintf(stderr, "Warning -- using group 1 for events\n");
+        f_p->set_basecalled_group_id(1);
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
+        f_p->set_basecalled_group_id(group_id);
         
         // copy events
         events[si].resize(f5_events.size());
@@ -275,10 +281,15 @@ void SquiggleRead::replace_models(const ModelMap& map) {
         std::string curr_model = this->pore_model[strand_idx].name;
         auto model_iter = map.find(curr_model);
         if(model_iter != map.end()) {
-            this->pore_model[strand_idx].update_states( model_iter->second );
+            replace_model(strand_idx, model_iter->second);
         } else {
             fprintf(stderr, "Error, alternative model %s not found\n", curr_model.c_str());
             exit(EXIT_FAILURE);
         }
     }
+}
+
+void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
+{
+    this->pore_model[strand_idx].update_states( model );
 }
