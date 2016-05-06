@@ -182,51 +182,6 @@ PoreModel initialize_pore_model(const std::vector<KmerTrainingData>& read_traini
     return pore_model;
 }
 
-std::vector<EventAlignment> generate_alignment_to_basecalls(const SquiggleRead* read, 
-                                                            const size_t k,
-                                                            const size_t strand_idx,
-                                                            const std::vector<bool>* use_kmer = NULL)
-{
-    size_t num_kmers_in_alphabet = gDNAAlphabet.get_num_strings(k);
-    std::vector<EventAlignment> alignment;
-    const std::string& read_sequence = read->read_sequence;
-    size_t n_kmers = read_sequence.size() - k + 1;
-    for(size_t ki = 0; ki < n_kmers; ++ki) {
-
-        IndexPair event_range_for_kmer = read->base_to_event_map[ki].indices[strand_idx];
-        
-        // skip kmers without events
-        if(event_range_for_kmer.start == -1)
-            continue;
-
-        for(size_t event_idx = event_range_for_kmer.start; 
-            event_idx <= event_range_for_kmer.stop; event_idx++) {
-
-            std::string kmer = read_sequence.substr(ki, k);
-            size_t kmer_rank = gDNAAlphabet.kmer_rank(kmer.c_str(), k);
-            assert(kmer_rank < num_kmers_in_alphabet);
-
-            // Check if this kmer is marked as being useful
-            if(use_kmer == NULL || use_kmer->at(kmer_rank)) {
-                EventAlignment ea;
-                // ref data
-                ea.ref_name = ""; // not needed
-                ea.ref_kmer = kmer;
-                ea.ref_position = ki;
-                ea.read_idx = -1; // not needed
-                ea.strand_idx = strand_idx;
-                ea.event_idx = event_idx;
-                ea.rc = false;
-                ea.model_kmer = kmer;
-                ea.hmm_state = 'M'; // recalibration code only uses "M" alignments
-                alignment.push_back(ea);
-            }
-        }
-    }
-
-    return alignment;
-}
-
 void alignment_to_training_data(const SquiggleRead* read,
                                 const std::vector<EventAlignment>& alignment,
                                 const size_t k,
@@ -295,11 +250,8 @@ int trainmodel_main(int argc, char** argv)
         
         // extract alignment of events to k-mers
         std::vector<EventAlignment> alignment = 
-            generate_alignment_to_basecalls(read, 
-                                            basecalled_k,
-                                            training_strand,
-                                            NULL);
-
+            read->get_eventalignment_for_basecalls(basecalled_k,
+                                                   training_strand);
 
         // convert the alignment into model training data for this read
         KmerTrainingData ktd(num_kmers_in_alphabet);
@@ -342,15 +294,22 @@ int trainmodel_main(int argc, char** argv)
 
             // generate alignment
             std::vector<EventAlignment> alignment = 
-                generate_alignment_to_basecalls(read, 
-                                                basecalled_k,
-                                                training_strand,
-                                                &trained_kmers);
+                read->get_eventalignment_for_basecalls(basecalled_k,
+                                                       training_strand);
 
-            // recalibrate shift/scale/etc
+            // filter the alignment to only contain k-mers that have a distribution
+            std::vector<EventAlignment> filtered_alignment;
+            for(size_t i = 0; i < alignment.size(); ++i) {
+                size_t kmer_rank = gDNAAlphabet.kmer_rank(alignment[i].model_kmer.c_str(), basecalled_k);
+                if(trained_kmers[kmer_rank]) {
+                    filtered_alignment.push_back(alignment[i]);
+                }
+            }
+
+            // recalibrate shift/scale/etc using the filtered alignment
             recalibrate_model(*read, 
                               training_strand,
-                              alignment,
+                              filtered_alignment,
                               &gDNAAlphabet,
                               false);
         
@@ -368,13 +327,6 @@ int trainmodel_main(int argc, char** argv)
             if(read_model.scale < 0.9 || read_model.scale > 1.1) {
                 continue;
             }
-
-            // Re-generate the alignment using all kmers
-            alignment = 
-                generate_alignment_to_basecalls(read, 
-                                                basecalled_k,
-                                                training_strand,
-                                                NULL);
 
             // collect kmer training data from this read
             alignment_to_training_data(read, 

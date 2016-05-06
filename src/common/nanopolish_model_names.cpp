@@ -25,7 +25,8 @@ static std::map< std::string, ModelMetadata > known_models = {
     { "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model", {C_IDX, 2, KV_SQK006, "c.p2.006"} },
 
     // SQK007 models
-    { "r9.template.model", {T_IDX, 0, KV_SQK007, "t.007"} }
+    { "r9.template.model", {T_IDX, 0, KV_SQK007, "t.007"} },
+    { "r9.template.5mer.base.model", {T_IDX, 0, KV_SQK007, "t.007"} }
 
 };
 

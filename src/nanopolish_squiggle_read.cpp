@@ -10,6 +10,7 @@
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_methyltrain.h"
 #include "src/fast5.hpp"
 
 //
@@ -128,16 +129,15 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         pore_model[si].var = 1.0;
         pore_model[si].scale_sd = 1.0;
         pore_model[si].var_sd = 1.0;
-
-        /*
+        
         // R9 change: load pore model from external file
         // Currently we use template for everything
-        std::string r9_model_name = "r9.template.model";
+        std::string r9_model_name = "r9.template.5mer.base.model";
         pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
+        pore_model[si].bake_gaussian_parameters();
 
         // initialize transition parameters
         parameters[si].initialize(pore_model[si].name);
-        */
 
         // Load the events for this strand
         // JS HACK to work with Nick's R9 test data
@@ -161,11 +161,20 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         if(read_type != SRT_2D) {
             build_event_map_1d(f_p, si, f5_events);
         }
+
+
     }
 
     // Both strands need to be loaded before the 2D event map is built
     if(read_type == SRT_2D) {
         build_event_map_2d(f_p);
+    }
+
+    // Calibrate the models against the 2D basecalls
+    for(size_t si = 0; si < 2; ++si) {
+        std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
+        recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+        printf("on-load recalibration shift/scale: %.2lf %.2lf\n", pore_model[si].shift, pore_model[si].scale);
     }
 
     delete f_p;
@@ -301,3 +310,44 @@ void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
 {
     this->pore_model[strand_idx].update_states( model );
 }
+
+// Return a vector of eventalignments for the events that made up the 2D basecalls in the read
+std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const size_t k,
+                                                                           const size_t strand_idx) const
+{
+    std::vector<EventAlignment> alignment;
+
+    const std::string& read_sequence = this->read_sequence;
+    size_t n_kmers = read_sequence.size() - k + 1;
+    for(size_t ki = 0; ki < n_kmers; ++ki) {
+
+        IndexPair event_range_for_kmer = this->base_to_event_map[ki].indices[strand_idx];
+        
+        // skip kmers without events
+        if(event_range_for_kmer.start == -1)
+            continue;
+
+        for(size_t event_idx = event_range_for_kmer.start; 
+            event_idx <= event_range_for_kmer.stop; event_idx++) {
+
+            std::string kmer = read_sequence.substr(ki, k);
+            size_t kmer_rank = this->pore_model[strand_idx].pmalphabet->kmer_rank(kmer.c_str(), k);
+
+            EventAlignment ea;
+            // ref data
+            ea.ref_name = "read"; // not needed
+            ea.ref_kmer = kmer;
+            ea.ref_position = ki;
+            ea.read_idx = -1; // not needed
+            ea.strand_idx = strand_idx;
+            ea.event_idx = event_idx;
+            ea.rc = false;
+            ea.model_kmer = kmer;
+            ea.hmm_state = 'M'; 
+            alignment.push_back(ea);
+        }
+    }
+
+    return alignment;
+}
+

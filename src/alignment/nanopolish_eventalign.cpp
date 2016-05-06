@@ -394,7 +394,7 @@ void emit_event_alignment_tsv(FILE* fp,
 
             // scale reads to the model
             event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.3lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
 
             // unscaled parameters
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
@@ -408,7 +408,7 @@ void emit_event_alignment_tsv(FILE* fp,
             // scale model to the reads
             float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
             float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.3lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
+            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
 
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
             GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);

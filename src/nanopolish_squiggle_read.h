@@ -12,6 +12,7 @@
 #include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
+#include "nanopolish_eventalign.h"
 #include <string>
 
 // the type of the read 
@@ -140,6 +141,9 @@ class SquiggleRead
         // replace the pore models with the models specified in the map
         void replace_models(const ModelMap& map);
         void replace_model(size_t strand_idx, const PoreModel& model);
+
+        // Create an eventalignment between the events of this read and its 2D basecalled sequence
+        std::vector<EventAlignment> get_eventalignment_for_basecalls(const size_t k, const size_t strand_idx) const;
 
         //
         // Data
