@@ -78,7 +78,6 @@ void SquiggleRead::transform()
 //
 void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 {
-    printf("fast5: %s\n", fast5_path.c_str());
     fast5::File* f_p;
     this->fast5_path = fast5_path;
 
@@ -105,7 +104,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     assert(!read_name.empty());
     if(ends_with(read_name, "_template")) {
         read_type = SRT_TEMPLATE;
+        //fprintf(stderr, "Warning -- using group 1 for 1D template read\n");
+        //f_p->set_basecalled_group_id(1);
         read_sequence = f_p->basecalled_1D(read_type);
+        //f_p->set_basecalled_group_id(0);
     } else if(ends_with(read_name, "_complement")) {
         read_type = SRT_COMPLEMENT;
         read_sequence = f_p->basecalled_1D(read_type);
@@ -141,10 +143,10 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
 
         // Load the events for this strand
         // JS HACK to work with Nick's R9 test data
-        fprintf(stderr, "Warning -- using group 1 for events\n");
-        f_p->set_basecalled_group_id(1);
+        //fprintf(stderr, "Warning -- using group 1 for events\n");
+        //f_p->set_basecalled_group_id(1);
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
-        f_p->set_basecalled_group_id(group_id);
+        //f_p->set_basecalled_group_id(group_id);
         
         // copy events
         events[si].resize(f5_events.size());
@@ -161,8 +163,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         if(read_type != SRT_2D) {
             build_event_map_1d(f_p, si, f5_events);
         }
-
-
     }
 
     // Both strands need to be loaded before the 2D event map is built
@@ -170,11 +170,22 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         build_event_map_2d(f_p);
     }
 
-    // Calibrate the models against the 2D basecalls
+    // Calibrate the models using the basecalls
     for(size_t si = 0; si < 2; ++si) {
+        
+        if(! (read_type == SRT_2D || read_type == si) ) {
+            continue;
+        }
+
         std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
-        recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
-        printf("on-load recalibration shift/scale: %.2lf %.2lf\n", pore_model[si].shift, pore_model[si].scale);
+        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+        if(calibrated) {
+            fprintf(stderr, "on-load recalibration shift/scale: %.2lf %.2lf\n", pore_model[si].shift, pore_model[si].scale);
+        } else {
+            fprintf(stderr, "recalibration failed\n");
+            events[si].clear();
+        }
+
     }
 
     delete f_p;
@@ -212,6 +223,10 @@ void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::ve
         // ensure the traversal matches the read sequence
         assert(read_sequence.compare(curr_k_idx, k, f5_event.model_state) == 0);
     }
+
+    // end the last range
+    base_to_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
+    assert(base_to_event_map[curr_k_idx].indices[strand].start <= base_to_event_map[curr_k_idx].indices[strand].stop);
 }
 
 void SquiggleRead::build_event_map_2d(fast5::File* f_p)
@@ -320,7 +335,6 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
     const std::string& read_sequence = this->read_sequence;
     size_t n_kmers = read_sequence.size() - k + 1;
     for(size_t ki = 0; ki < n_kmers; ++ki) {
-
         IndexPair event_range_for_kmer = this->base_to_event_map[ki].indices[strand_idx];
         
         // skip kmers without events
@@ -328,7 +342,9 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
             continue;
 
         for(size_t event_idx = event_range_for_kmer.start; 
-            event_idx <= event_range_for_kmer.stop; event_idx++) {
+            event_idx <= event_range_for_kmer.stop; event_idx++) 
+        {
+            assert(event_idx < this->events[strand_idx].size());
 
             std::string kmer = read_sequence.substr(ki, k);
             size_t kmer_rank = this->pore_model[strand_idx].pmalphabet->kmer_rank(kmer.c_str(), k);

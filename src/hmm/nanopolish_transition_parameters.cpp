@@ -61,7 +61,7 @@ void TransitionParameters::initialize(const std::string& model_name)
             initialize_sqkmap006_complement();
         }
     } else {
-        printf("Warning: unknown model: %s\n", model_name.c_str());
+        fprintf(stderr, "Warning: unknown model: %s\n", model_name.c_str());
         initialize_sqkmap005();
     }
 }

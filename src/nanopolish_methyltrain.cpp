@@ -102,6 +102,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --filter-policy=STR              filter reads for [R7-methylation] or [R9-nucleotide] project\n"
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --progress                       print out a progress message\n"
@@ -143,7 +144,8 @@ enum { OPT_HELP = 1,
        OPT_OUTPUT_SCORES,
        OPT_OUT_FOFN,
        OPT_STDV,
-       OPT_LOG_LEVEL
+       OPT_LOG_LEVEL,
+       OPT_FILTER_POLICY
      };
 
 static const struct option longopts[] = {
@@ -164,6 +166,7 @@ static const struct option longopts[] = {
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
     { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
+    { "filter-policy",      required_argument, NULL, OPT_FILTER_POLICY },
     { NULL, 0, NULL, 0 }
 };
 
@@ -174,7 +177,8 @@ std::string get_model_short_name(const std::string& model_name)
 }
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
-void recalibrate_model(SquiggleRead &sr,
+// returns true if the recalibration was performed
+bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output, 
                        const Alphabet* alphabet,
@@ -201,9 +205,9 @@ void recalibrate_model(SquiggleRead &sr,
         }
     }
 
-    const int minNumEventsToRescale = 500;
+    const int minNumEventsToRescale = 200;
     if (raw_events.size() < minNumEventsToRescale) 
-        return;
+        return false;
 
     // Assemble linear system corresponding to weighted least squares problem
     // Can just directly call a weighted least squares solver, but there's enough
@@ -265,6 +269,8 @@ void recalibrate_model(SquiggleRead &sr,
     //                                                << sr.pore_model[strand_idx].scale << ", " 
     //                                                << sr.pore_model[strand_idx].drift << ", " 
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
+
+    return true;
 }
 
 // Update the training data with aligned events from a read
@@ -287,7 +293,11 @@ void add_aligned_events(const ModelMap& model_map,
     SquiggleRead sr(read_name, fast5_path);
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        
+
+        // skip if 1D reads and this is the wrong strand
+        if(!sr.has_events_for_strand(strand_idx)) {
+            continue;
+        }
         // replace the model that is built into the read with the current trained model
         std::string curr_model = sr.pore_model[strand_idx].name;
         auto model_iter = model_map.find(curr_model);
@@ -404,6 +414,7 @@ void add_aligned_events(const ModelMap& model_map,
 void parse_methyltrain_options(int argc, char** argv)
 {
     std::string training_target_str = "";
+    std::string filter_policy_str = "";
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
@@ -421,6 +432,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_KMERS: arg >> training_target_str; break;
+            case OPT_FILTER_POLICY: arg >> filter_policy_str; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -479,6 +491,19 @@ void parse_methyltrain_options(int argc, char** argv)
             opt::training_target = TT_ALL_KMERS;
         } else {
             std::cerr << SUBPROGRAM ": unknown --train-kmers string\n";
+            die = true;
+        }
+    }
+    
+    // Parse the training target string
+    if(filter_policy_str != "") {
+        if(filter_policy_str == "R9-nucleotide") {
+            opt::min_event_duration = 0.0f;
+            opt::min_number_of_events_to_train = 10;
+        } else if(filter_policy_str == "R7-methylation") {
+            // default, do nothing
+        } else {
+            std::cerr << SUBPROGRAM ": unknown --filter-policy\n";
             die = true;
         }
     }
@@ -648,10 +673,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                                (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                                (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
             bool trained = false;
-
             // only train if there are a sufficient number of events for this kmer
             if(update_kmer && summaries[ki].events.size() >= opt::min_number_of_events_to_train) {
-
+                
                 // train a mixture model where a minority of k-mers aren't methylated
                 ParamMixture mixture;
                 

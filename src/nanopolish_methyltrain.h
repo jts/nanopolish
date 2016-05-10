@@ -15,7 +15,9 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_squiggle_read.h"
 
-void recalibrate_model(SquiggleRead &sr,
+// recalculate shift, scale, drift, scale_sd from an alignment and the read
+// returns true if the recalibration was performed
+bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,

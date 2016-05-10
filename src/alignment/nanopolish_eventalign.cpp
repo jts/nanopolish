@@ -501,8 +501,14 @@ void realign_read(EventalignWriter writer,
     
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
         
+        //JS Hack: only align template strand
+        if(strand_idx != 0) {
+            fprintf(stderr, "skipping complement\n");
+            continue;
+        }
+
         // Do not align this strand if it was not sequenced
-        if(sr.events[strand_idx].empty()) {
+        if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
 
