@@ -104,10 +104,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     assert(!read_name.empty());
     if(ends_with(read_name, "_template")) {
         read_type = SRT_TEMPLATE;
-        //fprintf(stderr, "Warning -- using group 1 for 1D template read\n");
-        //f_p->set_basecalled_group_id(1);
         read_sequence = f_p->basecalled_1D(read_type);
-        //f_p->set_basecalled_group_id(0);
     } else if(ends_with(read_name, "_complement")) {
         read_type = SRT_COMPLEMENT;
         read_sequence = f_p->basecalled_1D(read_type);
@@ -146,11 +143,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         // Load the events for this strand
-        // JTS HACK to work with Nick's R9 test data
-        //fprintf(stderr, "Warning -- using group 1 for events\n");
-        //f_p->set_basecalled_group_id(1);
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
-        //f_p->set_basecalled_group_id(group_id);
         
         // copy events
         events[si].resize(f5_events.size());
