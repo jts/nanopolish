@@ -330,6 +330,7 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
 {
     std::vector<EventAlignment> alignment;
 
+    const Alphabet* alphabet = this->pore_model[strand_idx].pmalphabet;
     const std::string& read_sequence = this->read_sequence;
     size_t n_kmers = read_sequence.size() - k + 1;
     for(size_t ki = 0; ki < n_kmers; ++ki) {
@@ -344,8 +345,10 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
         {
             assert(event_idx < this->events[strand_idx].size());
 
-            std::string kmer = read_sequence.substr(ki, k);
-            size_t kmer_rank = this->pore_model[strand_idx].pmalphabet->kmer_rank(kmer.c_str(), k);
+            std::string kmer = strand_idx == T_IDX ? 
+                                read_sequence.substr(ki, k) :
+                                alphabet->reverse_complement(read_sequence.substr(ki, k));
+            size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
 
             EventAlignment ea;
             // ref data
