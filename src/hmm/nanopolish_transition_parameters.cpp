@@ -63,6 +63,12 @@ void TransitionParameters::initialize(const std::string& model_name)
         } else {
             initialize_sqkmap006_complement();
         }
+    } else if(model_data.kit == KV_SQK007) {
+        if(model_data.strand_idx == T_IDX) {
+            initialize_sqkmap007_template();
+        } else {
+            initialize_sqkmap007_complement();
+        }
     } else {
         fprintf(stderr, "Warning: unknown model: %s\n", model_name.c_str());
         initialize_sqkmap005();
@@ -182,6 +188,78 @@ void TransitionParameters::initialize_sqkmap006_complement()
     skip_probabilities[27] = 0.119;
     skip_probabilities[28] = 0.110;
     skip_probabilities[29] = 0.119;
+}
+
+void TransitionParameters::initialize_sqkmap007_template()
+{
+    trans_m_to_e_not_k = 0.310;
+    trans_e_to_e = 0.637;
+    skip_probabilities[0] = 0.054;
+    skip_probabilities[1] = 0.055;
+    skip_probabilities[2] = 0.050;
+    skip_probabilities[3] = 0.035;
+    skip_probabilities[4] = 0.035;
+    skip_probabilities[5] = 0.026;
+    skip_probabilities[6] = 0.020;
+    skip_probabilities[7] = 0.019;
+    skip_probabilities[8] = 0.014;
+    skip_probabilities[9] = 0.013;
+    skip_probabilities[10] = 0.010;
+    skip_probabilities[11] = 0.009;
+    skip_probabilities[12] = 0.008;
+    skip_probabilities[13] = 0.008;
+    skip_probabilities[14] = 0.007;
+    skip_probabilities[15] = 0.007;
+    skip_probabilities[16] = 0.007;
+    skip_probabilities[17] = 0.007;
+    skip_probabilities[18] = 0.006;
+    skip_probabilities[19] = 0.006;
+    skip_probabilities[20] = 0.006;
+    skip_probabilities[21] = 0.006;
+    skip_probabilities[22] = 0.005;
+    skip_probabilities[23] = 0.006;
+    skip_probabilities[24] = 0.006;
+    skip_probabilities[25] = 0.006;
+    skip_probabilities[26] = 0.007;
+    skip_probabilities[27] = 0.007;
+    skip_probabilities[28] = 0.007;
+    skip_probabilities[29] = 0.008;
+}
+
+void TransitionParameters::initialize_sqkmap007_complement()
+{
+    trans_m_to_e_not_k = 0.211;
+    trans_e_to_e = 0.670;
+    skip_probabilities[0] = 0.096;
+    skip_probabilities[1] = 0.092;
+    skip_probabilities[2] = 0.074;
+    skip_probabilities[3] = 0.048;
+    skip_probabilities[4] = 0.037;
+    skip_probabilities[5] = 0.026;
+    skip_probabilities[6] = 0.018;
+    skip_probabilities[7] = 0.016;
+    skip_probabilities[8] = 0.013;
+    skip_probabilities[9] = 0.011;
+    skip_probabilities[10] = 0.009;
+    skip_probabilities[11] = 0.008;
+    skip_probabilities[12] = 0.007;
+    skip_probabilities[13] = 0.007;
+    skip_probabilities[14] = 0.006;
+    skip_probabilities[15] = 0.006;
+    skip_probabilities[16] = 0.007;
+    skip_probabilities[17] = 0.007;
+    skip_probabilities[18] = 0.005;
+    skip_probabilities[19] = 0.006;
+    skip_probabilities[20] = 0.006;
+    skip_probabilities[21] = 0.005;
+    skip_probabilities[22] = 0.006;
+    skip_probabilities[23] = 0.005;
+    skip_probabilities[24] = 0.005;
+    skip_probabilities[25] = 0.006;
+    skip_probabilities[26] = 0.006;
+    skip_probabilities[27] = 0.007;
+    skip_probabilities[28] = 0.006;
+    skip_probabilities[29] = 0.009;
 }
 
 // 
@@ -378,9 +456,9 @@ void TransitionParameters::print() const
 {
     fprintf(stderr, "TRANSITIONS\n");
     fprintf(stderr, "trans_m_to_e_not_k = %.3lf;\n", trans_m_to_e_not_k);
-    fprintf(stderr, "trans_e_to_e: %.3lf;\n", trans_e_to_e);
+    fprintf(stderr, "trans_e_to_e = %.3lf;\n", trans_e_to_e);
     
     for(size_t bin = 0; bin < skip_probabilities.size(); bin++) {
-        fprintf(stderr, "skip_probabilities[$zu] = %zu %.3lf;\n", bin, skip_probabilities[bin]);
+        fprintf(stderr, "skip_probabilities[%zu] = %.3lf;\n", bin, skip_probabilities[bin]);
     }
 }

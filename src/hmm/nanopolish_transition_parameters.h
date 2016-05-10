@@ -90,6 +90,8 @@ class TransitionParameters
         void initialize_sqkmap005();
         void initialize_sqkmap006_template();
         void initialize_sqkmap006_complement();
+        void initialize_sqkmap007_template();
+        void initialize_sqkmap007_complement();
 
         // Not allowed
         TransitionParameters(const TransitionParameters&) {}
