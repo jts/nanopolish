@@ -3,8 +3,8 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_trainmodel - train a new pore model from
-// the FAST5 output of a basecaller
+// nanopolish_train_poremodel_from_basecalls - train a 
+// new pore model from the FAST5 output of a basecaller
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +26,7 @@
 #include "nanopolish_methyltrain.h"
 #include "training_core.hpp"
 #include "profiler.h"
+#include "logger.hpp"
 
 //
 // Typedefs
@@ -36,15 +37,15 @@ typedef std::vector<TrainingDataVector> KmerTrainingData;
 //
 // Getopt
 //
-#define SUBPROGRAM "trainmodel"
+#define SUBPROGRAM "train-poremodel-from-basecalls"
 
-static const char *TRAINMODEL_VERSION_MESSAGE =
+static const char *TRAIN_POREMODEL_FROM_BASECALLS_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Written by Jared Simpson.\n"
 "\n"
 "Copyright 2016 Ontario Institute for Cancer Research\n";
 
-static const char *TRAINMODEL_USAGE_MESSAGE =
+static const char *TRAIN_POREMODEL_FROM_BASECALLS_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] input.fofn\n"
 "Train a new pore model using the basecalled reads in input.fofn\n"
 "\n"
@@ -70,7 +71,7 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
-void parse_trainmodel_options(int argc, char** argv)
+void parse_train_poremodel_from_basecalls_options(int argc, char** argv)
 {
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
@@ -79,10 +80,10 @@ void parse_trainmodel_options(int argc, char** argv)
             case '?': die = true; break;
             case 'v': opt::verbose++; break;
             case OPT_HELP:
-                std::cout << TRAINMODEL_USAGE_MESSAGE;
+                std::cout << TRAIN_POREMODEL_FROM_BASECALLS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_VERSION:
-                std::cout << TRAINMODEL_VERSION_MESSAGE;
+                std::cout << TRAIN_POREMODEL_FROM_BASECALLS_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
         }
     }
@@ -99,7 +100,7 @@ void parse_trainmodel_options(int argc, char** argv)
 
     if (die) 
     {
-        std::cout << "\n" << TRAINMODEL_USAGE_MESSAGE;
+        std::cout << "\n" << TRAIN_POREMODEL_FROM_BASECALLS_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
 
@@ -198,9 +199,13 @@ void alignment_to_training_data(const SquiggleRead* read,
         double level = read->get_fully_scaled_level(a.event_idx, a.strand_idx);
         double stdv = read->events[a.strand_idx][a.event_idx].stdv;
         
-        StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var);
-        out_data->at(kmer_rank).push_back(std);
-        
+        // If the scale/shift values are off, or the events are erroneous, the scaled events can have negative values
+        // causing the training to implode. Filter these here.
+        if(level >= 1.0) {
+            StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var);
+            out_data->at(kmer_rank).push_back(std);
+        }
+
         if(tsv_writer) {
             fprintf(tsv_writer, "%zu\t%s\t%.2lf\t%.5lf\n", read_idx, a.model_kmer.c_str(), level, read->events[a.strand_idx][a.event_idx].duration);
         }
@@ -208,13 +213,15 @@ void alignment_to_training_data(const SquiggleRead* read,
 }
 
 
-int trainmodel_main(int argc, char** argv)
+int train_poremodel_from_basecalls_main(int argc, char** argv)
 {
-    parse_trainmodel_options(argc, argv);
+    parse_train_poremodel_from_basecalls_options(argc, argv);
 
     std::ifstream fofn_reader(opt::fofn_file);
     std::string fast5_name;
     
+    //Logger::set_level_from_option("debug1");
+
     // parameters 
     unsigned int basecalled_k = 5; // TODO: infer this
     size_t num_kmers_in_alphabet = gDNAAlphabet.get_num_strings(basecalled_k);
@@ -224,7 +231,7 @@ int trainmodel_main(int argc, char** argv)
     std::vector<SquiggleRead*> reads;
     while(getline(fofn_reader, fast5_name)) {
         fprintf(stderr, "Loading %s\n", fast5_name.c_str());
-        SquiggleRead* read = new SquiggleRead(fast5_name, fast5_name);
+        SquiggleRead* read = new SquiggleRead(fast5_name, fast5_name, SRF_NO_MODEL);
      
         // initialize the scaling parameters to defaults
         PoreModel& read_pore_model = read->pore_model[training_strand];
@@ -242,7 +249,7 @@ int trainmodel_main(int argc, char** argv)
     // This vector is indexed by read, then kmer, then event
     std::vector<KmerTrainingData> read_training_data;
 
-    FILE* tsv_writer = fopen("trainmodel.tsv", "w");
+    FILE* tsv_writer = fopen("train_poremodel_from_basecalls.tsv", "w");
     fprintf(tsv_writer, "read_idx\tkmer\tlevel_mean\tduration\n");
 
     size_t read_idx = 0;
@@ -365,7 +372,7 @@ int trainmodel_main(int argc, char** argv)
 
             input_mixture.log_weights.push_back(log(1.0));
             input_mixture.params.push_back(initial_params);
-            
+               
             ParamMixture trained_mixture = train_gaussian_mixture(kmer_training_data[kmer_idx], input_mixture);
             new_pore_model.states[kmer_idx] = trained_mixture.params[0];
             new_pore_model.states[kmer_idx].level_stdv = 1.5;

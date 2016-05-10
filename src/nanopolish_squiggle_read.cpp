@@ -14,11 +14,11 @@
 #include "src/fast5.hpp"
 
 //
-SquiggleRead::SquiggleRead(const std::string& name, const std::string& path) :
+SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
     read_name(name),
     drift_correction_performed(false)
 {
-    load_from_fast5(path);
+    load_from_fast5(path, flags);
 
     // perform drift correction and other scalings
     transform();
@@ -76,7 +76,7 @@ void SquiggleRead::transform()
 }
 
 //
-void SquiggleRead::load_from_fast5(const std::string& fast5_path)
+void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t flags)
 {
     fast5::File* f_p;
     this->fast5_path = fast5_path;
@@ -133,16 +133,20 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
         pore_model[si].var_sd = 1.0;
         
         // R9 change: load pore model from external file
-        // Currently we use template for everything
-        std::string r9_model_name = "r9.template.5mer.base.model";
-        pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
-        pore_model[si].bake_gaussian_parameters();
 
-        // initialize transition parameters
-        parameters[si].initialize(pore_model[si].name);
+        // this flag should only be used when running train-poremodel-from-basecalls
+        // in this case there is no default model to load so we skip this step
+        if(flags & SRF_NO_MODEL == 0) {
+            std::string r9_model_name = "r9.template.5mer.base.model";
+            pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
+            pore_model[si].bake_gaussian_parameters();
+            
+            // initialize transition parameters
+            parameters[si].initialize(pore_model[si].name);
+        }
 
         // Load the events for this strand
-        // JS HACK to work with Nick's R9 test data
+        // JTS HACK to work with Nick's R9 test data
         //fprintf(stderr, "Warning -- using group 1 for events\n");
         //f_p->set_basecalled_group_id(1);
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
@@ -173,7 +177,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path)
     // Calibrate the models using the basecalls
     for(size_t si = 0; si < 2; ++si) {
         
-        if(! (read_type == SRT_2D || read_type == si) ) {
+        // only recalibrate if there is a model, its a 2D read or a 2D read and the right strand
+        if( !(read_type == SRT_2D || read_type == si) || (flags & SRF_NO_MODEL) ) {
             continue;
         }
 

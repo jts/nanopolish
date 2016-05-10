@@ -16,7 +16,7 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_methyltest.h"
 #include "nanopolish_scorereads.h"
-#include "nanopolish_trainmodel.h"
+#include "nanopolish_train_poremodel_from_basecalls.h"
 
 int print_usage(int argc, char **argv);
 
@@ -26,11 +26,11 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"consensus",   consensus_main},
     {"eventalign",  eventalign_main},
     {"getmodel",    getmodel_main},
-    {"trainmodel",    trainmodel_main},
     {"variants",    call_variants_main},
     {"methyltrain", methyltrain_main},
     {"methyltest",  methyltest_main},
-    {"scorereads",  scorereads_main} 
+    {"scorereads",  scorereads_main} ,
+    {"train-poremodel-from-basecalls",  train_poremodel_from_basecalls_main}
 };
 
 int print_usage(int, char **)

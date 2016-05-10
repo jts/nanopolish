@@ -24,6 +24,12 @@ enum SquiggleReadType
     SRT_2D
 };
 
+// Flags to control the behaviour of the read
+enum SquiggleReadFlags
+{
+    SRF_NO_MODEL = 1 // do not load a model
+};
+
 // The raw event data for a read
 struct SquiggleEvent
 {
@@ -54,7 +60,7 @@ class SquiggleRead
     public:
 
         SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
-        SquiggleRead(const std::string& name, const std::string& path);
+        SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
@@ -62,7 +68,7 @@ class SquiggleRead
         // 
 
         // Load all the read data from a fast5 file
-        void load_from_fast5(const std::string& fast5_path);
+        void load_from_fast5(const std::string& fast5_path, const uint32_t flags);
 
         //
         // Access to data
