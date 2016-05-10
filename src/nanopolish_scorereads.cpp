@@ -60,6 +60,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --train-transitions              train new transition parameters from the input reads\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -72,13 +73,14 @@ namespace opt
     static std::string models_fofn;
     static std::string region;
     static std::vector<std::string> readnames;
+    static int train_transitions = 0;
     static int num_threads = 1;
     static int batch_size = 128;
 }
 
 static const char* shortopts = "i:r:b:g:t:m:vc";
 
-enum { OPT_HELP = 1, OPT_VERSION };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_TRAIN_TRANSITIONS };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
@@ -89,6 +91,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "individual-reads",   required_argument, NULL, 'i' },
+    { "train-transitions",  no_argument,       NULL, OPT_TRAIN_TRANSITIONS },
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -98,7 +101,8 @@ double model_score(SquiggleRead &sr,
                    const size_t strand_idx,
                    const faidx_t *fai, 
                    const std::vector<EventAlignment> &alignment_output,
-                   const size_t events_per_segment)  
+                   const size_t events_per_segment,
+                   TransitionParameters* transition_training)
 {
     double curr_score = 0;
     size_t nevents = 0;
@@ -143,6 +147,14 @@ double model_score(SquiggleRead &sr,
         // Run HMM using current model
         curr_score += profile_hmm_score(sequence, data, 0);
         nevents += events_per_segment;
+
+        if(transition_training != NULL) {
+            std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
+            #pragma omp critical
+            {
+                transition_training->add_training_from_alignment(sequence, data, alignment);
+            }
+        }
     }
 
     if (nevents == 0)
@@ -208,6 +220,7 @@ void parse_scorereads_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
             case '?': die = true; break;
+            case OPT_TRAIN_TRANSITIONS: opt::train_transitions = 1; break;
             case OPT_HELP:
                 std::cout << SCOREREADS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -317,6 +330,18 @@ int scorereads_main(int argc, char** argv)
         records[i] = bam_init1();
     }
 
+    // Initialize transition training
+    TransitionParameters* transition_training[NUM_STRANDS];
+    if(opt::train_transitions) {
+        for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+            transition_training[strand_idx] = new TransitionParameters;
+        }
+    } else {
+        for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+            transition_training[strand_idx] = NULL;
+        }
+    }
+
     int result;
     size_t num_reads_realigned = 0;
     size_t num_records_buffered = 0;
@@ -347,19 +372,25 @@ int scorereads_main(int argc, char** argv)
                             continue;
 
                     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+
+                        if(!sr.has_events_for_strand(strand_idx)) {
+                            continue;
+                        }
+
                         std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, read_idx,
                                                                              models, fai, hdr,
                                                                              record, clip_start, clip_end);
                         if (ao.size() == 0)
                             continue;
-
+                        
                         // Update pore model based on alignment
                         if ( opt::calibrate ) 
                             recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false);
 
-                        double score = model_score(sr, strand_idx, fai, ao, 500);
+                        double score = model_score(sr, strand_idx, fai, ao, 500, transition_training[strand_idx]);
                         if (score > 0) 
                             continue;
+
                         #pragma omp critical(print)
                         std::cout << read_name << " " << ( strand_idx ? "complement" : "template" ) 
                                   << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;
@@ -373,6 +404,16 @@ int scorereads_main(int argc, char** argv)
 
     } while(result >= 0);
     
+    if(opt::train_transitions) {
+        for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+            fprintf(stderr, "Transition parameters for %zu\n", strand_idx);
+            transition_training[strand_idx]->train();
+            transition_training[strand_idx]->print();
+            delete transition_training[strand_idx];
+            transition_training[strand_idx] = NULL;
+        }
+    }
+
     // cleanup records
     for(size_t i = 0; i < records.size(); ++i) {
         bam_destroy1(records[i]);

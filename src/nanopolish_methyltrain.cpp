@@ -331,7 +331,7 @@ void add_aligned_events(const ModelMap& model_map,
         // Update pore model based on alignment
         double orig_score = -INFINITY;
         if (opt::output_scores) {
-            orig_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+            orig_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
             #pragma omp critical(print)
             std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
         }
@@ -340,7 +340,7 @@ void add_aligned_events(const ModelMap& model_map,
             recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, true);
 
             if (opt::output_scores) {
-                double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500);
+                double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
                 #pragma omp critical(print)
                 {
                     std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Rescaled " << rescaled_score << std::endl;

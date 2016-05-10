@@ -13,6 +13,9 @@
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_model_names.h"
 
+//#define PRINT_TRAINING_MESSAGES 1
+//#define SHOW_TRAINING_RESULT 1
+
 TransitionParameters::TransitionParameters()
 {
     // initialize training data
@@ -278,8 +281,6 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
             //float level = data.read->get_drift_corrected_level(ei, data.strand);
             //float sd = data.read->events[data.strand][ei].stdv;
             //float duration = data.read->get_duration(ei, data.strand);
-            if(ki >= n_kmers)
-                printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
             
             assert(ki < n_kmers);
             //uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
@@ -370,5 +371,16 @@ void TransitionParameters::train()
 #ifdef SHOW_TRAINING_RESULT
         fprintf(stderr, "SKIPLEARN -- %zu %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
 #endif
+    }
+}
+
+void TransitionParameters::print() const
+{
+    fprintf(stderr, "TRANSITIONS\n");
+    fprintf(stderr, "trans_m_to_e_not_k = %.3lf;\n", trans_m_to_e_not_k);
+    fprintf(stderr, "trans_e_to_e: %.3lf;\n", trans_e_to_e);
+    
+    for(size_t bin = 0; bin < skip_probabilities.size(); bin++) {
+        fprintf(stderr, "skip_probabilities[$zu] = %zu %.3lf;\n", bin, skip_probabilities[bin]);
     }
 }

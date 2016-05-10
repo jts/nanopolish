@@ -13,7 +13,8 @@ double model_score(SquiggleRead &sr,
                    const size_t strand_idx,
                    const faidx_t *fai, 
                    const std::vector<EventAlignment> &alignment_output,
-                   const size_t events_per_segment);
+                   const size_t events_per_segment,
+                   TransitionParameters* transition_training);
 
 int scorereads_main(int argc, char** argv);
 

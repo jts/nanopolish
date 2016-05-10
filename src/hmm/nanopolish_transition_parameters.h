@@ -61,6 +61,8 @@ class TransitionParameters
                                          const std::vector<HMMAlignmentState>& alignment,
                                          size_t ignore_edge_length = 5);
 
+        void print() const;
+
         //
         // data
         //
@@ -81,7 +83,6 @@ class TransitionParameters
 
         // Data used to train the model
         TransitionTrainingData training_data;
-
 
     private:
 
