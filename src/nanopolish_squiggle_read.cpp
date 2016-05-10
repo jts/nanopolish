@@ -133,7 +133,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
         // this flag should only be used when running train-poremodel-from-basecalls
         // in this case there is no default model to load so we skip this step
-        if(flags & SRF_NO_MODEL == 0) {
+        if( (flags & SRF_NO_MODEL) == 0) {
             std::string r9_model_name = "r9.template.5mer.base.model";
             pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
             pore_model[si].bake_gaussian_parameters();

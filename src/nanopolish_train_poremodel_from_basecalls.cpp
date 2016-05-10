@@ -381,7 +381,7 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
         new_pore_model.bake_gaussian_parameters();
         current_pore_model = new_pore_model;
     }
-    current_pore_model.write("r9.template.5mer.model", "r9.template.5mer.model");
+    current_pore_model.write("r9.template.5mer.base.model", "r9.template.5mer.base.model");
 
     // Deallocate input reads
     for(auto* read : reads) {
