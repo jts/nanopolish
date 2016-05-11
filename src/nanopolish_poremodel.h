@@ -114,10 +114,11 @@ class PoreModel
         double scale_sd;
         double var_sd;
 
-        // to support swapping models, a .model file might contain a shift_offset field
-        // which describes how to change the per-read shift values to match the incoming
-        // model. This field stores this data, which might be 0.
+        // to support swapping models, a .model file might contain a shift_offset/scale_offset
+        // field which describes how to change the per-read shift values to match the incoming
+        // model.
         double shift_offset;
+        double scale_offset;
 
         bool is_scaled;
 

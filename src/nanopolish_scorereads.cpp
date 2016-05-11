@@ -61,6 +61,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --train-transitions              train new transition parameters from the input reads\n"
+"      --learn-model-offset             learn the scaling offsets for the alternative pore models\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -76,11 +77,21 @@ namespace opt
     static int train_transitions = 0;
     static int num_threads = 1;
     static int batch_size = 128;
+
+    // Offset calculating parameters
+    static int learn_model_offset = 0;
+    static double lm_min_scale_offset = -0.5;
+    static double lm_max_scale_offset = 0.5;
+    static double lm_scale_offset_stride = 0.05;
+    
+    static double lm_min_shift_offset = -20;
+    static double lm_max_shift_offset = 20;
+    static double lm_shift_offset_stride = 0.1;
 }
 
 static const char* shortopts = "i:r:b:g:t:m:vc";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_TRAIN_TRANSITIONS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_TRAIN_TRANSITIONS, OPT_LEARN_MODEL_OFFSET };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
@@ -92,6 +103,7 @@ static const struct option longopts[] = {
     { "models-fofn",        required_argument, NULL, 'm' },
     { "individual-reads",   required_argument, NULL, 'i' },
     { "train-transitions",  no_argument,       NULL, OPT_TRAIN_TRANSITIONS },
+    { "learn-model-offset", no_argument,       NULL, OPT_LEARN_MODEL_OFFSET },
     { "help",               no_argument,       NULL, OPT_HELP },
     { "version",            no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
@@ -163,10 +175,117 @@ double model_score(SquiggleRead &sr,
         return curr_score/nevents;
 }
 
+void sweep_offset_parameters(SquiggleRead &sr,
+                             const size_t strand_idx,
+                             const size_t read_idx,
+                             const faidx_t *fai, 
+                             const std::vector<EventAlignment> &alignment_output,
+                             const size_t events_per_segment,
+                             const ModelMap& model_map,
+                             FILE* offset_fp)
+{
+    double curr_score = 0;
+    size_t nevents = 0;
+
+    size_t align_start_idx = events_per_segment;  // skip the first segment
+
+    // skip if there is not a full segment of events
+    if(align_start_idx > (int)alignment_output.size() - (int)events_per_segment)
+        return;
+
+    const EventAlignment& align_start = alignment_output[align_start_idx];
+    const EventAlignment& align_end = alignment_output[align_start_idx + events_per_segment];
+    std::string contig = alignment_output.front().ref_name.c_str();
+
+    // Set up event data
+    HMMInputData data;
+    data.read = &sr;
+    data.anchor_index = -1; // unused
+    data.strand = strand_idx;
+    data.rc = alignment_output.front().rc;
+    data.event_start_idx = align_start.event_idx;
+    data.event_stop_idx = align_end.event_idx;
+    data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
+    
+    // Set up reference data
+    int ref_start_pos = align_start.ref_position;
+    int ref_end_pos = align_end.ref_position;
+    int fetched_len = 0;
+
+    if(ref_end_pos < ref_start_pos) {
+        fprintf(stderr, "Error: bad coordinates [%d %d] event range: [%d %d]\n", 
+            ref_start_pos, ref_end_pos, align_start.event_idx, align_end.event_idx);
+    }
+    assert(ref_end_pos >= ref_start_pos);
+
+    // Extract the reference sequence for this region
+    std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
+                                                  ref_end_pos, &fetched_len);
+
+    if (fetched_len <= (int)sr.pore_model[strand_idx].k)
+        return;
+
+    const Alphabet *alphabet = sr.pore_model[strand_idx].pmalphabet;
+    ref_seq = alphabet->disambiguate(ref_seq);
+    HMMInputSequence sequence(ref_seq, alphabet->reverse_complement(ref_seq), alphabet);
+
+    // Run HMM using current model
+    double base_score = profile_hmm_score(sequence, data, 0);
+    double base_scale = sr.pore_model[strand_idx].scale;
+    double base_shift = sr.pore_model[strand_idx].shift;
+
+    // replace the model that is built into the read with the current trained model
+    std::string curr_model = sr.pore_model[strand_idx].name;
+    auto model_iter = model_map.find(curr_model);
+
+    if(model_iter != model_map.end()) {
+        sr.pore_model[strand_idx].update_states(model_iter->second);
+    } else {
+        printf("Error: model %s not found\n", curr_model.c_str());
+        assert(false && "Model not found");
+    }
+
+    double max_improvement = -INFINITY;
+    double best_shift = -INFINITY;
+    double best_scale = -INFINITY;
+
+    for(double scale_offset = opt::lm_min_scale_offset; 
+        scale_offset < opt::lm_max_scale_offset; 
+        scale_offset += opt::lm_scale_offset_stride) 
+    {
+        for(double shift_offset = opt::lm_min_shift_offset; 
+            shift_offset < opt::lm_max_shift_offset; 
+            shift_offset += opt::lm_shift_offset_stride) 
+        {
+            // update scales and bake them
+            sr.pore_model[strand_idx].shift = base_shift + shift_offset;
+            sr.pore_model[strand_idx].scale = base_scale + scale_offset;
+            sr.pore_model[strand_idx].bake_gaussian_parameters();
+            double offset_score = profile_hmm_score(sequence, data, 0);
+            double improvement = offset_score - base_score;
+            fprintf(offset_fp, "%zu\t%zu\t%.2lf\t%.2lf\t%.2lf\n", read_idx, strand_idx, scale_offset, shift_offset, offset_score - base_score);
+            
+            if(improvement > max_improvement) {
+                max_improvement = improvement;
+                best_scale = scale_offset;
+                best_shift = shift_offset;
+            }
+        }
+    }
+
+    fprintf(stderr, "best offsets for strand %zu scale: %.2lf shift: %.2lf improve: %.2lf base: %.2lf\n", strand_idx, best_scale, best_shift, max_improvement, base_score);
+
+    // replace parameters
+    sr.pore_model[strand_idx].shift = base_shift;
+    sr.pore_model[strand_idx].scale = base_scale;
+    sr.pore_model[strand_idx].bake_gaussian_parameters();
+}
+
+
 std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
                                                 const size_t strand_idx, 
                                                 const size_t read_idx,
-                                                const ModelMap& model_map,
+                                                const ModelMap* model_map,
                                                 const faidx_t* fai,                        
                                                 const bam_hdr_t* hdr,                        
                                                 const bam1_t* record, 
@@ -174,20 +293,17 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
                                                 int region_end)
 {
     // optionally replace model  
-    if (!opt::models_fofn.empty()) {
+    if(model_map != NULL) {
         std::string curr_model = sr.pore_model[strand_idx].name;
-        auto model_iter = model_map.find(curr_model);
+        auto model_iter = model_map->find(curr_model);
 
-        if(model_iter != model_map.end()) {
+        if(model_iter != model_map->end()) {
             sr.pore_model[strand_idx].update_states(model_iter->second);
         } else {
             printf("Error: model %s not found\n", curr_model.c_str());
             assert(false && "Model not found");
         }
     }        
-
-    // set k
-    //uint32_t k = sr.pore_model[strand_idx].k;
 
     // Align to the new model
     EventAlignmentParameters params;
@@ -221,6 +337,7 @@ void parse_scorereads_options(int argc, char** argv)
             case 'c': opt::calibrate = 1; break;
             case '?': die = true; break;
             case OPT_TRAIN_TRANSITIONS: opt::train_transitions = 1; break;
+            case OPT_LEARN_MODEL_OFFSET: opt::learn_model_offset = 1; break;
             case OPT_HELP:
                 std::cout << SCOREREADS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -279,9 +396,9 @@ int scorereads_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models;
+    ModelMap model_map;
     if (!opt::models_fofn.empty())
-        models = read_models_fofn(opt::models_fofn);
+        model_map = read_models_fofn(opt::models_fofn);
     
     // Open the BAM and iterate over reads
 
@@ -342,6 +459,12 @@ int scorereads_main(int argc, char** argv)
         }
     }
 
+    FILE* offset_fp = NULL;
+    if(opt::learn_model_offset) {
+        offset_fp = fopen("model_offset.tsv", "w");
+        fprintf(offset_fp, "read_idx\tstrand_idx\tscale_offset\tshift_offset\timprovement\n");
+    }
+
     int result;
     size_t num_reads_realigned = 0;
     size_t num_records_buffered = 0;
@@ -377,18 +500,27 @@ int scorereads_main(int argc, char** argv)
                             continue;
                         }
 
+                        // When learning model offsets, don't allow the base model to be swapped out
+                        ModelMap* model_map_for_alignment = 
+                            opt::learn_model_offset ? NULL : &model_map;
+
                         std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, read_idx,
-                                                                             models, fai, hdr,
+                                                                             model_map_for_alignment, fai, hdr,
                                                                              record, clip_start, clip_end);
                         if (ao.size() == 0)
                             continue;
                         
                         // Update pore model based on alignment
-                        if ( opt::calibrate ) 
+                        if( opt::calibrate ) {
                             recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false);
+                        }
+
+                        if(opt::learn_model_offset) {
+                            sweep_offset_parameters(sr, strand_idx, read_idx, fai, ao, 500, model_map, offset_fp);
+                        }
 
                         double score = model_score(sr, strand_idx, fai, ao, 500, transition_training[strand_idx]);
-                        if (score > 0) 
+                        if(score > 0) 
                             continue;
 
                         #pragma omp critical(print)

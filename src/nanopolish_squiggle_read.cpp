@@ -177,13 +177,13 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
         std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
         bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+
         if(calibrated) {
-            fprintf(stderr, "on-load recalibration shift/scale: %.2lf %.2lf\n", pore_model[si].shift, pore_model[si].scale);
+            fprintf(stderr, "strand[%zu]: calibration shift/scale: %.2lf %.2lf\n", si, pore_model[si].shift, pore_model[si].scale);
         } else {
             fprintf(stderr, "recalibration failed\n");
             events[si].clear();
         }
-
     }
 
     delete f_p;

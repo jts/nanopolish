@@ -60,6 +60,7 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     unsigned ninserted = 0;
 
     shift_offset = 0.0f;
+    scale_offset = 0.0f;
 
     const size_t maxNucleotides=50;
     char bases[maxNucleotides+1]="";
@@ -75,12 +76,17 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
             parser >> dummy >> name;
         }
 
-        // Extract shift offset from the header
+        // Extract shift/scale offset from the header
         // This will be applied to the per-read shift values
         // to allow switching between models with different averages
         if (model_line.find("#shift_offset") != std::string::npos) {
             std::string dummy;
             parser >> dummy >> shift_offset;
+        }
+        
+        if (model_line.find("#scale_offset") != std::string::npos) {
+            std::string dummy;
+            parser >> dummy >> scale_offset;
         }
 
         // Use the alphabet defined in the header if available
@@ -171,6 +177,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
 
     // no offset needed when loading directly from the fast5
     shift_offset = 0.0f;
+    scale_offset = 0.0f;
 
     // apply shift/scale transformation to the pore model states
     bake_gaussian_parameters();
@@ -199,6 +206,7 @@ void PoreModel::write(const std::string filename, const std::string modelname)
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
     writer << "#shift_offset\t" << shift_offset << std::endl;
+    writer << "#scale_offset\t" << scale_offset << std::endl;
 
     std::string curr_kmer(k,pmalphabet->base(0));
     for(size_t ki = 0; ki < states.size(); ++ki) {
@@ -214,6 +222,7 @@ void PoreModel::update_states( const PoreModel &other )
     k = other.k;
     pmalphabet = other.pmalphabet;
     shift += other.shift_offset;
+    scale += other.scale_offset;
     update_states( other.states );
 }
 
