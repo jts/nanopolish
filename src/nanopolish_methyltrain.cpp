@@ -260,6 +260,7 @@ bool recalibrate_model(SquiggleRead &sr,
         var /= raw_events.size();
 
         sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+        sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
     }
 
     if (sr.pore_model[strand_idx].is_scaled)

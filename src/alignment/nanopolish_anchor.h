@@ -87,7 +87,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            const std::string& contig_name,
                                            int start, 
                                            int end, 
-                                           int stride);
+                                           int stride,
+                                           const ModelMap& models);
 
 
 

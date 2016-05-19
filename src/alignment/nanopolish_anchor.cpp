@@ -13,6 +13,8 @@
 #include "htslib/faidx.h"
 #include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
+#include "nanopolish_scorereads.h"
+#include "nanopolish_methyltrain.h"
 #include "nanopolish_squiggle_read.h"
 
 HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
@@ -21,7 +23,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            const std::string& contig_name,
                                            int start, 
                                            int end, 
-                                           int stride)
+                                           int stride,
+                                           const ModelMap& models)
 {
     // Initialize return data
     HMMRealignmentInput ret;
@@ -72,7 +75,23 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
         // load read
         ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
-        const SquiggleRead& sr = *ret.reads.back();
+        SquiggleRead& sr = *ret.reads.back();
+        if(!models.empty()) {
+            sr.replace_models(models);
+        }   
+
+        // Recalibrate each strand
+        for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; strand_idx++) {
+            if(!sr.has_events_for_strand(strand_idx)) {
+                continue;
+            }
+
+            std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, -1,
+                                                                 NULL, fai, hdr,
+                                                                 record, -1, -1);
+            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, true);
+        }
+
         k = sr.pore_model[T_IDX].k;
 
         // parse alignments to reference
@@ -118,7 +137,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
             assert(template_idx != -1 && complement_idx != -1);
             assert(template_idx < (int)sr.events[T_IDX].size());
-            assert(complement_idx < (int)sr.events[C_IDX].size());
+            assert(sr.events[C_IDX].empty() || complement_idx < (int)sr.events[C_IDX].size());
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
