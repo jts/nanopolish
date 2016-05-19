@@ -206,7 +206,7 @@ void emit_tsv_header(FILE* fp)
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
     fprintf(fp, "%s\t%s\t%s\t%s\t", "event_index", "event_level_mean", "event_stdv", "event_length");
-    fprintf(fp, "%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv");
+    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "standardized_level");
 
 }
 
@@ -390,32 +390,33 @@ void emit_event_alignment_tsv(FILE* fp,
         float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
         float event_stdv = sr.get_stdv(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+        float model_mean;
+        float model_stdv;
+
         if(opt::scale_events) {
 
             // scale reads to the model
             event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
 
-            // unscaled parameters
-            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            // unscaled model parameters
             PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
-            fprintf(fp, "%s\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
-                                              model.level_mean, 
-                                              model.level_stdv);
-
+            model_mean = model.level_mean;
+            model_stdv = model.level_stdv;
         } else {
 
             // scale model to the reads
-            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
-            float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-            fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
-
-            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
             GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-            fprintf(fp, "%s\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
-                                              model.mean, 
-                                              model.stdv);
+            model_mean = model.mean;
+            model_stdv = model.stdv;
         }
+        
+        float standard_level = (event_mean - model_mean) / (sqrt(sr.pore_model[ea.strand_idx].var) * model_stdv);
+        fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
+                                                 model_mean, 
+                                                 model_stdv,
+                                                 standard_level);
     }
 }
 
@@ -501,12 +502,6 @@ void realign_read(EventalignWriter writer,
     
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
         
-        //JS Hack: only align template strand
-        if(strand_idx != 0) {
-            fprintf(stderr, "skipping complement\n");
-            continue;
-        }
-
         // Do not align this strand if it was not sequenced
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
