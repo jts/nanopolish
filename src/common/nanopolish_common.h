@@ -111,5 +111,9 @@ std::vector<std::string> split(std::string in, char delimiter);
 // returns true if the provided string ends with the given suffix
 bool ends_with(const std::string& str, const std::string& suffix);
 
+// print a warning message to stderr a single time
+// this is only for debugging, please don't litter the code with them
+#define WARN_ONCE(x) static bool _warn_once = true; if(_warn_once) \
+                     fprintf(stderr, "WARNING: [%s]\n", (x)); _warn_once = false;
 
 #endif

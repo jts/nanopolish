@@ -217,7 +217,7 @@ void PoreModel::write(const std::string filename, const std::string modelname)
     writer.close();
 }
 
-void PoreModel::update_states( const PoreModel &other ) 
+void PoreModel::update_states( const PoreModel &other )
 {
     k = other.k;
     pmalphabet = other.pmalphabet;
@@ -226,7 +226,7 @@ void PoreModel::update_states( const PoreModel &other )
     update_states( other.states );
 }
 
-void PoreModel::update_states( const std::vector<PoreModelStateParams> &otherstates ) 
+void PoreModel::update_states( const std::vector<PoreModelStateParams> &otherstates )
 {
     states = otherstates;
     if (is_scaled) {
@@ -245,7 +245,6 @@ ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet
     std::string model_filename;
 
     while(getline(fofn_reader, model_filename)) {
-        printf("reading %s\n", model_filename.c_str());
         PoreModel p(model_filename, alphabet);
         assert(!p.name.empty());
         out[p.name] = p;

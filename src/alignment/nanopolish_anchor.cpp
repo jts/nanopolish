@@ -17,12 +17,12 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_squiggle_read.h"
 
-HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
-                                           const std::string& ref_filename, 
-                                           const Fast5Map& read_name_map, 
+HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
+                                           const std::string& ref_filename,
+                                           const Fast5Map& read_name_map,
                                            const std::string& contig_name,
-                                           int start, 
-                                           int end, 
+                                           int start,
+                                           int end,
                                            int stride,
                                            const ModelMap& models)
 {
@@ -41,7 +41,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
     int contig_id = bam_name2id(hdr, contig_name.c_str());
-    
+   
     // load reference fai file
     faidx_t *fai = fai_load(ref_filename.c_str());
 
@@ -56,7 +56,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // Initialize iteration
     bam1_t* record = bam_init1();
     hts_itr_t* itr = sam_itr_queryi(bam_idx, contig_id, start, end);
-    
+   
     // Iterate over reads aligned here
     std::vector<HMMReadAnchorSet> read_anchors;
     std::vector<std::vector<std::string>> read_substrings;
@@ -78,7 +78,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         SquiggleRead& sr = *ret.reads.back();
         if(!models.empty()) {
             sr.replace_models(models);
-        }   
+        }
 
         // Recalibrate each strand
         for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; strand_idx++) {

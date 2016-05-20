@@ -39,7 +39,7 @@
 //#define DEBUG_HMM_UPDATE 1
 //#define DEBUG_HMM_EMISSION 1
 //#define DEBUG_TRANSITION 1
-#define DEBUG_PATH_SELECTION 1
+//#define DEBUG_PATH_SELECTION 1
 //#define DEBUG_SINGLE_SEGMENT 1
 //#define DEBUG_SHOW_TOP_TWO 1
 //#define DEBUG_SEGMENT_ID 193
@@ -146,7 +146,7 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
         data.rc = start_sa.rc;
 
         if(data.strand == 1) {
-            fprintf(stderr, "Skipping complement\n");
+            WARN_ONCE("Debug: skipping complement");
             continue;
         }
 
@@ -160,11 +160,7 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
 // scoring functions without writing a bunch of code
 double score_sequence(const std::string& sequence, const HMMInputData& data)
 {
-    //return score_skip_merge(sequence, state);
-    //return score_khmm_model_postmerge(sequence, state);
-    //return khmm_score(sequence, state, AP_GLOBAL);
-    return profile_hmm_score(sequence, data, HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP);
-    //return score_emission_dp(sequence, state);
+    return profile_hmm_score(sequence, data);
 }
 
 
@@ -727,6 +723,7 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     //
     // Train the HMM
     //
+    WARN_ONCE("Debug: using default transition parameters"); 
     //train(window);
 
     // assume models for all the reads have the same k

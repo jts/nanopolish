@@ -11,12 +11,12 @@
 
 
 std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
-                                                const size_t strand_idx, 
+                                                const size_t strand_idx,
                                                 const size_t read_idx,
                                                 const ModelMap* model_map,
-                                                const faidx_t* fai,                        
-                                                const bam_hdr_t* hdr,                        
-                                                const bam1_t* record, 
+                                                const faidx_t* fai,
+                                                const bam_hdr_t* hdr,
+                                                const bam1_t* record,
                                                 int region_start,
                                                 int region_end);
 
