@@ -279,6 +279,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             }
 
             size_t si = input[j].strand;
+            /*
             printf("DEBUG\t%zu\t%s\t%zu\t%zu\t%.3lf\t%.3lf\t%.2lf\n", hi, 
                                                         input[j].read->read_name.c_str(), 
                                                         input[j].strand, 
@@ -286,9 +287,10 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                                                         input[j].read->pore_model[si].scale,
                                                         input[j].read->pore_model[si].shift,
                                                         tmp - base_lp_by_read[j]);
+            */
         }
 
-        if(current_lp > best_lp && current_lp - base_lp > 1.0) {
+        if(current_lp > best_lp && current_lp - base_lp > 1.0 || current_lp - base_lp > 1.0) {
             best_lp = current_lp;
             best_variant_set = current_variant_set;
 
@@ -331,6 +333,8 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 std::string rc_str = counts.str();
                 v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
                 v.quality = best_lp - base_lp;
+                fprintf(stderr, "Variants for haplotype %d\n", hi);
+                v.write_vcf(stderr);
             }
         }
 

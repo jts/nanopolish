@@ -93,7 +93,7 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
-    static double min_candidate_frequency = 0.2f;
+    static double min_candidate_frequency = 0.1f;
     static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
@@ -236,7 +236,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
-        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
+        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 5);
     } else {
         candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
     }
