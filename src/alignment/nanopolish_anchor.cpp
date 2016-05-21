@@ -135,13 +135,13 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
             int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
 
-            assert(template_idx != -1 && complement_idx != -1);
+            assert(template_idx != -1 && (!sr.has_events_for_strand(C_IDX) || complement_idx != -1));
             assert(template_idx < (int)sr.events[T_IDX].size());
             assert(sr.events[C_IDX].empty() || complement_idx < (int)sr.events[C_IDX].size());
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
-            
+
             // If this is not the last anchor, extract the sequence of the read
             // from this anchor to the next anchor as an alternative assembly
             if(ai < read_bases_for_anchors.size() - 1) {
@@ -153,7 +153,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 if(do_base_rc) {
                     start_kidx = sr.flip_k_strand(start_kidx);
                     end_kidx = sr.flip_k_strand(end_kidx);
-                    
+
                     // swap
                     int tmp = end_kidx;
                     end_kidx = start_kidx;
