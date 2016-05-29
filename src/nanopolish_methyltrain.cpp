@@ -131,7 +131,7 @@ namespace opt
     static float min_event_duration = 0.005;
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
-    static unsigned num_training_rounds = 5;
+    static unsigned num_training_rounds = 3;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
@@ -500,7 +500,7 @@ void parse_methyltrain_options(int argc, char** argv)
     // Parse the training target string
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9-nucleotide") {
-            opt::min_event_duration = 0.0f;
+            opt::min_event_duration = 0.005f;
             opt::min_number_of_events_to_train = 10;
         } else if(filter_policy_str == "R7-methylation") {
             // default, do nothing

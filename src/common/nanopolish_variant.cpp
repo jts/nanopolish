@@ -264,7 +264,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         double current_lp = 0.0f;
         double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         size_t supporting_reads = 0;
-        printf("DEBUG\thaplotype\tread\tstrand\trc\tscale\tshift\trelative_score\n");
+        //printf("DEBUG\thaplotype\tread\tstrand\trc\tscale\tshift\trelative_score\n");
         #pragma omp parallel for
         for(size_t j = 0; j < input.size(); ++j) {
             double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
@@ -290,7 +290,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             */
         }
 
-        if(current_lp > best_lp && current_lp - base_lp > 1.0 || current_lp - base_lp > 1.0) {
+        if(current_lp > best_lp && current_lp - base_lp > 1.0) {
             best_lp = current_lp;
             best_variant_set = current_variant_set;
 
@@ -333,8 +333,6 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 std::string rc_str = counts.str();
                 v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
                 v.quality = best_lp - base_lp;
-                fprintf(stderr, "Variants for haplotype %d\n", hi);
-                v.write_vcf(stderr);
             }
         }
 

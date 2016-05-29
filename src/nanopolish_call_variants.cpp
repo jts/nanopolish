@@ -93,7 +93,7 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
-    static double min_candidate_frequency = 0.1f;
+    static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
