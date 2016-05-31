@@ -264,7 +264,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         double current_lp = 0.0f;
         double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         size_t supporting_reads = 0;
-        //printf("DEBUG\thaplotype\tread\tstrand\trc\tscale\tshift\trelative_score\n");
+
         #pragma omp parallel for
         for(size_t j = 0; j < input.size(); ++j) {
             double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
@@ -277,17 +277,6 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 int cid = 2 * mid + input[j].rc;
                 current_lp_by_model_strand[cid] += tmp;
             }
-
-            size_t si = input[j].strand;
-            /*
-            printf("DEBUG\t%zu\t%s\t%zu\t%zu\t%.3lf\t%.3lf\t%.2lf\n", hi, 
-                                                        input[j].read->read_name.c_str(), 
-                                                        input[j].strand, 
-                                                        input[j].rc, 
-                                                        input[j].read->pore_model[si].scale,
-                                                        input[j].read->pore_model[si].shift,
-                                                        tmp - base_lp_by_read[j]);
-            */
         }
 
         if(current_lp > best_lp && current_lp - base_lp > 1.0) {

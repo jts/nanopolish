@@ -268,7 +268,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
         
         // Only try to call variants if there is a reasonable amount and the window is not too large
-        if(num_variants <= 10 && calling_size <= 100) {
+        if(num_variants <= 15 && calling_size <= 100) {
 
             // Subset the haplotype to the region we are calling
             Haplotype calling_haplotype = 
@@ -300,7 +300,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                     selected_variants[vi].write_vcf(stderr);
                 }
             }
-        }
+        } else {
+            fprintf(stderr, "Warning: %zu variants in span, region not called [%d %d]\n", num_variants, calling_start, calling_end);
+		}
 
         // advance to start of next region
         curr_variant_idx = end_variant_idx;

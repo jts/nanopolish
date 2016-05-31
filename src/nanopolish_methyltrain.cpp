@@ -260,6 +260,7 @@ bool recalibrate_model(SquiggleRead &sr,
         var /= raw_events.size();
 
         sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+        WARN_ONCE("DEBUG: r9 double-sqrt")
         sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
     }
 
@@ -500,7 +501,7 @@ void parse_methyltrain_options(int argc, char** argv)
     // Parse the training target string
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9-nucleotide") {
-            opt::min_event_duration = 0.0f;
+            opt::min_event_duration = 0.005f;
             opt::min_number_of_events_to_train = 10;
         } else if(filter_policy_str == "R7-methylation") {
             // default, do nothing

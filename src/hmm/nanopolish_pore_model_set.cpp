@@ -15,18 +15,21 @@ PoreModelSet::~PoreModelSet()
 
 PoreModel PoreModelSet::get_model_by_name(const std::string& name)
 {
-    PoreModelSet& model_set = getInstance();
+    std::map<std::string, PoreModel>::iterator iter;
+    #pragma omp critical
+    {
+        PoreModelSet& model_set = getInstance();
 
-    // look up the model in the cache
-    auto const& iter = model_set.m_pore_model_cache.find(name);
-    if(iter == model_set.m_pore_model_cache.end()) {
-        // load the model from disk
-        // this will intentially exit with an error if the model cannot be found
-        std::cerr << "Loading model from disk: " << name << "\n";
-        PoreModel model(name);
-        model_set.m_pore_model_cache.insert(std::make_pair(name, model));
-        return model;
-    } else {
-        return iter->second;
+        // look up the model in the cache
+        iter = model_set.m_pore_model_cache.find(name);
+        if(iter == model_set.m_pore_model_cache.end()) {
+            // load the model from disk
+            // this will intentially exit with an error if the model cannot be found
+            std::cerr << "Loading model from disk: " << name << "\n";
+            PoreModel model(name);
+            iter = model_set.m_pore_model_cache.insert(std::make_pair(name, model)).first;
+        }
     }
+
+    return iter->second;
 }

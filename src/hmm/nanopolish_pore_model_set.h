@@ -16,7 +16,7 @@
 class PoreModelSet
 {
     public:
-        
+
         //
         // get a model from the set using its name
         // usage: PoreModelSet::get_model_by_name(name);
@@ -25,7 +25,7 @@ class PoreModelSet
 
         // destructor
         ~PoreModelSet();
-        
+
     private:
 
         // singleton accessor function

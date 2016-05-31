@@ -65,14 +65,14 @@ std::vector<std::string> AlignmentDB::get_read_substrings(const std::string& con
         const SequenceAlignmentRecord& record = m_sequence_records[i];
         if(record.aligned_bases.empty())
             continue;
-        
+
         int r1, r2;
-        bool bounded = _find_by_ref_bounds(record.aligned_bases, 
-                                           start_position, 
+        bool bounded = _find_by_ref_bounds(record.aligned_bases,
+                                           start_position,
                                            stop_position,
                                            r1,
                                            r2);
-        
+
         if(bounded) {
             out.push_back(record.sequence.substr(r1, r2 - r1 + 1));
         }
@@ -161,8 +161,6 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::map<std::string, std::pair<Variant, int>> map;
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
-    //size_t num_aligned_reads = 0;
-
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& record = m_sequence_records[i];
         if(record.aligned_bases.empty())
@@ -171,28 +169,64 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         AlignedPairConstIter start_iter;
         AlignedPairConstIter stop_iter;
         _find_iter_by_ref_bounds(record.aligned_bases, start_position, stop_position, start_iter, stop_iter);
-        
-        //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos, 
-        //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
-        for(; start_iter != stop_iter; ++start_iter) {
-            
-            int rp = start_iter->ref_pos;
-            char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
-            char ab = record.sequence[start_iter->read_pos];
 
+        // Increment the depth over this region
+        int depth_start = start_iter->ref_pos;
+        int depth_end = stop_iter == record.aligned_bases.end() ?
+            record.aligned_bases.back().ref_pos : stop_iter->ref_pos;
+
+        // clamp
+        depth_start = std::max(depth_start, start_position);
+        depth_end = std::min(depth_end, stop_position);
+
+        for(; depth_start < depth_end; ++depth_start) {
+            assert(depth_start >= start_position);
+            assert(depth_start - start_position < depth.size());
+            depth[depth_start - start_position]++;
+        }
+
+        //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos,
+        //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
+
+        // Find the boundaries of a matching region
+        while(start_iter != stop_iter) {
+            // skip out-of-range
+            int rp = start_iter->ref_pos;
             if(rp < start_position || rp > stop_position) {
                 continue;
             }
-            
-            // Increment depth
-            depth[rp - start_position]++;
 
-            if(rb != ab) {
+            char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
+            char ab = record.sequence[start_iter->read_pos];
+
+            bool is_mismatch = rb != ab;
+            auto next_iter = start_iter + 1;
+
+            bool is_gap = next_iter != stop_iter &&
+                            (next_iter->ref_pos != start_iter->ref_pos + 1 ||
+                                next_iter->read_pos != start_iter->read_pos + 1);
+
+            if(is_gap) {
+                // advance the next iterator until a match is found
+                while(next_iter != stop_iter) {
+                    char n_rb = m_region_ref_sequence[next_iter->ref_pos - m_region_start];
+                    char n_ab = record.sequence[next_iter->read_pos];
+                    if(n_rb == n_ab) {
+                        break;
+                    }
+                    ++next_iter;
+                }
+            }
+
+            if(next_iter != stop_iter && (is_mismatch || is_gap)) {
                 Variant v;
                 v.ref_name = contig;
                 v.ref_position = start_iter->ref_pos;
-                v.ref_seq = rb;
-                v.alt_seq = ab;
+
+                size_t ref_sub_start = start_iter->ref_pos - m_region_start;
+                size_t ref_sub_end = next_iter->ref_pos - m_region_start;
+                v.ref_seq = m_region_ref_sequence.substr(ref_sub_start, ref_sub_end - ref_sub_start);
+                v.alt_seq = record.sequence.substr(start_iter->read_pos, next_iter->read_pos - start_iter->read_pos);
 
                 std::string key = v.key();
                 auto iter = map.find(key);
@@ -202,6 +236,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
                     iter->second.second += 1;
                 }
             }
+            start_iter = next_iter;
         }
     }
 
@@ -220,7 +255,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::sort(variants.begin(), variants.end(), sortByPosition);
     return variants;
 }
-        
+
 void AlignmentDB::load_region(const std::string& contig,
                               int start_position,
                               int stop_position)
