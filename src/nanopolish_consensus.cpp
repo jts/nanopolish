@@ -145,11 +145,6 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
             data.event_stride = -1;
         data.rc = start_sa.rc;
 
-        if(data.strand == 1) {
-            WARN_ONCE("Debug: skipping complement");
-            continue;
-        }
-
         input.push_back(data);
     }
     return input;

@@ -410,11 +410,11 @@ void emit_event_alignment_tsv(FILE* fp,
             model_mean = model.mean;
             model_stdv = model.stdv;
         }
-        
+
         float standard_level = (event_mean - model_mean) / (sqrt(sr.pore_model[ea.strand_idx].var) * model_stdv);
         fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(), 
-                                                 model_mean, 
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(),
+                                                 model_mean,
                                                  model_stdv,
                                                  standard_level);
     }
@@ -430,7 +430,7 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
     uint32_t k = sr.pore_model[strand_idx].k;
 
     size_t prev_ref_pos = std::string::npos;
-    
+
     // the number of unique reference positions seen in the alignment
     //size_t num_unique_ref_pos = 0;
 

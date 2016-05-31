@@ -354,18 +354,7 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
 
             // State-to-state transition
             add_transition_observation(prev_s, s);
-
-            // emission
-            //float level = data.read->get_drift_corrected_level(ei, data.strand);
-            //float sd = data.read->events[data.strand][ei].stdv;
-            //float duration = data.read->get_duration(ei, data.strand);
-            
             assert(ki < n_kmers);
-            //uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
-        
-            //GaussianParameters model = pm.get_scaled_parameters(rank);
-            //float norm_level = (level - model.mean) / model.stdv;
-
             prev_s = s;
         }
 

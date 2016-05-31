@@ -236,7 +236,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
-        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 5);
+        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
     } else {
         candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
     }
@@ -268,7 +268,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
         
         // Only try to call variants if there is a reasonable amount and the window is not too large
-        if(num_variants <= 20 && calling_size <= 100) {
+        if(num_variants <= 15 && calling_size <= 100) {
 
             // Subset the haplotype to the region we are calling
             Haplotype calling_haplotype = 
@@ -300,8 +300,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                     selected_variants[vi].write_vcf(stderr);
                 }
             }
-        }
-		else {
+        } else {
             fprintf(stderr, "Warning: %zu variants in span, region not called [%d %d]\n", num_variants, calling_start, calling_end);
 		}
 

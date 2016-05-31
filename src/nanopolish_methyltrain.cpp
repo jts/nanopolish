@@ -131,7 +131,7 @@ namespace opt
     static float min_event_duration = 0.005;
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
-    static unsigned num_training_rounds = 3;
+    static unsigned num_training_rounds = 5;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
@@ -260,6 +260,7 @@ bool recalibrate_model(SquiggleRead &sr,
         var /= raw_events.size();
 
         sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+        WARN_ONCE("DEBUG: r9 double-sqrt")
         sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
     }
 
