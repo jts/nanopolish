@@ -144,8 +144,9 @@ class SquiggleRead
         // get the index of the event that is nearest to the given kmer 
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
-        // replace the pore models with the models specified in the map
+        // replace the pore models with the models specified in the map or by a string
         void replace_models(const ModelMap& map);
+        void replace_models(const std::string& model_type);
         void replace_model(size_t strand_idx, const PoreModel& model);
 
         // returns true if this read has events for this strand

@@ -13,15 +13,21 @@
 #include <map>
 #include "nanopolish_poremodel.h"
 
+typedef std::map<std::string, PoreModel> PoreModelMap;
+
 class PoreModelSet
 {
     public:
 
         //
-        // get a model from the set using its name
-        // usage: PoreModelSet::get_model_by_name(name);
+        // initialize the model set from a .fofn file
         //
-        static PoreModel get_model_by_name(const std::string& name);
+        static void initialize(const std::string& fofn_filename);
+
+        //
+        // get a model from the set using its type and short name
+        //
+        static PoreModel get_model(const std::string& type, const std::string& short_name);
 
         // destructor
         ~PoreModelSet();
@@ -40,7 +46,10 @@ class PoreModelSet
         void operator=(PoreModelSet const&) = delete;
         PoreModelSet() {}; // public constructor not allowed
 
-        std::map<std::string, PoreModel> m_pore_model_cache;
+        // this is a map from a pore model type (like "base" or "derived"
+        // to a map of models indexed by their short name
+        // for example m_model_type_sets["base"]["t.007"]
+        std::map<std::string, PoreModelMap> model_type_sets;
 };
 
 #endif

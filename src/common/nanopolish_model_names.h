@@ -15,9 +15,10 @@
 
 enum KitVersion
 {
-    KV_SQK005,
+    KV_SQK005 = 0,
     KV_SQK006,
-    KV_SQK007
+    KV_SQK007,
+    NUM_KITS
 };
 
 // The parameters of a gaussian distribution
@@ -26,7 +27,8 @@ struct ModelMetadata
     uint8_t strand_idx;
     uint8_t model_idx; // template = 0, pop1 = 1, pop2 = 2
     KitVersion kit;
-    const char* short_name;
+
+    std::string get_short_name() const;
 };
 
 //

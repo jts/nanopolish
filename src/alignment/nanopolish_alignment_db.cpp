@@ -31,7 +31,6 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
                             m_event_bam(event_bam),
                             m_fast5_name_map(reads_file)
 {
-    m_p_model_map = NULL;
     _clear_region();
 }
 
@@ -402,8 +401,8 @@ void AlignmentDB::_load_events_by_region()
         if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
             SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
             // Switch the read to use an alternative kmer model
-            if(m_p_model_map != NULL) {
-                sr->replace_models(*m_p_model_map);
+            if(!m_model_type_string.empty()) {
+                sr->replace_models(m_model_type_string);
             }
 
             m_squiggle_read_map[read_name] = sr;

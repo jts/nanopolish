@@ -32,6 +32,7 @@
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
+#include "nanopolish_pore_model_set.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -93,6 +94,7 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
+    static std::string alternative_model_type = "derived";
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
@@ -216,7 +218,7 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
     return out;
 }
 
-Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end, const ModelMap& models)
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = 20;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
@@ -225,9 +227,11 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
-    if(!models.empty()) {
-        alignments.set_alternative_model(&models);
+    
+    if(!opt::alternative_model_type.empty()) {
+        alignments.set_alternative_model_type(opt::alternative_model_type);
     }
+
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
     Haplotype derived_haplotype(contig,
                                 alignments.get_region_start(),
@@ -369,6 +373,14 @@ void parse_call_variants_options(int argc, char** argv)
         die = true;
     }
 
+    if(opt::models_fofn.empty()) {
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
+        die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
+    }
+
     if (die) 
     {
         std::cout << "\n" << CONSENSUS_USAGE_MESSAGE;
@@ -380,11 +392,6 @@ int call_variants_main(int argc, char** argv)
 {
     parse_call_variants_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
-
-    ModelMap models;
-    if(!opt::models_fofn.empty()) {
-        models = read_models_fofn(opt::models_fofn);
-    }
 
     // Parse the window string
     // Replace ":" and "-" with spaces to make it parseable with stringstream
@@ -411,7 +418,7 @@ int call_variants_main(int argc, char** argv)
     fprintf(stderr, "TODO: train model\n");
     fprintf(stderr, "TODO: filter data\n");
 
-    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, models);
+    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
 
     std::vector<Variant> variants = haplotype.get_variants();
     for(size_t vi = 0; vi < variants.size(); vi++) {

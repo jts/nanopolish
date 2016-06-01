@@ -24,7 +24,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            int start,
                                            int end,
                                            int stride,
-                                           const ModelMap& models)
+                                           const std::string& alternative_model_type)
 {
     // Initialize return data
     HMMRealignmentInput ret;
@@ -76,8 +76,8 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         // load read
         ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
         SquiggleRead& sr = *ret.reads.back();
-        if(!models.empty()) {
-            sr.replace_models(models);
+        if(!alternative_model_type.empty()) {
+            sr.replace_models(alternative_model_type);
         }
 
         // Recalibrate each strand

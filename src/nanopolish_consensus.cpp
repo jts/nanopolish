@@ -27,6 +27,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_hmm_input_sequence.h"
+#include "nanopolish_pore_model_set.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -81,6 +82,7 @@ namespace opt
     static std::string output_file;
     static std::string window;
     static std::string models_fofn;
+    static std::string alternative_model_type = "derived";
     static int show_progress = 0;
     static int num_threads = 1;
 }
@@ -698,10 +700,17 @@ void train(HMMRealignmentInput& window)
     }
 }
 
-std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base, const ModelMap& models)
+std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
     const int minor_segment_stride = 50;
-    HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride, models);
+    HMMRealignmentInput window = build_input_for_region(opt::bam_file,
+                                                        opt::genome_file,
+                                                        name_map,
+                                                        contig,
+                                                        start_base,
+                                                        end_base,
+                                                        minor_segment_stride,
+                                                        opt::alternative_model_type);
     uint32_t num_segments = window.anchored_columns.size();
 
     // If there are not reads or not enough segments do not try to call a consensus sequence
@@ -832,6 +841,14 @@ void parse_consensus_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
         die = true;
     }
+    
+    if(opt::models_fofn.empty()) {
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
+        die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
+    }
 
     if (die) 
     {
@@ -847,11 +864,6 @@ int consensus_main(int argc, char** argv)
 
     Fast5Map name_map(opt::reads_file);
     
-    ModelMap models;
-    if(!opt::models_fofn.empty()) {
-        models = read_models_fofn(opt::models_fofn);
-    }
-
     // Parse the window string
     // Replace ":" and "-" with spaces to make it parseable with stringstream
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
@@ -879,7 +891,7 @@ int consensus_main(int argc, char** argv)
         int start_base = window_id * WINDOW_LENGTH;
         int end_base = start_base + WINDOW_LENGTH + WINDOW_OVERLAP;
         
-        std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base, models);
+        std::string window_consensus = call_consensus_for_window(name_map, contig, start_base, end_base);
         fprintf(out_fp, ">%s:%d\n%s\n", contig.c_str(), window_id, window_consensus.c_str());
     }
 

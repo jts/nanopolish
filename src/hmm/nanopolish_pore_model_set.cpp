@@ -13,23 +13,48 @@ PoreModelSet::~PoreModelSet()
 {
 }
 
-PoreModel PoreModelSet::get_model_by_name(const std::string& name)
+void PoreModelSet::initialize(const std::string& fofn_filename)
 {
-    std::map<std::string, PoreModel>::iterator iter;
-    #pragma omp critical
-    {
-        PoreModelSet& model_set = getInstance();
-
-        // look up the model in the cache
-        iter = model_set.m_pore_model_cache.find(name);
-        if(iter == model_set.m_pore_model_cache.end()) {
-            // load the model from disk
-            // this will intentially exit with an error if the model cannot be found
-            std::cerr << "Loading model from disk: " << name << "\n";
-            PoreModel model(name);
-            iter = model_set.m_pore_model_cache.insert(std::make_pair(name, model)).first;
-        }
+    // grab singleton instance
+    PoreModelSet& model_set = getInstance();
+    
+    // open the fofn file reader
+    std::ifstream fofn_reader(fofn_filename);
+    if(!fofn_reader.is_open()) {
+        fprintf(stderr, "Error: could not read %s\n", fofn_filename.c_str());
+        exit(EXIT_FAILURE);
     }
 
-    return iter->second;
+    std::string model_filename;
+    while(getline(fofn_reader, model_filename)) {
+
+        // read the model
+        PoreModel p(model_filename);
+        assert(!p.name.empty());
+        assert(!p.type.empty());
+
+        model_set.model_type_sets[p.type][p.metadata.get_short_name()] = p;
+
+        fprintf(stderr, "registering model %s-%s\n", p.metadata.get_short_name().c_str(), p.type.c_str());
+    }
+}
+
+PoreModel PoreModelSet::get_model(const std::string& type, const std::string& short_name)
+{
+    std::map<std::string, PoreModel>::iterator iter;
+    PoreModelSet& model_set = getInstance();
+    
+    auto iter_type = model_set.model_type_sets.find(type);
+    if(iter_type == model_set.model_type_sets.end()) {
+        fprintf(stderr, "Error: cannot find model type %s\n", type.c_str());
+        exit(EXIT_FAILURE);
+    }
+    
+    auto iter_short_name = iter_type->second.find(short_name);
+    if(iter_short_name == iter_type->second.end()) {
+        fprintf(stderr, "Error: cannot find model %s for type %s\n", short_name.c_str(), type.c_str());
+        exit(EXIT_FAILURE);
+    }
+    
+    return iter_short_name->second;
 }

@@ -73,7 +73,7 @@ class AlignmentDB
         int get_region_start() const { return m_region_start; }
         int get_region_end() const { return m_region_end; }
         
-        void set_alternative_model(const ModelMap* p_model_map) { m_p_model_map = p_model_map; }
+        void set_alternative_model_type(const std::string model_type_string) { m_model_type_string = model_type_string; }
 
     private:
         
@@ -115,7 +115,7 @@ class AlignmentDB
         std::vector<SequenceAlignmentRecord> m_sequence_records;
         std::vector<EventAlignmentRecord> m_event_records;
         SquiggleReadMap m_squiggle_read_map;
-        const ModelMap* m_p_model_map;
+        std::string m_model_type_string;
 };
 
 #endif

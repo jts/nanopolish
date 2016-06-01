@@ -115,12 +115,12 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
-        
+
         // Do we want to load this strand?
         if(! (read_type == SRT_2D || read_type == si) ) {
             continue;
         }
-        
+
         // Initialize to default scaling parameters
         pore_model[si].shift = 0.0;
         pore_model[si].scale = 1.0;
@@ -128,30 +128,29 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         pore_model[si].var = 1.0;
         pore_model[si].scale_sd = 1.0;
         pore_model[si].var_sd = 1.0;
-        
+
         // R9 change: load pore model from external file
 
         // this flag should only be used when running train-poremodel-from-basecalls
         // in this case there is no default model to load so we skip this step
         if( (flags & SRF_NO_MODEL) == 0) {
-            std::string r9_model_name = "r9.template.5mer.base.model";
-            pore_model[si] = PoreModelSet::get_model_by_name(r9_model_name);
+            pore_model[si] = PoreModelSet::get_model("base", "t.007");
             pore_model[si].bake_gaussian_parameters();
-            
+
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].name);
         }
 
         // Load the events for this strand
         std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
-        
+
         // copy events
         events[si].resize(f5_events.size());
         for(size_t ei = 0; ei < f5_events.size(); ++ei) {
             const fast5::Event_Entry& f5_event = f5_events[ei];
-            events[si][ei] = { static_cast<float>(f5_event.mean), 
-                               static_cast<float>(f5_event.stdv), 
-                               static_cast<float>(f5_event.start), 
+            events[si][ei] = { static_cast<float>(f5_event.mean),
+                               static_cast<float>(f5_event.stdv),
+                               static_cast<float>(f5_event.start),
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
         }
@@ -277,13 +276,13 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
             
             for(uint32_t si = 0; si <= 1; ++si) {
                 int incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
-                
+
                 // no event for this strand, nothing to update
                 if(incoming_idx == -1) {
                     continue;
                 }
                 if(erfb.indices[si].start == -1) {
-                    erfb.indices[si].start = incoming_idx;        
+                    erfb.indices[si].start = incoming_idx;
                 }
                 erfb.indices[si].stop = incoming_idx;
 
@@ -297,7 +296,7 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
 }
 
 void SquiggleRead::replace_models(const ModelMap& map) {
-    
+
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
         // only replace this model if the strand was loaded
@@ -313,6 +312,21 @@ void SquiggleRead::replace_models(const ModelMap& map) {
             fprintf(stderr, "Error, alternative model %s not found\n", curr_model.c_str());
             exit(EXIT_FAILURE);
         }
+    }
+}
+
+void SquiggleRead::replace_models(const std::string& model_type) {
+
+    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+
+        // only replace this model if the strand was loaded
+        if(! (read_type == SRT_2D || read_type == strand_idx) ) {
+            continue;
+        }
+
+        PoreModel incoming_model =
+            PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
+        replace_model(strand_idx, incoming_model);
     }
 }
 

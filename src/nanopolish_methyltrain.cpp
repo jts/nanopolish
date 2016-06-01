@@ -173,7 +173,7 @@ static const struct option longopts[] = {
 std::string get_model_short_name(const std::string& model_name)
 {
     ModelMetadata model_data = get_model_metadata_from_name(model_name);
-    return model_data.short_name;
+    return model_data.get_short_name();
 }
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
