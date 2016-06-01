@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <string>
 #include <map>
+#include "nanopolish_model_names.h"
 #include "../fast5/src/fast5.hpp"
 
 //
@@ -104,6 +105,8 @@ class PoreModel
         // model metadata
         std::string model_filename;
         std::string name;
+        std::string type;
+        ModelMetadata metadata;
         uint32_t k;
 
         // per-read scaling parameters

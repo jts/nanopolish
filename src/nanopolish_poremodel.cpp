@@ -56,24 +56,67 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     std::ifstream model_reader(filename);
     std::string model_line;
 
+    bool model_metadata_in_header = false;
     bool firstKmer = true;
     unsigned ninserted = 0;
 
-    shift_offset = 0.0f;
-    scale_offset = 0.0f;
+    this->shift_offset = 0.0f;
+    this->scale_offset = 0.0f;
 
-    const size_t maxNucleotides=50;
-    char bases[maxNucleotides+1]="";
+    const size_t maxNucleotides = 50;
+    char bases[maxNucleotides+1] = "";
 
     std::map<std::string, PoreModelStateParams> kmers;
-
     while (getline(model_reader, model_line)) {
         std::stringstream parser(model_line);
 
         // Extract the model name from the header
         if (model_line.find("#model_name") != std::string::npos) {
             std::string dummy;
-            parser >> dummy >> name;
+            parser >> dummy >> this->name;
+        }
+
+        // Extract the strand from the header
+        if (model_line.find("#strand") != std::string::npos) {
+            std::string dummy;
+            std::string in_strand;
+            parser >> dummy >> in_strand;
+
+            if(in_strand == "template") {
+                this->metadata.model_idx = 0;
+            } else if(in_strand == "complement.pop1") {
+                this->metadata.model_idx = 1;
+            } else if(in_strand == "complement.pop2") {
+                this->metadata.model_idx = 2;
+            } else {
+                fprintf(stderr, "Error, unrecognized model strand %s for input file %s\n",
+                    in_strand.c_str(), filename.c_str());
+                exit(EXIT_FAILURE);
+            }
+
+            model_metadata_in_header = true;
+        }
+
+        // Extract the sequencing kit version from the header
+        if (model_line.find("#kit") != std::string::npos) {
+            std::string dummy;
+            std::string in_kit;
+            parser >> dummy >> in_kit;
+
+            if(in_kit == "SQK006") {
+                this->metadata.kit = KV_SQK007;
+            } else if(in_kit == "SQK007") {
+                this->metadata.kit = KV_SQK007;
+            } else {
+                fprintf(stderr, "Error, unrecognized model kit %s for input file %s\n",
+                    in_kit.c_str(), filename.c_str());
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        if (model_line.find("#type") != std::string::npos) {
+            std::string dummy;
+            parser >> dummy >> this->type;
         }
 
         // Extract shift/scale offset from the header
@@ -81,12 +124,12 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         // to allow switching between models with different averages
         if (model_line.find("#shift_offset") != std::string::npos) {
             std::string dummy;
-            parser >> dummy >> shift_offset;
+            parser >> dummy >> this->shift_offset;
         }
         
         if (model_line.find("#scale_offset") != std::string::npos) {
             std::string dummy;
-            parser >> dummy >> scale_offset;
+            parser >> dummy >> this->scale_offset;
         }
 
         // Use the alphabet defined in the header if available
@@ -96,7 +139,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
             parser >> dummy >> alphabet_name;
             pmalphabet = get_alphabet_by_name(alphabet_name);
         }
-
 
         // skip the rest of the header
         if (model_line[0] == '#' || model_line.find("kmer") == 0) {
@@ -119,6 +161,10 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
             k = kmer.length();
             firstKmer = false;
         }
+    }
+
+    if(!model_metadata_in_header) {
+        this->metadata = get_model_metadata_from_name(this->name);
     }
 
     if (pmalphabet == nullptr) 
