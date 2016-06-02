@@ -243,7 +243,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
     std::replace(name.begin(), name.end(), '/', '_');
 }
 
-void PoreModel::write(const std::string filename, const std::string modelname) 
+void PoreModel::write(const std::string filename, const std::string modelname) const
 {
     std::string outmodelname = modelname;
     if(modelname.empty())
@@ -251,14 +251,17 @@ void PoreModel::write(const std::string filename, const std::string modelname)
 
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
-    writer << "#shift_offset\t" << shift_offset << std::endl;
-    writer << "#scale_offset\t" << scale_offset << std::endl;
+    writer << "#type\t" << this->type << std::endl;
+    writer << "#kit\t" << this->metadata.get_kit_name() << std::endl;
+    writer << "#strand\t" << this->metadata.get_strand_model_name() << std::endl;
+    writer << "#shift_offset\t" << this->shift_offset << std::endl;
+    writer << "#scale_offset\t" << this->scale_offset << std::endl;
 
-    std::string curr_kmer(k,pmalphabet->base(0));
-    for(size_t ki = 0; ki < states.size(); ++ki) {
-        writer << curr_kmer << "\t" << states[ki].level_mean << "\t" << states[ki].level_stdv << "\t"
-               << states[ki].sd_mean << "\t" << states[ki].sd_stdv << std::endl;
-        pmalphabet->lexicographic_next(curr_kmer);
+    std::string curr_kmer(k, this->pmalphabet->base(0));
+    for(size_t ki = 0; ki < this->states.size(); ++ki) {
+        writer << curr_kmer << "\t" << this->states[ki].level_mean << "\t" << this->states[ki].level_stdv << "\t"
+               << this->states[ki].sd_mean << "\t" << this->states[ki].sd_stdv << std::endl;
+        this->pmalphabet->lexicographic_next(curr_kmer);
     }
     writer.close();
 }

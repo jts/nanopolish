@@ -29,6 +29,8 @@ struct ModelMetadata
     KitVersion kit;
 
     std::string get_short_name() const;
+    std::string get_kit_name() const;
+    std::string get_strand_model_name() const;
 };
 
 //

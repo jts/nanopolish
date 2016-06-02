@@ -34,6 +34,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_model_names.h"
+#include "nanopolish_pore_model_set.h"
 #include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -120,6 +121,9 @@ namespace opt
     static std::string region;
     static std::string out_suffix = ".trained";
     static std::string out_fofn = "trained.fofn";
+    static std::string initial_model_type = "ONT";
+    static std::string trained_model_type = "reftrained";
+
     static TrainingTarget training_target = TT_METHYLATED_KMERS;
     static bool write_models = true;
     static bool output_scores = false;
@@ -169,12 +173,6 @@ static const struct option longopts[] = {
     { "filter-policy",      required_argument, NULL, OPT_FILTER_POLICY },
     { NULL, 0, NULL, 0 }
 };
-
-std::string get_model_short_name(const std::string& model_name)
-{
-    ModelMetadata model_data = get_model_metadata_from_name(model_name);
-    return model_data.get_short_name();
-}
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 // returns true if the recalibration was performed
@@ -276,8 +274,7 @@ bool recalibrate_model(SquiggleRead &sr,
 }
 
 // Update the training data with aligned events from a read
-void add_aligned_events(const ModelMap& model_map,
-                        const Fast5Map& name_map,
+void add_aligned_events(const Fast5Map& name_map, 
                         const faidx_t* fai,
                         const bam_hdr_t* hdr,
                         const bam1_t* record,
@@ -293,22 +290,15 @@ void add_aligned_events(const ModelMap& model_map,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
+        
+    // replace the models that are built into the read with the current trained model
+    sr.replace_models(opt::trained_model_type);
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
         // skip if 1D reads and this is the wrong strand
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
-        }
-        // replace the model that is built into the read with the current trained model
-        std::string curr_model = sr.pore_model[strand_idx].name;
-        auto model_iter = model_map.find(curr_model);
-
-        if(model_iter != model_map.end()) {
-            sr.pore_model[strand_idx].update_states(model_iter->second);
-        } else {
-            printf("Error: model %s not found\n", curr_model.c_str());
-            assert(false && "Model not found");
         }
         
         // set k
@@ -331,9 +321,12 @@ void add_aligned_events(const ModelMap& model_map,
             return;
 
         // Update pore model based on alignment
+       std::string curr_model = sr.pore_model[strand_idx].metadata.get_short_name();
         double orig_score = -INFINITY;
+        
         if (opt::output_scores) {
             orig_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
+
             #pragma omp critical(print)
             std::cout << round << " " << curr_model << " " << read_idx << " " << strand_idx << " Original " << orig_score << std::endl;
         }
@@ -480,10 +473,13 @@ void parse_methyltrain_options(int argc, char** argv)
     }
     
     if(opt::models_fofn.empty()) {
-        std::cerr << SUBPROGRAM ": a --models-fofn file must be provided\n";
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
         die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
     }
-
+    
     // Parse the training target string
     if(training_target_str != "") {
         if(training_target_str == "unmethylated") {
@@ -517,13 +513,16 @@ void parse_methyltrain_options(int argc, char** argv)
     }
 }
 
-ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_t round)
+void train_one_round(const Fast5Map& name_map, size_t round)
 {
+    const PoreModelMap& current_models = PoreModelSet::get_models(opt::trained_model_type);
+
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
-    for(auto model_iter = models.begin(); model_iter != models.end(); model_iter++) {
-        std::vector<StateSummary> summaries(model_iter->second.get_num_states()); // one entry per kmer in the model
-        model_training_data[model_iter->first] = summaries;
+    for(auto current_model_iter = current_models.begin(); current_model_iter != current_models.end(); current_model_iter++) {
+        // one summary entry per kmer in the model
+        std::vector<StateSummary> summaries(current_model_iter->second.get_num_states()); 
+        model_training_data[current_model_iter->first] = summaries;
     }
 
     // Open the BAM and iterate over reads
@@ -591,7 +590,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    add_aligned_events(models, name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
+                    add_aligned_events(name_map, fai, hdr, record, read_idx, clip_start, clip_end, round, model_training_data);
                 }
             }
 
@@ -606,7 +605,6 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     
     assert(num_records_buffered == 0);
     progress.end();
-
     
     // open the summary file
     std::stringstream summary_fn;
@@ -624,25 +622,20 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     // write out a header for the training data
     StateTrainingData::write_header(training_ofs);
 
-    // Process the training results
-    ModelMap trained_models;
-    
     // iterate over models: template, complement_pop1, complement_pop2
     for(auto model_training_iter = model_training_data.begin(); 
              model_training_iter != model_training_data.end(); model_training_iter++) {
         
         // Initialize the trained model from the input model
-        auto model_iter = models.find(model_training_iter->first);
-        assert(model_iter != models.end());
+        auto current_model_iter = current_models.find(model_training_iter->first);
+        assert(current_model_iter != current_models.end());
 
         std::string model_name = model_training_iter->first;
-        std::string model_short_name = get_model_short_name(model_name);
-
-        trained_models[model_training_iter->first] = model_iter->second;
-
-        // Get a convienance variable for the PoreModel that we will train
-        PoreModel& new_pm = trained_models[model_training_iter->first];
-        uint32_t k = new_pm.k;
+        std::string model_short_name = current_model_iter->second.metadata.get_short_name();
+        
+        // Initialize the new model from the current model
+        PoreModel updated_model = current_model_iter->second;
+        uint32_t k = updated_model.k;
         const std::vector<StateSummary>& summaries = model_training_iter->second;
 
         // Generate the complete set of kmers
@@ -691,12 +684,12 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 // just fit a gaussian
                 float major_weight = is_m_kmer ? 1 - incomplete_methylation_rate : 1.0f;
                 mixture.log_weights.push_back(log(major_weight));
-                mixture.params.push_back(model_iter->second.get_parameters(ki));
+                mixture.params.push_back(current_model_iter->second.get_parameters(ki));
                 
                 if(is_m_kmer) {
                     // add second unmethylated component
                     mixture.log_weights.push_back(std::log(incomplete_methylation_rate));
-                    mixture.params.push_back(model_iter->second.get_parameters(um_ki));
+                    mixture.params.push_back(current_model_iter->second.get_parameters(um_ki));
                 }
 
                 if(opt::verbose > 1) {
@@ -714,7 +707,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 }
 
                 #pragma omp critical
-                new_pm.states[ki] = trained_mixture.params[0];
+                updated_model.states[ki] = trained_mixture.params[0];
 
                 if (model_stdv()) {
                     ParamMixture ig_mixture;
@@ -724,7 +717,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     ig_mixture.params.emplace_back(trained_mixture.params[0]);
 
                     if(is_m_kmer) {
-                        ig_mixture.params.emplace_back(model_iter->second.get_parameters(um_ki));
+                        ig_mixture.params.emplace_back(current_model_iter->second.get_parameters(um_ki));
                     }
                     // run training
                     auto trained_ig_mixture = train_invgaussian_mixture(summaries[ki].events, ig_mixture);
@@ -740,7 +733,7 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                     // update state
                     #pragma omp critical
                     {
-                        new_pm.states[ki] = trained_ig_mixture.params[0];
+                        updated_model.states[ki] = trained_ig_mixture.params[0];
                     }
                 }
 
@@ -752,8 +745,11 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
                 fprintf(summary_fp, "%s\t%s\t%d\t%d\t%d\t%zu\t%d\t%.2lf\t%.2lf\n",
                                         model_short_name.c_str(), kmer.c_str(), 
                                         summaries[ki].num_matches, summaries[ki].num_skips, summaries[ki].num_stays, 
-                                        summaries[ki].events.size(), trained, new_pm.states[ki].level_mean, new_pm.states[ki].level_stdv);
+                                        summaries[ki].events.size(), trained, updated_model.states[ki].level_mean, updated_model.states[ki].level_stdv);
             }
+
+            // add the updated model into the collection (or replace what is already there)
+            PoreModelSet::insert_model(opt::trained_model_type, updated_model);
         }
     }
 
@@ -769,10 +765,9 @@ ModelMap train_one_round(const ModelMap& models, const Fast5Map& name_map, size_
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
     fclose(summary_fp);
-    return trained_models;
 }
 
-void write_models(ModelMap& models, int round)
+void write_models(const PoreModelMap& models, int round)
 {
     // file-of-filenames containing the new models
     std::ofstream fofn_writer(opt::out_fofn);
@@ -785,14 +780,13 @@ void write_models(ModelMap& models, int round)
         std::stringstream round_ss;
         round_ss << round;
 
-        std::string outname   =  get_model_short_name(model_iter->second.name) + opt::out_suffix; 
+        std::string outname   =  model_iter->second.name + opt::out_suffix; 
         std::string modelname =  model_iter->first + opt::out_suffix;
-        models[model_iter->first].write( outname, modelname );
+        model_iter->second.write( outname, modelname );
 
         // write the name of the trained model in the fofn
         fofn_writer << outname << "\n";
     }
-
 }
 
 int methyltrain_main(int argc, char** argv)
@@ -801,19 +795,25 @@ int methyltrain_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn);
     
+    // copy the input model into a new type that will hold the trained models
+    const PoreModelMap& input_models = PoreModelSet::get_models(opt::initial_model_type);
+    for(auto model_iter : input_models) {
+        PoreModel model_copy = model_iter.second;
+        model_copy.type = opt::trained_model_type;
+        PoreModelSet::insert_model(model_copy.type, model_copy);
+    }
+
     // Set the alphabet for this run to be the alphabet for the first model
-    assert(!models.empty());
-    mtrain_alphabet = models.begin()->second.pmalphabet;
+    assert(!PoreModelSet::get_models(opt::initial_model_type).empty());
+    mtrain_alphabet = PoreModelSet::get_models(opt::initial_model_type).begin()->second.pmalphabet;
 
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
-        ModelMap trained_models = train_one_round(models, name_map, round);
+        train_one_round(name_map, round);
         if(opt::write_models) {
-            write_models(trained_models, round);
+            write_models(PoreModelSet::get_models(opt::trained_model_type), round);
         }
-        models = trained_models;
     }
     return EXIT_SUCCESS;
 }

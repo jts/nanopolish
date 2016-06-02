@@ -13,6 +13,8 @@
 #include <map>
 #include "nanopolish_poremodel.h"
 
+#define DEFAULT_MODEL_TYPE "reftrained"
+
 typedef std::map<std::string, PoreModel> PoreModelMap;
 
 class PoreModelSet
@@ -28,6 +30,16 @@ class PoreModelSet
         // get a model from the set using its type and short name
         //
         static PoreModel get_model(const std::string& type, const std::string& short_name);
+
+        //
+        // get all the models for this type
+        //
+        static const PoreModelMap& get_models(const std::string& type);
+
+        //
+        // insert the new model into the specified type
+        //
+        static void insert_model(const std::string& type, const PoreModel& model);
 
         // destructor
         ~PoreModelSet();

@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include "nanopolish_matrix.h"
 #include "nanopolish_hmm_input_sequence.h"
+#include "nanopolish_model_names.h"
 
 // 
 struct KmerTransitionObservation
@@ -44,7 +45,7 @@ class TransitionParameters
         TransitionParameters();
         ~TransitionParameters();
 
-        void initialize(const std::string& model_name);
+        void initialize(const ModelMetadata& metadata);
 
         // update transition parameters from training data
         void train();

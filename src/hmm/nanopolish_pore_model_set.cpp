@@ -9,10 +9,12 @@
 //
 #include "nanopolish_pore_model_set.h"
 
+//
 PoreModelSet::~PoreModelSet()
 {
 }
 
+//
 void PoreModelSet::initialize(const std::string& fofn_filename)
 {
     // grab singleton instance
@@ -39,9 +41,9 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
     }
 }
 
+//
 PoreModel PoreModelSet::get_model(const std::string& type, const std::string& short_name)
 {
-    std::map<std::string, PoreModel>::iterator iter;
     PoreModelSet& model_set = getInstance();
     
     auto iter_type = model_set.model_type_sets.find(type);
@@ -57,4 +59,28 @@ PoreModel PoreModelSet::get_model(const std::string& type, const std::string& sh
     }
     
     return iter_short_name->second;
+}
+
+//
+const PoreModelMap& PoreModelSet::get_models(const std::string& type)
+{
+    PoreModelSet& model_set = getInstance();
+    
+    auto iter_type = model_set.model_type_sets.find(type);
+    if(iter_type == model_set.model_type_sets.end()) {
+        fprintf(stderr, "Error: cannot find model type %s\n", type.c_str());
+        exit(EXIT_FAILURE);
+    }
+    
+    return iter_type->second;
+}
+
+void PoreModelSet::insert_model(const std::string& type, const PoreModel& model)
+{
+    #pragma omp critical
+    {
+        PoreModelSet& model_set = getInstance();
+        std::string key = model.metadata.get_short_name();
+        model_set.model_type_sets[type][key] = model;
+    }
 }

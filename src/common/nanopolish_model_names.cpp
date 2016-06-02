@@ -12,6 +12,10 @@
 #include "nanopolish_model_names.h"
 #include "nanopolish_common.h"
 
+static std::string strand_by_idx[] = { "template", "complement.pop1", "complement.pop2" };
+static std::string short_strand_by_idx[] = { "t", "c.p1", "c.p2" };
+static std::string short_kit_by_idx[] = { "005", "006", "007" };
+
 static std::map< std::string, ModelMetadata > known_models = {
 
     // SQK005 models
@@ -33,12 +37,21 @@ static std::map< std::string, ModelMetadata > known_models = {
 
 std::string ModelMetadata::get_short_name() const
 {
-    static std::string short_strand_by_idx[] = { "t", "c.p1", "c.p2" };
-    static std::string short_kit_by_idx[] = { "005", "006", "007" };
-
     assert(this->model_idx < 3);
     assert(this->kit < NUM_KITS);
     return short_strand_by_idx[this->model_idx] + "." + short_kit_by_idx[this->kit];
+}
+
+std::string ModelMetadata::get_kit_name() const
+{
+    assert(this->kit < NUM_KITS);
+    return "SQK" + short_kit_by_idx[this->kit];
+}
+
+std::string ModelMetadata::get_strand_model_name() const
+{
+    assert(this->model_idx < 3);
+    return strand_by_idx[this->model_idx];
 }
 
 ModelMetadata get_model_metadata_from_name(const std::string& name)

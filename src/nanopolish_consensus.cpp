@@ -82,7 +82,7 @@ namespace opt
     static std::string output_file;
     static std::string window;
     static std::string models_fofn;
-    static std::string alternative_model_type = "derived";
+    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static int show_progress = 0;
     static int num_threads = 1;
 }

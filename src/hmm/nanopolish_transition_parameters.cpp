@@ -11,7 +11,6 @@
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_squiggle_read.h"
-#include "nanopolish_model_names.h"
 
 //#define PRINT_TRAINING_MESSAGES 1
 //#define SHOW_TRAINING_RESULT 1
@@ -50,27 +49,26 @@ TransitionParameters::~TransitionParameters()
     free_matrix(training_data.state_transitions);
 }
 
-void TransitionParameters::initialize(const std::string& model_name)
+void TransitionParameters::initialize(const ModelMetadata& metadata)
 {
     is_initialized = true;
-    ModelMetadata model_data = get_model_metadata_from_name(model_name);
 
-    if(model_data.kit == KV_SQK005) {
+    if(metadata.kit == KV_SQK005) {
         initialize_sqkmap005();
-    } else if(model_data.kit == KV_SQK006) {
-        if(model_data.strand_idx == T_IDX) {
+    } else if(metadata.kit == KV_SQK006) {
+        if(metadata.strand_idx == T_IDX) {
             initialize_sqkmap006_template();
         } else {
             initialize_sqkmap006_complement();
         }
-    } else if(model_data.kit == KV_SQK007) {
-        if(model_data.strand_idx == T_IDX) {
+    } else if(metadata.kit == KV_SQK007) {
+        if(metadata.strand_idx == T_IDX) {
             initialize_sqkmap007_template();
         } else {
             initialize_sqkmap007_complement();
         }
     } else {
-        fprintf(stderr, "Warning: unknown model: %s\n", model_name.c_str());
+        fprintf(stderr, "Warning: unknown model kit: %d\n", metadata.kit);
         initialize_sqkmap005();
     }
 }

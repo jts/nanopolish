@@ -69,7 +69,7 @@ class PoreModel
         PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
         PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet=NULL);
 
-        void write(const std::string filename, const std::string modelname="");
+        void write(const std::string filename, const std::string modelname="") const;
 
         inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
         {

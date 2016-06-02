@@ -138,7 +138,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             pore_model[si].bake_gaussian_parameters();
 
             // initialize transition parameters
-            parameters[si].initialize(pore_model[si].name);
+            parameters[si].initialize(pore_model[si].metadata);
         }
 
         // Load the events for this strand

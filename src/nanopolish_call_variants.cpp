@@ -94,7 +94,7 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
-    static std::string alternative_model_type = "derived";
+    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
