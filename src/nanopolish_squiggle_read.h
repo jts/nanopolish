@@ -147,6 +147,7 @@ class SquiggleRead
         // replace the pore models with the models specified in the map or by a string
         void replace_models(const ModelMap& map);
         void replace_models(const std::string& model_type);
+        void replace_model(size_t strand_idx, const std::string& model_type);
         void replace_model(size_t strand_idx, const PoreModel& model);
 
         // returns true if this read has events for this strand

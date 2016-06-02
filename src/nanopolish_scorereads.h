@@ -13,7 +13,7 @@
 std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
                                                 const size_t strand_idx,
                                                 const size_t read_idx,
-                                                const ModelMap* model_map,
+                                                const std::string& alternative_model_type,
                                                 const faidx_t* fai,
                                                 const bam_hdr_t* hdr,
                                                 const bam1_t* record,

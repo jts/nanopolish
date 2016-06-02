@@ -315,7 +315,8 @@ void SquiggleRead::replace_models(const ModelMap& map) {
     }
 }
 
-void SquiggleRead::replace_models(const std::string& model_type) {
+void SquiggleRead::replace_models(const std::string& model_type) 
+{
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
@@ -328,6 +329,13 @@ void SquiggleRead::replace_models(const std::string& model_type) {
             PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
         replace_model(strand_idx, incoming_model);
     }
+}
+
+void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type) 
+{
+    PoreModel incoming_model =
+        PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
+    replace_model(strand_idx, incoming_model);
 }
 
 void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
