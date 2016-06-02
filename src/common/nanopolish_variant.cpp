@@ -202,12 +202,6 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
     return selected_variants;
 }
 
-int model2idx(const std::string& model_name)
-{
-    ModelMetadata model_data = get_model_metadata_from_name(model_name);
-    return model_data.model_idx;
-}
-
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 
                                         const std::vector<HMMInputData>& input,
@@ -232,7 +226,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             base_lp_by_read[j] = tmp;
             base_lp += tmp;
 
-            int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
+            int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
             int cid = 2 * mid + input[j].rc;
             base_lp_by_model_strand[cid] += tmp;
             read_counts[cid] += 1;
@@ -273,7 +267,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             {
                 current_lp += tmp;
                 supporting_reads += tmp > base_lp_by_read[j];
-                int mid = model2idx(input[j].read->pore_model[input[j].strand].name);
+                int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
                 int cid = 2 * mid + input[j].rc;
                 current_lp_by_model_strand[cid] += tmp;
             }
