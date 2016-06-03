@@ -29,6 +29,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_hmm_input_sequence.h"
+#include "nanopolish_pore_model_set.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -74,6 +75,7 @@ namespace opt
     static std::string region;
     static std::string summary_file;
     static std::string models_fofn;
+    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
@@ -481,8 +483,7 @@ void realign_read(EventalignWriter writer,
                   const bam1_t* record, 
                   size_t read_idx,
                   int region_start,
-                  int region_end,
-                  const ModelMap& models)
+                  int region_end)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -490,10 +491,10 @@ void realign_read(EventalignWriter writer,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
-    if(!models.empty()) {
-        sr.replace_models(models);
-    }
 
+    if(!opt::alternative_model_type.empty()) {
+        sr.replace_models(opt::alternative_model_type);
+    }
 
     if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 
@@ -779,6 +780,14 @@ void parse_eventalign_options(int argc, char** argv)
         die = true;
     }
 
+    if(opt::models_fofn.empty()) {
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
+        die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
+    }
+
     if (die) 
     {
         std::cout << "\n" << EVENTALIGN_USAGE_MESSAGE;
@@ -793,11 +802,6 @@ int eventalign_main(int argc, char** argv)
 
     Fast5Map name_map(opt::reads_file);
     
-    ModelMap models;
-    if(!opt::models_fofn.empty()) {
-        models = read_models_fofn(opt::models_fofn);
-    }
-
     // Open the BAM and iterate over reads
 
     // load bam file
@@ -882,7 +886,7 @@ int eventalign_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end, models);
+                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
                 }
             }
 

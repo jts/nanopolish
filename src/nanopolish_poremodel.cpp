@@ -282,22 +282,3 @@ void PoreModel::update_states( const std::vector<PoreModelStateParams> &othersta
         bake_gaussian_parameters();
     }
 }
-
-ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet)
-{
-    ModelMap out;
-    std::ifstream fofn_reader(fofn_name);
-    if(!fofn_reader.is_open()) {
-        fprintf(stderr, "Error: could not read %s\n", fofn_name.c_str());
-        exit(EXIT_FAILURE);
-    }
-    std::string model_filename;
-
-    while(getline(fofn_reader, model_filename)) {
-        PoreModel p(model_filename, alphabet);
-        assert(!p.name.empty());
-        out[p.name] = p;
-    }
-    return out;
-}
-

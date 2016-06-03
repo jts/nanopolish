@@ -132,8 +132,4 @@ class PoreModel
         std::vector<GaussianParameters> scaled_params;
 };
 
-typedef std::map<std::string, PoreModel> ModelMap;
-
-ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet=nullptr);
-
 #endif
