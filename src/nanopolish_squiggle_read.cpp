@@ -32,7 +32,7 @@ SquiggleRead::~SquiggleRead()
 int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t strand) const
 {
     while(start != stop) {
-        
+
         int ei = base_to_event_map[start].indices[strand].start;
         if(ei != -1)
             return ei;
@@ -90,15 +90,21 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     size_t bc_2d_pos = read_name.find("Basecall_2D");
     if(bc_2d_pos != std::string::npos) {
         int ret = sscanf(read_name.substr(bc_2d_pos).c_str(), "Basecall_2D_%03d_2d", &group_id);
-    } 
+    }
     */
     // default to 0 group
     if(group_id == -1) {
         group_id = 0;
     }
-    
-    f_p->set_basecalled_group_id(group_id);
 
+    //f_p->set_basecalled_group_id(group_id);
+
+    // JTS hack: use the nanonet group
+    basecall_group = "RNN_1D_000";
+    read_type = SRT_TEMPLATE;
+    read_sequence = f_p->get_basecall_seq(basecall_group, read_type);
+
+    /*
     // Automatically detect the read type from the name
     // Set the read type based on the suffix and load the sequence
     assert(!read_name.empty());
@@ -108,10 +114,17 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     } else if(ends_with(read_name, "_complement")) {
         read_type = SRT_COMPLEMENT;
         read_sequence = f_p->basecalled_1D(read_type);
-    } else {
+    } else if(ends_with(read_name, "_2d")) {
         read_type = SRT_2D;
         read_sequence = f_p->basecalled_2D();
+    } else {
+        printf("empty suffix\n");
+        // JTS hack: if there is no identifying suffix on the read
+        // we assume it is a nanonet 1D read
+        read_type = SRT_TEMPLATE;
+        read_sequence = f_p->basecalled_1D(read_type);
     }
+    */
 
     // Load PoreModel for both strands
     for (size_t si = 0; si < 2; ++si) {
@@ -142,7 +155,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         // Load the events for this strand
-        std::vector<fast5::Event_Entry> f5_events = f_p->get_events(si);
+        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(basecall_group, si);
 
         // copy events
         events[si].resize(f5_events.size());
@@ -168,7 +181,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
     // Calibrate the models using the basecalls
     for(size_t si = 0; si < 2; ++si) {
-        
+
         // only recalibrate if there is a model, its a 2D read or a 2D read and the right strand
         if( !(read_type == SRT_2D || read_type == si) || (flags & SRF_NO_MODEL) ) {
             continue;
@@ -201,7 +214,7 @@ void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::ve
     size_t curr_k_idx = 0;
     for(size_t ei = 0; ei < f5_events.size(); ++ei) {
         const fast5::Event_Entry& f5_event = f5_events[ei];
-        
+
         // Does this event correspond to a different k-mer than the previous one?
         if(f5_event.move > 0) {
             assert(ei != 0);
@@ -209,13 +222,13 @@ void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::ve
             // end the range for the current k-mer
             base_to_event_map[curr_k_idx].indices[strand].stop = ei - 1;
             curr_k_idx += f5_event.move;
-            
+
             // start the range for the next kmer
-            base_to_event_map[curr_k_idx].indices[strand].start = ei; 
+            base_to_event_map[curr_k_idx].indices[strand].start = ei;
         }
 
-        // ensure the traversal matches the read sequence
-        assert(read_sequence.compare(curr_k_idx, k, f5_event.model_state) == 0);
+        assert(read_sequence.compare(curr_k_idx, k,
+                                     std::string(f5_event.model_state.begin(), f5_event.model_state.end()), 0, k) == 0);
     }
 
     // end the last range
@@ -228,7 +241,10 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
     //
     // Build the map from read k-mers to events
     //
-    
+    assert(false);
+    return;
+
+#if 0
     std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_event_alignments();
     assert(!read_sequence.empty());
 
@@ -293,9 +309,10 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p)
         //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);
         start_ea_idx = end_ea_idx;
     }
+#endif
 }
 
-void SquiggleRead::replace_models(const std::string& model_type) 
+void SquiggleRead::replace_models(const std::string& model_type)
 {
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
@@ -311,7 +328,7 @@ void SquiggleRead::replace_models(const std::string& model_type)
     }
 }
 
-void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type) 
+void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type)
 {
     PoreModel incoming_model =
         PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());

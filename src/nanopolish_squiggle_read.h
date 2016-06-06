@@ -160,6 +160,7 @@ class SquiggleRead
         //
 
         // unique identifier of the read
+        std::string basecall_group;
         std::string read_name;
         SquiggleReadType read_type;
         std::string fast5_path;
