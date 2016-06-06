@@ -160,7 +160,6 @@ class SquiggleRead
         //
 
         // unique identifier of the read
-        std::string basecall_group;
         std::string read_name;
         SquiggleReadType read_type;
         std::string fast5_path;
@@ -186,7 +185,7 @@ class SquiggleRead
 
         //
         void build_event_map_1d(fast5::File* f_p, uint32_t strand, std::vector<fast5::Event_Entry>& f5_events);
-        void build_event_map_2d(fast5::File* f_p);
+        void build_event_map_2d(fast5::File* f_p, const std::string& basecall_group);
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;

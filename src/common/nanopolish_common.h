@@ -116,4 +116,9 @@ bool ends_with(const std::string& str, const std::string& suffix);
 #define WARN_ONCE(x) static bool _warn_once = true; if(_warn_once) \
                      fprintf(stderr, "WARNING: [%s]\n", (x)); _warn_once = false;
 
+template<class T>
+std::string array2str(const T& array)
+{
+    return std::string(array.begin(), array.end());
+}
 #endif
