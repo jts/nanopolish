@@ -184,7 +184,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
         }
-
+        
         // build the map from k-mers to events if this is a 1D read
         if(read_type != SRT_2D) {
             build_event_map_1d(f_p, si, f5_events);

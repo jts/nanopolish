@@ -60,6 +60,12 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     bool firstKmer = true;
     unsigned ninserted = 0;
 
+    this->shift = 0.0;
+    this->scale = 1.0;
+    this->drift = 0.0;
+    this->var = 1.0;
+    this->scale_sd = 1.0;
+    this->var_sd = 1.0;
     this->shift_offset = 0.0f;
     this->scale_offset = 0.0f;
 

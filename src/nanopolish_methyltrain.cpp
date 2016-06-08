@@ -136,15 +136,16 @@ namespace opt
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
     static unsigned num_training_rounds = 5;
+    static bool use_all_aligned_events = false;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
 
-enum { OPT_HELP = 1, 
-       OPT_VERSION, 
-       OPT_PROGRESS, 
-       OPT_NO_UPDATE_MODELS, 
-       OPT_TRAIN_KMERS, 
+enum { OPT_HELP = 1,
+       OPT_VERSION,
+       OPT_PROGRESS,
+       OPT_NO_UPDATE_MODELS,
+       OPT_TRAIN_KMERS,
        OPT_OUTPUT_SCORES,
        OPT_OUT_FOFN,
        OPT_STDV,
@@ -178,16 +179,16 @@ static const struct option longopts[] = {
 // returns true if the recalibration was performed
 bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
-                       const std::vector<EventAlignment> &alignment_output, 
+                       const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
-                       bool scale_var) 
+                       bool scale_var)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
     uint32_t k = sr.pore_model[strand_idx].k;
 
-    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", " 
-    //                                                << sr.pore_model[strand_idx].scale << ", " 
-    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
+    //                                                << sr.pore_model[strand_idx].scale << ", "
+    //                                                << sr.pore_model[strand_idx].drift << ", "
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
 
     // extract necessary vectors from the read and the pore model; note do not want scaled values
@@ -204,7 +205,7 @@ bool recalibrate_model(SquiggleRead &sr,
     }
 
     const int minNumEventsToRescale = 200;
-    if (raw_events.size() < minNumEventsToRescale) 
+    if (raw_events.size() < minNumEventsToRescale)
         return false;
 
     // Assemble linear system corresponding to weighted least squares problem
@@ -265,9 +266,9 @@ bool recalibrate_model(SquiggleRead &sr,
     if (sr.pore_model[strand_idx].is_scaled)
         sr.pore_model[strand_idx].bake_gaussian_parameters();
 
-    //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", " 
-    //                                                << sr.pore_model[strand_idx].scale << ", " 
-    //                                                << sr.pore_model[strand_idx].drift << ", " 
+    //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", "
+    //                                                << sr.pore_model[strand_idx].scale << ", "
+    //                                                << sr.pore_model[strand_idx].drift << ", "
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
 
     return true;
@@ -290,7 +291,7 @@ void add_aligned_events(const Fast5Map& name_map,
 
     // load read
     SquiggleRead sr(read_name, fast5_path);
-        
+
     // replace the models that are built into the read with the current trained model
     sr.replace_models(opt::trained_model_type);
 
@@ -300,7 +301,7 @@ void add_aligned_events(const Fast5Map& name_map,
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
-        
+
         // set k
         uint32_t k = sr.pore_model[strand_idx].k;
 
@@ -311,7 +312,7 @@ void add_aligned_events(const Fast5Map& name_map,
         params.hdr = hdr;
         params.record = record;
         params.strand_idx = strand_idx;
- 
+
         params.alphabet = mtrain_alphabet;
         params.read_idx = read_idx;
         params.region_start = region_start;
@@ -323,7 +324,7 @@ void add_aligned_events(const Fast5Map& name_map,
         // Update pore model based on alignment
        std::string curr_model = sr.pore_model[strand_idx].metadata.get_short_name();
         double orig_score = -INFINITY;
-        
+
         if (opt::output_scores) {
             orig_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
 
@@ -386,7 +387,7 @@ void add_aligned_events(const Fast5Map& name_map,
             // avoid bad measurements from effecting the levels too much)
             bool use_for_training = i > opt::min_distance_from_alignment_end &&
                 i + opt::min_distance_from_alignment_end < alignment_output.size() &&
-                alignment_output[i].hmm_state == 'M' &&
+                (alignment_output[i].hmm_state == 'M' || opt::use_all_aligned_events) &&
                 sr.get_duration( alignment_output[i].event_idx, strand_idx) >= opt::min_event_duration &&
                 sr.get_fully_scaled_level(alignment_output[i].event_idx, strand_idx) >= 1.0;
 
@@ -479,7 +480,7 @@ void parse_methyltrain_options(int argc, char** argv)
         // initialize the model set from the fofn
         PoreModelSet::initialize(opt::models_fofn);
     }
-    
+
     // Parse the training target string
     if(training_target_str != "") {
         if(training_target_str == "unmethylated") {
@@ -493,12 +494,13 @@ void parse_methyltrain_options(int argc, char** argv)
             die = true;
         }
     }
-    
+
     // Parse the training target string
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9-nucleotide") {
-            opt::min_event_duration = 0.005f;
+            opt::min_event_duration = 0.000f;
             opt::min_number_of_events_to_train = 10;
+            opt::use_all_aligned_events = true;
         } else if(filter_policy_str == "R7-methylation") {
             // default, do nothing
         } else {
