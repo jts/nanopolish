@@ -56,6 +56,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "  -m, --models-fofn=FILE               optionally use these models rather than models in fast5\n"
 "  -c  --calibrate                      recalibrate aligned reads to model before scoring\n"
+"  -z  --zero-drift                     if recalibrating, keep drift at 0\n"
 "  -i  --individual-reads=READ,READ     optional comma-delimited list of readnames to score\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
@@ -89,15 +90,18 @@ namespace opt
     static double lm_min_shift_offset = -20;
     static double lm_max_shift_offset = 20;
     static double lm_shift_offset_stride = 0.1;
+
+    static bool scale_drift = true;
 }
 
-static const char* shortopts = "i:r:b:g:t:m:vc";
+static const char* shortopts = "i:r:b:g:t:m:vcz";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_TRAIN_TRANSITIONS, OPT_LEARN_MODEL_OFFSET };
 
 static const struct option longopts[] = {
     { "verbose",            no_argument,       NULL, 'v' },
     { "calibrate",          no_argument,       NULL, 'c' },
+    { "zero-drift",         no_argument,       NULL, 'z' },
     { "reads",              required_argument, NULL, 'r' },
     { "bam",                required_argument, NULL, 'b' },
     { "genome",             required_argument, NULL, 'g' },
@@ -318,6 +322,7 @@ void parse_scorereads_options(int argc, char** argv)
             case 'i': arg >> readlist; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
+            case 'z': opt::scale_drift = false; break;
             case '?': die = true; break;
             case OPT_TRAIN_TRANSITIONS: opt::train_transitions = 1; break;
             case OPT_LEARN_MODEL_OFFSET: opt::learn_model_offset = 1; break;
@@ -500,7 +505,7 @@ int scorereads_main(int argc, char** argv)
 
                         // Update pore model based on alignment
                         if( opt::calibrate ) {
-                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false);
+                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false, opt::scale_drift);
                         }
 
                         if(opt::learn_model_offset) {

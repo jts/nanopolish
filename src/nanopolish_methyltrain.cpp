@@ -181,10 +181,12 @@ bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
-                       bool scale_var)
+                       const bool scale_var, 
+                       const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
     uint32_t k = sr.pore_model[strand_idx].k;
+    const uint32_t num_equations = scale_drift ? 3 : 2;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
     //                                                << sr.pore_model[strand_idx].scale << ", "
@@ -198,9 +200,10 @@ bool recalibrate_model(SquiggleRead &sr,
             uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
 
             raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
-            times.push_back      ( sr.get_time(ea.event_idx, strand_idx) );
             level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
             level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
+            if (scale_drift)
+                times.push_back  ( sr.get_time(ea.event_idx, strand_idx) );
         }
     }
 
@@ -212,39 +215,46 @@ bool recalibrate_model(SquiggleRead &sr,
     // Can just directly call a weighted least squares solver, but there's enough
     // structure in our problem it's a little faster just to build the normal eqn
     // matrices ourselves
-    Eigen::Matrix3d A;
-    Eigen::Vector3d b;
+    Eigen::MatrixXd A(num_equations, num_equations);
+    Eigen::VectorXd b(num_equations);
 
-    for (int i=0; i<3; i++) {
+    for (int i=0; i<num_equations; i++) {
         b(i) = 0.;
-        for (int j=0; j<3; j++)
+        for (int j=0; j<num_equations; j++)
             A(i,j) = 0.;
     }
 
     for (size_t i=0; i<raw_events.size(); i++) {
         double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
         double mu = level_means[i];
-        double t  = times[i];
         double e  = raw_events[i];
 
-        A(0,0) += inv_var;  A(0,1) += mu*inv_var;    A(0,2) += t*inv_var;
-                            A(1,1) += mu*mu*inv_var; A(1,2) += mu*t*inv_var;
-                                                     A(2,2) += t*t*inv_var;
+        A(0,0) += inv_var;  A(0,1) += mu*inv_var;    
+                            A(1,1) += mu*mu*inv_var; 
 
         b(0) += e*inv_var;
         b(1) += mu*e*inv_var;
-        b(2) += t*e*inv_var;
+
+        if (scale_drift) {
+            double t  = times[i];
+            A(0,2) += t*inv_var;
+            A(1,2) += mu*t*inv_var;
+            A(2,2) += t*t*inv_var;
+            b(2) += t*e*inv_var;
+        }
     }
     A(1,0) = A(0,1);
-    A(2,0) = A(0,2);
-    A(2,1) = A(1,2);
+    if (scale_drift) {
+        A(2,0) = A(0,2);
+        A(2,1) = A(1,2);
+    }
 
     // perform the linear solve
-    Eigen::Vector3d x = A.fullPivLu().solve(b);
+    Eigen::VectorXd x = A.fullPivLu().solve(b);
 
     double shift = x(0);
     double scale = x(1);
-    double drift = x(2);
+    double drift = scale_drift ? x(2) : 0.;
 
     sr.pore_model[strand_idx].shift = shift;
     sr.pore_model[strand_idx].scale = scale;
