@@ -152,8 +152,11 @@ class SquiggleRead
         // returns true if this read has events for this strand
         bool has_events_for_strand(size_t strand_idx) { return !this->events[strand_idx].empty(); }
 
-        // Create an eventalignment between the events of this read and its 2D basecalled sequence
-        std::vector<EventAlignment> get_eventalignment_for_basecalls(const size_t k, const size_t strand_idx) const;
+        // Create an eventalignment between the events of this read and its 1D basecalled sequence
+        std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
+                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d, 
+                                                                        const size_t k, 
+                                                                        const size_t strand_idx) const;
 
         //
         // Data
@@ -183,8 +186,13 @@ class SquiggleRead
         
         SquiggleRead(const SquiggleRead&) {}
 
-        //
-        void build_event_map_1d(fast5::File* f_p, uint32_t strand, std::vector<fast5::Event_Entry>& f5_events);
+        // make a map from a base of the 1D read sequence to the range of events supporting that base
+        std::vector<EventRangeForBase> build_event_map_1d(fast5::File* f_p, 
+                                                          const std::string& read_sequence_1d, 
+                                                          uint32_t strand, 
+                                                          std::vector<fast5::Event_Entry>& f5_events);
+
+        // as above but for the 2D sequence. this fills in both the template and complete event indices
         void build_event_map_2d(fast5::File* f_p, const std::string& basecall_group);
 
         // helper for get_closest_event_to

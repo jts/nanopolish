@@ -144,6 +144,9 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     */
 
     // Load PoreModel for both strands
+    std::vector<EventRangeForBase> event_maps_1d[NUM_STRANDS];
+    std::string read_sequences_1d[NUM_STRANDS];
+
     for (size_t si = 0; si < 2; ++si) {
 
         // Do we want to load this strand?
@@ -185,48 +188,49 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                                static_cast<float>(log(f5_event.stdv)) };
         }
         
-        // build the map from k-mers to events if this is a 1D read
-        if(read_type != SRT_2D) {
-            build_event_map_1d(f_p, si, f5_events);
+        // we need the 1D event map and sequence to calculate calibration parameters
+        // these will be copied into the member fields later if this is a 1D read,
+        // or discarded if this is a 2D read
+
+        // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
+        read_sequences_1d[si] = f_p->get_basecall_seq(event_group, si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT);
+        event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
+        std::vector<EventAlignment> alignment = 
+            get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
+
+        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+        if(!calibrated) {
+            events[si].clear();
         }
     }
 
     // Both strands need to be loaded before the 2D event map is built
     if(read_type == SRT_2D) {
         build_event_map_2d(f_p, basecall_group);
-    }
-
-    // Calibrate the models using the basecalls
-    for(size_t si = 0; si < 2; ++si) {
-
-        // only recalibrate if there is a model, its a 2D read or a 2D read and the right strand
-        if( !(read_type == SRT_2D || read_type == si) || (flags & SRF_NO_MODEL) ) {
-            continue;
-        }
-
-        std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
-        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
-
-        if(!calibrated) {
-            events[si].clear();
-        }
+    } else {
+        assert(read_type < NUM_STRANDS);
+        this->base_to_event_map.swap(event_maps_1d[read_type]);
     }
 
     delete f_p;
 }
 
-void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::vector<fast5::Event_Entry>& f5_events)
+std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(fast5::File* f_p,
+                                                                const std::string& read_sequence_1d, 
+                                                                uint32_t strand, 
+                                                                std::vector<fast5::Event_Entry>& f5_events)
 {
+    std::vector<EventRangeForBase> out_event_map;
     const uint32_t k = pore_model[T_IDX].k;
     assert(f5_events.size() == events[strand].size());
 
     // initialize - one entry per read kmer
-    uint32_t n_read_kmers = read_sequence.size() - k + 1;
-    base_to_event_map.resize(n_read_kmers);
+    uint32_t n_read_kmers = read_sequence_1d.size() - k + 1;
+    out_event_map.resize(n_read_kmers);
 
     // The range for the first k-mer always starts at event 0
     assert(f5_events[0].move == 0);
-    base_to_event_map[0].indices[strand].start = 0;
+    out_event_map[0].indices[strand].start = 0;
 
     size_t curr_k_idx = 0;
     for(size_t ei = 0; ei < f5_events.size(); ++ei) {
@@ -237,20 +241,21 @@ void SquiggleRead::build_event_map_1d(fast5::File* f_p, uint32_t strand, std::ve
             assert(ei != 0);
 
             // end the range for the current k-mer
-            base_to_event_map[curr_k_idx].indices[strand].stop = ei - 1;
+            out_event_map[curr_k_idx].indices[strand].stop = ei - 1;
             curr_k_idx += f5_event.move;
 
             // start the range for the next kmer
-            base_to_event_map[curr_k_idx].indices[strand].start = ei;
+            out_event_map[curr_k_idx].indices[strand].start = ei;
         }
 
-        assert(read_sequence.compare(curr_k_idx, k,
-                                     array2str(f5_event.model_state), 0, k) == 0);
+        assert(read_sequence_1d.compare(curr_k_idx, k,
+                                        array2str(f5_event.model_state), 0, k) == 0);
     }
 
     // end the last range
-    base_to_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
-    assert(base_to_event_map[curr_k_idx].indices[strand].start <= base_to_event_map[curr_k_idx].indices[strand].stop);
+    out_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
+    assert(out_event_map[curr_k_idx].indices[strand].start <= out_event_map[curr_k_idx].indices[strand].stop);
+    return out_event_map;
 }
 
 void SquiggleRead::build_event_map_2d(fast5::File* f_p, const std::string& basecall_group)
@@ -356,16 +361,19 @@ void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
 }
 
 // Return a vector of eventalignments for the events that made up the 2D basecalls in the read
-std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const size_t k,
-                                                                           const size_t strand_idx) const
+std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
+                                                                              const std::vector<EventRangeForBase>& base_to_event_map_1d,
+                                                                              const size_t k,
+                                                                              const size_t strand_idx) const
 {
     std::vector<EventAlignment> alignment;
 
     const Alphabet* alphabet = this->pore_model[strand_idx].pmalphabet;
-    const std::string& read_sequence = this->read_sequence;
-    size_t n_kmers = read_sequence.size() - k + 1;
+    size_t n_kmers = read_sequence_1d.size() - k + 1;
+    size_t prev_kmer_rank = -1;
+
     for(size_t ki = 0; ki < n_kmers; ++ki) {
-        IndexPair event_range_for_kmer = this->base_to_event_map[ki].indices[strand_idx];
+        IndexPair event_range_for_kmer = base_to_event_map_1d[ki].indices[strand_idx];
         
         // skip kmers without events
         if(event_range_for_kmer.start == -1)
@@ -377,8 +385,8 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
             assert(event_idx < this->events[strand_idx].size());
 
             std::string kmer = strand_idx == T_IDX ? 
-                                read_sequence.substr(ki, k) :
-                                alphabet->reverse_complement(read_sequence.substr(ki, k));
+                                read_sequence_1d.substr(ki, k) :
+                                alphabet->reverse_complement(read_sequence_1d.substr(ki, k));
             size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
 
             EventAlignment ea;
@@ -391,8 +399,9 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_basecalls(const
             ea.event_idx = event_idx;
             ea.rc = false;
             ea.model_kmer = kmer;
-            ea.hmm_state = 'M'; 
+            ea.hmm_state = prev_kmer_rank != kmer_rank ? 'M' : 'E';
             alignment.push_back(ea);
+            prev_kmer_rank = kmer_rank;
         }
     }
 

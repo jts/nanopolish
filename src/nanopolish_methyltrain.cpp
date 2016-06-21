@@ -136,7 +136,6 @@ namespace opt
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
     static unsigned num_training_rounds = 5;
-    static bool use_all_aligned_events = false;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
@@ -259,8 +258,8 @@ bool recalibrate_model(SquiggleRead &sr,
         var /= raw_events.size();
 
         sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
-        WARN_ONCE("DEBUG: r9 double-sqrt")
-        sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
+        //WARN_ONCE("DEBUG: r9 double-sqrt")
+        //sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
     }
 
     if (sr.pore_model[strand_idx].is_scaled)
@@ -322,7 +321,7 @@ void add_aligned_events(const Fast5Map& name_map,
             return;
 
         // Update pore model based on alignment
-       std::string curr_model = sr.pore_model[strand_idx].metadata.get_short_name();
+        std::string curr_model = sr.pore_model[strand_idx].metadata.get_short_name();
         double orig_score = -INFINITY;
 
         if (opt::output_scores) {
@@ -387,7 +386,7 @@ void add_aligned_events(const Fast5Map& name_map,
             // avoid bad measurements from effecting the levels too much)
             bool use_for_training = i > opt::min_distance_from_alignment_end &&
                 i + opt::min_distance_from_alignment_end < alignment_output.size() &&
-                (alignment_output[i].hmm_state == 'M' || opt::use_all_aligned_events) &&
+                alignment_output[i].hmm_state == 'M' &&
                 sr.get_duration( alignment_output[i].event_idx, strand_idx) >= opt::min_event_duration &&
                 sr.get_fully_scaled_level(alignment_output[i].event_idx, strand_idx) >= 1.0;
 
@@ -472,7 +471,7 @@ void parse_methyltrain_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
         die = true;
     }
-    
+
     if(opt::models_fofn.empty()) {
         std::cerr << SUBPROGRAM ": a --models file must be provided\n";
         die = true;
@@ -498,9 +497,8 @@ void parse_methyltrain_options(int argc, char** argv)
     // Parse the training target string
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9-nucleotide") {
-            opt::min_event_duration = 0.000f;
+            opt::min_event_duration = 0.005f;
             opt::min_number_of_events_to_train = 10;
-            opt::use_all_aligned_events = true;
         } else if(filter_policy_str == "R7-methylation") {
             // default, do nothing
         } else {

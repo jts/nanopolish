@@ -75,7 +75,7 @@ namespace opt
     static std::string models_fofn;
     static std::string region;
     static std::vector<std::string> readnames;
-    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
+    static std::string alternative_model_type = "ONT";
     static int train_transitions = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -159,8 +159,39 @@ double model_score(SquiggleRead &sr,
         HMMInputSequence sequence(ref_seq, alphabet->reverse_complement(ref_seq), alphabet);
 
         // Run HMM using current model
-        curr_score += profile_hmm_score(sequence, data, 0);
-        nevents += events_per_segment;
+        double segment_score = profile_hmm_score(sequence, data, 0);
+        int events_in_segment = abs(data.event_start_idx - data.event_stop_idx) + 1;
+        
+        // Calculate scaling parameters for this local segment
+        std::vector<EventAlignment> event_alignment_sub(alignment_output.begin() + align_start_idx,
+                                                        alignment_output.begin() + align_start_idx + events_per_segment);
+
+        double curr_shift = sr.pore_model[strand_idx].shift;
+        double curr_scale = sr.pore_model[strand_idx].scale;
+        double curr_drift = sr.pore_model[strand_idx].drift;
+        double curr_var = sr.pore_model[strand_idx].var;
+            
+        recalibrate_model(sr, strand_idx, event_alignment_sub, &gDNAAlphabet, true);
+
+        fprintf(stdout, "SEGMENT\t%s\t%d\t%.3lf\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", 
+                    sr.read_name.c_str(), 
+                    nevents, 
+                    segment_score / events_in_segment, 
+                    events_in_segment,
+                    sr.pore_model[strand_idx].shift,
+                    sr.pore_model[strand_idx].scale,
+                    sr.pore_model[strand_idx].drift,
+                    sr.pore_model[strand_idx].var);
+        
+        sr.pore_model[strand_idx].shift = curr_shift;
+        sr.pore_model[strand_idx].scale = curr_scale;
+        sr.pore_model[strand_idx].drift = curr_drift;
+        sr.pore_model[strand_idx].var = curr_var;
+        sr.pore_model[strand_idx].bake_gaussian_parameters();
+
+        curr_score += segment_score;
+        nevents += events_in_segment;
+
 
         if(transition_training != NULL) {
             std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
@@ -286,7 +317,9 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
                                                 int region_start,
                                                 int region_end)
 {
-    sr.replace_model(strand_idx, alternative_model_type);
+    if(!alternative_model_type.empty()) {
+        sr.replace_model(strand_idx, alternative_model_type);
+    }
 
     // Align to the new model
     EventAlignmentParameters params;
@@ -476,14 +509,14 @@ int scorereads_main(int argc, char** argv)
                     std::string read_name = bam_get_qname(record);
                     std::string fast5_path = name_map.get_path(read_name);
                     SquiggleRead sr(read_name, fast5_path);
-
+                    
                     // TODO: early exit when have processed all of the reads in readnames
                     if (!opt::readnames.empty() &&
                          std::find(opt::readnames.begin(), opt::readnames.end(), read_name) == opt::readnames.end() )
                             continue;
 
                     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-
+                        
                         if(!sr.has_events_for_strand(strand_idx)) {
                             continue;
                         }
@@ -513,7 +546,9 @@ int scorereads_main(int argc, char** argv)
 
                         #pragma omp critical(print)
                         std::cout << read_name << " " << ( strand_idx ? "complement" : "template" )
-                                  << " " << sr.pore_model[strand_idx].name << " " << score << std::endl;
+                                  << " " << sr.pore_model[strand_idx].name << " " << score << 
+                                  " shift " << sr.pore_model[strand_idx].shift << " scale " << sr.pore_model[strand_idx].scale <<
+                                  " drift " << sr.pore_model[strand_idx].drift << " var " << sr.pore_model[strand_idx].var << std::endl;
                     }
                 }
             }
