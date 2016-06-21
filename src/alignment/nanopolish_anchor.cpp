@@ -48,6 +48,9 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // load the reference sequence for this region
     int fetched_len = 0;
     char* ref_segment = faidx_fetch_seq(fai, contig_name.c_str(), start, end, &fetched_len);
+    if(ref_segment == NULL) {
+        exit(EXIT_FAILURE);
+    }
     ret.original_sequence = ref_segment;
 
     // Initialize iteration
