@@ -57,7 +57,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *CONSENSUS_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] -w contig:start-end --reads reads.fa --bam alignments.bam --genome genome.fa\n"
 "Compute a new consensus sequence for an assembly using a signal-level HMM\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
@@ -831,6 +831,11 @@ void parse_consensus_options(int argc, char** argv)
 
     if(opt::bam_file.empty()) {
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
+        die = true;
+    }
+
+    if(opt::window.empty()) {
+        std::cerr << SUBPROGRAM ": the -w (window) parameter must be provided\n";
         die = true;
     }
 
