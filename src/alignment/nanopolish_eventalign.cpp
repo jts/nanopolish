@@ -730,7 +730,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         // Advance the pair iterator to the ref base
         curr_start_event = last_event_output;
         curr_start_ref = last_ref_kmer_output;
-        printf("[SEGMENT] read: %s ref: %zu event: %zu\n", params.sr->read_name.c_str(), curr_start_ref, curr_start_event);
+        //printf("[SEGMENT] read: %s ref: %zu event: %zu\n", params.sr->read_name.c_str(), curr_start_ref, curr_start_event);
         curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
 
 #if EVENTALIGN_TRAIN
