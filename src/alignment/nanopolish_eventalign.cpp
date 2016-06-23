@@ -669,6 +669,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         input.anchor_index = 0; // not used here
         input.event_start_idx = curr_start_event;
         input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
+        //printf("[SEGMENT_START] read: %s event start: %zu event end: %zu\n", params.sr->read_name.c_str(), input.event_start_idx, input.event_stop_idx);
 
         // A limitation of the segment-by-segment alignment is that we can't jump
         // over very large deletions wrt to the reference. The effect of this
@@ -689,6 +690,23 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
         // If we aligned to the last event, output everything and stop
         bool last_section = end_pair_idx == (int)aligned_pairs.size() - 1;
+
+        /*
+        // Don't allow the segment to end on an E state or else we get alignment
+        // artifacts at the segment boundary
+        if(!last_section) {
+            size_t last_match_index = event_alignment.size() - 1;
+            while(event_alignment[last_match_index].state != 'M') {
+                last_match_index -= 1;
+            }
+
+            event_alignment.resize(last_match_index + 1);
+            if(event_alignment.empty()) {
+                break;
+            }
+            assert(event_alignment.back().state == 'M');
+        }
+        */
 
         int last_event_output = 0;
         int last_ref_kmer_output = 0;
@@ -730,7 +748,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         // Advance the pair iterator to the ref base
         curr_start_event = last_event_output;
         curr_start_ref = last_ref_kmer_output;
-        //printf("[SEGMENT] read: %s ref: %zu event: %zu\n", params.sr->read_name.c_str(), curr_start_ref, curr_start_event);
+        //printf("[SEGMENT_END] read: %s last event output: %zu ref pos: %zu (%s)\n", params.sr->read_name.c_str(), last_event_output, last_ref_kmer_output, ref_seq.substr(last_ref_kmer_output - ref_offset, k).c_str());
         curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
 
 #if EVENTALIGN_TRAIN
@@ -738,6 +756,10 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         params.sr->parameters[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
         global_training[params.strand_idx].add_training_from_alignment(hmm_sequence, input, event_alignment);
 #endif
+
+        if(num_output == 0) {
+            break;
+        }
     } // for segment
     
     return alignment_output;
