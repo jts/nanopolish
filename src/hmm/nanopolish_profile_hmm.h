@@ -92,6 +92,7 @@ struct BlockTransitions
 
     // Transitions from e state
     float lp_ee;
+    float lp_ek;
     float lp_em;
 
     // Transitions from k state

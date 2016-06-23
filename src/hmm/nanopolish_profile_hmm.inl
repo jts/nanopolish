@@ -40,8 +40,8 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
 
         // transitions from event split state in previous block
         float p_ee = parameters.trans_e_to_e;
-        float p_em = 1.0f - p_ee;
-        // p_ie not allowed
+        float p_ek = p_skip;
+        float p_em = 1.0f - p_ee - p_ek;
 
         // transitions from kmer skip state in previous block
         float p_kk = p_skip;
@@ -56,6 +56,7 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         bt.lp_mm = log(p_mm);
 
         bt.lp_ee = log(p_ee);
+        bt.lp_ek = log(p_ek);
         bt.lp_em = log(p_em);
         
         bt.lp_kk = log(p_kk);
@@ -366,8 +367,9 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
 
             // state PS_KMER_SKIP
             float k_m = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
+            float k_e = bt.lp_ek + output.get(row, prev_block_offset + PS_EVENT_SPLIT);
             float k_k = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
-            output.update_4(row, curr_block_offset + PS_KMER_SKIP, k_m, -INFINITY, k_k, -INFINITY, 0.0f); // no emission
+            output.update_4(row, curr_block_offset + PS_KMER_SKIP, k_m, k_e, k_k, -INFINITY, 0.0f); // no emission
 
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 
