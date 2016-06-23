@@ -36,7 +36,7 @@ struct SquiggleEvent
 {
     float mean;       // current level mean in picoamps
     float stdv;       // current level stdv
-    float start_time; // start time of the event in seconds
+    double start_time; // start time of the event in seconds
     float duration;     // duration of the event in seconds
     float log_stdv;   // precompute for efficiency
 };

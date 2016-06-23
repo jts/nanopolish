@@ -161,7 +161,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             const fast5::Event_Entry& f5_event = f5_events[ei];
             events[si][ei] = { static_cast<float>(f5_event.mean),
                                static_cast<float>(f5_event.stdv),
-                               static_cast<float>(f5_event.start),
+                               f5_event.start,
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
         }
@@ -416,7 +416,7 @@ std::vector<float> SquiggleRead::get_scaled_samples_for_event(size_t strand_idx,
 {
     double event_start_time = this->events[strand_idx][event_idx].start_time;
     double event_duration = this->events[strand_idx][event_idx].duration;
-    
+
     size_t start_idx = this->get_sample_index_at_time(event_start_time * this->sample_rate);
     size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
 
