@@ -121,28 +121,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
     read_sequence = f_p->get_basecall_seq(basecall_group, read_type);
 
-    /*
-    // Automatically detect the read type from the name
-    // Set the read type based on the suffix and load the sequence
-    assert(!read_name.empty());
-    if(ends_with(read_name, "_template")) {
-        read_type = SRT_TEMPLATE;
-        read_sequence = f_p->basecalled_1D(read_type);
-    } else if(ends_with(read_name, "_complement")) {
-        read_type = SRT_COMPLEMENT;
-        read_sequence = f_p->basecalled_1D(read_type);
-    } else if(ends_with(read_name, "_2d")) {
-        read_type = SRT_2D;
-        read_sequence = f_p->basecalled_2D();
-    } else {
-        printf("empty suffix\n");
-        // JTS hack: if there is no identifying suffix on the read
-        // we assume it is a nanonet 1D read
-        read_type = SRT_TEMPLATE;
-        read_sequence = f_p->basecalled_1D(read_type);
-    }
-    */
-
     // Load PoreModel for both strands
     std::vector<EventRangeForBase> event_maps_1d[NUM_STRANDS];
     std::string read_sequences_1d[NUM_STRANDS];
@@ -210,6 +188,26 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     } else {
         assert(read_type < NUM_STRANDS);
         this->base_to_event_map.swap(event_maps_1d[read_type]);
+    }
+
+    // Load raw samples if requested
+    if(flags & SRF_LOAD_RAW_SAMPLES) {
+
+        auto& sample_read_names = f_p->get_raw_samples_read_name_list();
+        if(sample_read_names.empty()) {
+            fprintf(stderr, "Error, no raw samples found\n");
+            exit(EXIT_FAILURE);
+        }
+
+        // we assume the first raw sample read is the one we're after
+        std::string sample_read_name = sample_read_names.front();
+
+        samples = f_p->get_raw_samples(sample_read_name);
+        sample_start_time = f_p->get_raw_samples_params(sample_read_name).start_time;
+
+        // retreive parameters
+        fast5::Channel_Id_Parameters channel_params = f_p->get_channel_id_params();
+        sample_rate = channel_params.sampling_rate;
     }
 
     delete f_p;
@@ -406,5 +404,34 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
     }
 
     return alignment;
+}
+
+size_t SquiggleRead::get_sample_index_at_time(size_t sample_time) const
+{
+    return sample_time - sample_start_time;
+}
+
+//
+std::vector<float> SquiggleRead::get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const
+{
+    double event_start_time = this->events[strand_idx][event_idx].start_time;
+    double event_duration = this->events[strand_idx][event_idx].duration;
+    
+    size_t start_idx = this->get_sample_index_at_time(event_start_time * this->sample_rate);
+    size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
+
+    std::vector<float> out;
+    for(size_t i = start_idx; i < end_idx; ++i) {
+        double curr_sample_time = (this->sample_start_time + i) / this->sample_rate;
+        //fprintf(stderr, "event_start: %.5lf sample start: %.5lf curr: %.5lf rate: %.2lf\n", event_start_time, this->sample_start_time / this->sample_rate, curr_sample_time, this->sample_rate);
+        double s = this->samples[i];
+        // apply scaling corrections
+        double scaled_s = s - this->pore_model[strand_idx].shift;
+        assert(curr_sample_time >= (this->sample_start_time / this->sample_rate));
+        scaled_s -= (curr_sample_time - (this->sample_start_time / this->sample_rate)) * this->pore_model[strand_idx].drift;
+        scaled_s /= this->pore_model[strand_idx].scale;
+        out.push_back(scaled_s);
+    }
+    return out;
 }
 

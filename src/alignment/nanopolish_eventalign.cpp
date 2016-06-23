@@ -19,6 +19,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <iterator>
 #include "htslib/faidx.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
@@ -63,6 +64,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
 "      --stdv                           enable stdv modelling\n"
+"      --samples                        write the raw samples for the event to the tsv output\n"
 "      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -83,11 +85,12 @@ namespace opt
     static int batch_size = 128;
     static bool print_read_names;
     static bool full_output;
+    static bool write_samples = false;
 }
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV, OPT_MODELS_FOFN };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV, OPT_MODELS_FOFN, OPT_SAMPLES };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -100,6 +103,7 @@ static const struct option longopts[] = {
     { "models-fofn",      required_argument, NULL, OPT_MODELS_FOFN },
     { "print-read-names", no_argument,       NULL, 'n' },
     { "stdv",             no_argument,       NULL, OPT_STDV },
+    { "samples",          no_argument,       NULL, OPT_SAMPLES },
     { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",              no_argument,       NULL, OPT_SAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
@@ -208,8 +212,12 @@ void emit_tsv_header(FILE* fp)
     fprintf(fp, "%s\t%s\t%s\t%s\t%s\t", "contig", "position", "reference_kmer",
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
     fprintf(fp, "%s\t%s\t%s\t%s\t", "event_index", "event_level_mean", "event_stdv", "event_length");
-    fprintf(fp, "%s\t%s\t%s\t%s\n", "model_kmer", "model_mean", "model_stdv", "standardized_level");
+    fprintf(fp, "%s\t%s\t%s\t%s", "model_kmer", "model_mean", "model_stdv", "standardized_level");
 
+    if(opt::write_samples) {
+        fprintf(fp, "\t%s", "samples");
+    }
+    fprintf(fp, "\n");
 }
 
 void emit_sam_header(samFile* fp, const bam_hdr_t* hdr)
@@ -415,10 +423,22 @@ void emit_event_alignment_tsv(FILE* fp,
 
         float standard_level = (event_mean - model_mean) / (sqrt(sr.pore_model[ea.strand_idx].var) * model_stdv);
         fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
-        fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf\n", ea.model_kmer.c_str(),
-                                                 model_mean,
-                                                 model_stdv,
-                                                 standard_level);
+        fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf", ea.model_kmer.c_str(),
+                                               model_mean,
+                                               model_stdv,
+                                               standard_level);
+
+        if(opt::write_samples) {
+            std::vector<float> samples = sr.get_scaled_samples_for_event(ea.strand_idx, ea.event_idx);
+            std::stringstream sample_ss;
+            std::copy(samples.begin(), samples.end(), std::ostream_iterator<float>(sample_ss, ","));
+
+            // remove training comma
+            std::string sample_str = sample_ss.str();
+            sample_str.resize(sample_str.size() - 1);
+            fprintf(fp, "\t%s", sample_str.c_str());
+        }
+        fprintf(fp, "\n");
     }
 }
 
@@ -490,7 +510,7 @@ void realign_read(EventalignWriter writer,
     std::string fast5_path = name_map.get_path(read_name);
 
     // load read
-    SquiggleRead sr(read_name, fast5_path);
+    SquiggleRead sr(read_name, fast5_path, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
 
     if(!opt::alternative_model_type.empty()) {
         sr.replace_models(opt::alternative_model_type);
@@ -710,6 +730,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         // Advance the pair iterator to the ref base
         curr_start_event = last_event_output;
         curr_start_ref = last_ref_kmer_output;
+        printf("[SEGMENT] read: %s ref: %zu event: %zu\n", params.sr->read_name.c_str(), curr_start_ref, curr_start_event);
         curr_pair_idx = get_end_pair(aligned_pairs, curr_start_ref, curr_pair_idx);
 
 #if EVENTALIGN_TRAIN
@@ -736,6 +757,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 'n': opt::print_read_names = true; break;
             case 'f': opt::full_output = true; break;
             case OPT_STDV: model_stdv() = true; break;
+            case OPT_SAMPLES: opt::write_samples = true; break;
             case 'v': opt::verbose++; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_SCALE_EVENTS: opt::scale_events = true; break;

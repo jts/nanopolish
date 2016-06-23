@@ -27,7 +27,8 @@ enum SquiggleReadType
 // Flags to control the behaviour of the read
 enum SquiggleReadFlags
 {
-    SRF_NO_MODEL = 1 // do not load a model
+    SRF_NO_MODEL = 1, // do not load a model
+    SRF_LOAD_RAW_SAMPLES = 2
 };
 
 // The raw event data for a read
@@ -158,6 +159,10 @@ class SquiggleRead
                                                                         const size_t k, 
                                                                         const size_t strand_idx) const;
 
+        // Sample-level access
+        size_t get_sample_index_at_time(size_t sample_time) const;
+        std::vector<float> get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const;
+
         //
         // Data
         //
@@ -175,6 +180,12 @@ class SquiggleRead
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
+        
+        // optional fields holding the raw data
+        // this is not split into strands so there is only one vector, unlike events
+        std::vector<float> samples;
+        double sample_rate;
+        int64_t sample_start_time;
 
         //
         std::vector<EventRangeForBase> base_to_event_map;

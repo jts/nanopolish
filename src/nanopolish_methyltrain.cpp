@@ -106,6 +106,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --filter-policy=STR              filter reads for [R7-methylation] or [R9-nucleotide] project\n"
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
+"      --rounds=NUM                     number of training rounds to perform\n"
 "      --progress                       print out a progress message\n"
 "      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -132,7 +133,7 @@ namespace opt
     static unsigned batch_size = 128;
 
     // Constants that determine which events to use for training
-    static float min_event_duration = 0.005;
+    static float min_event_duration = 0.002;
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
     static unsigned num_training_rounds = 5;
@@ -149,7 +150,8 @@ enum { OPT_HELP = 1,
        OPT_OUT_FOFN,
        OPT_STDV,
        OPT_LOG_LEVEL,
-       OPT_FILTER_POLICY
+       OPT_FILTER_POLICY,
+       OPT_NUM_ROUNDS
      };
 
 static const struct option longopts[] = {
@@ -171,6 +173,7 @@ static const struct option longopts[] = {
     { "version",            no_argument,       NULL, OPT_VERSION },
     { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
     { "filter-policy",      required_argument, NULL, OPT_FILTER_POLICY },
+    { "rounds",             required_argument, NULL, OPT_NUM_ROUNDS },
     { NULL, 0, NULL, 0 }
 };
 
@@ -258,8 +261,6 @@ bool recalibrate_model(SquiggleRead &sr,
         var /= raw_events.size();
 
         sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
-        //WARN_ONCE("DEBUG: r9 double-sqrt")
-        //sr.pore_model[strand_idx].var   = sqrt(sr.pore_model[strand_idx].var); // ugly hack, why is this better for R9?
     }
 
     if (sr.pore_model[strand_idx].is_scaled)
@@ -274,7 +275,7 @@ bool recalibrate_model(SquiggleRead &sr,
 }
 
 // Update the training data with aligned events from a read
-void add_aligned_events(const Fast5Map& name_map, 
+void add_aligned_events(const Fast5Map& name_map,
                         const faidx_t* fai,
                         const bam_hdr_t* hdr,
                         const bam1_t* record,
@@ -426,6 +427,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 'c': opt::calibrate = 1; break;
             case OPT_STDV: model_stdv() = true; break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
+            case OPT_NUM_ROUNDS: arg >> opt::num_training_rounds; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
             case OPT_TRAIN_KMERS: arg >> training_target_str; break;
             case OPT_FILTER_POLICY: arg >> filter_policy_str; break;
@@ -521,7 +523,7 @@ void train_one_round(const Fast5Map& name_map, size_t round)
     ModelTrainingMap model_training_data;
     for(auto current_model_iter = current_models.begin(); current_model_iter != current_models.end(); current_model_iter++) {
         // one summary entry per kmer in the model
-        std::vector<StateSummary> summaries(current_model_iter->second.get_num_states()); 
+        std::vector<StateSummary> summaries(current_model_iter->second.get_num_states());
         model_training_data[current_model_iter->first] = summaries;
     }
 
@@ -538,7 +540,7 @@ void train_one_round(const Fast5Map& name_map, size_t round)
 
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    
+
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
