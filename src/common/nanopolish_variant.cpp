@@ -258,6 +258,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         double current_lp = 0.0f;
         double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         size_t supporting_reads = 0;
+        std::vector<double> relative_lp_by_read(input.size(), 0.0f);
 
         #pragma omp parallel for
         for(size_t j = 0; j < input.size(); ++j) {
@@ -270,6 +271,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
                 int cid = 2 * mid + input[j].rc;
                 current_lp_by_model_strand[cid] += tmp;
+                relative_lp_by_read[j] = tmp - base_lp_by_read[j];
             }
         }
 
@@ -315,6 +317,13 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 std::copy(std::begin(read_counts), std::end(read_counts), rc_out);
                 std::string rc_str = counts.str();
                 v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
+
+                std::stringstream scores;
+                std::ostream_iterator<float> scores_out(scores, ",");
+                std::copy(std::begin(relative_lp_by_read), std::end(relative_lp_by_read), scores_out);
+                std::string scores_str = scores.str();
+                v.add_info("Scores", scores_str.substr(0, scores_str.size() - 1));
+                
                 v.quality = best_lp - base_lp;
             }
         }
