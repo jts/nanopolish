@@ -108,7 +108,7 @@ inline float log_probability_event_insert(const SquiggleRead& read,
                                           uint32_t event_idx,
                                           uint8_t strand)
 {
-    static const float scale = 1.75f;
+    static const float scale = 1.0f;
     static const float log_scale = log(scale);
 
     return log_probability_match(read, kmer_rank, event_idx, strand, scale, log_scale);
