@@ -263,7 +263,6 @@ void TransitionParameters::initialize_sqkmap007_complement()
 // 
 double TransitionParameters::get_skip_probability(double k_level1, double k_level2) const
 {
-    return 0.1;
     assert(is_initialized);
     size_t bin = get_skip_bin(k_level1, k_level2);
     assert(bin < skip_probabilities.size());

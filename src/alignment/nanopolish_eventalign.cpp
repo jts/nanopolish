@@ -401,8 +401,8 @@ void emit_event_alignment_tsv(FILE* fp,
         float event_stdv = sr.get_stdv(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
         uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
-        float model_mean;
-        float model_stdv;
+        float model_mean = 0.0;
+        float model_stdv = 0.0;
 
         if(opt::scale_events) {
 
@@ -410,15 +410,19 @@ void emit_event_alignment_tsv(FILE* fp,
             event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
 
             // unscaled model parameters
-            PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
-            model_mean = model.level_mean;
-            model_stdv = model.level_stdv;
+            if(ea.hmm_state != 'B') {
+                PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
+                model_mean = model.level_mean;
+                model_stdv = model.level_stdv;
+            }
         } else {
 
             // scale model to the reads
-            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-            model_mean = model.mean;
-            model_stdv = model.stdv;
+            if(ea.hmm_state != 'B') {
+                GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+                model_mean = model.mean;
+                model_stdv = model.stdv;
+            }
         }
 
         float standard_level = (event_mean - model_mean) / (sqrt(sr.pore_model[ea.strand_idx].var) * model_stdv);
@@ -731,8 +735,13 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                 ea.rc = input.rc;
 
                 // hmm
-                ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, k, input.rc);
                 ea.hmm_state = as.state;
+
+                if(ea.hmm_state != 'B') {
+                    ea.model_kmer = hmm_sequence.get_kmer(as.kmer_idx, k, input.rc);
+                } else {
+                    ea.model_kmer = std::string(k, 'N');
+                }
 
                 // store
                 alignment_output.push_back(ea);

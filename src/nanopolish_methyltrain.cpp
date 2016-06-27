@@ -387,7 +387,7 @@ void add_aligned_events(const Fast5Map& name_map,
             // avoid bad measurements from effecting the levels too much)
             bool use_for_training = i > opt::min_distance_from_alignment_end &&
                 i + opt::min_distance_from_alignment_end < alignment_output.size() &&
-//                alignment_output[i].hmm_state == 'M' &&
+                alignment_output[i].hmm_state == 'M' &&
                 sr.get_duration( alignment_output[i].event_idx, strand_idx) >= opt::min_event_duration &&
                 sr.get_fully_scaled_level(alignment_output[i].event_idx, strand_idx) >= 1.0;
 

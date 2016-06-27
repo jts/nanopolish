@@ -31,33 +31,39 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
 
         // probability of skipping k_i from k_(i - 1)
-        float p_skip = ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
+        float p_skip = 0.1; //ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
+        float p_stay = 0.4; 
+        float p_bad = 0.00001;
 
         // transitions from match state in previous block
-        float p_mk = p_skip;
-        float p_me = (1 - p_skip) * parameters.trans_m_to_e_not_k;
-        float p_mm = 1.0f - p_me - p_mk;
+        float p_mk = p_skip; // probability of not observing an event at all
+        float p_mb = p_bad; // probabilty of observing a bad event
+        float p_mm_self = p_stay; // probability of observing additional events from this k-mer
+        float p_mm_next = 1.0f - p_mm_self - p_mk - p_mb; // normal movement from state to state
 
         // transitions from event split state in previous block
-        float p_ee = parameters.trans_e_to_e;
-        float p_ek = p_skip;
-        float p_em = 1.0f - p_ee - p_ek;
+        float p_bb = p_bad;
+        float p_bk = p_skip;
+        float p_bm_next, p_bm_self;
+        p_bm_next = p_bm_self = (1.0f - p_bb - p_bk) / 2;
 
         // transitions from kmer skip state in previous block
         float p_kk = p_skip;
-        float p_km = 1 - p_skip;
-        // p_ei not allowed    
+        float p_km = 1.0f - p_skip;
+        // p_kb not needed, equivalent to B->K
 
         // log-transform and store
         BlockTransitions& bt = transitions[ki];
 
-        bt.lp_me = log(p_me);
         bt.lp_mk = log(p_mk);
-        bt.lp_mm = log(p_mm);
+        bt.lp_mb = log(p_mb);
+        bt.lp_mm_self = log(p_mm_self);
+        bt.lp_mm_next = log(p_mm_next);
 
-        bt.lp_ee = log(p_ee);
-        bt.lp_ek = log(p_ek);
-        bt.lp_em = log(p_em);
+        bt.lp_bb = log(p_bb);
+        bt.lp_bk = log(p_bk);
+        bt.lp_bm_next = log(p_bm_next);
+        bt.lp_bm_self = log(p_bm_self);
         
         bt.lp_kk = log(p_kk);
         bt.lp_km = log(p_km);
@@ -73,11 +79,13 @@ class ProfileHMMForwardOutput
         ProfileHMMForwardOutput(FloatMatrix* p) : p_fm(p), lp_end(-INFINITY) {}
         
         //
-        inline void update_4(uint32_t row, uint32_t col, float m, float e, float k, float s, float lp_emission)
+        inline void update_cell(uint32_t row, uint32_t col, const HMMUpdateScores& scores, float lp_emission)
         {
-            float sum_1 = add_logs(m, e);
-            float sum_2 = add_logs(k, s);
-            float sum = add_logs(sum_1, sum_2) + lp_emission;
+            float sum = scores.x[0];
+            for(auto i = 1; i < HMT_NUM_MOVEMENT_TYPES; ++i) {
+                sum = add_logs(sum, scores.x[i]);
+            }
+            sum += lp_emission;
             set(*p_fm, row, col, sum);
         }
 
@@ -121,26 +129,17 @@ class ProfileHMMViterbiOutput
     public:
         ProfileHMMViterbiOutput(FloatMatrix* pf, UInt8Matrix* pb) : p_fm(pf), p_bm(pb), lp_end(-INFINITY) {}
         
-        inline void update_4(uint32_t row, uint32_t col, float m, float e, float k, float s, float lp_emission)
+        inline void update_cell(uint32_t row, uint32_t col, const HMMUpdateScores& scores, float lp_emission)
         {
             // probability update
-            float max = std::max(std::max(m, e), 
-                                 std::max(k, s));
+            float max = scores.x[0];
+            uint8_t from = 0;
+            for(auto i = 1; i < HMT_NUM_MOVEMENT_TYPES; ++i) {
+                max = scores.x[i] > max ? scores.x[i] : max;
+                from = max == scores.x[i] ? i : from;
+            }
 
             set(*p_fm, row, col, max + lp_emission);
-
-            // backtrack update
-            uint8_t from;
-            if(max == m)
-                from = PS_MATCH;
-            else if(max == e)
-                from = PS_EVENT_SPLIT;
-            else if(max == k)
-                from = PS_KMER_SKIP;
-            else if(max == s)
-                from = PS_PRE_SOFT;
-            else // should not be reached, but silences uninitialized warnings
-                from = 0;
             set(*p_bm, row, col, from);
         }
         
@@ -290,8 +289,7 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
     const TransitionParameters& parameters = data.read->parameters[data.strand];
 
     // Calculate number of blocks
-    // A block of the HMM is a set of PS_KMER_SKIP, PS_EVENT_SPLIT, PS_MATCH
-    // events for one kmer
+    // A block of the HMM is a set of states for one kmer
     uint32_t num_blocks = output.get_num_columns() / PS_NUM_STATES;
     uint32_t last_event_row_idx = output.get_num_rows() - 1;
 
@@ -323,6 +321,9 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
     float lp_sm, lp_ms;
     lp_sm = lp_ms = 0.0f;
 
+    // the penalty is controlled by the transition probability
+    float BAD_EVENT_PENALTY = 0.0f;
+
     // Fill in matrix
     for(uint32_t row = 1; row < output.get_num_rows(); row++) {
 
@@ -342,45 +343,56 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
             float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
-            float lp_emission_e = log_probability_event_insert(*data.read, rank, event_idx, data.strand);
+            float lp_emission_b = BAD_EVENT_PENALTY;
             
+            HMMUpdateScores scores;
+
             // state PS_MATCH
-            float m_m = bt.lp_mm + output.get(row - 1, prev_block_offset + PS_MATCH);
-            float m_e = bt.lp_em + output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT);
-            float m_k = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
+            scores.x[HMT_FROM_SAME_M] = bt.lp_mm_self + output.get(row - 1, curr_block_offset + PS_MATCH);
+            scores.x[HMT_FROM_PREV_M] = bt.lp_mm_next + output.get(row - 1, prev_block_offset + PS_MATCH);
+            scores.x[HMT_FROM_SAME_B] = bt.lp_bm_self + output.get(row - 1, curr_block_offset + PS_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_B] = bt.lp_bm_next + output.get(row - 1, prev_block_offset + PS_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_K] = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
 
             // m_s is the probability of going from the start state
             // to this kmer. The start state is (currently) only 
             // allowed to go to the first kmer. If ALLOW_PRE_CLIP
             // is defined, we allow all events before this one to be skipped,
             // with a penalty;
-            float m_s = (kmer_idx == 0 &&
-                            (event_idx == e_start ||
-                             (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
+            scores.x[HMT_FROM_SOFT] = (kmer_idx == 0 &&
+                                        (event_idx == e_start ||
+                                             (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
             
-            output.update_4(row, curr_block_offset + PS_MATCH, m_m, m_e, m_k, m_s, lp_emission_m);
+            output.update_cell(row, curr_block_offset + PS_MATCH, scores, lp_emission_m);
 
-            // state PS_EVENT_SPLIT
-            float e_m = bt.lp_me + output.get(row - 1, curr_block_offset + PS_MATCH);
-            float e_e = bt.lp_ee + output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT);
-            output.update_4(row, curr_block_offset + PS_EVENT_SPLIT, e_m, e_e, -INFINITY, -INFINITY, lp_emission_e);
+            // state PS_BAD_EVENT
+            scores.x[HMT_FROM_SAME_M] = bt.lp_mb + output.get(row - 1, curr_block_offset + PS_MATCH);
+            scores.x[HMT_FROM_PREV_M] = -INFINITY; // not allowed
+            scores.x[HMT_FROM_SAME_B] = bt.lp_bb + output.get(row - 1, curr_block_offset + PS_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_B] = -INFINITY;
+            scores.x[HMT_FROM_PREV_K] = -INFINITY;
+            scores.x[HMT_FROM_SOFT] = -INFINITY;
+            output.update_cell(row, curr_block_offset + PS_BAD_EVENT, scores, lp_emission_b);
 
             // state PS_KMER_SKIP
-            float k_m = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
-            float k_e = bt.lp_ek + output.get(row, prev_block_offset + PS_EVENT_SPLIT);
-            float k_k = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
-            output.update_4(row, curr_block_offset + PS_KMER_SKIP, k_m, k_e, k_k, -INFINITY, 0.0f); // no emission
+            scores.x[HMT_FROM_SAME_M] = -INFINITY;
+            scores.x[HMT_FROM_PREV_M] = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
+            scores.x[HMT_FROM_SAME_B] = -INFINITY;
+            scores.x[HMT_FROM_PREV_B] = bt.lp_bk + output.get(row, prev_block_offset + PS_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_K] = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
+            scores.x[HMT_FROM_SOFT] = -INFINITY;
+            output.update_cell(row, curr_block_offset + PS_KMER_SKIP, scores, 0.0f); // no emission
 
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 
             // last kmer/event match.
             if(kmer_idx == last_kmer_idx && ( (flags & HAF_ALLOW_POST_CLIP) || row == last_event_row_idx)) {
                 float lp1 = lp_ms + output.get(row, curr_block_offset + PS_MATCH) + post_flank[row - 1];
-                float lp2 = lp_ms + output.get(row, curr_block_offset + PS_EVENT_SPLIT) + post_flank[row - 1];
+                float lp2 = lp_ms + output.get(row, curr_block_offset + PS_BAD_EVENT) + post_flank[row - 1];
                 float lp3 = lp_ms + output.get(row, curr_block_offset + PS_KMER_SKIP) + post_flank[row - 1];
 
                 output.update_end(lp1, row, curr_block_offset + PS_MATCH);
-                output.update_end(lp2, row, curr_block_offset + PS_EVENT_SPLIT);
+                output.update_end(lp2, row, curr_block_offset + PS_BAD_EVENT);
                 output.update_end(lp3, row, curr_block_offset + PS_KMER_SKIP);
             }
 
@@ -391,29 +403,29 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
 
 #ifdef DEBUG_FILL    
             printf("Row %u block %u\n", row, block);
-            printf("\tTransitions: p_mx [%.3lf %.3lf %.3lf]\n", bt.lp_mm, bt.lp_me, bt.lp_mk);
-            printf("\t             p_ex [%.3lf %.3lf %.3lf]\n", bt.lp_em, bt.lp_ee, 0.0f);
-            printf("\t             p_lx [%.3lf %.3lf %.3lf]\n", bt.lp_km, 0.0, bt.lp_kk);
 
-            printf("\tPS_MATCH -- Transitions: [%.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf] sum: %.2lf\n", 
-                    bt.lp_mm, bt.lp_em, bt.lp_km, 
+            printf("\tPS_MATCH -- Transitions: [%.3lf %.3lf %.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf %.2lf %.2lf] out: %.2lf\n", 
+                    bt.lp_mm_self, bt.lp_mm_next, bt.lp_bm_self, bt.lp_bm_next, bt.lp_km, 
                     output.get(row - 1, prev_block_offset + PS_MATCH),
-                    output.get(row - 1, prev_block_offset + PS_EVENT_SPLIT),
-                    output.get(row - 1, prev_block_offset + PS_KMER_SKIP),
-                    0.0f);
-            printf("\tPS_EVENT_SPLIT -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] sum: %.2lf\n", 
-                    bt.lp_me, bt.lp_ee,
                     output.get(row - 1, curr_block_offset + PS_MATCH),
-                    output.get(row - 1, curr_block_offset + PS_EVENT_SPLIT),
-                    0.0f);
+                    output.get(row - 1, prev_block_offset + PS_BAD_EVENT),
+                    output.get(row - 1, curr_block_offset + PS_BAD_EVENT),
+                    output.get(row - 1, prev_block_offset + PS_KMER_SKIP),
+                    output.get(row, curr_block_offset + PS_MATCH));
+            printf("\tPS_BAD_EVENT -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] out: %.2lf\n", 
+                    bt.lp_mb, bt.lp_bb,
+                    output.get(row - 1, curr_block_offset + PS_MATCH),
+                    output.get(row - 1, curr_block_offset + PS_BAD_EVENT),
+                    output.get(row, curr_block_offset + PS_BAD_EVENT));
 
-            printf("\tPS_KMER_SKIP -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] sum: %.2lf\n", 
-                    bt.lp_mk, bt.lp_kk,
+            printf("\tPS_KMER_SKIP -- Transitions: [%.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf] sum: %.2lf\n", 
+                    bt.lp_mk, bt.lp_bk, bt.lp_kk,
                     output.get(row, prev_block_offset + PS_MATCH),
+                    output.get(row, prev_block_offset + PS_BAD_EVENT),
                     output.get(row, prev_block_offset + PS_KMER_SKIP),
-                    0.0f);
+                    output.get(row, curr_block_offset + PS_KMER_SKIP));
 
-            printf("\tEMISSION: %.2lf %.2lf\n", lp_emission_m, lp_emission_e);
+            printf("\tEMISSION: %.2lf %.2lf\n", lp_emission_m, lp_emission_b);
 #endif
         }
     }
