@@ -33,7 +33,7 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         // probability of skipping k_i from k_(i - 1)
         float p_skip = 0.1; //ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
         float p_stay = 0.4; 
-        float p_bad = 0.00001;
+        float p_bad = 0.01;
 
         // transitions from match state in previous block
         float p_mk = p_skip; // probability of not observing an event at all

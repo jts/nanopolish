@@ -500,7 +500,6 @@ void parse_methyltrain_options(int argc, char** argv)
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9-nucleotide") {
             opt::min_event_duration = 0.005f;
-            opt::min_number_of_events_to_train = 10;
         } else if(filter_policy_str == "R7-methylation") {
             // default, do nothing
         } else {
