@@ -263,7 +263,9 @@ bool recalibrate_model(SquiggleRead &sr,
     if (scale_var) {
         double var = 0.;
         for (size_t i=0; i<raw_events.size(); i++) {
-            double yi = (raw_events[i] - shift - scale*level_means[i] - drift*times[i]);
+            double yi = (raw_events[i] - shift - scale*level_means[i]);
+            if (scale_drift)
+                yi -= drift*times[i];
             var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
         }
         var /= raw_events.size();
