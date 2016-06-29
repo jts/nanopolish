@@ -318,7 +318,7 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
                               training_strand,
                               filtered_alignment,
                               &gDNAAlphabet,
-                              false);
+                              false, true);
         
             const PoreModel& read_model = read->pore_model[training_strand];
             printf("[recalibration] read %zu events: %zu alignment: %zu shift: %.2lf scale: %.2lf drift: %.4lf var: %.2lf\n", 

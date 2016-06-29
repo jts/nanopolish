@@ -205,7 +205,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
-        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true, true);
 
         if(!calibrated) {
             events[si].clear();
