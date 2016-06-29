@@ -182,7 +182,16 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
     }
 
-    // Both strands need to be loaded before the 2D event map is built
+    // If we detected a 2D read we have to check that both strands loaded correctly
+    // or else we downgrade it to a template-only read. If it was the template
+    // strand that didn't load this is ok, the read will just be ignored later.
+    if(read_type == SRT_2D) {
+        if(events[0].empty() || events[1].empty()) {
+            read_type = SRT_TEMPLATE;
+        }
+    }
+
+    // Build the map from k-mers of the read sequence to events
     if(read_type == SRT_2D) {
         build_event_map_2d(f_p, basecall_group);
     } else {
@@ -278,7 +287,7 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p, const std::string& basec
     // sequences to work out which read base each entry is referring to
     uint32_t start_ea_idx = 0;
     uint32_t end_ea_idx = 0;
-
+    //printf("Starting event map construction for read %s\n", read_name.c_str());
     while(start_ea_idx < event_alignments.size()) {
 
         uint32_t prev_kidx = read_kidx;
