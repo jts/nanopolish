@@ -538,7 +538,7 @@ int scorereads_main(int argc, char** argv)
 
                         // Update pore model based on alignment
                         if( opt::calibrate ) {
-                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, false, opt::scale_drift);
+                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, true, opt::scale_drift);
                         }
 
                         if(opt::learn_model_offset) {
