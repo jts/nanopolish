@@ -163,6 +163,16 @@ class SquiggleRead
         size_t get_sample_index_at_time(size_t sample_time) const;
         std::vector<float> get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const;
 
+        // print the scaling parameters for this strand
+        void print_scaling_parameters(FILE* fp, size_t strand_idx) const
+        {
+            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->pore_model[strand_idx].shift,
+                                                                               this->pore_model[strand_idx].scale,
+                                                                               this->pore_model[strand_idx].drift,
+                                                                               this->pore_model[strand_idx].var);
+        }
+
+
         //
         // Data
         //

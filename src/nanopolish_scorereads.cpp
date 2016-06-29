@@ -175,7 +175,7 @@ double model_score(SquiggleRead &sr,
         double curr_drift = sr.pore_model[strand_idx].drift;
         double curr_var = sr.pore_model[strand_idx].var;
             
-        recalibrate_model(sr, strand_idx, event_alignment_sub, &gDNAAlphabet, true);
+        recalibrate_model(sr, strand_idx, event_alignment_sub, &gDNAAlphabet, true, opt::scale_drift);
 
         fprintf(stdout, "SEGMENT\t%s\t%d\t%.3lf\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", 
                     sr.read_name.c_str(), 

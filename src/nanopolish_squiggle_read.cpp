@@ -165,7 +165,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
         }
-        
+
         // we need the 1D event map and sequence to calculate calibration parameters
         // these will be copied into the member fields later if this is a 1D read,
         // or discarded if this is a 2D read
@@ -173,7 +173,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
         read_sequences_1d[si] = f_p->get_basecall_seq(event_group, si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT);
         event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
-        std::vector<EventAlignment> alignment = 
+        std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
 
         bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
@@ -381,17 +381,17 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
 
     for(size_t ki = 0; ki < n_kmers; ++ki) {
         IndexPair event_range_for_kmer = base_to_event_map_1d[ki].indices[strand_idx];
-        
+
         // skip kmers without events
         if(event_range_for_kmer.start == -1)
             continue;
 
-        for(size_t event_idx = event_range_for_kmer.start; 
-            event_idx <= event_range_for_kmer.stop; event_idx++) 
+        for(size_t event_idx = event_range_for_kmer.start;
+            event_idx <= event_range_for_kmer.stop; event_idx++)
         {
             assert(event_idx < this->events[strand_idx].size());
 
-            std::string kmer = strand_idx == T_IDX ? 
+            std::string kmer = strand_idx == T_IDX ?
                                 read_sequence_1d.substr(ki, k) :
                                 alphabet->reverse_complement(read_sequence_1d.substr(ki, k));
             size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);

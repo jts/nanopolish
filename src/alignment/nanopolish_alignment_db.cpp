@@ -12,6 +12,7 @@
 #include "htslib/faidx.h"
 #include "htslib/hts.h"
 #include "htslib/sam.h"
+#include "nanopolish_methyltrain.h"
 
 // Various file handle and structures
 // needed to traverse a bam file
@@ -25,11 +26,13 @@ struct BamHandles
 AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
-                         const std::string& event_bam) :
+                         const std::string& event_bam,
+                         bool calibrate_reads) :
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
                             m_event_bam(event_bam),
-                            m_fast5_name_map(reads_file)
+                            m_fast5_name_map(reads_file),
+                            m_calibrate_on_load(calibrate_reads)
 {
     _clear_region();
 }
@@ -423,6 +426,15 @@ void AlignmentDB::_load_events_by_region()
         event_record.strand = is_template ? T_IDX : C_IDX;
         m_event_records.push_back(event_record);
         
+        if(m_calibrate_on_load) {
+            std::vector<EventAlignment> event_alignment = _build_event_alignment(event_record);
+            fprintf(stderr, "Rescale for %s strand: %d rc: %d\n", event_record.sr->read_name.c_str(), event_record.strand, event_record.rc);
+            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
+            fprintf(stderr, "recal events: %zu\n", event_alignment.size());
+            recalibrate_model(*event_record.sr, event_record.strand, event_alignment, &gDNAAlphabet, true, false);
+            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
+        }
+
         /*
         printf("event_record[%zu] name: %s stride: %d align bounds [%d %d] [%d %d]\n", 
             m_event_records.size() - 1,
@@ -439,6 +451,40 @@ void AlignmentDB::_load_events_by_region()
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
+}
+
+std::vector<EventAlignment> AlignmentDB::_build_event_alignment(const EventAlignmentRecord& event_record) const
+{
+    std::vector<EventAlignment> alignment;
+    const SquiggleRead* sr = event_record.sr;
+    const Alphabet* alphabet = sr->pore_model[event_record.strand].pmalphabet;
+    size_t k = sr->pore_model[event_record.strand].k;
+
+    for(const auto& ap : event_record.aligned_events) { 
+
+        EventAlignment ea;
+        ea.ref_position = ap.ref_pos;
+        if(ea.ref_position < m_region_start || ea.ref_position >= m_region_end - k) {
+            continue;
+        }
+
+        ea.event_idx = ap.read_pos;
+
+        std::string kmer = get_reference_substring(m_region_contig, ea.ref_position, ea.ref_position + k - 1);
+        assert(kmer.size() == k);
+
+        // ref data
+        ea.ref_name = "read"; // not needed
+        ea.read_idx = -1; // not needed
+        ea.ref_kmer = kmer;
+        ea.strand_idx = event_record.strand;
+        ea.rc = event_record.rc;
+        ea.model_kmer = kmer;
+        ea.hmm_state = 'M';
+        alignment.push_back(ea);
+    }
+
+    return alignment;
 }
 
 bool AlignmentDB::_find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,

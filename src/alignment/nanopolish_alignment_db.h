@@ -40,7 +40,8 @@ class AlignmentDB
         AlignmentDB(const std::string& reads_file,
                     const std::string& reference_file,
                     const std::string& sequence_bam,
-                    const std::string& event_bam);
+                    const std::string& event_bam,
+                    const bool calibrate_reads = false);
 
         ~AlignmentDB();
 
@@ -81,6 +82,8 @@ class AlignmentDB
         void _load_events_by_region();
         void _clear_region();
 
+        std::vector<EventAlignment> _build_event_alignment(const EventAlignmentRecord& event_record) const;
+
         // Search the vector of AlignedPairs using lower_bound/upper_bound
         // and the input reference coordinates. If the search succeeds,
         // set read_start/read_stop to be the read_pos of the bounding elements
@@ -103,6 +106,9 @@ class AlignmentDB
         std::string m_reference_file;
         std::string m_sequence_bam;
         std::string m_event_bam;
+
+        // parameters
+        bool m_calibrate_on_load;
 
         // loaded region
         std::string m_region_ref_sequence;

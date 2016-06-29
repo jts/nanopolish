@@ -94,12 +94,13 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
-    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
+    static std::string alternative_model_type = "ONT";
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
+    static int calibrate = 1;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
@@ -226,7 +227,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         region_start = BUFFER;
 
     // load the region, accounting for the buffering
-    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
+    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
     
     if(!opt::alternative_model_type.empty()) {
         alignments.set_alternative_model_type(opt::alternative_model_type);
