@@ -14,6 +14,8 @@
 #include "nanopolish_haplotype.h"
 #include "nanopolish_model_names.h"
 
+//#define DEBUG_HAPLOTYPE_SELECTION 1
+
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
 {
@@ -327,7 +329,6 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                 v.quality = best_lp - base_lp;
             }
         }
-
 #ifdef DEBUG_HAPLOTYPE_SELECTION
         std::stringstream ss;
         for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
