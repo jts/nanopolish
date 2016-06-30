@@ -43,13 +43,12 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
 
         // transitions from event split state in previous block
         float p_bb = p_bad;
-        float p_bk = p_skip;
-        float p_bm_next, p_bm_self;
-        p_bm_next = p_bm_self = (1.0f - p_bb - p_bk) / 2;
+        float p_bk, p_bm_next, p_bm_self;
+        p_bk = p_bm_next = p_bm_self = (1.0f - p_bb) / 3;
 
         // transitions from kmer skip state in previous block
-        float p_kk = p_skip;
-        float p_km = 1.0f - p_skip;
+        float p_kk = 0.3;
+        float p_km = 1.0f - p_kk;
         // p_kb not needed, equivalent to B->K
 
         // log-transform and store
