@@ -157,6 +157,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
         // copy events
         events[si].resize(f5_events.size());
+        std::vector<double> p_model_states;
+
         for(size_t ei = 0; ei < f5_events.size(); ++ei) {
             const fast5::Event_Entry& f5_event = f5_events[ei];
             events[si][ei] = { static_cast<float>(f5_event.mean),
@@ -164,6 +166,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                                f5_event.start,
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
+            p_model_states.push_back(f5_event.p_model_state);
         }
 
         // we need the 1D event map and sequence to calculate calibration parameters
@@ -176,7 +179,34 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
 
-        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true);
+        // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
+
+        //
+        double keep_fraction = 0.75;
+        std::vector<double> sorted_p_model_states = p_model_states;
+        std::sort(sorted_p_model_states.begin(), sorted_p_model_states.end());
+        double p_model_state_threshold = sorted_p_model_states[sorted_p_model_states.size() * (1 - keep_fraction)];
+        fprintf(stderr, "Threshold: %.2lf\n", p_model_state_threshold);
+
+        std::string blacklist_kmer = "CCTAG";
+        std::vector<EventAlignment> filtered;
+
+        assert(p_model_states.size() == events[si].size());
+
+        for(const auto& ea : alignment) {
+            if((!ea.rc && ea.ref_kmer == blacklist_kmer) ||
+               (ea.rc && ea.ref_kmer == gDNAAlphabet.reverse_complement(blacklist_kmer)))
+            {
+                continue;
+            }
+
+            if(p_model_states[ea.event_idx] < p_model_state_threshold)
+                continue;
+
+            filtered.push_back(ea);
+        }
+
+        bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
         if(!calibrated) {
             events[si].clear();
         }

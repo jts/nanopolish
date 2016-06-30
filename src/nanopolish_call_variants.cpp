@@ -100,7 +100,7 @@ namespace opt
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
-    static int calibrate = 1;
+    static int calibrate = 0;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
