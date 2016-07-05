@@ -24,7 +24,7 @@ TransitionParameters::TransitionParameters()
     td.n_skips = 0;
 
     //
-    allocate_matrix(td.state_transitions, 3, 3);
+    allocate_matrix(td.state_transitions, 3, 6);
     for(unsigned i = 0; i < td.state_transitions.n_rows; ++i) {
         for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
             set(td.state_transitions, i, j, 0);
@@ -274,7 +274,7 @@ int statechar2index(char s)
 {
     switch(s) {
         case 'M': return 0;
-        case 'E': return 1;
+        case 'B': return 1;
         case 'K': return 2;
     }
     assert(false);
@@ -282,10 +282,10 @@ int statechar2index(char s)
 }
 
 //
-void TransitionParameters::add_transition_observation(char state_from, char state_to)
+void TransitionParameters::add_transition_observation(char state_from, char state_to, bool kmer_move)
 {
     int f_idx = statechar2index(state_from);
-    int t_idx = statechar2index(state_to);
+    int t_idx = 2 * statechar2index(state_to) + kmer_move;
 
     int count = get(training_data.state_transitions, f_idx, t_idx);
     set(training_data.state_transitions, f_idx, t_idx, count + 1);
@@ -314,8 +314,12 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
 
         uint32_t ei = alignment[pi].event_idx;
         uint32_t ki = alignment[pi].kmer_idx;
+
+        bool kmer_move = pi == 0 || alignment[pi - 1].kmer_idx != ki;
+        bool event_move = pi == 0 || alignment[pi - 1].event_idx != ei;
         char s = alignment[pi].state;
-    
+        add_transition_observation(prev_s, s, kmer_move);
+
         // Record transition observations
         // We do not record observations for merge states as there was no kmer transitions
         // We also do not record observations for the beginning of the matches as the
@@ -324,13 +328,13 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
  
             // skip transition training data
             // we do not process the E state here as no k-mer move was made
-            if(s != 'E') {
+            if(s != 'B') {
                 uint32_t transition_kmer_from = alignment[pi - 1].kmer_idx;
                 uint32_t transition_kmer_to = alignment[pi].kmer_idx;
 
                 // Specially handle skips
                 // We only want to record the first k-mer skipped if multiple were skipped
-                if(s == 'K') {
+                if(s == 'K' && prev_s == 'M') {
                     transition_kmer_from = alignment[pi - 1].kmer_idx;
                     transition_kmer_to = transition_kmer_from + 1;
                 }
@@ -351,11 +355,11 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
             }
 
             // State-to-state transition
-            add_transition_observation(prev_s, s);
+            add_transition_observation(prev_s, s, kmer_move);
             assert(ki < n_kmers);
-            prev_s = s;
         }
 
+        prev_s = s;
         // summary
         training_data.n_matches += (s == 'M');
         training_data.n_merges += (s == 'E');
@@ -371,40 +375,32 @@ void TransitionParameters::train()
     // Profile HMM transitions
     //
 
-    size_t sum_m_not_k = get(td.state_transitions, statechar2index('M'), statechar2index('M')) + 
-                         get(td.state_transitions, statechar2index('M'), statechar2index('E'));
-
-    size_t me = get(td.state_transitions, statechar2index('M'), statechar2index('E'));
-    double p_me_not_k = (double)me / sum_m_not_k;
-
-    size_t sum_e = 0;
-    for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
-        sum_e += get(td.state_transitions, statechar2index('E'), j);
-    }
-    
-    size_t ee = get(td.state_transitions, statechar2index('E'), statechar2index('E'));
-    double p_ee = (double)ee / sum_e;
-
 #ifdef SHOW_TRAINING_RESULT
     fprintf(stderr, "TRANSITIONS\n");
-    fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
-    fprintf(stderr, "E->E: %lf\n", p_ee);
+    //fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
+    //fprintf(stderr, "E->E: %lf\n", p_ee);
     for(int i = 0; i < td.state_transitions.n_rows; ++i) {
-        fprintf(stderr, "\t%c: ", "MEK"[i]);
+        fprintf(stderr, "\t%c: ", "MBK"[i]);
         for(int j = 0; j < td.state_transitions.n_cols; ++j) {
             fprintf(stderr, "%d ", get(td.state_transitions, i, j));
         }
         fprintf(stderr, "\n");
     }
-#endif
 
-    if(sum_e == 0 || sum_m_not_k == 0) {
-        // insufficient data to train, use defaults
-        return;
+    for(int i = 0; i < td.state_transitions.n_rows; ++i) {
+        fprintf(stderr, "\t%c: ", "MBK"[i]);
+        size_t col_sum = 0;
+        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+            col_sum += get(td.state_transitions, i, j);
+        }
+
+        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+            double p = get(td.state_transitions, i, j) / (double)col_sum;
+            fprintf(stderr, "%04.3lf ", p);
+        }
+        fprintf(stderr, "\n");
     }
-
-    trans_m_to_e_not_k = p_me_not_k;
-    trans_e_to_e = p_ee;
+#endif
 
     //
     // Signal-dependent skip probability
@@ -441,10 +437,11 @@ void TransitionParameters::train()
 
 void TransitionParameters::print() const
 {
+    /*
     fprintf(stderr, "TRANSITIONS\n");
     fprintf(stderr, "trans_m_to_e_not_k = %.3lf;\n", trans_m_to_e_not_k);
     fprintf(stderr, "trans_e_to_e = %.3lf;\n", trans_e_to_e);
-    
+    */
     for(size_t bin = 0; bin < skip_probabilities.size(); bin++) {
         fprintf(stderr, "skip_probabilities[%zu] = %.3lf;\n", bin, skip_probabilities[bin]);
     }

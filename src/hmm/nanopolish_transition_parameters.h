@@ -54,7 +54,7 @@ class TransitionParameters
         double get_skip_probability(double k_level1, double k_level2) const;
 
         // add an observation of a state transition to the training data
-        void add_transition_observation(char hmm_state_from, char hmm_state_to);
+        void add_transition_observation(char hmm_state_from, char hmm_state_to, bool kmer_move);
 
         // update the training data using the alignment
         void add_training_from_alignment(const HMMInputSequence& sequence,
