@@ -186,7 +186,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         std::vector<double> sorted_p_model_states = p_model_states;
         std::sort(sorted_p_model_states.begin(), sorted_p_model_states.end());
         double p_model_state_threshold = sorted_p_model_states[sorted_p_model_states.size() * (1 - keep_fraction)];
-        fprintf(stderr, "Threshold: %.2lf\n", p_model_state_threshold);
 
         std::string blacklist_kmer = "CCTAG";
         std::vector<EventAlignment> filtered;
