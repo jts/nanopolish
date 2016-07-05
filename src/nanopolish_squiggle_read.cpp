@@ -166,6 +166,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                                f5_event.start,
                                static_cast<float>(f5_event.length),
                                static_cast<float>(log(f5_event.stdv)) };
+            assert(f5_event.p_model_state >= 0.0 && f5_event.p_model_state <= 1.0);
             p_model_states.push_back(f5_event.p_model_state);
         }
 
