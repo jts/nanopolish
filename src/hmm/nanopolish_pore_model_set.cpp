@@ -42,7 +42,7 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
 }
 
 //
-PoreModel PoreModelSet::get_model(const std::string& type, const std::string& short_name)
+const PoreModel& PoreModelSet::get_model(const std::string& type, const std::string& short_name)
 {
     PoreModelSet& model_set = getInstance();
     

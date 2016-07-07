@@ -132,25 +132,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             continue;
         }
 
-        // Initialize to default scaling parameters
-        pore_model[si].shift = 0.0;
-        pore_model[si].scale = 1.0;
-        pore_model[si].drift = 0.0;
-        pore_model[si].var = 1.0;
-        pore_model[si].scale_sd = 1.0;
-        pore_model[si].var_sd = 1.0;
-
-        // R9 change: load pore model from external file
-
-        // this flag should only be used when running train-poremodel-from-basecalls
-        // in this case there is no default model to load so we skip this step
-        if( (flags & SRF_NO_MODEL) == 0) {
-            pore_model[si] = PoreModelSet::get_model("base", "t.007");
-            pore_model[si].bake_gaussian_parameters();
-
-            // initialize transition parameters
-            parameters[si].initialize(pore_model[si].metadata);
-        }
 
         // Load the events for this strand
         std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(event_group, si);
@@ -181,8 +162,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
 
         // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
-
-        //
         double keep_fraction = 0.75;
         std::vector<double> sorted_p_model_states = p_model_states;
         std::sort(sorted_p_model_states.begin(), sorted_p_model_states.end());
@@ -206,10 +185,68 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             filtered.push_back(ea);
         }
 
-        double residual = 0.;
-        bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, residual, true, false);
-        if(!calibrated) {
-            events[si].clear();
+        // Load the pore model (if requested) and calibrate it
+        if( (flags & SRF_NO_MODEL) == 0) {
+
+            // For the template strad we only have one candidate model
+            // For complement we need to select between the two possible models
+            std::vector<const PoreModel*> candidate_models;
+            if(si == 0) {
+                candidate_models.push_back(&PoreModelSet::get_model("base", "t.007"));
+            } else {
+                candidate_models.push_back(&PoreModelSet::get_model("base", "c.p1.007"));
+                candidate_models.push_back(&PoreModelSet::get_model("base", "c.p2.007"));
+            }
+
+            PoreModel best_model;
+            double best_model_residual = INFINITY;
+
+            for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
+
+                pore_model[si] = *candidate_models[model_idx];
+
+                // Initialize to default scaling parameters
+                pore_model[si].shift = 0.0;
+                pore_model[si].scale = 1.0;
+                pore_model[si].drift = 0.0;
+                pore_model[si].var = 1.0;
+                pore_model[si].scale_sd = 1.0;
+                pore_model[si].var_sd = 1.0;
+
+                pore_model[si].bake_gaussian_parameters();
+                
+                // run recalibration to get the best set of scaling parameters and the residual
+                // between the (scaled) event levels and the model
+                double residual;
+                bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, residual, true, false);
+                if(calibrated) {
+                    if(residual < best_model_residual) {
+                        best_model_residual = residual;
+                        best_model = pore_model[si];
+                    }
+                }
+
+#ifdef DEBUG_MODEL_SELECTION
+                fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
+                                 "residual: %.4lf scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
+                                        read_name.substr(0, 6).c_str(), si, model_idx, residual, pore_model[si].scale, 
+                                        pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
+#endif
+            }
+
+            if(best_model_residual != INFINITY) {
+#ifdef DEBUG_MODEL_SELECTION
+                fprintf(stderr, "[calibration] selected model with residual %.4lf\n", best_model_residual);
+#endif
+                pore_model[si] = best_model;
+                pore_model[si].bake_gaussian_parameters();
+                
+                // initialize transition parameters
+                parameters[si].initialize(pore_model[si].metadata);
+            } else {
+                // could not find a model for this strand, discard it
+                events[si].clear();
+            }
         }
     }
 
@@ -417,9 +454,8 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
         {
             assert(event_idx < this->events[strand_idx].size());
 
-            std::string kmer = strand_idx == T_IDX ?
-                                read_sequence_1d.substr(ki, k) :
-                                alphabet->reverse_complement(read_sequence_1d.substr(ki, k));
+            // since we use the 1D read seqence here we never have to reverse complement
+            std::string kmer = read_sequence_1d.substr(ki, k);
             size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
 
             EventAlignment ea;

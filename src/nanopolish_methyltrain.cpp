@@ -297,7 +297,7 @@ bool recalibrate_model(SquiggleRead &sr,
         double yi = (raw_events[i] - shift - scale*level_means[i]);
         if (scale_drift)
             yi -= drift*times[i];
-        residual += fabs(yi/(var*level_stdvs[i]));
+        residual += fabs(yi/(1.0*level_stdvs[i]));
     }
 
     residual /= raw_events.size();

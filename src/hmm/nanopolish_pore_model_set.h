@@ -29,7 +29,7 @@ class PoreModelSet
         //
         // get a model from the set using its type and short name
         //
-        static PoreModel get_model(const std::string& type, const std::string& short_name);
+        static const PoreModel& get_model(const std::string& type, const std::string& short_name);
 
         //
         // get all the models for this type
