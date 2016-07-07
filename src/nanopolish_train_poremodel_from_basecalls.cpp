@@ -314,10 +314,12 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
             }
 
             // recalibrate shift/scale/etc using the filtered alignment
+            double resid = 0.;
             recalibrate_model(*read, 
                               training_strand,
                               filtered_alignment,
                               &gDNAAlphabet,
+                              resid, 
                               false, true);
         
             const PoreModel& read_model = read->pore_model[training_strand];

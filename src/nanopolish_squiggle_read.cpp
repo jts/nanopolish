@@ -198,6 +198,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
 
     // Calibrate the models using the basecalls
     for(size_t si = 0; si < 2; ++si) {
+        double resid = 0.;
 
         // only recalibrate if there is a model, its a 2D read or a 2D read and the right strand
         if( !(read_type == SRT_2D || read_type == si) || (flags & SRF_NO_MODEL) ) {
@@ -205,7 +206,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         std::vector<EventAlignment> alignment = get_eventalignment_for_basecalls(5, si);
-        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, true, true);
+        bool calibrated = recalibrate_model(*this, si, alignment, pore_model[si].pmalphabet, resid, true, true);
 
         if(!calibrated) {
             events[si].clear();

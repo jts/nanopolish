@@ -177,10 +177,12 @@ static const struct option longopts[] = {
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 // returns true if the recalibration was performed
+// residual parameter set to the L1 norm of the residual between read and calibrated model
 bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
+                       double &residual,
                        const bool scale_var, 
                        const bool scale_drift)
 {
@@ -283,6 +285,14 @@ bool recalibrate_model(SquiggleRead &sr,
     //                                                << sr.pore_model[strand_idx].drift << ", "
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
 
+    // calculate L1 residual and return
+    residual = 0.;
+    for (size_t i=0; i<raw_events.size(); i++) {
+        double yi = (raw_events[i] - shift - scale*level_means[i]);
+        if (scale_drift)
+            yi -= drift*times[i];
+        residual += fabs(yi/(var*level_stdvs[i]));
+    }
     return true;
 }
 
@@ -345,7 +355,8 @@ void add_aligned_events(const Fast5Map& name_map,
         }
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, true);
+            double resid=0.;
+            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, resid, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
