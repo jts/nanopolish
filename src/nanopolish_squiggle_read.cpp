@@ -199,7 +199,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             }
 
             PoreModel best_model;
-            double best_model_residual = INFINITY;
+            double best_model_var = INFINITY;
 
             for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
 
@@ -217,26 +217,25 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
                 
                 // run recalibration to get the best set of scaling parameters and the residual
                 // between the (scaled) event levels and the model
-                double residual;
-                bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, residual, true, false);
+                bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
                 if(calibrated) {
-                    if(residual < best_model_residual) {
-                        best_model_residual = residual;
+                    if(pore_model[si].var < best_model_var) {
+                        best_model_var = pore_model[si].var;
                         best_model = pore_model[si];
                     }
                 }
 
 #ifdef DEBUG_MODEL_SELECTION
                 fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
-                                 "residual: %.4lf scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
-                                        read_name.substr(0, 6).c_str(), si, model_idx, residual, pore_model[si].scale, 
+                                 "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
+                                        read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale, 
                                         pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
 #endif
             }
 
-            if(best_model_residual != INFINITY) {
+            if(best_model_var != INFINITY) {
 #ifdef DEBUG_MODEL_SELECTION
-                fprintf(stderr, "[calibration] selected model with residual %.4lf\n", best_model_residual);
+                fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
                 pore_model[si] = best_model;
                 pore_model[si].bake_gaussian_parameters();

@@ -184,14 +184,12 @@ bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
-                       double &residual,
                        const bool scale_var, 
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
     uint32_t k = sr.pore_model[strand_idx].k;
     const uint32_t num_equations = scale_drift ? 3 : 2;
-    residual = 0.;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
     //                                                << sr.pore_model[strand_idx].scale << ", "
@@ -287,20 +285,6 @@ bool recalibrate_model(SquiggleRead &sr,
         //                                                << sr.pore_model[strand_idx].var   << std::endl;
     }
         
-    residual = 0.;
-    const double shift = sr.pore_model[strand_idx].shift;
-    const double scale = sr.pore_model[strand_idx].scale;
-    const double drift = sr.pore_model[strand_idx].drift;
-    const double var   = sr.pore_model[strand_idx].var;
-
-    for (size_t i=0; i<raw_events.size(); i++) {
-        double yi = (raw_events[i] - shift - scale*level_means[i]);
-        if (scale_drift)
-            yi -= drift*times[i];
-        residual += fabs(yi/(1.0*level_stdvs[i]));
-    }
-
-    residual /= raw_events.size();
     return recalibrated;
 }
 

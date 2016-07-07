@@ -22,7 +22,6 @@ bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
-                       double &residual,
                        bool scale_var=true,
                        bool scale_drift=true);
 

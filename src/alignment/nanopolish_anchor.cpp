@@ -89,8 +89,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, -1,
                                                                  "", fai, hdr,
                                                                  record, -1, -1);
-            double resid = 0.;
-            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, resid, true, true);
+            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, true, true);
         }
 
         k = sr.pore_model[T_IDX].k;
