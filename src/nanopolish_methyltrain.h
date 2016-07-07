@@ -17,10 +17,12 @@
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 // returns true if the recalibration was performed
+// in either case, sets residual to the L1 norm of the residual
 bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
+                       double &residual,
                        bool scale_var=true,
                        bool scale_drift=true);
 

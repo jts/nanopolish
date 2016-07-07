@@ -179,16 +179,19 @@ static const struct option longopts[] = {
 
 // recalculate shift, scale, drift, scale_sd from an alignment and the read
 // returns true if the recalibration was performed
+// in either case, sets residual to the L1 norm of the residual
 bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
+                       double &residual,
                        const bool scale_var, 
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
     uint32_t k = sr.pore_model[strand_idx].k;
     const uint32_t num_equations = scale_drift ? 3 : 2;
+    residual = 0.;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
     //                                                << sr.pore_model[strand_idx].scale << ", "
@@ -210,80 +213,95 @@ bool recalibrate_model(SquiggleRead &sr,
     }
 
     const int minNumEventsToRescale = 200;
-    if (raw_events.size() < minNumEventsToRescale)
-        return false;
+    bool recalibrated = false; 
+    if (raw_events.size() >= minNumEventsToRescale) {
+        // Assemble linear system corresponding to weighted least squares problem
+        // Can just directly call a weighted least squares solver, but there's enough
+        // structure in our problem it's a little faster just to build the normal eqn
+        // matrices ourselves
+        Eigen::MatrixXd A(num_equations, num_equations);
+        Eigen::VectorXd b(num_equations);
 
-    // Assemble linear system corresponding to weighted least squares problem
-    // Can just directly call a weighted least squares solver, but there's enough
-    // structure in our problem it's a little faster just to build the normal eqn
-    // matrices ourselves
-    Eigen::MatrixXd A(num_equations, num_equations);
-    Eigen::VectorXd b(num_equations);
+        for (int i=0; i<num_equations; i++) {
+            b(i) = 0.;
+            for (int j=0; j<num_equations; j++)
+                A(i,j) = 0.;
+        }
 
-    for (int i=0; i<num_equations; i++) {
-        b(i) = 0.;
-        for (int j=0; j<num_equations; j++)
-            A(i,j) = 0.;
+        for (size_t i=0; i<raw_events.size(); i++) {
+            double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
+            double mu = level_means[i];
+            double e  = raw_events[i];
+
+            A(0,0) += inv_var;  A(0,1) += mu*inv_var;    
+                                A(1,1) += mu*mu*inv_var; 
+
+            b(0) += e*inv_var;
+            b(1) += mu*e*inv_var;
+
+            if (scale_drift) {
+                double t  = times[i];
+                A(0,2) += t*inv_var;
+                A(1,2) += mu*t*inv_var;
+                A(2,2) += t*t*inv_var;
+                b(2) += t*e*inv_var;
+            }
+        }
+        A(1,0) = A(0,1);
+        if (scale_drift) {
+            A(2,0) = A(0,2);
+            A(2,1) = A(1,2);
+        }
+
+        // perform the linear solve
+        Eigen::VectorXd x = A.fullPivLu().solve(b);
+
+        double shift = x(0);
+        double scale = x(1);
+        double drift = scale_drift ? x(2) : 0.;
+
+        sr.pore_model[strand_idx].shift = shift;
+        sr.pore_model[strand_idx].scale = scale;
+        sr.pore_model[strand_idx].drift = drift;
+
+        if (scale_var) {
+            double var = 0.;
+            for (size_t i=0; i<raw_events.size(); i++) {
+                double yi = (raw_events[i] - shift - scale*level_means[i]);
+                if (scale_drift)
+                    yi -= drift*times[i];
+                var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
+            }
+            var /= raw_events.size();
+
+            sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+        }
+
+        if (sr.pore_model[strand_idx].is_scaled)
+            sr.pore_model[strand_idx].bake_gaussian_parameters();
+
+        recalibrated = true;
+        //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", "
+        //                                                << sr.pore_model[strand_idx].scale << ", "
+        //                                                << sr.pore_model[strand_idx].drift << ", "
+        //                                                << sr.pore_model[strand_idx].var   << std::endl;
     }
+        
+    residual = 0.;
+    const double shift = sr.pore_model[strand_idx].shift;
+    const double scale = sr.pore_model[strand_idx].scale;
+    const double drift = sr.pore_model[strand_idx].drift;
+    const double var   = sr.pore_model[strand_idx].var;
 
     for (size_t i=0; i<raw_events.size(); i++) {
-        double inv_var = 1./(level_stdvs[i]*level_stdvs[i]);
-        double mu = level_means[i];
-        double e  = raw_events[i];
-
-        A(0,0) += inv_var;  A(0,1) += mu*inv_var;    
-                            A(1,1) += mu*mu*inv_var; 
-
-        b(0) += e*inv_var;
-        b(1) += mu*e*inv_var;
-
-        if (scale_drift) {
-            double t  = times[i];
-            A(0,2) += t*inv_var;
-            A(1,2) += mu*t*inv_var;
-            A(2,2) += t*t*inv_var;
-            b(2) += t*e*inv_var;
-        }
-    }
-    A(1,0) = A(0,1);
-    if (scale_drift) {
-        A(2,0) = A(0,2);
-        A(2,1) = A(1,2);
+        double yi = (raw_events[i] - shift - scale*level_means[i]);
+        if (scale_drift)
+            yi -= drift*times[i];
+        residual += fabs(yi/(var*level_stdvs[i]));
     }
 
-    // perform the linear solve
-    Eigen::VectorXd x = A.fullPivLu().solve(b);
-
-    double shift = x(0);
-    double scale = x(1);
-    double drift = scale_drift ? x(2) : 0.;
-
-    sr.pore_model[strand_idx].shift = shift;
-    sr.pore_model[strand_idx].scale = scale;
-    sr.pore_model[strand_idx].drift = drift;
-
-    if (scale_var) {
-        double var = 0.;
-        for (size_t i=0; i<raw_events.size(); i++) {
-            double yi = (raw_events[i] - shift - scale*level_means[i]);
-            if (scale_drift)
-                yi -= drift*times[i];
-            var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
-        }
-        var /= raw_events.size();
-
-        sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
-    }
-
-    if (sr.pore_model[strand_idx].is_scaled)
-        sr.pore_model[strand_idx].bake_gaussian_parameters();
-
-    //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", "
-    //                                                << sr.pore_model[strand_idx].scale << ", "
-    //                                                << sr.pore_model[strand_idx].drift << ", "
-    //                                                << sr.pore_model[strand_idx].var   << std::endl;
-
-    return true;
+    residual /= raw_events.size();
+    return recalibrated;
 }
 
 // Update the training data with aligned events from a read
@@ -345,7 +363,8 @@ void add_aligned_events(const Fast5Map& name_map,
         }
 
         if ( opt::calibrate ) {
-            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, true);
+            double resid = 0.;
+            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, resid, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);

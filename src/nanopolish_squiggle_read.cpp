@@ -206,7 +206,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             filtered.push_back(ea);
         }
 
-        bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
+        double residual = 0.;
+        bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, residual, true, false);
         if(!calibrated) {
             events[si].clear();
         }

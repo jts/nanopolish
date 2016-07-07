@@ -431,7 +431,8 @@ void AlignmentDB::_load_events_by_region()
             fprintf(stderr, "Rescale for %s strand: %d rc: %d\n", event_record.sr->read_name.c_str(), event_record.strand, event_record.rc);
             event_record.sr->print_scaling_parameters(stderr, event_record.strand);
             fprintf(stderr, "recal events: %zu\n", event_alignment.size());
-            recalibrate_model(*event_record.sr, event_record.strand, event_alignment, &gDNAAlphabet, true, false);
+            double resid = 0.;
+            recalibrate_model(*event_record.sr, event_record.strand, event_alignment, &gDNAAlphabet, resid, true, false);
             event_record.sr->print_scaling_parameters(stderr, event_record.strand);
         }
 
