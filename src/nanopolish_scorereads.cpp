@@ -178,7 +178,7 @@ double model_score(SquiggleRead &sr,
         double resid = 0.;
         recalibrate_model(sr, strand_idx, event_alignment_sub, &gDNAAlphabet, resid, true, opt::scale_drift);
 
-        fprintf(stdout, "SEGMENT\t%s\t%d\t%.3lf\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", 
+        fprintf(stdout, "SEGMENT\t%s\t%zu\t%.3lf\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", 
                     sr.read_name.c_str(), 
                     nevents, 
                     segment_score / events_in_segment, 
