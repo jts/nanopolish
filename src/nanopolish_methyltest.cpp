@@ -107,7 +107,7 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
-    static std::string cpg_methylation_model_type = "cpg_methylation";
+    static std::string cpg_methylation_model_type = "reftrained";
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
