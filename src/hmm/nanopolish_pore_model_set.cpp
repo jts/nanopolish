@@ -42,6 +42,20 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
 }
 
 //
+bool PoreModelSet::has_model(const std::string& type, const std::string& short_name)
+{
+    PoreModelSet& model_set = getInstance();
+    
+    auto iter_type = model_set.model_type_sets.find(type);
+    if(iter_type == model_set.model_type_sets.end()) {
+        return false;
+    }
+    
+    auto iter_short_name = iter_type->second.find(short_name);
+    return iter_short_name != iter_type->second.end();
+}
+
+//
 const PoreModel& PoreModelSet::get_model(const std::string& type, const std::string& short_name)
 {
     PoreModelSet& model_set = getInstance();

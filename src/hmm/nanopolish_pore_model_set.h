@@ -27,6 +27,11 @@ class PoreModelSet
         static void initialize(const std::string& fofn_filename);
 
         //
+        // check if a model with this type and short name exists
+        //
+        static bool has_model(const std::string& type, const std::string& short_name);
+
+        //
         // get a model from the set using its type and short name
         //
         static const PoreModel& get_model(const std::string& type, const std::string& short_name);

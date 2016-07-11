@@ -194,8 +194,11 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             if(si == 0) {
                 candidate_models.push_back(&PoreModelSet::get_model("base", "t.007"));
             } else {
-                candidate_models.push_back(&PoreModelSet::get_model("base", "c.p1.007"));
-                candidate_models.push_back(&PoreModelSet::get_model("base", "c.p2.007"));
+                for(const std::string& cmn : { "c.p1.007", "c.p2.007" } ) {
+                    if(PoreModelSet::has_model("base", cmn)) {
+                       candidate_models.push_back(&PoreModelSet::get_model("base", cmn));
+                    }
+                }
             }
 
             PoreModel best_model;
@@ -407,7 +410,7 @@ void SquiggleRead::replace_models(const std::string& model_type)
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
         // only replace this model if the strand was loaded
-        if(! (read_type == SRT_2D || read_type == strand_idx) ) {
+        if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
             continue;
         }
 

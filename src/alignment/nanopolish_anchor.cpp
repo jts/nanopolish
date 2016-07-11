@@ -133,7 +133,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             }
 
             int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
-            int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
+            int complement_idx = sr.has_events_for_strand(C_IDX) ? sr.get_closest_event_to(read_kidx, C_IDX) : -1;
 
             assert(template_idx != -1 && (!sr.has_events_for_strand(C_IDX) || complement_idx != -1));
             assert(template_idx < (int)sr.events[T_IDX].size());

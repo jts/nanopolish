@@ -93,8 +93,13 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
     std::vector<HMMInputData> out;
     for(size_t i = 0; i < m_event_records.size(); ++i) {
         const EventAlignmentRecord& record = m_event_records[i];
-        if(record.aligned_events.empty())
+        if(record.aligned_events.empty()) {
             continue;
+        }
+
+        if(!record.sr->has_events_for_strand(record.strand)) {
+            continue;
+        }
 
         HMMInputData data;
         data.read = record.sr;
@@ -131,8 +136,13 @@ std::vector<HMMInputData> AlignmentDB::get_events_aligned_to(const std::string& 
     std::vector<HMMInputData> out;
     for(size_t i = 0; i < m_event_records.size(); ++i) {
         const EventAlignmentRecord& record = m_event_records[i];
-        if(record.aligned_events.empty())
+        if(record.aligned_events.empty()) {
             continue;
+        }
+
+        if(!record.sr->has_events_for_strand(record.strand)) {
+            continue;
+        }
 
         HMMInputData data;
         data.read = record.sr;
