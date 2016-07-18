@@ -71,6 +71,7 @@ class AlignmentDB
                                                     double min_frequency,
                                                     int min_depth) const;
 
+        std::string get_region_contig() const { return m_region_contig; }
         int get_region_start() const { return m_region_start; }
         int get_region_end() const { return m_region_end; }
         

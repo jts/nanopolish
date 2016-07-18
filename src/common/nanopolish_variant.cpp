@@ -341,3 +341,42 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     return best_variant_set;
 }
 
+std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
+                                                      Haplotype base_haplotype, 
+                                                      const std::vector<HMMInputData>& input,
+                                                      const uint32_t alignment_flags)
+{
+    std::vector<Variant> selected_variants;
+    double base_score = 0.0f;
+    #pragma omp parallel for
+    for(size_t j = 0; j < input.size(); ++j) {
+
+        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
+
+        #pragma omp atomic
+        base_score += score;
+    }
+
+    for(size_t vi = 0; vi < candidate_variants.size(); ++vi) {
+
+        Haplotype current_haplotype = base_haplotype;
+        current_haplotype.apply_variant(candidate_variants[vi]);
+        
+        double haplotype_score = 0.0f;
+        #pragma omp parallel for
+        for(size_t j = 0; j < input.size(); ++j) {
+            double score = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
+
+            #pragma omp atomic
+            haplotype_score += score;
+        }
+
+        if(haplotype_score > base_score) {
+            candidate_variants[vi].quality = haplotype_score - base_score;
+            selected_variants.push_back(candidate_variants[vi]);
+        }
+    }
+
+    return selected_variants;
+}
+

@@ -70,6 +70,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "      --snps                           only call SNPs\n"
+"      --consensus                      run in consensus calling mode\n"
 "  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
@@ -94,18 +95,26 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
-    static std::string alternative_model_type = "ONT";
+    static std::string alternative_model_type = "reftrained";
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
     static int calibrate = 0;
+    static int consensus_mode = 0;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_SNPS_ONLY, OPT_CALC_ALL_SUPPORT, OPT_MODELS_FOFN };
+enum { OPT_HELP = 1,
+       OPT_VERSION,
+       OPT_VCF,
+       OPT_PROGRESS,
+       OPT_SNPS_ONLY,
+       OPT_CALC_ALL_SUPPORT,
+       OPT_CONSENSUS,
+       OPT_MODELS_FOFN };
 
 static const struct option longopts[] = {
     { "verbose",                 no_argument,       NULL, 'v' },
@@ -121,6 +130,7 @@ static const struct option longopts[] = {
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
+    { "consenus",                no_argument,       NULL, OPT_CONSENSUS },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
     { "help",                    no_argument,       NULL, OPT_HELP },
     { "version",                 no_argument,       NULL, OPT_VERSION },
@@ -142,7 +152,7 @@ void annotate_with_all_support(std::vector<Variant>& variants,
 
 {
     for(size_t vi = 0; vi < variants.size(); vi++) {
-        
+
         // Generate a haplotype containing every variant in the set except for vi
         Haplotype test_haplotype = base_haplotype;
         for(size_t vj = 0; vj < variants.size(); vj++) {
@@ -153,7 +163,7 @@ void annotate_with_all_support(std::vector<Variant>& variants,
             }
             test_haplotype.apply_variant(variants[vj]);
         }
-        
+
         // Make a vector of four haplotypes, one per base
         std::vector<Haplotype> curr_haplotypes;
         Variant tmp_variant = variants[vi];
@@ -191,7 +201,75 @@ void annotate_with_all_support(std::vector<Variant>& variants,
     }
 }
 
-std::vector<Variant> get_variants_from_vcf(const std::string& filename, 
+std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& alignments,
+                                                          int region_start,
+                                                          int region_end,
+                                                          int calling_span,
+                                                          uint32_t alignment_flags)
+{
+    std::vector<Variant> out_variants;
+
+    std::string contig = alignments.get_region_contig();
+
+    // Add all positively-scoring single-base changes into the candidate set
+    for(size_t i = region_start; i < region_end; ++i) {
+
+        std::vector<Variant> sb_variants;
+
+        for(size_t j = 0; j < 4; ++j) {
+            // Substitutions
+            Variant v;
+            v.ref_name = contig;
+            v.ref_position = i;
+            v.ref_seq = alignments.get_reference_substring(contig, i, i);
+            v.alt_seq = "ACGT"[j];
+
+            if(v.ref_seq != v.alt_seq) {
+                sb_variants.push_back(v);
+            }
+
+            // Insertions
+            v.alt_seq = v.ref_seq + "ACGT"[j];
+            // ignore insertions of the type "A" -> "AA" as these are redundant
+            if(v.alt_seq[1] != v.ref_seq[0]) {
+                sb_variants.push_back(v);
+            }
+        }
+
+        // deletion
+        Variant del;
+        del.ref_name = contig;
+        del.ref_position = i - 1;
+        del.ref_seq = alignments.get_reference_substring(contig, i - 1, i);
+        del.alt_seq = del.ref_seq[0];
+
+        // ignore deletions of the type "AA" -> "A" as these are redundant
+        if(del.alt_seq[0] != del.ref_seq[1]) {
+            sb_variants.push_back(del);
+        }
+
+        // Screen for positively scoring variants
+        int calling_start = sb_variants[0].ref_position - calling_span;
+        int calling_end = sb_variants[0].ref_position + calling_span;
+
+        Haplotype test_haplotype(contig,
+                                 calling_start,
+                                 alignments.get_reference_substring(contig, calling_start, calling_end));
+
+        std::vector<HMMInputData> event_sequences =
+            alignments.get_event_subsequences(contig, calling_start, calling_end);
+
+        std::vector<Variant> passed_variants = select_positive_scoring_variants(sb_variants, test_haplotype, event_sequences, alignment_flags);
+        for(const auto& v : passed_variants) {
+            out_variants.push_back(v);
+            v.write_vcf(stderr);
+        }
+    }
+    return out_variants;
+}
+
+
+std::vector<Variant> get_variants_from_vcf(const std::string& filename,
                                            const std::string& contig,
                                            int region_start,
                                            int region_end)
@@ -200,18 +278,18 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
     std::ifstream infile(filename);
     std::string line;
     while(getline(infile, line)) {
-        
+
         // skip headers
         if(line[0] == '#') {
             continue;
         }
-        
+
         // parse variant
         Variant v(line);
 
         if(v.ref_name == contig &&
            (int)v.ref_position >= region_start &&
-           (int)v.ref_position <= region_end) 
+           (int)v.ref_position <= region_end)
         {
             out.push_back(v);
         }
@@ -221,6 +299,7 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
 
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
+    int calling_span = 10;
     const int BUFFER = 20;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
     if(region_start < BUFFER)
@@ -228,15 +307,12 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     // load the region, accounting for the buffering
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
-    
+
     if(!opt::alternative_model_type.empty()) {
         alignments.set_alternative_model_type(opt::alternative_model_type);
     }
 
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
-    Haplotype derived_haplotype(contig,
-                                alignments.get_region_start(),
-                                alignments.get_reference());
 
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
@@ -246,21 +322,37 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
     }
 
+    if(opt::consensus_mode) {
+
+        // generate single-base edits that have a positive haplotype score
+        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, calling_span, alignment_flags);
+
+        // insert these into the candidate set
+        candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
+
+        // deduplicate variants
+        std::set<Variant, VariantKeyComp> dedup_set(candidate_variants.begin(), candidate_variants.end());
+        candidate_variants.clear();
+        candidate_variants.insert(candidate_variants.end(), dedup_set.begin(), dedup_set.end());
+        std::sort(candidate_variants.begin(), candidate_variants.end(), sortByPosition);
+    }
+
     // Step 2. Add variants to the haplotypes
-    int calling_span = 10;
+    Haplotype derived_haplotype(contig, alignments.get_region_start(), alignments.get_reference());
+
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
- 
-        // Group the variants that are within calling_span bases of each other       
+
+        // Group the variants that are within calling_span bases of each other
         size_t end_variant_idx = curr_variant_idx + 1;
         while(end_variant_idx < candidate_variants.size()) {
-            int distance = candidate_variants[end_variant_idx].ref_position - 
+            int distance = candidate_variants[end_variant_idx].ref_position -
                            candidate_variants[end_variant_idx - 1].ref_position;
             if(distance > calling_span)
                 break;
             end_variant_idx++;
         }
-    
+
         size_t num_variants = end_variant_idx - curr_variant_idx;
         int calling_start = candidate_variants[curr_variant_idx].ref_position - calling_span;
         int calling_end = candidate_variants[end_variant_idx - 1].ref_position +
@@ -271,24 +363,24 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         if(opt::verbose > 2) {
             fprintf(stderr, "%zu variants in span [%d %d]\n", num_variants, calling_start, calling_end);
         }
-        
+
         // Only try to call variants if there is a reasonable amount and the window is not too large
         if(num_variants <= 15 && calling_size <= 100) {
 
             // Subset the haplotype to the region we are calling
-            Haplotype calling_haplotype = 
+            Haplotype calling_haplotype =
                 derived_haplotype.substr_by_reference(calling_start, calling_end);
-            
+
             // Get the events for the calling region
-            std::vector<HMMInputData> event_sequences = 
+            std::vector<HMMInputData> event_sequences =
                 alignments.get_event_subsequences(contig, calling_start, calling_end);
-            
+
             // Subset the variants
-            std::vector<Variant> calling_variants(candidate_variants.begin() + curr_variant_idx, 
+            std::vector<Variant> calling_variants(candidate_variants.begin() + curr_variant_idx,
                                                   candidate_variants.begin() + end_variant_idx);
-            
+
             // Select the best set of variants
-            std::vector<Variant> selected_variants = 
+            std::vector<Variant> selected_variants =
                 select_variant_set(calling_variants, calling_haplotype, event_sequences, alignment_flags);
 
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
@@ -336,6 +428,7 @@ void parse_call_variants_options(int argc, char** argv)
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
+            case OPT_CONSENSUS: opt::consensus_mode = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
@@ -363,7 +456,7 @@ void parse_call_variants_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
         die = true;
     }
-    
+
     if(opt::genome_file.empty()) {
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
@@ -382,7 +475,7 @@ void parse_call_variants_options(int argc, char** argv)
         PoreModelSet::initialize(opt::models_fofn);
     }
 
-    if (die) 
+    if (die)
     {
         std::cout << "\n" << CONSENSUS_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
@@ -403,7 +496,7 @@ int call_variants_main(int argc, char** argv)
     std::string contig;
     int start_base;
     int end_base;
-    
+
     parser >> contig >> start_base >> end_base;
     end_base = std::min(end_base, get_contig_length(contig) - 1);
 
@@ -424,6 +517,10 @@ int call_variants_main(int argc, char** argv)
     std::vector<Variant> variants = haplotype.get_variants();
     for(size_t vi = 0; vi < variants.size(); vi++) {
         variants[vi].write_vcf(out_fp);
+    }
+
+    if(opt::consensus_mode) {
+        fprintf(stderr, "Haplotype: %s\n", haplotype.get_sequence().c_str());
     }
 
     if(out_fp != stdout) {

@@ -32,7 +32,7 @@ struct Variant
         return out.str();
     }
 
-    void write_vcf(FILE* fp)
+    void write_vcf(FILE* fp) const
     {
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
@@ -90,6 +90,15 @@ inline bool sortByPosition(const Variant& a, const Variant& b)
         a.ref_name < b.ref_name; 
 }
 
+class VariantKeyComp
+{
+    public: 
+        inline bool operator()(const Variant& a, const Variant& b)
+        {
+            return a.key() < b.key();
+        }
+};
+
 // Determine potential variants between the reference and haplotype string
 std::vector<Variant> extract_variants(const std::string& reference, 
                                       const std::string& haplotype);
@@ -111,5 +120,11 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                                         const std::vector<HMMInputData>& input,
                                         const uint32_t alignment_flags);
 
+
+// Select variants that have a positive score wrt the base haplotype
+std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
+                                                      Haplotype base_haplotype, 
+                                                      const std::vector<HMMInputData>& input,
+                                                      const uint32_t alignment_flags);
 
 #endif

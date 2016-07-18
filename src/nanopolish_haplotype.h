@@ -26,6 +26,10 @@ class Haplotype
         // get the sequence of the reference
         const std::string& get_reference() const { return m_reference; } 
     
+        // get the reference location
+        const std::string get_reference_name() const { return m_ref_name; }
+        const size_t get_reference_position() const { return m_ref_position; }
+
         // add a variant into the haplotype
         void apply_variant(const Variant& v);
 
