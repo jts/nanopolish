@@ -130,7 +130,7 @@ static const struct option longopts[] = {
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
-    { "consenus",                no_argument,       NULL, OPT_CONSENSUS },
+    { "consensus",               no_argument,       NULL, OPT_CONSENSUS },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
     { "help",                    no_argument,       NULL, OPT_HELP },
     { "version",                 no_argument,       NULL, OPT_VERSION },
@@ -263,6 +263,45 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
         for(const auto& v : passed_variants) {
             out_variants.push_back(v);
             v.write_vcf(stderr);
+        }
+    }
+    return out_variants;
+}
+
+std::vector<Variant> expand_variants(const AlignmentDB& alignments,
+                                     const std::vector<Variant>& candidate_variants,
+                                     int region_start,
+                                     int region_end,
+                                     int calling_span,
+                                     uint32_t alignment_flags)
+{
+    std::vector<Variant> out_variants;
+
+    std::string contig = alignments.get_region_contig();
+
+    for(size_t vi = 0; vi < candidate_variants.size(); ++vi) {
+        const Variant& in_variant = candidate_variants[vi];
+
+        // add the variant unmodified
+        out_variants.push_back(in_variant);
+
+        // don't do anything with substitutions
+        if(in_variant.ref_seq.size() == 1 && in_variant.alt_seq.size() == 1) {
+            continue;
+        }
+
+        // deletion
+        Variant v = candidate_variants[vi];
+        v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
+        assert(v.ref_seq != candidate_variants[vi].ref_seq);
+        assert(v.ref_seq.substr(0, candidate_variants[vi].ref_seq.size()) == candidate_variants[vi].ref_seq);
+        out_variants.push_back(v);
+
+        // insertion
+        for(size_t j = 0; j < 4; ++j) {
+            v = candidate_variants[vi];
+            v.alt_seq.append(1, "ACGT"[j]);
+            out_variants.push_back(v);
         }
     }
     return out_variants;
@@ -413,11 +452,33 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     }
 
     // Step 2. Call variants
-    Haplotype called_haplotype = call_haplotype_from_candidates(alignments,
-                                                                candidate_variants,
-                                                                calling_span,
-                                                                alignment_flags);
 
+    // in consensus mode we iterate until a maximum number of rounds is reached
+    // or the variant set converges
+    size_t round = 0;
+    size_t MAX_ROUNDS = 5;
+    Haplotype called_haplotype(alignments.get_region_contig(),
+                               alignments.get_region_start(),
+                               alignments.get_reference());
+
+    while(opt::consensus_mode && round++ < MAX_ROUNDS) {
+        fprintf(stderr, "Round %zu\n", round);
+        called_haplotype = call_haplotype_from_candidates(alignments,
+                                                          candidate_variants,
+                                                          calling_span,
+                                                          alignment_flags);
+
+        if(opt::consensus_mode) {
+            // Expand the called variant set by adding nearby variants
+            std::vector<Variant> called_variants = called_haplotype.get_variants();
+            candidate_variants = expand_variants(alignments,
+                                                 called_variants,
+                                                 region_start,
+                                                 region_end,
+                                                 calling_span,
+                                                 alignment_flags);
+        }
+    }
 
     return called_haplotype;
 }

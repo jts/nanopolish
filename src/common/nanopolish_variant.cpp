@@ -14,7 +14,7 @@
 #include "nanopolish_haplotype.h"
 #include "nanopolish_model_names.h"
 
-//#define DEBUG_HAPLOTYPE_SELECTION 1
+#define DEBUG_HAPLOTYPE_SELECTION 1
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -181,7 +181,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
             }
         }
 
-        if(best_variant_lp - base_lp > 1.0) {
+        if(best_variant_lp - base_lp > 0.1) {
             // move the best variant from the all list to the selected list
             Variant& best_variant = all_variants[best_variant_idx];
             best_variant.add_info("TotalReads", input.size());
@@ -277,7 +277,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             }
         }
 
-        if(current_lp > best_lp && current_lp - base_lp > 1.0) {
+        if(current_lp > best_lp && current_lp - base_lp > 0.1) {
             best_lp = current_lp;
             best_variant_set = current_variant_set;
 
