@@ -268,7 +268,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     return out_variants;
 }
 
-
 std::vector<Variant> get_variants_from_vcf(const std::string& filename,
                                            const std::string& contig,
                                            int region_start,
@@ -297,48 +296,12 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
     return out;
 }
 
-Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
+Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
+                                         const std::vector<Variant>& candidate_variants,
+                                         int calling_span,
+                                         uint32_t alignment_flags)
 {
-    int calling_span = 10;
-    const int BUFFER = 20;
-    uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
-    if(region_start < BUFFER)
-        region_start = BUFFER;
-
-    // load the region, accounting for the buffering
-    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
-
-    if(!opt::alternative_model_type.empty()) {
-        alignments.set_alternative_model_type(opt::alternative_model_type);
-    }
-
-    alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
-
-    // Step 1. Discover putative variants across the whole region
-    std::vector<Variant> candidate_variants;
-    if(opt::candidates_file.empty()) {
-        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
-    } else {
-        candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
-    }
-
-    if(opt::consensus_mode) {
-
-        // generate single-base edits that have a positive haplotype score
-        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, calling_span, alignment_flags);
-
-        // insert these into the candidate set
-        candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
-
-        // deduplicate variants
-        std::set<Variant, VariantKeyComp> dedup_set(candidate_variants.begin(), candidate_variants.end());
-        candidate_variants.clear();
-        candidate_variants.insert(candidate_variants.end(), dedup_set.begin(), dedup_set.end());
-        std::sort(candidate_variants.begin(), candidate_variants.end(), sortByPosition);
-    }
-
-    // Step 2. Add variants to the haplotypes
-    Haplotype derived_haplotype(contig, alignments.get_region_start(), alignments.get_reference());
+    Haplotype derived_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
 
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
@@ -373,7 +336,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
             // Get the events for the calling region
             std::vector<HMMInputData> event_sequences =
-                alignments.get_event_subsequences(contig, calling_start, calling_end);
+                alignments.get_event_subsequences(alignments.get_region_contig(), calling_start, calling_end);
 
             // Subset the variants
             std::vector<Variant> calling_variants(candidate_variants.begin() + curr_variant_idx,
@@ -406,6 +369,57 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     }
 
     return derived_haplotype;
+}
+
+
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
+{
+    int calling_span = 10;
+    const int BUFFER = 20;
+    uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
+
+    // load the region, accounting for the buffering
+    if(region_start < BUFFER)
+        region_start = BUFFER;
+    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
+
+    if(!opt::alternative_model_type.empty()) {
+        alignments.set_alternative_model_type(opt::alternative_model_type);
+    }
+
+    alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
+
+    // Step 1. Discover putative variants across the whole region
+    std::vector<Variant> candidate_variants;
+    if(opt::candidates_file.empty()) {
+        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
+    } else {
+        candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
+    }
+
+    if(opt::consensus_mode) {
+
+        // generate single-base edits that have a positive haplotype score
+        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, calling_span, alignment_flags);
+
+        // insert these into the candidate set
+        candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
+
+        // deduplicate variants
+        std::set<Variant, VariantKeyComp> dedup_set(candidate_variants.begin(), candidate_variants.end());
+        candidate_variants.clear();
+        candidate_variants.insert(candidate_variants.end(), dedup_set.begin(), dedup_set.end());
+        std::sort(candidate_variants.begin(), candidate_variants.end(), sortByPosition);
+    }
+
+    // Step 2. Call variants
+    Haplotype called_haplotype = call_haplotype_from_candidates(alignments,
+                                                                candidate_variants,
+                                                                calling_span,
+                                                                alignment_flags);
+
+
+    return called_haplotype;
 }
 
 void parse_call_variants_options(int argc, char** argv)
