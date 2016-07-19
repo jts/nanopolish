@@ -47,8 +47,12 @@ std::string AlignmentDB::get_reference_substring(const std::string& contig,
                                                  int stop_position) const
 {
     assert(m_region_contig == contig);
-    assert(m_region_start <= start_position);
-    assert(m_region_end >= stop_position);
+    if(m_region_start > start_position || m_region_end < stop_position) {
+        fprintf(stderr, "[alignmentdb] error: requested coordinates "
+                "[%d %d] is outside of region boundary [%d %d]\n", 
+                start_position, stop_position, m_region_start, m_region_end);
+        exit(EXIT_FAILURE);
+    }
 
     return m_region_ref_sequence.substr(start_position - m_region_start, stop_position - start_position + 1);
 }

@@ -127,4 +127,10 @@ std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& cand
                                                       const std::vector<HMMInputData>& input,
                                                       const uint32_t alignment_flags);
 
+// Score a single variant
+Variant score_variant(const Variant& input_variant,
+                      Haplotype base_haplotype, 
+                      const std::vector<HMMInputData>& input,
+                      const uint32_t alignment_flags);
+
 #endif

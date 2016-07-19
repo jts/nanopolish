@@ -26,7 +26,7 @@ Haplotype::Haplotype(const std::string& ref_name,
 }
  
 //       
-void Haplotype::apply_variant(const Variant& v)
+bool Haplotype::apply_variant(const Variant& v)
 {
     // Search the coordinate map for the reference position
     size_t derived_idx = _find_derived_index_by_ref_lower_bound(v.ref_position);
@@ -36,7 +36,7 @@ void Haplotype::apply_variant(const Variant& v)
     if(derived_idx == m_coordinate_map.size() || 
        m_coordinate_map[derived_idx] != v.ref_position) 
     {
-        return;
+        return false;
     }
 
     // Check that the string matches
@@ -45,7 +45,7 @@ void Haplotype::apply_variant(const Variant& v)
 
     // no match, variant conflicts with haplotype sequence
     if(m_sequence.substr(derived_idx, rl) != v.ref_seq) {
-        return;
+        return false;
     }
 
     // update sequence
@@ -67,6 +67,7 @@ void Haplotype::apply_variant(const Variant& v)
     assert(m_coordinate_map.size() == m_sequence.size());
 
     m_variants.push_back(v);
+    return true;
 }
 
 // return a new haplotype subsetted by reference coordinates

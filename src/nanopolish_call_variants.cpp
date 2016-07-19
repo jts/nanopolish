@@ -103,6 +103,8 @@ namespace opt
     static int num_threads = 1;
     static int calibrate = 0;
     static int consensus_mode = 0;
+    static int min_distance_between_variants = 10;
+    static int min_flanking_sequence = 20;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
@@ -204,7 +206,6 @@ void annotate_with_all_support(std::vector<Variant>& variants,
 std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& alignments,
                                                           int region_start,
                                                           int region_end,
-                                                          int calling_span,
                                                           uint32_t alignment_flags)
 {
     std::vector<Variant> out_variants;
@@ -213,8 +214,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
     // Add all positively-scoring single-base changes into the candidate set
     for(size_t i = region_start; i < region_end; ++i) {
-
-        std::vector<Variant> sb_variants;
 
         for(size_t j = 0; j < 4; ++j) {
             // Substitutions
@@ -225,14 +224,14 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             v.alt_seq = "ACGT"[j];
 
             if(v.ref_seq != v.alt_seq) {
-                sb_variants.push_back(v);
+                out_variants.push_back(v);
             }
 
             // Insertions
             v.alt_seq = v.ref_seq + "ACGT"[j];
             // ignore insertions of the type "A" -> "AA" as these are redundant
             if(v.alt_seq[1] != v.ref_seq[0]) {
-                sb_variants.push_back(v);
+                out_variants.push_back(v);
             }
         }
 
@@ -245,12 +244,27 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
         // ignore deletions of the type "AA" -> "A" as these are redundant
         if(del.alt_seq[0] != del.ref_seq[1]) {
-            sb_variants.push_back(del);
+            out_variants.push_back(del);
         }
+    }
+    return out_variants;
+}
 
-        // Screen for positively scoring variants
-        int calling_start = sb_variants[0].ref_position - calling_span;
-        int calling_end = sb_variants[0].ref_position + calling_span;
+std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
+                                              const std::vector<Variant>& candidate_variants,
+                                              uint32_t alignment_flags)
+{
+    if(opt::verbose > 3) {
+        fprintf(stderr, "==== Starting variant screening =====\n");
+    }
+
+    std::vector<Variant> out_variants;
+    std::string contig = alignments.get_region_contig();
+    for(size_t vi = 0; vi < candidate_variants.size(); ++vi) {
+        const Variant& v = candidate_variants[vi];
+
+        int calling_start = v.ref_position - opt::min_flanking_sequence;
+        int calling_end = v.ref_position + v.ref_seq.size() + opt::min_flanking_sequence;
 
         Haplotype test_haplotype(contig,
                                  calling_start,
@@ -259,10 +273,13 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(contig, calling_start, calling_end);
 
-        std::vector<Variant> passed_variants = select_positive_scoring_variants(sb_variants, test_haplotype, event_sequences, alignment_flags);
-        for(const auto& v : passed_variants) {
-            out_variants.push_back(v);
-            v.write_vcf(stderr);
+        Variant scored_variant = score_variant(v, test_haplotype, event_sequences, alignment_flags);
+        scored_variant.info = "";
+        if(scored_variant.quality > 0) {
+            out_variants.push_back(scored_variant);
+            if(opt::verbose > 3) {
+                scored_variant.write_vcf(stderr);
+            }
         }
     }
     return out_variants;
@@ -272,7 +289,6 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
                                      const std::vector<Variant>& candidate_variants,
                                      int region_start,
                                      int region_end,
-                                     int calling_span,
                                      uint32_t alignment_flags)
 {
     std::vector<Variant> out_variants;
@@ -337,7 +353,6 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
 
 Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                          const std::vector<Variant>& candidate_variants,
-                                         int calling_span,
                                          uint32_t alignment_flags)
 {
     Haplotype derived_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
@@ -350,16 +365,16 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         while(end_variant_idx < candidate_variants.size()) {
             int distance = candidate_variants[end_variant_idx].ref_position -
                            candidate_variants[end_variant_idx - 1].ref_position;
-            if(distance > calling_span)
+            if(distance > opt::min_distance_between_variants)
                 break;
             end_variant_idx++;
         }
 
         size_t num_variants = end_variant_idx - curr_variant_idx;
-        int calling_start = candidate_variants[curr_variant_idx].ref_position - calling_span;
+        int calling_start = candidate_variants[curr_variant_idx].ref_position - opt::min_flanking_sequence;
         int calling_end = candidate_variants[end_variant_idx - 1].ref_position +
                           candidate_variants[end_variant_idx - 1].ref_seq.length() +
-                          calling_span;
+                          opt::min_flanking_sequence;
         int calling_size = calling_end - calling_start;
 
         if(opt::verbose > 2) {
@@ -413,8 +428,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
-    int calling_span = 10;
-    const int BUFFER = 20;
+    const int BUFFER = 30;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
     // load the region, accounting for the buffering
@@ -439,7 +453,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     if(opt::consensus_mode) {
 
         // generate single-base edits that have a positive haplotype score
-        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, calling_span, alignment_flags);
+        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, alignment_flags);
 
         // insert these into the candidate set
         candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
@@ -462,10 +476,18 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                alignments.get_reference());
 
     while(opt::consensus_mode && round++ < MAX_ROUNDS) {
-        fprintf(stderr, "Round %zu\n", round);
+        if(opt::verbose > 3) {
+            fprintf(stderr, "Round %zu\n", round);
+        }
+
+        // Filter the variant set down by only including those that individually contribute a positive score
+        std::vector<Variant> filtered_variants = screen_variants_by_score(alignments,
+                                                                          candidate_variants,
+                                                                          alignment_flags);
+
+        // Combine variants into sets that maximize their haplotype score
         called_haplotype = call_haplotype_from_candidates(alignments,
-                                                          candidate_variants,
-                                                          calling_span,
+                                                          filtered_variants,
                                                           alignment_flags);
 
         if(opt::consensus_mode) {
@@ -475,7 +497,6 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                                  called_variants,
                                                  region_start,
                                                  region_end,
-                                                 calling_span,
                                                  alignment_flags);
         }
     }

@@ -31,7 +31,8 @@ class Haplotype
         const size_t get_reference_position() const { return m_ref_position; }
 
         // add a variant into the haplotype
-        void apply_variant(const Variant& v);
+        // returns true if the variant is successfully added to the haplotype
+        bool apply_variant(const Variant& v);
 
         // return all the variants on this haplotype
         std::vector<Variant> get_variants() const { return m_variants; }

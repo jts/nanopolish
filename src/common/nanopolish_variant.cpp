@@ -14,7 +14,7 @@
 #include "nanopolish_haplotype.h"
 #include "nanopolish_model_names.h"
 
-#define DEBUG_HAPLOTYPE_SELECTION 1
+//#define DEBUG_HAPLOTYPE_SELECTION 1
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -245,7 +245,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
 
         Haplotype current_haplotype = base_haplotype;
         std::vector<Variant> current_variant_set;
-
+        bool good_haplotype = true;
         for(size_t vi = 0; vi < num_variants; vi++) {
             // if bit vi is set in the haplotype id, apply this variant
             if( (hi & (1 << vi)) == 0) {
@@ -253,9 +253,15 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
             }
 
             current_variant_set.push_back(candidate_variants[vi]);
-            current_haplotype.apply_variant(current_variant_set.back());
+            good_haplotype = good_haplotype && current_haplotype.apply_variant(current_variant_set.back());
+
         }
         
+        // skip the haplotype if all the variants couldnt be added to it
+        if(!good_haplotype) {
+            continue;
+        }
+
         // score the haplotype
         double current_lp = 0.0f;
         double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
@@ -378,5 +384,37 @@ std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& cand
     }
 
     return selected_variants;
+}
+
+Variant score_variant(const Variant& input_variant,
+                      Haplotype base_haplotype, 
+                      const std::vector<HMMInputData>& input,
+                      const uint32_t alignment_flags)
+{
+    Variant out_variant = input_variant;
+
+    double base_score = 0.0f;
+    #pragma omp parallel for
+    for(size_t j = 0; j < input.size(); ++j) {
+
+        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
+
+        #pragma omp atomic
+        base_score += score;
+    }
+
+    base_haplotype.apply_variant(input_variant);
+        
+    double haplotype_score = 0.0f;
+#pragma omp parallel for
+    for(size_t j = 0; j < input.size(); ++j) {
+        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
+
+#pragma omp atomic
+        haplotype_score += score;
+    }
+
+    out_variant.quality = haplotype_score - base_score;
+    return out_variant;
 }
 
