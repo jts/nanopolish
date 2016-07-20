@@ -106,6 +106,7 @@ namespace opt
     static int consensus_mode = 0;
     static int min_distance_between_variants = 10;
     static int min_flanking_sequence = 20;
+    static int max_haplotypes = 1000;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
@@ -383,8 +384,8 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
             fprintf(stderr, "%zu variants in span [%d %d]\n", num_variants, calling_start, calling_end);
         }
 
-        // Only try to call variants if there is a reasonable amount and the window is not too large
-        if(num_variants <= 15 && calling_size <= 100) {
+        // Only try to call if the window is not too large
+        if(calling_size <= 200) {
 
             // Subset the haplotype to the region we are calling
             Haplotype calling_haplotype =
@@ -400,7 +401,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 
             // Select the best set of variants
             std::vector<Variant> selected_variants =
-                select_variant_set(calling_variants, calling_haplotype, event_sequences, alignment_flags);
+                select_variant_set(calling_variants, calling_haplotype, event_sequences, opt::max_haplotypes, alignment_flags);
 
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
             if(opt::calculate_all_support) {

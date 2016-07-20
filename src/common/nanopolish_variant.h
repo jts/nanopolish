@@ -118,6 +118,7 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 
                                         const std::vector<HMMInputData>& input,
+                                        const int max_haplotypes,
                                         const uint32_t alignment_flags);
 
 

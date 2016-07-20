@@ -41,4 +41,18 @@ bool ends_with(const std::string& str, const std::string& suffix)
     }
     return pos + suffix.size() == str.length();
 }
+// from: http://stackoverflow.com/questions/9330915/number-of-combinations-n-choose-r-in-c
+size_t nChoosek(size_t n, size_t k)
+{
+    if (k > n) return 0;
+    if (k * 2 > n) k = n-k;
+    if (k == 0) return 1;
+
+    int result = n;
+    for( int i = 2; i <= k; ++i ) {
+        result *= (n-i+1);
+        result /= i;
+    }
+    return result;
+}
 

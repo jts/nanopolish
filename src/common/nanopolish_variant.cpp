@@ -207,11 +207,30 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
 std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
                                         Haplotype base_haplotype, 
                                         const std::vector<HMMInputData>& input,
+                                        const int max_haplotypes,
                                         const uint32_t alignment_flags)
 {
     size_t num_variants = candidate_variants.size();
-    size_t num_haplotypes = 1 << num_variants;
+
+    // Determine the maximum number of variants we can jointly test
+    // without exceeding the maximum number of haplotypes
+    size_t sum_num_haplotypes = 0;
+    size_t max_r = 1;
     
+    while(max_r <= num_variants) {
+        size_t num_haplotypes_r = nChoosek(num_variants, max_r);
+        if(num_haplotypes_r + sum_num_haplotypes < max_haplotypes) {
+            sum_num_haplotypes += num_haplotypes_r;
+        } else {
+            max_r -= 1;
+            break;
+        }
+        //printf("n: %zu r: %zu nCr: %zu sum: %zu\n", num_variants, max_r, num_haplotypes_r, sum_num_haplotypes);
+        max_r += 1;
+    }
+    
+    // Calculate the likelihood of the haplotype with no additional variants added
+    // also do some bookkeeping about per-read/per-model likelihoods
     double base_lp = 0.0f;
     double base_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     int read_counts[6] = { 0, 0, 0, 0, 0, 0 };
@@ -238,111 +257,114 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     double best_lp = -INFINITY;
     std::vector<Variant> best_variant_set;
 
-    // The haplotype id is a bitmask indicating which variants
-    // to apply to get the haplotype. We skip the empty
-    // variant set.
-    for(size_t hi = 1; hi < num_haplotypes; ++hi) {
+    // Score haplotypes by adding 1, 2, ..., max_r variant sets to it
+    for(size_t r = 1; r <= max_r; ++r) {
+        printf("Testing %zu-way combinations\n", r);
+        // From: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
+        std::vector<bool> variant_selector(num_variants);
+        std::fill(variant_selector.begin(), variant_selector.begin() + r, true);
 
-        Haplotype current_haplotype = base_haplotype;
-        std::vector<Variant> current_variant_set;
-        bool good_haplotype = true;
-        for(size_t vi = 0; vi < num_variants; vi++) {
-            // if bit vi is set in the haplotype id, apply this variant
-            if( (hi & (1 << vi)) == 0) {
+        do {
+            Haplotype current_haplotype = base_haplotype;
+            std::vector<Variant> current_variant_set;
+            bool good_haplotype = true;
+
+            for(size_t vi = 0; vi < num_variants; vi++) {
+                if(!variant_selector[vi]) {
+                    continue;
+                }
+
+                current_variant_set.push_back(candidate_variants[vi]);
+                good_haplotype = good_haplotype && current_haplotype.apply_variant(current_variant_set.back());
+            }
+            
+            // skip the haplotype if all the variants couldnt be added to it
+            if(!good_haplotype) {
                 continue;
             }
 
-            current_variant_set.push_back(candidate_variants[vi]);
-            good_haplotype = good_haplotype && current_haplotype.apply_variant(current_variant_set.back());
+            // score the haplotype
+            double current_lp = 0.0f;
+            double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+            size_t supporting_reads = 0;
+            std::vector<double> relative_lp_by_read(input.size(), 0.0f);
 
-        }
-        
-        // skip the haplotype if all the variants couldnt be added to it
-        if(!good_haplotype) {
-            continue;
-        }
+            #pragma omp parallel for
+            for(size_t j = 0; j < input.size(); ++j) {
+                double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
 
-        // score the haplotype
-        double current_lp = 0.0f;
-        double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        size_t supporting_reads = 0;
-        std::vector<double> relative_lp_by_read(input.size(), 0.0f);
-
-        #pragma omp parallel for
-        for(size_t j = 0; j < input.size(); ++j) {
-            double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
-
-            #pragma omp critical
-            {
-                current_lp += tmp;
-                supporting_reads += tmp > base_lp_by_read[j];
-                int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
-                int cid = 2 * mid + input[j].rc;
-                current_lp_by_model_strand[cid] += tmp;
-                relative_lp_by_read[j] = tmp - base_lp_by_read[j];
-            }
-        }
-
-        if(current_lp > best_lp && current_lp - base_lp > 0.1) {
-            best_lp = current_lp;
-            best_variant_set = current_variant_set;
-
-            // Annotate variants
-            for(size_t vi = 0; vi < best_variant_set.size(); ++vi) {
-                Variant& v = best_variant_set[vi];
-                v.add_info("TotalReads", input.size());
-                v.add_info("SupportingReads", supporting_reads);
-                v.add_info("SupportFraction", (double)supporting_reads / input.size());
-
-                // Annotate variants with qualities from the three possible models
-                std::string names[3] = { "Template", "Comp.P1", "Comp.P2" };
-
-                for(int mid = 0; mid < 3; mid++) {
-                    int cid = 2 * mid;
-                    double s0 = current_lp_by_model_strand[cid] - base_lp_by_model_strand[cid];
-                    int c0 = read_counts[cid];
-
-                    double s1 = current_lp_by_model_strand[cid + 1] - base_lp_by_model_strand[cid + 1];
-                    int c1 = read_counts[cid + 1];
-
-                    std::stringstream ss;
-                    ss << std::setprecision(4) << s0 / c0 << "," << s1 / c1;
-                    v.add_info(names[mid], ss.str());
+                #pragma omp critical
+                {
+                    current_lp += tmp;
+                    supporting_reads += tmp > base_lp_by_read[j];
+                    int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
+                    int cid = 2 * mid + input[j].rc;
+                    current_lp_by_model_strand[cid] += tmp;
+                    relative_lp_by_read[j] = tmp - base_lp_by_read[j];
                 }
-
-                /*
-                v.add_info("TemplateQuality", current_lp_by_strand[0] - base_lp_by_strand[0]);
-                v.add_info("ComplementQuality", current_lp_by_strand[1] - base_lp_by_strand[1]);
-                v.add_info("ForwardQuality", current_lp_by_rc[0] - base_lp_by_rc[0]);
-                v.add_info("ReverseQuality", current_lp_by_rc[1] - base_lp_by_rc[1]);
-                v.add_info("TAvgQuality", (current_lp_by_model[0] - base_lp_by_model[0]) / model_count[0]);
-                v.add_info("C1AvgQuality", (current_lp_by_model[1] - base_lp_by_model[1]) / model_count[1]);
-                v.add_info("C2AvgQuality", (current_lp_by_model[2] - base_lp_by_model[2]) / model_count[2]);
-                */
-
-                std::stringstream counts;
-                std::ostream_iterator<int> rc_out(counts, ",");
-                std::copy(std::begin(read_counts), std::end(read_counts), rc_out);
-                std::string rc_str = counts.str();
-                v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
-
-                std::stringstream scores;
-                std::ostream_iterator<float> scores_out(scores, ",");
-                std::copy(std::begin(relative_lp_by_read), std::end(relative_lp_by_read), scores_out);
-                std::string scores_str = scores.str();
-                v.add_info("Scores", scores_str.substr(0, scores_str.size() - 1));
-                
-                v.quality = best_lp - base_lp;
             }
-        }
+
+            if(current_lp > best_lp && current_lp - base_lp > 0.1) {
+                best_lp = current_lp;
+                best_variant_set = current_variant_set;
+
+                // Annotate variants
+                for(size_t vi = 0; vi < best_variant_set.size(); ++vi) {
+                    Variant& v = best_variant_set[vi];
+                    v.add_info("TotalReads", input.size());
+                    v.add_info("SupportingReads", supporting_reads);
+                    v.add_info("SupportFraction", (double)supporting_reads / input.size());
+
+                    // Annotate variants with qualities from the three possible models
+                    std::string names[3] = { "Template", "Comp.P1", "Comp.P2" };
+
+                    for(int mid = 0; mid < 3; mid++) {
+                        int cid = 2 * mid;
+                        double s0 = current_lp_by_model_strand[cid] - base_lp_by_model_strand[cid];
+                        int c0 = read_counts[cid];
+
+                        double s1 = current_lp_by_model_strand[cid + 1] - base_lp_by_model_strand[cid + 1];
+                        int c1 = read_counts[cid + 1];
+
+                        std::stringstream ss;
+                        ss << std::setprecision(4) << s0 / c0 << "," << s1 / c1;
+                        v.add_info(names[mid], ss.str());
+                    }
+
+                    /*
+                    v.add_info("TemplateQuality", current_lp_by_strand[0] - base_lp_by_strand[0]);
+                    v.add_info("ComplementQuality", current_lp_by_strand[1] - base_lp_by_strand[1]);
+                    v.add_info("ForwardQuality", current_lp_by_rc[0] - base_lp_by_rc[0]);
+                    v.add_info("ReverseQuality", current_lp_by_rc[1] - base_lp_by_rc[1]);
+                    v.add_info("TAvgQuality", (current_lp_by_model[0] - base_lp_by_model[0]) / model_count[0]);
+                    v.add_info("C1AvgQuality", (current_lp_by_model[1] - base_lp_by_model[1]) / model_count[1]);
+                    v.add_info("C2AvgQuality", (current_lp_by_model[2] - base_lp_by_model[2]) / model_count[2]);
+                    */
+
+                    std::stringstream counts;
+                    std::ostream_iterator<int> rc_out(counts, ",");
+                    std::copy(std::begin(read_counts), std::end(read_counts), rc_out);
+                    std::string rc_str = counts.str();
+                    v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
+
+                    std::stringstream scores;
+                    std::ostream_iterator<float> scores_out(scores, ",");
+                    std::copy(std::begin(relative_lp_by_read), std::end(relative_lp_by_read), scores_out);
+                    std::string scores_str = scores.str();
+                    v.add_info("Scores", scores_str.substr(0, scores_str.size() - 1));
+                    
+                    v.quality = best_lp - base_lp;
+                }
+            }
 #ifdef DEBUG_HAPLOTYPE_SELECTION
-        std::stringstream ss;
-        for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
-            const Variant& v = current_variant_set[vi];
-            ss << (vi > 0 ? "," : "") << v.key();
-        }
-        fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
+            std::stringstream ss;
+            for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
+                const Variant& v = current_variant_set[vi];
+                ss << (vi > 0 ? "," : "") << v.key();
+            }
+            fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
 #endif
+        } while(std::prev_permutation(variant_selector.begin(), variant_selector.end()));
     }
     return best_variant_set;
 }
