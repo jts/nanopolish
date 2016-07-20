@@ -95,6 +95,7 @@ namespace opt
     static std::string candidates_file;
     static std::string models_fofn;
     static std::string window;
+    static std::string consensus_output;
     static std::string alternative_model_type = "reftrained";
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
@@ -130,9 +131,9 @@ static const struct option longopts[] = {
     { "min-candidate-frequency", required_argument, NULL, 'm' },
     { "candidates",              required_argument, NULL, 'c' },
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
+    { "consensus",               required_argument,       NULL, OPT_CONSENSUS },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
-    { "consensus",               no_argument,       NULL, OPT_CONSENSUS },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
     { "help",                    no_argument,       NULL, OPT_HELP },
     { "version",                 no_argument,       NULL, OPT_VERSION },
@@ -442,6 +443,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
 
+    // if the end of the region plus the buffer sequence goes past
+    // the end of the chromosome, we adjust the region end here
+    region_end = alignments.get_region_end() - BUFFER;
+
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
@@ -501,6 +506,15 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
     }
 
+    if(opt::consensus_mode) {
+        FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
+        fprintf(consensus_fp, ">%s:%d-%d\n%s\n", contig.c_str(),
+                                  alignments.get_region_start(),
+                                  alignments.get_region_end(),
+                                  called_haplotype.get_sequence().c_str());
+        fclose(consensus_fp);
+    }
+
     return called_haplotype;
 }
 
@@ -521,10 +535,10 @@ void parse_call_variants_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
-            case OPT_CONSENSUS: opt::consensus_mode = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
@@ -613,10 +627,6 @@ int call_variants_main(int argc, char** argv)
     std::vector<Variant> variants = haplotype.get_variants();
     for(size_t vi = 0; vi < variants.size(); vi++) {
         variants[vi].write_vcf(out_fp);
-    }
-
-    if(opt::consensus_mode) {
-        fprintf(stderr, "Haplotype: %s\n", haplotype.get_sequence().c_str());
     }
 
     if(out_fp != stdout) {
