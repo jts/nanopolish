@@ -278,9 +278,10 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
         scored_variant.info = "";
         if(scored_variant.quality > 0) {
             out_variants.push_back(scored_variant);
-            if(opt::verbose > 3) {
-                scored_variant.write_vcf(stderr);
-            }
+        }
+
+        if( (scored_variant.quality > 0 && opt::verbose > 3) || opt::verbose > 5) {
+            scored_variant.write_vcf(stderr);
         }
     }
     return out_variants;
@@ -446,6 +447,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // if the end of the region plus the buffer sequence goes past
     // the end of the chromosome, we adjust the region end here
     region_end = alignments.get_region_end() - BUFFER;
+
+    if(opt::verbose > 4) {
+        fprintf(stderr, "input region: %s\n", alignments.get_reference_substring(contig, region_start, region_end).c_str());
+    }
 
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
