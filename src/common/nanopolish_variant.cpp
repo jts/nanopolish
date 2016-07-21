@@ -259,7 +259,6 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
 
     // Score haplotypes by adding 1, 2, ..., max_r variant sets to it
     for(size_t r = 1; r <= max_r; ++r) {
-        printf("Testing %zu-way combinations\n", r);
         // From: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
         std::vector<bool> variant_selector(num_variants);
         std::fill(variant_selector.begin(), variant_selector.begin() + r, true);

@@ -132,7 +132,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             continue;
         }
 
-
         // Load the events for this strand
         std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(event_group, si);
 
