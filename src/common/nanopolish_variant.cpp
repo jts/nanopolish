@@ -222,13 +222,13 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         if(num_haplotypes_r + sum_num_haplotypes < max_haplotypes) {
             sum_num_haplotypes += num_haplotypes_r;
         } else {
-            max_r -= 1;
             break;
         }
         //printf("n: %zu r: %zu nCr: %zu sum: %zu\n", num_variants, max_r, num_haplotypes_r, sum_num_haplotypes);
         max_r += 1;
     }
-    
+    max_r -= 1;
+
     // Calculate the likelihood of the haplotype with no additional variants added
     // also do some bookkeeping about per-read/per-model likelihoods
     double base_lp = 0.0f;
