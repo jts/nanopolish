@@ -107,6 +107,7 @@ namespace opt
     static int min_distance_between_variants = 10;
     static int min_flanking_sequence = 20;
     static int max_haplotypes = 1000;
+    static int debug_alignments = 0;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
@@ -354,6 +355,100 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
     return out;
 }
 
+void print_debug_stats(const std::string& contig,
+                       const int start_position,
+                       const int stop_position,
+                       const Haplotype& base_haplotype,
+                       const Haplotype& called_haplotype,
+                       const std::vector<HMMInputData>& event_sequences,
+                       uint32_t alignment_flags)
+{
+    std::stringstream prefix_ss;
+    prefix_ss << "variant.debug." << contig << ":" << start_position << "-" << stop_position;
+    std::string stats_fn = prefix_ss.str() + ".stats.out";
+    std::string alignment_fn = prefix_ss.str() + ".alignment.out";
+
+    FILE* stats_out = fopen(stats_fn.c_str(), "w");
+    FILE* alignment_out = fopen(alignment_fn.c_str(), "w");
+
+    for(size_t i = 0; i < event_sequences.size(); i++) {
+        const HMMInputData& data = event_sequences[i];
+
+        // summarize score
+        double num_events = abs(data.event_start_idx - data.event_stop_idx) + 1;
+        double base_score = profile_hmm_score(base_haplotype.get_sequence(), data, alignment_flags);
+        double called_score = profile_hmm_score(called_haplotype.get_sequence(), data, alignment_flags);
+        double base_avg = base_score / num_events;
+        double called_avg = called_score / num_events;
+        const PoreModel& pm = data.read->pore_model[data.strand];
+        fprintf(stats_out, "%s\t%zu\t%zu\t", data.read->read_name.c_str(), data.strand, data.rc);
+        fprintf(stats_out, "%.2lf\t%.2lf\t\t%.2lf\t%.2lf\t%.2lf\t", base_score, called_score, base_avg, called_avg, called_score - base_score);
+        fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", pm.shift, pm.scale, pm.drift, pm.var);
+
+        // print paired alignment
+        std::vector<HMMAlignmentState> base_align = profile_hmm_align(base_haplotype.get_sequence(), data, alignment_flags);
+        std::vector<HMMAlignmentState> called_align = profile_hmm_align(called_haplotype.get_sequence(), data, alignment_flags);
+        size_t k = pm.k;
+        size_t bi = 0;
+        size_t ci = 0;
+
+        // Find the first event aligned in both
+        size_t max_event = std::min(base_align[0].event_idx, called_align[0].event_idx);
+        while(base_align[bi].event_idx != max_event) bi++;
+        while(called_align[ci].event_idx != max_event) ci++;
+        assert(base_align[bi].event_idx == called_align[ci].event_idx);
+
+        GaussianParameters standard_normal(0, 1.0);
+
+        double sum_base_abs_sl = 0.0f;
+        double sum_called_abs_sl = 0.0f;
+        while(bi < base_align.size() && ci < called_align.size()) {
+            size_t event_idx = base_align[bi].event_idx;
+            assert(called_align[ci].event_idx == event_idx);
+
+            double event_mean = data.read->get_fully_scaled_level(event_idx, data.strand);
+            double event_stdv = data.read->get_stdv(event_idx, data.strand);
+            double event_duration = data.read->get_duration(event_idx, data.strand);
+
+            std::string base_kmer = base_haplotype.get_sequence().substr(base_align[bi].kmer_idx, k);
+            std::string called_kmer = called_haplotype.get_sequence().substr(called_align[ci].kmer_idx, k);
+            if(data.rc) {
+                base_kmer = gDNAAlphabet.reverse_complement(base_kmer);
+                called_kmer = gDNAAlphabet.reverse_complement(called_kmer);
+            }
+
+            PoreModelStateParams base_model = pm.states[pm.pmalphabet->kmer_rank(base_kmer.c_str(), k)];
+            PoreModelStateParams called_model = pm.states[pm.pmalphabet->kmer_rank(called_kmer.c_str(), k)];
+
+            float base_standard_level = (event_mean - base_model.level_mean) / (sqrt(pm.var) * base_model.level_stdv);
+            float called_standard_level = (event_mean - called_model.level_mean) / (sqrt(pm.var) * called_model.level_stdv);
+            base_standard_level = base_align[bi].state == 'M' ? base_standard_level : INFINITY;
+            called_standard_level = called_align[ci].state == 'M' ? called_standard_level : INFINITY;
+
+            if(base_standard_level != INFINITY) {
+                sum_base_abs_sl += log_normal_pdf(base_standard_level, standard_normal);
+            }
+
+            if(called_standard_level != INFINITY) {
+                sum_called_abs_sl += log_normal_pdf(called_standard_level, standard_normal);
+            }
+
+            char diff = base_kmer != called_kmer ? 'D' : ' ';
+            fprintf(alignment_out, "%s\t%zu\t%.2lf\t%.2lf\t%.4lf\t", data.read->read_name.c_str(), event_idx, event_mean, event_stdv, event_duration);
+            fprintf(alignment_out, "%c\t%c\t%zu\t%zu\t\t", base_align[bi].state, called_align[ci].state, base_align[bi].kmer_idx, called_align[ci].kmer_idx);
+            fprintf(alignment_out, "%s\t%.2lf\t%s\t%.2lf\t", base_kmer.c_str(), base_model.level_mean, called_kmer.c_str(), called_model.level_mean);
+            fprintf(alignment_out, "%.2lf\t%.2lf\t%c\t%.2lf\n", base_standard_level, called_standard_level, diff, sum_called_abs_sl - sum_base_abs_sl);
+
+            // Go to the next event
+            while(base_align[bi].event_idx == event_idx) bi++;
+            while(called_align[ci].event_idx == event_idx) ci++;
+        }
+    }
+
+    fclose(stats_out);
+    fclose(alignment_out);
+}
+
 Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                          const std::vector<Variant>& candidate_variants,
                                          uint32_t alignment_flags)
@@ -417,6 +512,16 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                     selected_variants[vi].write_vcf(stderr);
                 }
             }
+
+            if(opt::debug_alignments) {
+                print_debug_stats(alignments.get_region_contig(),
+                                  calling_start,
+                                  calling_end,
+                                  calling_haplotype,
+                                  derived_haplotype.substr_by_reference(calling_start, calling_end),
+                                  event_sequences,
+                                  alignment_flags);
+            }
         } else {
             fprintf(stderr, "Warning: %zu variants in span, region not called [%d %d]\n", num_variants, calling_start, calling_end);
 		}
@@ -431,7 +536,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
-    const int BUFFER = 30;
+    const int BUFFER = opt::min_flanking_sequence + 10;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
     // load the region, accounting for the buffering
@@ -450,7 +555,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     region_end = alignments.get_region_end() - BUFFER;
 
     if(opt::verbose > 4) {
-        fprintf(stderr, "input region: %s\n", alignments.get_reference_substring(contig, region_start, region_end).c_str());
+        fprintf(stderr, "input region: %s\n", alignments.get_reference_substring(contig, region_start - BUFFER, region_end + BUFFER).c_str());
     }
 
     // Step 1. Discover putative variants across the whole region
