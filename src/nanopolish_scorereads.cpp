@@ -61,6 +61,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -w, --window=STR                     score reads in the window STR (format: ctg:start-end)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --train-transitions              train new transition parameters from the input reads\n"
 "      --learn-model-offset             learn the scaling offsets for the alternative pore models\n"
@@ -94,7 +95,7 @@ namespace opt
     static bool scale_drift = true;
 }
 
-static const char* shortopts = "i:r:b:g:t:m:vcz";
+static const char* shortopts = "i:r:b:g:t:m:w:vcz";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_TRAIN_TRANSITIONS, OPT_LEARN_MODEL_OFFSET };
 
@@ -108,6 +109,7 @@ static const struct option longopts[] = {
     { "threads",            required_argument, NULL, 't' },
     { "models-fofn",        required_argument, NULL, 'm' },
     { "individual-reads",   required_argument, NULL, 'i' },
+    { "window",             required_argument, NULL, 'w' },
     { "train-transitions",  no_argument,       NULL, OPT_TRAIN_TRANSITIONS },
     { "learn-model-offset", no_argument,       NULL, OPT_LEARN_MODEL_OFFSET },
     { "help",               no_argument,       NULL, OPT_HELP },
@@ -352,6 +354,7 @@ void parse_scorereads_options(int argc, char** argv)
             case 'g': arg >> opt::genome_file; break;
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::models_fofn; break;
+            case 'w': arg >> opt::region; break;
             case 'i': arg >> readlist; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
