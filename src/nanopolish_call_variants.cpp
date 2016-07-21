@@ -394,9 +394,8 @@ void print_debug_stats(const std::string& contig,
 
         // Find the first event aligned in both
         size_t max_event = std::min(base_align[0].event_idx, called_align[0].event_idx);
-        while(base_align[bi].event_idx != max_event) bi++;
-        while(called_align[ci].event_idx != max_event) ci++;
-        assert(base_align[bi].event_idx == called_align[ci].event_idx);
+        while(bi < base_align.size() && base_align[bi].event_idx != max_event) bi++;
+        while(ci < called_align.size() && called_align[ci].event_idx != max_event) ci++;
 
         GaussianParameters standard_normal(0, 1.0);
 
