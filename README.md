@@ -47,7 +47,7 @@ This command will run the consensus algorithm on eight 10kbp segments of the gen
 After all polishing jobs are complete, you can merge the individual segments together into the final assembly:
 
 ```
-python nanopolish_merge.py draft.fa nanopolish.*.fa > polished.fa
+python nanopolish_merge.py nanopolish.*.fa > polished.fa
 ```
 
 ## To run using docker
