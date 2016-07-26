@@ -393,7 +393,7 @@ void print_debug_stats(const std::string& contig,
         size_t ci = 0;
 
         // Find the first event aligned in both
-        size_t max_event = std::min(base_align[0].event_idx, called_align[0].event_idx);
+        size_t max_event = std::max(base_align[0].event_idx, called_align[0].event_idx);
         while(bi < base_align.size() && base_align[bi].event_idx != max_event) bi++;
         while(ci < called_align.size() && called_align[ci].event_idx != max_event) ci++;
 
@@ -424,13 +424,8 @@ void print_debug_stats(const std::string& contig,
             base_standard_level = base_align[bi].state == 'M' ? base_standard_level : INFINITY;
             called_standard_level = called_align[ci].state == 'M' ? called_standard_level : INFINITY;
 
-            if(base_standard_level != INFINITY) {
-                sum_base_abs_sl += log_normal_pdf(base_standard_level, standard_normal);
-            }
-
-            if(called_standard_level != INFINITY) {
-                sum_called_abs_sl += log_normal_pdf(called_standard_level, standard_normal);
-            }
+            sum_base_abs_sl = base_align[bi].l_fm;
+            sum_called_abs_sl = called_align[bi].l_fm;
 
             char diff = base_kmer != called_kmer ? 'D' : ' ';
             fprintf(alignment_out, "%s\t%zu\t%.2lf\t%.2lf\t%.4lf\t", data.read->read_name.c_str(), event_idx, event_mean, event_stdv, event_duration);
