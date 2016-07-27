@@ -51,6 +51,9 @@
 //#define DEBUG_SEGMENT_ID 193
 //#define DEBUG_BENCHMARK 1
 
+// Hack hack hack
+float g_p_skip, g_p_skip_self, g_p_bad, g_p_bad_self;
+
 //
 // Getopt
 //
@@ -119,7 +122,11 @@ enum { OPT_HELP = 1,
        OPT_SNPS_ONLY,
        OPT_CALC_ALL_SUPPORT,
        OPT_CONSENSUS,
-       OPT_MODELS_FOFN };
+       OPT_MODELS_FOFN,
+       OPT_P_SKIP,
+       OPT_P_SKIP_SELF,
+       OPT_P_BAD,
+       OPT_P_BAD_SELF };
 
 static const struct option longopts[] = {
     { "verbose",                 no_argument,       NULL, 'v' },
@@ -133,7 +140,11 @@ static const struct option longopts[] = {
     { "min-candidate-frequency", required_argument, NULL, 'm' },
     { "candidates",              required_argument, NULL, 'c' },
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
-    { "consensus",               required_argument,       NULL, OPT_CONSENSUS },
+    { "p-skip",                  required_argument, NULL, OPT_P_SKIP },
+    { "p-skip-self",             required_argument, NULL, OPT_P_SKIP_SELF },
+    { "p-bad",                   required_argument, NULL, OPT_P_BAD },
+    { "p-bad-self",              required_argument, NULL, OPT_P_BAD_SELF },
+    { "consensus",               required_argument, NULL, OPT_CONSENSUS },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
@@ -645,6 +656,10 @@ void parse_call_variants_options(int argc, char** argv)
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
+            case OPT_P_SKIP: arg >> g_p_skip; break;
+            case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
+            case OPT_P_BAD: arg >> g_p_bad; break;
+            case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);

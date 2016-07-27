@@ -44,8 +44,10 @@
 #include "nanopolish_scorereads.h"
 #include "../eigen/Eigen/Dense"
 
+extern float g_p_skip, g_p_skip_self, g_p_bad, g_p_bad_self;
+
 //
-// Enus
+// Enums
 //
 enum TrainingTarget
 {
@@ -151,7 +153,11 @@ enum { OPT_HELP = 1,
        OPT_STDV,
        OPT_LOG_LEVEL,
        OPT_FILTER_POLICY,
-       OPT_NUM_ROUNDS
+       OPT_NUM_ROUNDS,
+       OPT_P_SKIP,
+       OPT_P_SKIP_SELF,
+       OPT_P_BAD,
+       OPT_P_BAD_SELF
      };
 
 static const struct option longopts[] = {
@@ -166,6 +172,10 @@ static const struct option longopts[] = {
     { "stdv",               no_argument,       NULL, OPT_STDV },
     { "out-fofn",           required_argument, NULL, OPT_OUT_FOFN },
     { "train-kmers",        required_argument, NULL, OPT_TRAIN_KMERS },
+    { "p-skip",             required_argument, NULL, OPT_P_SKIP },
+    { "p-skip-self",        required_argument, NULL, OPT_P_SKIP_SELF },
+    { "p-bad",              required_argument, NULL, OPT_P_BAD },
+    { "p-bad-self",         required_argument, NULL, OPT_P_BAD_SELF },
     { "output-scores",      no_argument,       NULL, OPT_OUTPUT_SCORES },
     { "no-update-models",   no_argument,       NULL, OPT_NO_UPDATE_MODELS },
     { "progress",           no_argument,       NULL, OPT_PROGRESS },
@@ -448,6 +458,10 @@ void parse_methyltrain_options(int argc, char** argv)
             case OPT_FILTER_POLICY: arg >> filter_policy_str; break;
             case OPT_NO_UPDATE_MODELS: opt::write_models = false; break;
             case OPT_PROGRESS: opt::progress = true; break;
+            case OPT_P_SKIP: arg >> g_p_skip; break;
+            case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
+            case OPT_P_BAD: arg >> g_p_bad; break;
+            case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
             case OPT_HELP:
                 std::cout << METHYLTRAIN_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);

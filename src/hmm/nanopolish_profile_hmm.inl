@@ -22,6 +22,8 @@ inline float calculate_skip_probability(const HMMInputSequence& sequence,
     return parameters.get_skip_probability(level_i.mean, level_j.mean);
 }
 
+#define USE_EXTERNAL_PARAMS 1
+
 inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)
 {
     const TransitionParameters& parameters = data.read->parameters[data.strand];
@@ -31,9 +33,19 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
 
         // probability of skipping k_i from k_(i - 1)
-        float p_skip = 0.0025; //ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
         float p_stay = 0.4; 
+#ifndef USE_EXTERNAL_PARAMS
+        float p_skip = 0.0025; //ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
         float p_bad = 0.001;
+        float p_bad_self = p_bad;
+        float p_skip_self = 0.3;
+#else
+        extern float g_p_skip, g_p_skip_self, g_p_bad, g_p_bad_self;
+        float p_skip = g_p_skip;
+        float p_skip_self = g_p_skip_self;
+        float p_bad = g_p_bad;
+        float p_bad_self = g_p_bad_self;
+#endif
 
         // transitions from match state in previous block
         float p_mk = p_skip; // probability of not observing an event at all
@@ -42,12 +54,12 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         float p_mm_next = 1.0f - p_mm_self - p_mk - p_mb; // normal movement from state to state
 
         // transitions from event split state in previous block
-        float p_bb = p_bad;
+        float p_bb = p_bad_self;
         float p_bk, p_bm_next, p_bm_self;
         p_bk = p_bm_next = p_bm_self = (1.0f - p_bb) / 3;
 
         // transitions from kmer skip state in previous block
-        float p_kk = 0.3;
+        float p_kk = p_skip_self;
         float p_km = 1.0f - p_kk;
         // p_kb not needed, equivalent to B->K
 
