@@ -70,28 +70,24 @@ inline bool& model_stdv()
 inline float log_probability_match(const SquiggleRead& read,
                                    uint32_t kmer_rank,
                                    uint32_t event_idx,
-                                   uint8_t strand,
-                                   float state_scale = 1.0f,
-                                   float log_state_scale = 0.0f)
+                                   uint8_t strand)
 {
     const PoreModel& pm = read.pore_model[strand];
 
     // event level mean
     float level = read.get_drift_corrected_level(event_idx, strand);
-
+    float stdv = read.get_stdv(event_idx, strand);
+    float log_stdv = read.get_log_stdv(event_idx, strand);
     PoreModelStateParams state = pm.get_scaled_state(kmer_rank);
+    
+    // add the event's stdv to the model stdv
+    state.level_stdv = sqrt(pow(state.level_stdv, 2.0) + pow(stdv, 2.0));
+    state.level_log_stdv = 0.5 * add_logs(2.0 * state.level_log_stdv, 2.0 * log_stdv);
 
-    // we go to great lengths to avoid calling log() in the inner loop of the HMM
-    // for this reason we duplicate data here and require the caller to pass
-    // in the scale and log(scale), presumably these are cached
-    state.level_stdv *= state_scale;
-    state.level_log_stdv += log_state_scale;
     float lp = log_normal_pdf(level, state);
 
     if(model_stdv())
     {
-        float stdv = read.get_stdv(event_idx, strand);
-        float log_stdv = read.get_log_stdv(event_idx, strand);
         float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
         lp += lp_stdv;
     }
@@ -101,17 +97,6 @@ inline float log_probability_match(const SquiggleRead& read,
 #endif
 
     return lp;
-}
-
-inline float log_probability_event_insert(const SquiggleRead& read,
-                                          uint32_t kmer_rank,
-                                          uint32_t event_idx,
-                                          uint8_t strand)
-{
-    static const float scale = 1.0f;
-    static const float log_scale = log(scale);
-
-    return log_probability_match(read, kmer_rank, event_idx, strand, scale, log_scale);
 }
 
 inline float log_probability_background(const SquiggleRead&,
