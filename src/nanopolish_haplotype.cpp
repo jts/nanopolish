@@ -71,7 +71,7 @@ bool Haplotype::apply_variant(const Variant& v)
 }
 
 // return a new haplotype subsetted by reference coordinates
-Haplotype Haplotype::substr_by_reference(size_t start, size_t end)
+Haplotype Haplotype::substr_by_reference(size_t start, size_t end) const
 {
     assert(start >= m_ref_position);
     assert(start <= m_ref_position + m_reference.length());
@@ -112,7 +112,32 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end)
     return ret;
 }
 
-size_t Haplotype::_find_derived_index_by_ref_lower_bound(size_t ref_index)
+size_t Haplotype::get_reference_position_for_haplotype_base(size_t i) const
+{
+    assert(i < m_coordinate_map.size());
+    return m_coordinate_map[i] == INSERTED_POSITION ? std::string::npos : m_coordinate_map[i];
+}
+
+void Haplotype::get_enclosing_reference_range_for_haplotype_range(size_t& hap_lower, size_t& hap_upper,
+                                                                  size_t& ref_lower, size_t& ref_upper) const
+{
+    while(hap_lower > 0 && m_coordinate_map[hap_lower] == INSERTED_POSITION) {
+        hap_lower--;
+    }
+
+    while(hap_upper < m_coordinate_map.size() && m_coordinate_map[hap_upper] == INSERTED_POSITION) {
+        hap_upper++;
+    }
+
+    if(hap_lower == 0 || hap_upper >= m_coordinate_map.size()) {
+        hap_lower = hap_upper = ref_lower = ref_upper = std::string::npos;
+    } else {
+        ref_lower = m_coordinate_map[hap_lower];
+        ref_upper = m_coordinate_map[hap_upper];
+    }
+}
+
+size_t Haplotype::_find_derived_index_by_ref_lower_bound(size_t ref_index) const
 {
     for(size_t i = 0; i < m_coordinate_map.size(); ++i) {
         if(m_coordinate_map[i] != INSERTED_POSITION && m_coordinate_map[i] >= ref_index) {

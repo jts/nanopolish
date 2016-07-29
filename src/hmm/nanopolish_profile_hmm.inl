@@ -22,7 +22,7 @@ inline float calculate_skip_probability(const HMMInputSequence& sequence,
     return parameters.get_skip_probability(level_i.mean, level_j.mean);
 }
 
-#define USE_EXTERNAL_PARAMS 1
+//#define USE_EXTERNAL_PARAMS 1
 
 inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)
 {

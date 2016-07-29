@@ -118,4 +118,4 @@ test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
 
 clean:
-	rm -f nanopolish nanopolish_test $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
+	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
