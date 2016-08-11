@@ -53,6 +53,10 @@ After all polishing jobs are complete, you can merge the individual segments tog
 python nanopolish_merge.py polished.*.fa > polished_genome.fa
 ```
 
+## Fixing homopolymers
+
+Nanopolish 0.5 contains an experimental ```--fix-homopolymers``` option that will use duration information to improve the consensus accuracy around homopolymers. This option has only been tested on deep (>100X) data where it gives a minor improvement in accuracy. It is left off by default for now until it is tested further.
+
 ## To run using docker
 
 First build the image from the dockerfile:
