@@ -13,7 +13,7 @@
 #include <map>
 #include "nanopolish_poremodel.h"
 
-#define DEFAULT_MODEL_TYPE "reftrained"
+#define DEFAULT_MODEL_TYPE "ONT"
 
 typedef std::map<std::string, PoreModel> PoreModelMap;
 

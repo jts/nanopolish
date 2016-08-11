@@ -102,7 +102,7 @@ namespace opt
     static std::string models_fofn;
     static std::string window;
     static std::string consensus_output;
-    static std::string alternative_model_type = "reftrained";
+    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static double min_candidate_frequency = 0.2f;
     static int calculate_all_support = false;
     static int snps_only = 0;
@@ -150,7 +150,7 @@ static const struct option longopts[] = {
     { "p-bad",                   required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",              required_argument, NULL, OPT_P_BAD_SELF },
     { "consensus",               required_argument, NULL, OPT_CONSENSUS },
-    { "fix-homopolymers",        required_argument, NULL, OPT_FIX_HOMOPOLYMERS },
+    { "fix-homopolymers",        no_argument, NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
