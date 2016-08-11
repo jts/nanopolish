@@ -30,21 +30,6 @@ bwa index draft.fa
 bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
 samtools index reads.sorted.bam
 
-# Copy the required model files into the working directory
-cp /path/to/nanopolish/etc/r9-models/\* .
-
-#eds that are input into nanopolish must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta he
-ader. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. First we need to map the reads in base and eve
-nt space to the draft assembly.
-
-```
-# Index the reference genome
-bwa index draft.fa
-
-# Align the reads in base space
-bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
-samtools index reads.sorted.bam
-
 # Copy the nanopolish model files into the working directory
 cp /path/to/nanopolish/etc/r9-models/\* .
 
