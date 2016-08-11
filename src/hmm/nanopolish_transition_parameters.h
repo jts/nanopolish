@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include "nanopolish_matrix.h"
 #include "nanopolish_hmm_input_sequence.h"
+#include "nanopolish_model_names.h"
 
 // 
 struct KmerTransitionObservation
@@ -44,7 +45,7 @@ class TransitionParameters
         TransitionParameters();
         ~TransitionParameters();
 
-        void initialize(const std::string& model_name);
+        void initialize(const ModelMetadata& metadata);
 
         // update transition parameters from training data
         void train();
@@ -53,13 +54,15 @@ class TransitionParameters
         double get_skip_probability(double k_level1, double k_level2) const;
 
         // add an observation of a state transition to the training data
-        void add_transition_observation(char hmm_state_from, char hmm_state_to);
+        void add_transition_observation(char hmm_state_from, char hmm_state_to, bool kmer_move);
 
         // update the training data using the alignment
         void add_training_from_alignment(const HMMInputSequence& sequence,
                                          const HMMInputData& data,
                                          const std::vector<HMMAlignmentState>& alignment,
                                          size_t ignore_edge_length = 5);
+
+        void print() const;
 
         //
         // data
@@ -82,13 +85,14 @@ class TransitionParameters
         // Data used to train the model
         TransitionTrainingData training_data;
 
-
     private:
 
         // Model-specific transition initialization
         void initialize_sqkmap005();
         void initialize_sqkmap006_template();
         void initialize_sqkmap006_complement();
+        void initialize_sqkmap007_template();
+        void initialize_sqkmap007_complement();
 
         // Not allowed
         TransitionParameters(const TransitionParameters&) {}

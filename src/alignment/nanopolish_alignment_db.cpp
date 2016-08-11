@@ -12,6 +12,7 @@
 #include "htslib/faidx.h"
 #include "htslib/hts.h"
 #include "htslib/sam.h"
+#include "nanopolish_methyltrain.h"
 
 // Various file handle and structures
 // needed to traverse a bam file
@@ -25,13 +26,14 @@ struct BamHandles
 AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
-                         const std::string& event_bam) :
+                         const std::string& event_bam,
+                         bool calibrate_reads) :
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
                             m_event_bam(event_bam),
-                            m_fast5_name_map(reads_file)
+                            m_fast5_name_map(reads_file),
+                            m_calibrate_on_load(calibrate_reads)
 {
-    m_p_model_map = NULL;
     _clear_region();
 }
 
@@ -45,8 +47,12 @@ std::string AlignmentDB::get_reference_substring(const std::string& contig,
                                                  int stop_position) const
 {
     assert(m_region_contig == contig);
-    assert(m_region_start <= start_position);
-    assert(m_region_end >= stop_position);
+    if(m_region_start > start_position || m_region_end < stop_position) {
+        fprintf(stderr, "[alignmentdb] error: requested coordinates "
+                "[%d %d] is outside of region boundary [%d %d]\n", 
+                start_position, stop_position, m_region_start, m_region_end);
+        exit(EXIT_FAILURE);
+    }
 
     return m_region_ref_sequence.substr(start_position - m_region_start, stop_position - start_position + 1);
 }
@@ -65,14 +71,14 @@ std::vector<std::string> AlignmentDB::get_read_substrings(const std::string& con
         const SequenceAlignmentRecord& record = m_sequence_records[i];
         if(record.aligned_bases.empty())
             continue;
-        
+
         int r1, r2;
-        bool bounded = _find_by_ref_bounds(record.aligned_bases, 
-                                           start_position, 
+        bool bounded = _find_by_ref_bounds(record.aligned_bases,
+                                           start_position,
                                            stop_position,
                                            r1,
                                            r2);
-        
+
         if(bounded) {
             out.push_back(record.sequence.substr(r1, r2 - r1 + 1));
         }
@@ -91,8 +97,13 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
     std::vector<HMMInputData> out;
     for(size_t i = 0; i < m_event_records.size(); ++i) {
         const EventAlignmentRecord& record = m_event_records[i];
-        if(record.aligned_events.empty())
+        if(record.aligned_events.empty()) {
             continue;
+        }
+
+        if(!record.sr->has_events_for_strand(record.strand)) {
+            continue;
+        }
 
         HMMInputData data;
         data.read = record.sr;
@@ -129,8 +140,13 @@ std::vector<HMMInputData> AlignmentDB::get_events_aligned_to(const std::string& 
     std::vector<HMMInputData> out;
     for(size_t i = 0; i < m_event_records.size(); ++i) {
         const EventAlignmentRecord& record = m_event_records[i];
-        if(record.aligned_events.empty())
+        if(record.aligned_events.empty()) {
             continue;
+        }
+
+        if(!record.sr->has_events_for_strand(record.strand)) {
+            continue;
+        }
 
         HMMInputData data;
         data.read = record.sr;
@@ -161,8 +177,6 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::map<std::string, std::pair<Variant, int>> map;
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
-    //size_t num_aligned_reads = 0;
-
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& record = m_sequence_records[i];
         if(record.aligned_bases.empty())
@@ -171,28 +185,64 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         AlignedPairConstIter start_iter;
         AlignedPairConstIter stop_iter;
         _find_iter_by_ref_bounds(record.aligned_bases, start_position, stop_position, start_iter, stop_iter);
-        
-        //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos, 
-        //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
-        for(; start_iter != stop_iter; ++start_iter) {
-            
-            int rp = start_iter->ref_pos;
-            char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
-            char ab = record.sequence[start_iter->read_pos];
 
+        // Increment the depth over this region
+        int depth_start = start_iter->ref_pos;
+        int depth_end = stop_iter == record.aligned_bases.end() ?
+            record.aligned_bases.back().ref_pos : stop_iter->ref_pos;
+
+        // clamp
+        depth_start = std::max(depth_start, start_position);
+        depth_end = std::min(depth_end, stop_position);
+
+        for(; depth_start < depth_end; ++depth_start) {
+            assert(depth_start >= start_position);
+            assert(depth_start - start_position < depth.size());
+            depth[depth_start - start_position]++;
+        }
+
+        //printf("[%zu] iter: [%d %d] [%d %d] first: %d last: %d\n", i, start_iter->ref_pos, start_iter->read_pos, stop_iter->ref_pos, stop_iter->read_pos,
+        //            record.aligned_bases.front().ref_pos, record.aligned_bases.back().ref_pos);
+
+        // Find the boundaries of a matching region
+        while(start_iter != stop_iter) {
+            // skip out-of-range
+            int rp = start_iter->ref_pos;
             if(rp < start_position || rp > stop_position) {
                 continue;
             }
-            
-            // Increment depth
-            depth[rp - start_position]++;
 
-            if(rb != ab) {
+            char rb = m_region_ref_sequence[start_iter->ref_pos - m_region_start];
+            char ab = record.sequence[start_iter->read_pos];
+
+            bool is_mismatch = rb != ab;
+            auto next_iter = start_iter + 1;
+
+            bool is_gap = next_iter != stop_iter &&
+                            (next_iter->ref_pos != start_iter->ref_pos + 1 ||
+                                next_iter->read_pos != start_iter->read_pos + 1);
+
+            if(is_gap) {
+                // advance the next iterator until a match is found
+                while(next_iter != stop_iter) {
+                    char n_rb = m_region_ref_sequence[next_iter->ref_pos - m_region_start];
+                    char n_ab = record.sequence[next_iter->read_pos];
+                    if(n_rb == n_ab) {
+                        break;
+                    }
+                    ++next_iter;
+                }
+            }
+
+            if(next_iter != stop_iter && (is_mismatch || is_gap)) {
                 Variant v;
                 v.ref_name = contig;
                 v.ref_position = start_iter->ref_pos;
-                v.ref_seq = rb;
-                v.alt_seq = ab;
+
+                size_t ref_sub_start = start_iter->ref_pos - m_region_start;
+                size_t ref_sub_end = next_iter->ref_pos - m_region_start;
+                v.ref_seq = m_region_ref_sequence.substr(ref_sub_start, ref_sub_end - ref_sub_start);
+                v.alt_seq = record.sequence.substr(start_iter->read_pos, next_iter->read_pos - start_iter->read_pos);
 
                 std::string key = v.key();
                 auto iter = map.find(key);
@@ -202,6 +252,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
                     iter->second.second += 1;
                 }
             }
+            start_iter = next_iter;
         }
     }
 
@@ -220,7 +271,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::sort(variants.begin(), variants.end(), sortByPosition);
     return variants;
 }
-        
+
 void AlignmentDB::load_region(const std::string& contig,
                               int start_position,
                               int stop_position)
@@ -367,8 +418,8 @@ void AlignmentDB::_load_events_by_region()
         if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
             SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
             // Switch the read to use an alternative kmer model
-            if(m_p_model_map != NULL) {
-                sr->replace_models(*m_p_model_map);
+            if(!m_model_type_string.empty()) {
+                sr->replace_models(m_model_type_string);
             }
 
             m_squiggle_read_map[read_name] = sr;
@@ -389,6 +440,15 @@ void AlignmentDB::_load_events_by_region()
         event_record.strand = is_template ? T_IDX : C_IDX;
         m_event_records.push_back(event_record);
         
+        if(m_calibrate_on_load) {
+            std::vector<EventAlignment> event_alignment = _build_event_alignment(event_record);
+            fprintf(stderr, "Rescale for %s strand: %d rc: %d\n", event_record.sr->read_name.c_str(), event_record.strand, event_record.rc);
+            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
+            fprintf(stderr, "recal events: %zu\n", event_alignment.size());
+            recalibrate_model(*event_record.sr, event_record.strand, event_alignment, &gDNAAlphabet, true, false);
+            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
+        }
+
         /*
         printf("event_record[%zu] name: %s stride: %d align bounds [%d %d] [%d %d]\n", 
             m_event_records.size() - 1,
@@ -405,6 +465,40 @@ void AlignmentDB::_load_events_by_region()
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
+}
+
+std::vector<EventAlignment> AlignmentDB::_build_event_alignment(const EventAlignmentRecord& event_record) const
+{
+    std::vector<EventAlignment> alignment;
+    const SquiggleRead* sr = event_record.sr;
+    const Alphabet* alphabet = sr->pore_model[event_record.strand].pmalphabet;
+    size_t k = sr->pore_model[event_record.strand].k;
+
+    for(const auto& ap : event_record.aligned_events) { 
+
+        EventAlignment ea;
+        ea.ref_position = ap.ref_pos;
+        if(ea.ref_position < m_region_start || ea.ref_position >= m_region_end - k) {
+            continue;
+        }
+
+        ea.event_idx = ap.read_pos;
+
+        std::string kmer = get_reference_substring(m_region_contig, ea.ref_position, ea.ref_position + k - 1);
+        assert(kmer.size() == k);
+
+        // ref data
+        ea.ref_name = "read"; // not needed
+        ea.read_idx = -1; // not needed
+        ea.ref_kmer = kmer;
+        ea.strand_idx = event_record.strand;
+        ea.rc = event_record.rc;
+        ea.model_kmer = kmer;
+        ea.hmm_state = 'M';
+        alignment.push_back(ea);
+    }
+
+    return alignment;
 }
 
 bool AlignmentDB::_find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,

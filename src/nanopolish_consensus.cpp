@@ -27,6 +27,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_hmm_input_sequence.h"
+#include "nanopolish_pore_model_set.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -69,6 +70,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -79,13 +81,15 @@ namespace opt
     static std::string genome_file;
     static std::string output_file;
     static std::string window;
+    static std::string models_fofn;
+    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static int show_progress = 0;
     static int num_threads = 1;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:v";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_VCF, OPT_PROGRESS, OPT_MODELS_FOFN };
 
 static const struct option longopts[] = {
     { "verbose",     no_argument,       NULL, 'v' },
@@ -95,6 +99,7 @@ static const struct option longopts[] = {
     { "window",      required_argument, NULL, 'w' },
     { "outfile",     required_argument, NULL, 'o' },
     { "threads",     required_argument, NULL, 't' },
+    { "models-fofn", required_argument, NULL, OPT_MODELS_FOFN },
     { "progress",    no_argument,       NULL, OPT_PROGRESS },
     { "help",        no_argument,       NULL, OPT_HELP },
     { "version",     no_argument,       NULL, OPT_VERSION },
@@ -126,6 +131,7 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
         if(start_sa.rc != end_sa.rc)
             continue;
 
+
         HMMInputData data;
 
         uint32_t read_idx = rsi / 2;
@@ -151,11 +157,7 @@ std::vector<HMMInputData> get_input_for_columns(HMMRealignmentInput& window,
 // scoring functions without writing a bunch of code
 double score_sequence(const std::string& sequence, const HMMInputData& data)
 {
-    //return score_skip_merge(sequence, state);
-    //return score_khmm_model_postmerge(sequence, state);
-    //return khmm_score(sequence, state, AP_GLOBAL);
     return profile_hmm_score(sequence, data);
-    //return score_emission_dp(sequence, state);
 }
 
 
@@ -313,20 +315,16 @@ void score_paths(PathConsVector& paths, const std::vector<HMMInputData>& input)
 
         char initial = s == first ? 'I' : ' ';
 
-        printf("%zu\t%s\t%.1lf\t%zu %c %s", pi, paths[pi].path.c_str(), paths[pi].score, paths[pi].sum_rank, initial, paths[pi].mutdesc.c_str());
+        fprintf(stderr, "%zu\t%s\t%.1lf\t%zu %c %s", pi, paths[pi].path.c_str(), paths[pi].score, paths[pi].sum_rank, initial, paths[pi].mutdesc.c_str());
         // If this is the truth path or the best path, show the scores for all reads
         if(pi <= 1 || initial == 'I') {
             for(uint32_t ri = 0; ri < input.size(); ++ri) {
                 const HMMInputData& data = input[ri];
-                const KHMMParameters& parameters = data.read->parameters[data.strand];
-                if( fabs(parameters.fit_quality) > MIN_FIT)
-                    continue;
-
                 double curr = score_sequence(paths[pi].path, input[ri]);
-                printf("%.1lf,%.2lf ", parameters.fit_quality, curr);
+                fprintf(stderr, "%.2lf ", curr);
             }
         }
-        printf("\n");
+        fprintf(stderr, "\n");
     }
 #endif
 
@@ -539,8 +537,9 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
         if(opt::verbose >= 1) {
             fprintf(stderr, "OUTLIER_FILTER %d %.2lf %.2lf %.2lf\n", ri, curr, n_events, lp_per_event);
         }
-
-        double threshold = model_stdv() ? 7.0f : 3.5f; // TODO: check
+        
+        // R9 thresholds
+        double threshold = model_stdv() ? 8.0f : 4.0f; // TODO: check
         if(fabs(lp_per_event) < threshold) {
             out_rs.push_back(rs);
         }
@@ -704,7 +703,14 @@ void train(HMMRealignmentInput& window)
 std::string call_consensus_for_window(const Fast5Map& name_map, const std::string& contig, int start_base, int end_base)
 {
     const int minor_segment_stride = 50;
-    HMMRealignmentInput window = build_input_for_region(opt::bam_file, opt::genome_file, name_map, contig, start_base, end_base, minor_segment_stride);
+    HMMRealignmentInput window = build_input_for_region(opt::bam_file,
+                                                        opt::genome_file,
+                                                        name_map,
+                                                        contig,
+                                                        start_base,
+                                                        end_base,
+                                                        minor_segment_stride,
+                                                        opt::alternative_model_type);
     uint32_t num_segments = window.anchored_columns.size();
 
     // If there are not reads or not enough segments do not try to call a consensus sequence
@@ -721,7 +727,8 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
     //
     // Train the HMM
     //
-    train(window);
+    WARN_ONCE("Debug: using default transition parameters"); 
+    //train(window);
 
     // assume models for all the reads have the same k
     const uint32_t k = window.reads[0]->pore_model[T_IDX].k;
@@ -796,6 +803,7 @@ void parse_consensus_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_PROGRESS: opt::show_progress = 1; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
@@ -833,6 +841,14 @@ void parse_consensus_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
         die = true;
     }
+    
+    if(opt::models_fofn.empty()) {
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
+        die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
+    }
 
     if(opt::window.empty()) {
         std::cerr << SUBPROGRAM ": the -w (window) parameter must be provided\n";
@@ -852,7 +868,7 @@ int consensus_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-
+    
     // Parse the window string
     // Replace ":" and "-" with spaces to make it parseable with stringstream
     std::replace(opt::window.begin(), opt::window.end(), ':', ' ');

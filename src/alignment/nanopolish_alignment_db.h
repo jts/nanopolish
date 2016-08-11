@@ -40,7 +40,8 @@ class AlignmentDB
         AlignmentDB(const std::string& reads_file,
                     const std::string& reference_file,
                     const std::string& sequence_bam,
-                    const std::string& event_bam);
+                    const std::string& event_bam,
+                    const bool calibrate_reads = false);
 
         ~AlignmentDB();
 
@@ -70,16 +71,22 @@ class AlignmentDB
                                                     double min_frequency,
                                                     int min_depth) const;
 
+        const std::vector<EventAlignmentRecord>& get_eventalignment_records() const { return m_event_records; }
+
+        // reference metadata
+        std::string get_region_contig() const { return m_region_contig; }
         int get_region_start() const { return m_region_start; }
         int get_region_end() const { return m_region_end; }
         
-        void set_alternative_model(const ModelMap* p_model_map) { m_p_model_map = p_model_map; }
+        void set_alternative_model_type(const std::string model_type_string) { m_model_type_string = model_type_string; }
 
     private:
         
         void _load_sequence_by_region();
         void _load_events_by_region();
         void _clear_region();
+
+        std::vector<EventAlignment> _build_event_alignment(const EventAlignmentRecord& event_record) const;
 
         // Search the vector of AlignedPairs using lower_bound/upper_bound
         // and the input reference coordinates. If the search succeeds,
@@ -104,6 +111,9 @@ class AlignmentDB
         std::string m_sequence_bam;
         std::string m_event_bam;
 
+        // parameters
+        bool m_calibrate_on_load;
+
         // loaded region
         std::string m_region_ref_sequence;
         std::string m_region_contig;
@@ -115,7 +125,7 @@ class AlignmentDB
         std::vector<SequenceAlignmentRecord> m_sequence_records;
         std::vector<EventAlignmentRecord> m_event_records;
         SquiggleReadMap m_squiggle_read_map;
-        const ModelMap* m_p_model_map;
+        std::string m_model_type_string;
 };
 
 #endif

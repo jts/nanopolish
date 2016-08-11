@@ -11,7 +11,9 @@
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_squiggle_read.h"
-#include "nanopolish_model_names.h"
+
+//#define PRINT_TRAINING_MESSAGES 1
+//#define SHOW_TRAINING_RESULT 1
 
 TransitionParameters::TransitionParameters()
 {
@@ -22,7 +24,7 @@ TransitionParameters::TransitionParameters()
     td.n_skips = 0;
 
     //
-    allocate_matrix(td.state_transitions, 3, 3);
+    allocate_matrix(td.state_transitions, 3, 6);
     for(unsigned i = 0; i < td.state_transitions.n_rows; ++i) {
         for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
             set(td.state_transitions, i, j, 0);
@@ -47,21 +49,26 @@ TransitionParameters::~TransitionParameters()
     free_matrix(training_data.state_transitions);
 }
 
-void TransitionParameters::initialize(const std::string& model_name)
+void TransitionParameters::initialize(const ModelMetadata& metadata)
 {
     is_initialized = true;
-    ModelMetadata model_data = get_model_metadata_from_name(model_name);
 
-    if(model_data.kit == KV_SQK005) {
+    if(metadata.kit == KV_SQK005) {
         initialize_sqkmap005();
-    } else if(model_data.kit == KV_SQK006) {
-        if(model_data.strand_idx == T_IDX) {
+    } else if(metadata.kit == KV_SQK006) {
+        if(metadata.strand_idx == T_IDX) {
             initialize_sqkmap006_template();
         } else {
             initialize_sqkmap006_complement();
         }
+    } else if(metadata.kit == KV_SQK007) {
+        if(metadata.strand_idx == T_IDX) {
+            initialize_sqkmap007_template();
+        } else {
+            initialize_sqkmap007_complement();
+        }
     } else {
-        printf("Warning: unknown model: %s\n", model_name.c_str());
+        fprintf(stderr, "Warning: unknown model kit: %d\n", metadata.kit);
         initialize_sqkmap005();
     }
 }
@@ -181,6 +188,78 @@ void TransitionParameters::initialize_sqkmap006_complement()
     skip_probabilities[29] = 0.119;
 }
 
+void TransitionParameters::initialize_sqkmap007_template()
+{
+    trans_m_to_e_not_k = 0.310;
+    trans_e_to_e = 0.637;
+    skip_probabilities[0] = 0.054;
+    skip_probabilities[1] = 0.055;
+    skip_probabilities[2] = 0.050;
+    skip_probabilities[3] = 0.035;
+    skip_probabilities[4] = 0.035;
+    skip_probabilities[5] = 0.026;
+    skip_probabilities[6] = 0.020;
+    skip_probabilities[7] = 0.019;
+    skip_probabilities[8] = 0.014;
+    skip_probabilities[9] = 0.013;
+    skip_probabilities[10] = 0.010;
+    skip_probabilities[11] = 0.009;
+    skip_probabilities[12] = 0.008;
+    skip_probabilities[13] = 0.008;
+    skip_probabilities[14] = 0.007;
+    skip_probabilities[15] = 0.007;
+    skip_probabilities[16] = 0.007;
+    skip_probabilities[17] = 0.007;
+    skip_probabilities[18] = 0.006;
+    skip_probabilities[19] = 0.006;
+    skip_probabilities[20] = 0.006;
+    skip_probabilities[21] = 0.006;
+    skip_probabilities[22] = 0.005;
+    skip_probabilities[23] = 0.006;
+    skip_probabilities[24] = 0.006;
+    skip_probabilities[25] = 0.006;
+    skip_probabilities[26] = 0.007;
+    skip_probabilities[27] = 0.007;
+    skip_probabilities[28] = 0.007;
+    skip_probabilities[29] = 0.008;
+}
+
+void TransitionParameters::initialize_sqkmap007_complement()
+{
+    trans_m_to_e_not_k = 0.211;
+    trans_e_to_e = 0.670;
+    skip_probabilities[0] = 0.096;
+    skip_probabilities[1] = 0.092;
+    skip_probabilities[2] = 0.074;
+    skip_probabilities[3] = 0.048;
+    skip_probabilities[4] = 0.037;
+    skip_probabilities[5] = 0.026;
+    skip_probabilities[6] = 0.018;
+    skip_probabilities[7] = 0.016;
+    skip_probabilities[8] = 0.013;
+    skip_probabilities[9] = 0.011;
+    skip_probabilities[10] = 0.009;
+    skip_probabilities[11] = 0.008;
+    skip_probabilities[12] = 0.007;
+    skip_probabilities[13] = 0.007;
+    skip_probabilities[14] = 0.006;
+    skip_probabilities[15] = 0.006;
+    skip_probabilities[16] = 0.007;
+    skip_probabilities[17] = 0.007;
+    skip_probabilities[18] = 0.005;
+    skip_probabilities[19] = 0.006;
+    skip_probabilities[20] = 0.006;
+    skip_probabilities[21] = 0.005;
+    skip_probabilities[22] = 0.006;
+    skip_probabilities[23] = 0.005;
+    skip_probabilities[24] = 0.005;
+    skip_probabilities[25] = 0.006;
+    skip_probabilities[26] = 0.006;
+    skip_probabilities[27] = 0.007;
+    skip_probabilities[28] = 0.006;
+    skip_probabilities[29] = 0.009;
+}
+
 // 
 double TransitionParameters::get_skip_probability(double k_level1, double k_level2) const
 {
@@ -195,7 +274,7 @@ int statechar2index(char s)
 {
     switch(s) {
         case 'M': return 0;
-        case 'E': return 1;
+        case 'B': return 1;
         case 'K': return 2;
     }
     assert(false);
@@ -203,10 +282,10 @@ int statechar2index(char s)
 }
 
 //
-void TransitionParameters::add_transition_observation(char state_from, char state_to)
+void TransitionParameters::add_transition_observation(char state_from, char state_to, bool kmer_move)
 {
     int f_idx = statechar2index(state_from);
-    int t_idx = statechar2index(state_to);
+    int t_idx = 2 * statechar2index(state_to) + kmer_move;
 
     int count = get(training_data.state_transitions, f_idx, t_idx);
     set(training_data.state_transitions, f_idx, t_idx, count + 1);
@@ -235,8 +314,12 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
 
         uint32_t ei = alignment[pi].event_idx;
         uint32_t ki = alignment[pi].kmer_idx;
+
+        bool kmer_move = pi == 0 || alignment[pi - 1].kmer_idx != ki;
+        bool event_move = pi == 0 || alignment[pi - 1].event_idx != ei;
         char s = alignment[pi].state;
-    
+        add_transition_observation(prev_s, s, kmer_move);
+
         // Record transition observations
         // We do not record observations for merge states as there was no kmer transitions
         // We also do not record observations for the beginning of the matches as the
@@ -245,13 +328,13 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
  
             // skip transition training data
             // we do not process the E state here as no k-mer move was made
-            if(s != 'E') {
+            if(s != 'B') {
                 uint32_t transition_kmer_from = alignment[pi - 1].kmer_idx;
                 uint32_t transition_kmer_to = alignment[pi].kmer_idx;
 
                 // Specially handle skips
                 // We only want to record the first k-mer skipped if multiple were skipped
-                if(s == 'K') {
+                if(s == 'K' && prev_s == 'M') {
                     transition_kmer_from = alignment[pi - 1].kmer_idx;
                     transition_kmer_to = transition_kmer_from + 1;
                 }
@@ -272,24 +355,11 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
             }
 
             // State-to-state transition
-            add_transition_observation(prev_s, s);
-
-            // emission
-            //float level = data.read->get_drift_corrected_level(ei, data.strand);
-            //float sd = data.read->events[data.strand][ei].stdv;
-            //float duration = data.read->get_duration(ei, data.strand);
-            if(ki >= n_kmers)
-                printf("%zu %d %d %zu %.2lf %c\n", pi, ei, ki, n_kmers, alignment[pi].l_fm, s);
-            
+            add_transition_observation(prev_s, s, kmer_move);
             assert(ki < n_kmers);
-            //uint32_t rank = sequence.get_kmer_rank(ki, k, data.rc);
-        
-            //GaussianParameters model = pm.get_scaled_parameters(rank);
-            //float norm_level = (level - model.mean) / model.stdv;
-
-            prev_s = s;
         }
 
+        prev_s = s;
         // summary
         training_data.n_matches += (s == 'M');
         training_data.n_merges += (s == 'E');
@@ -305,40 +375,32 @@ void TransitionParameters::train()
     // Profile HMM transitions
     //
 
-    size_t sum_m_not_k = get(td.state_transitions, statechar2index('M'), statechar2index('M')) + 
-                         get(td.state_transitions, statechar2index('M'), statechar2index('E'));
-
-    size_t me = get(td.state_transitions, statechar2index('M'), statechar2index('E'));
-    double p_me_not_k = (double)me / sum_m_not_k;
-
-    size_t sum_e = 0;
-    for(unsigned j = 0; j < td.state_transitions.n_cols; ++j) {
-        sum_e += get(td.state_transitions, statechar2index('E'), j);
-    }
-    
-    size_t ee = get(td.state_transitions, statechar2index('E'), statechar2index('E'));
-    double p_ee = (double)ee / sum_e;
-
 #ifdef SHOW_TRAINING_RESULT
     fprintf(stderr, "TRANSITIONS\n");
-    fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
-    fprintf(stderr, "E->E: %lf\n", p_ee);
+    //fprintf(stderr, "M->E|not_k: %lf\n", p_me_not_k);
+    //fprintf(stderr, "E->E: %lf\n", p_ee);
     for(int i = 0; i < td.state_transitions.n_rows; ++i) {
-        fprintf(stderr, "\t%c: ", "MEK"[i]);
+        fprintf(stderr, "\t%c: ", "MBK"[i]);
         for(int j = 0; j < td.state_transitions.n_cols; ++j) {
             fprintf(stderr, "%d ", get(td.state_transitions, i, j));
         }
         fprintf(stderr, "\n");
     }
-#endif
 
-    if(sum_e == 0 || sum_m_not_k == 0) {
-        // insufficient data to train, use defaults
-        return;
+    for(int i = 0; i < td.state_transitions.n_rows; ++i) {
+        fprintf(stderr, "\t%c: ", "MBK"[i]);
+        size_t col_sum = 0;
+        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+            col_sum += get(td.state_transitions, i, j);
+        }
+
+        for(int j = 0; j < td.state_transitions.n_cols; ++j) {
+            double p = get(td.state_transitions, i, j) / (double)col_sum;
+            fprintf(stderr, "%04.3lf ", p);
+        }
+        fprintf(stderr, "\n");
     }
-
-    trans_m_to_e_not_k = p_me_not_k;
-    trans_e_to_e = p_ee;
+#endif
 
     //
     // Signal-dependent skip probability
@@ -370,5 +432,17 @@ void TransitionParameters::train()
 #ifdef SHOW_TRAINING_RESULT
         fprintf(stderr, "SKIPLEARN -- %zu %.3lf %.3lf %.3lf\n", bin, skip_observations[bin], total_observations[bin], skip_probabilities[bin]);
 #endif
+    }
+}
+
+void TransitionParameters::print() const
+{
+    /*
+    fprintf(stderr, "TRANSITIONS\n");
+    fprintf(stderr, "trans_m_to_e_not_k = %.3lf;\n", trans_m_to_e_not_k);
+    fprintf(stderr, "trans_e_to_e = %.3lf;\n", trans_e_to_e);
+    */
+    for(size_t bin = 0; bin < skip_probabilities.size(); bin++) {
+        fprintf(stderr, "skip_probabilities[%zu] = %.3lf;\n", bin, skip_probabilities[bin]);
     }
 }

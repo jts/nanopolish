@@ -59,49 +59,39 @@ def merge_into_consensus(consensus, incoming, overlap_length):
 
     return merged
 
-# Make placeholder segments using the original assembly as a guide
-original_assembly = sys.argv[1]
-recs = [ (rec.name, len(rec.seq)) for rec in SeqIO.parse(open(original_assembly), "fasta")]
-
-# Do not change, must match nanopolish segment lengths
+# Do not change, must match nanopolish_makerange.py segment lengths
 SEGMENT_LENGTH = 10000
 OVERLAP_LENGTH = 200
 
 segments_by_name = dict()
-for name, length in recs:
 
-    n_segments = (length / SEGMENT_LENGTH) + 1
-    segments_by_name[name] = [""] * n_segments
-
-for fn in sys.argv[2:]:
+# Load the polished segments into a dictionary keyed by the start coordinate
+for fn in sys.argv[1:]:
     for rec in SeqIO.parse(open(fn), "fasta"):
-        (contig, segment) = rec.name.split(":")
-        segments_by_name[contig][int(segment)] = str(rec.seq)
-
-# Confirm all segments are present
-segment_not_found = False
-for contig_name in sorted(segments_by_name.keys()):
-    for (segment_id, sequence) in enumerate(segments_by_name[contig_name]):
+        (contig, segment_range) = rec.name.split(":")
         
-        if sequence is "":
-            sys.stderr.write("ERROR_MISSING %s %d\n" % (contig_name, segment_id))
-            segment_not_found = True
+        if contig not in segments_by_name:
+            segments_by_name[contig] = dict()
+        
+        segment_start, segment_end = segment_range.split("-")
 
-if segment_not_found:            
-	sys.exit(1)
+        sys.stderr.write('Insert %s %s\n' % (contig, segment_start))
+        segments_by_name[contig][int(segment_start)] = str(rec.seq)
 
 # Assemble while making sure every segment is present
 for contig_name in sorted(segments_by_name.keys()):
     assembly = ""
-    for (segment_id, sequence) in enumerate(segments_by_name[contig_name]):
-        
-        if sequence is "":
-            print "ERROR, segment %d of contig %s is missing" % (segment_id, contig_name)
-            sys.exit(1)
+    prev_segment = None
+    for segment_start in sorted(segments_by_name[contig_name]):
 
-        sys.stderr.write('Merging %s %d\n' % (contig_name, segment_id))
+        sys.stderr.write('Merging %s %d\n' % (contig_name, segment_start))
+        # Ensure the segments overlap
+        assert(prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start)
+                
+        sequence = segments_by_name[contig_name][segment_start]
 
         assembly = merge_into_consensus(assembly, sequence, OVERLAP_LENGTH)
-    
+        prev_segment = segment_start
+
     # Write final assembly
     print(">%s\n%s" % (contig_name, assembly))

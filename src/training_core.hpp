@@ -39,6 +39,23 @@ struct MinimalStateTrainingData
         this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
         this->log_read_var_sd = std::log(this->read_var_sd);
     }
+    
+    MinimalStateTrainingData(double level_mean,
+                             double level_stdv,
+                             double read_var)
+    {
+        // scale the observation to the expected pore model
+        this->level_mean = level_mean;
+        this->log_level_mean = std::log(this->level_mean);
+        this->level_stdv = level_stdv;
+        this->log_level_stdv = std::log(this->level_stdv);
+        this->read_var = read_var;
+        this->log_read_var = std::log(this->read_var);
+        this->read_scale_sd = 1.0; // unused
+        this->log_read_scale_sd = std::log(this->read_scale_sd);
+        this->read_var_sd = 1.0; // unused
+        this->log_read_var_sd = std::log(this->read_var_sd);
+    }
 
     static void write_header(std::ostream& os)
     {

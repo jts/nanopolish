@@ -17,6 +17,7 @@
 #include "nanopolish_hmm_input_sequence.h"
 
 //#define HMM_REVERSE_FIX 1
+//#define DEBUG_FILL 1
 
 //
 // High level algorithms
@@ -65,11 +66,23 @@ void profile_hmm_update_training(const HMMInputSequence& sequence,
 enum ProfileState
 {
     PS_KMER_SKIP = 0,
-    PS_EVENT_SPLIT,
+    PS_BAD_EVENT,
     PS_MATCH,
     PS_NUM_STATES = 3,
     PS_PRE_SOFT // intentionally after PS_NUM_STATES
 };
+
+enum HMMMovementType
+{
+    HMT_FROM_SAME_M = 0,
+    HMT_FROM_PREV_M,
+    HMT_FROM_SAME_B,
+    HMT_FROM_PREV_B,
+    HMT_FROM_PREV_K,
+    HMT_FROM_SOFT,
+    HMT_NUM_MOVEMENT_TYPES
+};
+typedef struct { float x[HMT_NUM_MOVEMENT_TYPES]; } HMMUpdateScores;
 
 // Flags to modify the behaviour of the HMM
 enum HMMAlignmentFlags
@@ -79,22 +92,25 @@ enum HMMAlignmentFlags
 };
 
 // Convert an enumerated state into a symbol
-inline char ps2char(ProfileState ps) { return "KEMNS"[ps]; }
+inline char ps2char(ProfileState ps) { return "KBMNS"[ps]; }
 
 // Pre-computed transitions from the previous block
 // into the current block of states. Log-scaled.
 struct BlockTransitions
 {
-    // Transition from m state
-    float lp_me;
+    // Transition from m state (match event to k-mer)
+    float lp_mm_self;
+    float lp_mb;
     float lp_mk;
-    float lp_mm;
+    float lp_mm_next;
 
-    // Transitions from e state
-    float lp_ee;
-    float lp_em;
+    // Transitions from b state (bad event that should be ignored)
+    float lp_bb;
+    float lp_bk;
+    float lp_bm_next; // movement to next k-mer
+    float lp_bm_self; // movement to k-mer that we came from
 
-    // Transitions from k state
+    // Transitions from k state (no observation from k-mer)
     float lp_kk;
     float lp_km;
 };

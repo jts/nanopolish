@@ -13,15 +13,18 @@
 #include "htslib/faidx.h"
 #include "nanopolish_common.h"
 #include "nanopolish_anchor.h"
+#include "nanopolish_scorereads.h"
+#include "nanopolish_methyltrain.h"
 #include "nanopolish_squiggle_read.h"
 
-HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
-                                           const std::string& ref_filename, 
-                                           const Fast5Map& read_name_map, 
+HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
+                                           const std::string& ref_filename,
+                                           const Fast5Map& read_name_map,
                                            const std::string& contig_name,
-                                           int start, 
-                                           int end, 
-                                           int stride)
+                                           int start,
+                                           int end,
+                                           int stride,
+                                           const std::string& alternative_model_type)
 {
     // Initialize return data
     HMMRealignmentInput ret;
@@ -38,7 +41,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
     int contig_id = bam_name2id(hdr, contig_name.c_str());
-    
+   
     // load reference fai file
     faidx_t *fai = fai_load(ref_filename.c_str());
 
@@ -56,7 +59,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
     // Initialize iteration
     bam1_t* record = bam_init1();
     hts_itr_t* itr = sam_itr_queryi(bam_idx, contig_id, start, end);
-    
+   
     // Iterate over reads aligned here
     std::vector<HMMReadAnchorSet> read_anchors;
     std::vector<std::vector<std::string>> read_substrings;
@@ -75,7 +78,23 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
 
         // load read
         ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
-        const SquiggleRead& sr = *ret.reads.back();
+        SquiggleRead& sr = *ret.reads.back();
+        if(!alternative_model_type.empty()) {
+            sr.replace_models(alternative_model_type);
+        }
+
+        // Recalibrate each strand
+        for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; strand_idx++) {
+            if(!sr.has_events_for_strand(strand_idx)) {
+                continue;
+            }
+
+            std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, -1,
+                                                                 "", fai, hdr,
+                                                                 record, -1, -1);
+            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, true, true);
+        }
+
         k = sr.pore_model[T_IDX].k;
 
         // parse alignments to reference
@@ -117,15 +136,15 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
             }
 
             int template_idx = sr.get_closest_event_to(read_kidx, T_IDX);
-            int complement_idx = sr.get_closest_event_to(read_kidx, C_IDX);
+            int complement_idx = sr.has_events_for_strand(C_IDX) ? sr.get_closest_event_to(read_kidx, C_IDX) : -1;
 
-            assert(template_idx != -1 && complement_idx != -1);
+            assert(template_idx != -1 && (!sr.has_events_for_strand(C_IDX) || complement_idx != -1));
             assert(template_idx < (int)sr.events[T_IDX].size());
-            assert(complement_idx < (int)sr.events[C_IDX].size());
+            assert(sr.events[C_IDX].empty() || complement_idx < (int)sr.events[C_IDX].size());
 
             event_anchors.strand_anchors[T_IDX][ai] = { template_idx, template_rc };
             event_anchors.strand_anchors[C_IDX][ai] = { complement_idx, complement_rc };
-            
+
             // If this is not the last anchor, extract the sequence of the read
             // from this anchor to the next anchor as an alternative assembly
             if(ai < read_bases_for_anchors.size() - 1) {
@@ -137,7 +156,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                 if(do_base_rc) {
                     start_kidx = sr.flip_k_strand(start_kidx);
                     end_kidx = sr.flip_k_strand(end_kidx);
-                    
+
                     // swap
                     int tmp = end_kidx;
                     end_kidx = start_kidx;

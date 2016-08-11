@@ -20,7 +20,7 @@ void profile_hmm_forward_initialize(FloatMatrix& fm)
 
     for(uint32_t ri = 0; ri < fm.n_rows; ri++) {
         set(fm, ri, PS_KMER_SKIP, -INFINITY);
-        set(fm, ri, PS_EVENT_SPLIT, -INFINITY);
+        set(fm, ri, PS_BAD_EVENT, -INFINITY);
         set(fm, ri, PS_MATCH, -INFINITY);
     }
 }
@@ -147,12 +147,15 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
         
         uint32_t event_idx = e_start + (row - 1) * traversal_stride;
         uint32_t block = col / PS_NUM_STATES;
+        uint32_t kmer_idx = block - 1;
+        ProfileState curr_ps = (ProfileState) (col % PS_NUM_STATES);
+
+#if DEBUG_BACKTRACK
+        printf("backtrace %zu %zu coord: (%zu, %zu, %zu) state: %d\n", event_idx, kmer_idx, row, col, block, curr_ps);
+#endif
+
         assert(block > 0);
         assert(get(vm, row, col) != -INFINITY);
-
-        uint32_t kmer_idx = block - 1;
-        
-        ProfileState curr_ps = (ProfileState) (col % PS_NUM_STATES);
 
         HMMAlignmentState as;
         as.event_idx = event_idx;
@@ -163,29 +166,41 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
         as.state = ps2char(curr_ps);
         alignment.push_back(as);
 
-        // Update the event (row) and k-mer using the current state
-        // The next state is encoded in the backtrack matrix for the current cell
-        ProfileState next_ps = (ProfileState)get(bm, row, col);
-        
-        // If we hit the softclip state we are done aligning
-        if(next_ps == PS_PRE_SOFT) {
+        // Update the event (row) and k-mer using the backtrack matrix
+        HMMMovementType movement = (HMMMovementType)get(bm, row, col);
+        if(movement == HMT_FROM_SOFT) {
             break;
         }
+        
+        // update kmer_idx and state
+        ProfileState next_ps;
+        switch(movement) {
+            case HMT_FROM_SAME_M: 
+                next_ps = PS_MATCH;
+                break;
+            case HMT_FROM_PREV_M: 
+                kmer_idx -= 1;
+                next_ps = PS_MATCH;
+                break;
+            case HMT_FROM_SAME_B:
+                next_ps = PS_BAD_EVENT;
+                break;
+            case HMT_FROM_PREV_B:
+                kmer_idx -= 1;
+                next_ps = PS_BAD_EVENT;
+                break;
+            case HMT_FROM_PREV_K:
+                kmer_idx -= 1;
+                next_ps = PS_KMER_SKIP;
+                break;
+            case HMT_FROM_SOFT:
+                assert(false);
+                break;
+        }
 
-#if DEBUG_BACKTRACK
-        printf("Backtrack [%zu %zu] k: %zu block: %zu curr_ps: %c next_ps: %c\n", row, col, kmer_idx, block, ps2char(curr_ps), ps2char(next_ps));
-#endif
-
-        if(curr_ps == PS_MATCH) {
+        // update row (event) idx only if this isn't a kmer skip, which is silent
+        if(curr_ps != PS_KMER_SKIP) {
             row -= 1;
-            kmer_idx -= 1;
-        } else if(curr_ps == PS_EVENT_SPLIT) {
-            row -= 1;
-            // kmer stays the same
-        } else {
-            assert(curr_ps == PS_KMER_SKIP);
-            // row stays the same
-            kmer_idx -= 1;
         }
 
         col = PS_NUM_STATES * (kmer_idx + 1) + next_ps;

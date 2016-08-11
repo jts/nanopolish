@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <string>
 #include <map>
+#include "nanopolish_model_names.h"
 #include "../fast5/src/fast5.hpp"
 
 //
@@ -66,9 +67,8 @@ class PoreModel
         // nicer might be to store the states as a map from kmer -> state
 
         PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
-        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet=NULL);
 
-        void write(const std::string filename, const std::string modelname="");
+        void write(const std::string filename, const std::string modelname="") const;
 
         inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
         {
@@ -104,6 +104,8 @@ class PoreModel
         // model metadata
         std::string model_filename;
         std::string name;
+        std::string type;
+        ModelMetadata metadata;
         uint32_t k;
 
         // per-read scaling parameters
@@ -114,10 +116,11 @@ class PoreModel
         double scale_sd;
         double var_sd;
 
-        // to support swapping models, a .model file might contain a shift_offset field
-        // which describes how to change the per-read shift values to match the incoming
-        // model. This field stores this data, which might be 0.
+        // to support swapping models, a .model file might contain a shift_offset/scale_offset
+        // field which describes how to change the per-read shift values to match the incoming
+        // model.
         double shift_offset;
+        double scale_offset;
 
         bool is_scaled;
 
@@ -127,9 +130,5 @@ class PoreModel
         std::vector<PoreModelStateParams> scaled_states;
         std::vector<GaussianParameters> scaled_params;
 };
-
-typedef std::map<std::string, PoreModel> ModelMap;
-
-ModelMap read_models_fofn(const std::string& fofn_name, const Alphabet *alphabet=nullptr);
 
 #endif

@@ -30,6 +30,7 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_methyltrain.h"
+#include "nanopolish_pore_model_set.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -106,6 +107,7 @@ namespace opt
     static std::string genome_file;
     static std::string models_fofn;
     static std::string region;
+    static std::string cpg_methylation_model_type = "reftrained";
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -130,13 +132,12 @@ static const struct option longopts[] = {
 };
 
 // Test CpG sites in this read for methylation
-void calculate_methylation_for_read(const ModelMap& model_map,
-               const Fast5Map& name_map, 
-               const faidx_t* fai, 
-               const bam_hdr_t* hdr, 
-               const bam1_t* record, 
-               size_t read_idx,
-               const OutputHandles& handles)
+void calculate_methylation_for_read(const Fast5Map& name_map,
+                                    const faidx_t* fai,
+                                    const bam_hdr_t* hdr,
+                                    const bam1_t* record,
+                                    size_t read_idx,
+                                    const OutputHandles& handles)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -154,18 +155,8 @@ void calculate_methylation_for_read(const ModelMap& model_map,
 
         // replace the baked-in pore model with the methylation model
         // (including unmethylated kmers) for this strand
-        std::string curr_model = sr.pore_model[strand_idx].name;
+        sr.replace_model(strand_idx, opt::cpg_methylation_model_type);
 
-        std::string methyl_model = curr_model + ".ecoli_er2925.pcr_MSssI.timp.021216.alphabet_cpg.model";
-        auto model_iter = model_map.find(methyl_model);
-
-        if(model_iter != model_map.end()) {
-            sr.pore_model[strand_idx].update_states( model_iter->second );
-        } else {
-            fprintf(stderr, "Error, methylated model %s not found\n", methyl_model.c_str());
-            exit(EXIT_FAILURE);
-        }
-        
         size_t k = sr.pore_model[strand_idx].k;
 
         // Align in event space using the new model
@@ -384,7 +375,7 @@ void parse_methyltest_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
         die = true;
     }
-    
+
     if(opt::genome_file.empty()) {
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
@@ -394,13 +385,16 @@ void parse_methyltest_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
         die = true;
     }
-    
+
     if(opt::models_fofn.empty()) {
-        std::cerr << SUBPROGRAM ": a --models-fofn file must be provided\n";
+        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
         die = true;
+    } else {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
     }
 
-    if (die) 
+    if (die)
     {
         std::cout << "\n" << METHYLTEST_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
@@ -413,8 +407,7 @@ int methyltest_main(int argc, char** argv)
     omp_set_num_threads(opt::num_threads);
 
     Fast5Map name_map(opt::reads_file);
-    ModelMap models = read_models_fofn(opt::models_fofn, mtest_alphabet);
-    
+
     // Open the BAM and iterate over reads
 
     // load bam file
@@ -428,7 +421,7 @@ int methyltest_main(int argc, char** argv)
 
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    
+
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
@@ -482,20 +475,20 @@ int methyltest_main(int argc, char** argv)
 
     do {
         assert(num_records_buffered < records.size());
-        
+
         // read a record into the next slot in the buffer
         result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
         num_records_buffered += result >= 0;
 
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
-            
+
             #pragma omp parallel for
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_processed + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    calculate_methylation_for_read(models, name_map, fai, hdr, record, read_idx, handles);
+                    calculate_methylation_for_read(name_map, fai, hdr, record, read_idx, handles);
                 }
             }
 
@@ -504,7 +497,7 @@ int methyltest_main(int argc, char** argv)
 
         }
     } while(result >= 0);
-    
+
     assert(num_records_buffered == 0);
     progress.end();
 

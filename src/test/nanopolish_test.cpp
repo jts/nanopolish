@@ -253,6 +253,13 @@ TEST_CASE( "string functions", "[string_functions]" ) {
 
     // complement, reverse complement
     REQUIRE( dna_alphabet.reverse_complement("GATGA") == "TCATC" );
+
+    // suffix functions
+    REQUIRE( ends_with("abcd", "cd") );
+    REQUIRE( ! ends_with("abcd", "bc") );
+    REQUIRE( ! ends_with("abcd", "e") );
+    REQUIRE( ends_with("abcd", "d") );
+    REQUIRE( ends_with("abcd", "") );
 }
 
 TEST_CASE( "math", "[math]") {

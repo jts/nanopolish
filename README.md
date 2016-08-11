@@ -18,28 +18,36 @@ make
 
 This will automatically download and install libhdf5.
 
-## Brief usage instructions
+## Computing a new consensus sequence for a draft assembly
 
-The reads that are input into the HMM must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta header. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. You should run:
-
-```
-make -f scripts/consensus.make READS=reads.fa ASSEMBLY=draft.fa
-```
-
-This will map the reads to the assembly with ```bwa mem -x ont2d``` and export a file mapping read names to fast5 files.
-
-You can then run ```nanopolish consensus```. It is recommended that you run this in parallel.
+The reads that are input into nanopolish must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta header. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. First we need to map the reads in base and event space to the draft assembly.
 
 ```
-python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 nanopolish consensus -o nanopolish.{1}.fa -w {1} --r reads.pp.fa -b reads.pp.sorted.bam -g draft.fa -t 4
+# Index the reference genome
+bwa index draft.fa
+
+# Align the reads in base space
+bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
+samtools index reads.sorted.bam
+
+# Align the reads in event space
+nanopolish eventalign -t 8 --sam -r reads.fa -b reads.sorted.bam -g draft.fa --models ont.models.fofn | samtools view -Sb - | samtools sort -f - reads.eventalign.sorted.bam
+samtools index reads.eventalign.sorted.bam
 ```
 
-This command will run the consensus algorithm on eight 100kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
+Now, we use nanopolish to compute the consensus sequence. We'll run this in parallel:
+
+```
+python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
+    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -e reads.eventalign.sorted.bam -t 4 --min-candidate-frequency 0.1 --models ont.models.fofn
+```
+
+This command will run the consensus algorithm on eight 10kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
 
 After all polishing jobs are complete, you can merge the individual segments together into the final assembly:
 
 ```
-python nanopolish_merge.py draft.fa nanopolish.*.fa > polished.fa
+python nanopolish_merge.py nanopolish.*.fa > polished.fa
 ```
 
 ## To run using docker

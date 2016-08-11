@@ -12,14 +12,31 @@
 #include "nanopolish_common.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
+#include "nanopolish_eventalign.h"
 #include <string>
+
+// the type of the read 
+// do not change as template must always be 0 and complement 1
+enum SquiggleReadType
+{
+    SRT_TEMPLATE = 0,
+    SRT_COMPLEMENT,
+    SRT_2D
+};
+
+// Flags to control the behaviour of the read
+enum SquiggleReadFlags
+{
+    SRF_NO_MODEL = 1, // do not load a model
+    SRF_LOAD_RAW_SAMPLES = 2
+};
 
 // The raw event data for a read
 struct SquiggleEvent
 {
     float mean;       // current level mean in picoamps
     float stdv;       // current level stdv
-    float start_time; // start time of the event in seconds
+    double start_time; // start time of the event in seconds
     float duration;     // duration of the event in seconds
     float log_stdv;   // precompute for efficiency
 };
@@ -44,7 +61,7 @@ class SquiggleRead
     public:
 
         SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
-        SquiggleRead(const std::string& name, const std::string& path);
+        SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
@@ -52,7 +69,7 @@ class SquiggleRead
         // 
 
         // Load all the read data from a fast5 file
-        void load_from_fast5(const std::string& fast5_path);
+        void load_from_fast5(const std::string& fast5_path, const uint32_t flags);
 
         //
         // Access to data
@@ -125,11 +142,36 @@ class SquiggleRead
         // Transform each event by correcting for current drift
         void transform();
 
-        // get the index of the event tht is nearest to the given kmer 
+        // get the index of the event that is nearest to the given kmer 
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
-        // replace the pore models with the models specified in the map
-        void replace_models(const ModelMap& map);
+        // replace the pore models with the models specified in the map or by a string
+        void replace_models(const std::string& model_type);
+        void replace_model(size_t strand_idx, const std::string& model_type);
+        void replace_model(size_t strand_idx, const PoreModel& model);
+
+        // returns true if this read has events for this strand
+        bool has_events_for_strand(size_t strand_idx) { return !this->events[strand_idx].empty(); }
+
+        // Create an eventalignment between the events of this read and its 1D basecalled sequence
+        std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
+                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d, 
+                                                                        const size_t k, 
+                                                                        const size_t strand_idx) const;
+
+        // Sample-level access
+        size_t get_sample_index_at_time(size_t sample_time) const;
+        std::vector<float> get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const;
+
+        // print the scaling parameters for this strand
+        void print_scaling_parameters(FILE* fp, size_t strand_idx) const
+        {
+            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->pore_model[strand_idx].shift,
+                                                                               this->pore_model[strand_idx].scale,
+                                                                               this->pore_model[strand_idx].drift,
+                                                                               this->pore_model[strand_idx].var);
+        }
+
 
         //
         // Data
@@ -137,6 +179,7 @@ class SquiggleRead
 
         // unique identifier of the read
         std::string read_name;
+        SquiggleReadType read_type;
         std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
@@ -147,6 +190,12 @@ class SquiggleRead
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
+        
+        // optional fields holding the raw data
+        // this is not split into strands so there is only one vector, unlike events
+        std::vector<float> samples;
+        double sample_rate;
+        int64_t sample_start_time;
 
         //
         std::vector<EventRangeForBase> base_to_event_map;
@@ -157,6 +206,15 @@ class SquiggleRead
     private:
         
         SquiggleRead(const SquiggleRead&) {}
+
+        // make a map from a base of the 1D read sequence to the range of events supporting that base
+        std::vector<EventRangeForBase> build_event_map_1d(fast5::File* f_p, 
+                                                          const std::string& read_sequence_1d, 
+                                                          uint32_t strand, 
+                                                          std::vector<fast5::Event_Entry>& f5_events);
+
+        // as above but for the 2D sequence. this fills in both the template and complete event indices
+        void build_event_map_2d(fast5::File* f_p, const std::string& basecall_group);
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;
