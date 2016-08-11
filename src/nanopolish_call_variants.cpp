@@ -21,6 +21,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <iterator>
 #include "htslib/faidx.h"
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
@@ -75,6 +76,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "      --snps                           only call SNPs\n"
 "      --consensus                      run in consensus calling mode\n"
+"      --fix-homopolymers               run the experimental homopolymer caller\n"
 "  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
@@ -108,8 +110,9 @@ namespace opt
     static int num_threads = 1;
     static int calibrate = 0;
     static int consensus_mode = 0;
+    static int fix_homopolymers = 0;
     static int min_distance_between_variants = 10;
-    static int min_flanking_sequence = 20;
+    static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
     static int debug_alignments = 0;
 }
@@ -123,6 +126,7 @@ enum { OPT_HELP = 1,
        OPT_SNPS_ONLY,
        OPT_CALC_ALL_SUPPORT,
        OPT_CONSENSUS,
+       OPT_FIX_HOMOPOLYMERS,
        OPT_MODELS_FOFN,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
@@ -146,6 +150,7 @@ static const struct option longopts[] = {
     { "p-bad",                   required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",              required_argument, NULL, OPT_P_BAD_SELF },
     { "consensus",               required_argument, NULL, OPT_CONSENSUS },
+    { "fix-homopolymers",        required_argument, NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
@@ -456,13 +461,15 @@ void print_debug_stats(const std::string& contig,
 }
 
 Haplotype fix_homopolymers(const Haplotype& input_haplotype,
-                           const AlignmentDB& alignments,
-                           const uint32_t alignment_flags)
+                           const AlignmentDB& alignments)
 {
+    uint32_t alignment_flags = 0;
     Haplotype fixed_haplotype = input_haplotype;
     const std::string& haplotype_sequence = input_haplotype.get_sequence();
     size_t kmer_size = 6;
-    printf("FIX INPUT: %s\n", fixed_haplotype.get_sequence().c_str());
+    size_t MIN_HP_LENGTH = 3;
+    size_t MAX_HP_LENGTH = 9;
+    double CALL_THRESHOLD = 10;
 
     // scan for homopolymers
     size_t i = 0;
@@ -470,6 +477,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         // start a new homopolymer
         char hp_base = haplotype_sequence[i];
         size_t hap_hp_start = i;
+        size_t ref_hp_start = hap_hp_start + input_haplotype.get_reference_position();
         while(i < haplotype_sequence.size() && haplotype_sequence[i] == hp_base) i++;
 
         if(i >= haplotype_sequence.size()) {
@@ -479,13 +487,18 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         size_t hap_hp_end = i;
         size_t hp_length = hap_hp_end - hap_hp_start;
 
-        if(hp_length <= 2)
+        if(hp_length < MIN_HP_LENGTH || hp_length > MAX_HP_LENGTH)
             continue;
 
         // Set the calling range based on the *reference* (not haplotype) coordinates
         // of the region surrounding the homopolymer. This is so we can extract the alignments
-        // from the alignment DB using reference coordinates. NB this call may change
+        // from the alignment DB using reference coordinates. NB get_enclosing... may change
         // hap_calling_start/end
+        if(hap_hp_start < opt::min_flanking_sequence)
+            continue;
+        if(hap_hp_end + opt::min_flanking_sequence >= haplotype_sequence.size())
+            continue;
+
         size_t hap_calling_start = hap_hp_start - opt::min_flanking_sequence;
         size_t hap_calling_end = hap_hp_end + opt::min_flanking_sequence;
         size_t ref_calling_start, ref_calling_end;
@@ -498,77 +511,144 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
             continue;
         }
 
-        printf("Found %zu-mer %c at %zu (seq: %s)\n", hp_length, hp_base, hap_hp_start, haplotype_sequence.substr(hap_hp_start - kmer_size - 1, hp_length + 10).c_str());
+        if(opt::verbose > 3) {
+            fprintf(stderr, "[fixhp] Found %zu-mer %c at %zu (seq: %s)\n", hp_length, hp_base, hap_hp_start, haplotype_sequence.substr(hap_hp_start - kmer_size - 1, hp_length + 10).c_str());
+        }
+
         if(ref_calling_start < alignments.get_region_start() || ref_calling_end >= alignments.get_region_end()) {
+            continue;
+        }
+        assert(ref_calling_start <= ref_calling_end);
+
+        if(ref_calling_start < input_haplotype.get_reference_position() ||
+           ref_calling_end >= input_haplotype.get_reference_end()) {
             continue;
         }
 
         Haplotype calling_haplotype =
             input_haplotype.substr_by_reference(ref_calling_start, ref_calling_end);
+        std::string calling_sequence = calling_haplotype.get_sequence();
 
         // Get the events for the calling region
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(alignments.get_region_contig(), ref_calling_start, ref_calling_end);
 
-        std::vector<double> sum_durations;
-        std::vector<double> sum_count;
-        printf("Calling ref: [%zu %zu] hap: [%zu %zu]\n", ref_calling_start, ref_calling_end, hap_calling_start, hap_calling_end);
-        int min_del = -1;
-        int max_ins = 2;
-        std::vector<double> indel_likelihood(5);
+        // the kmer with the first base of the homopolymer in the last position
+        size_t k0 = hap_hp_start - hap_calling_start - kmer_size + 1;
+
+        // the kmer with the last base of the homopolymer in the first position
+        size_t k1 = hap_hp_end - hap_calling_start;
+
+        std::string key_str = haplotype_sequence.substr(hap_hp_start - kmer_size - 1, hp_length + 10);
+        std::vector<double> duration_likelihoods(MAX_HP_LENGTH + 1, 0.0f);
+        std::vector<double> event_likelihoods(MAX_HP_LENGTH + 1, 0.0f);
+
         for(size_t j = 0; j < event_sequences.size(); ++j) {
-            std::vector<double> durations_by_kmer = DurationModel::generate_aligned_durations(calling_haplotype.get_sequence(),
-                                                                                              event_sequences[j],
-                                                                                              alignment_flags);
-            sum_durations.resize(durations_by_kmer.size());
-            sum_count.resize(durations_by_kmer.size());
+            assert(kmer_size == event_sequences[j].read->pore_model[0].k);
+            assert(kmer_size == 6);
 
-            for(size_t k = 0; k < durations_by_kmer.size(); ++k) {
-                sum_durations[k] += durations_by_kmer[k];
-                //printf("%zu %zu %.5lf\n", j, k, durations_by_kmer[k]);
-                sum_count[k] += durations_by_kmer[k] > MIN_DURATION;
+            // skip small event regions
+            if( abs(event_sequences[j].event_start_idx - event_sequences[j].event_stop_idx) < 10) {
+                continue;
             }
 
-            // Sum the duration over the region that contains the homopolymer bases
-            double hp_duration = 0.0f;
-            double hp_kmers = 0.0f;
-
-            // offset the homopolymer coordinates to include the flanking sequence added
-            size_t offset_start = hap_hp_start - hap_calling_start - kmer_size + 1 + 2;
-            size_t offset_end = hap_hp_end - hap_calling_start - 3 - 2;
-            for(size_t k = offset_start; k < offset_end + 2; k++) {
-                //printf("%s %zu %.5lf\n",  calling_haplotype.get_sequence().substr(k, 6).c_str(), j, durations_by_kmer[k]);
-                hp_duration += durations_by_kmer[k];
-                hp_kmers += 1;
+            // Fit a gamma distribution to the durations in this region of the read
+            const SquiggleRead* read = event_sequences[j].read;
+            size_t strand = event_sequences[j].strand;
+            double local_time = fabs(read->get_time(event_sequences[j].event_start_idx, strand) - read->get_time(event_sequences[j].event_stop_idx, strand));
+            double local_bases = calling_sequence.size();
+            double local_avg = local_time / local_bases;
+            GammaParameters params;
+            params.shape = 2.461964;
+            params.rate = (1 / local_avg) * params.shape;
+            if(opt::verbose > 3) {
+                fprintf(stderr, "[fixhp] RATE local:  %s\t%.6lf\n", read->read_name.c_str(), local_avg);
             }
 
-            if(hp_kmers > abs(min_del) && hp_duration >= MIN_DURATION) {
-                for(int size = min_del; size <= max_ins; ++size) {
-                    double likelihood = DurationModel::log_gamma_sum(hp_duration, hp_kmers + size);
-                    indel_likelihood[size - min_del] += likelihood;
-                    //printf("LIKELIHOOD %zu %.5lf %.1lf %d %.5lf %.2lf\n", j, hp_duration, hp_kmers, size, likelihood, indel_likelihood[size - min_del]);
+            // Calculate the duration likelihood of an l-mer at this hp
+            // we align to a modified version of the haplotype sequence which contains the l-mer
+            for(int var_sequence_length = MIN_HP_LENGTH; var_sequence_length <= MAX_HP_LENGTH; ++var_sequence_length) {
+                int var_sequence_diff = var_sequence_length - hp_length;
+                std::string variant_sequence = calling_sequence;
+                if(var_sequence_diff < 0) {
+                    variant_sequence.erase(hap_hp_start - hap_calling_start, abs(var_sequence_diff));
+                } else if(var_sequence_diff > 0) {
+                    variant_sequence.insert(hap_hp_start - hap_calling_start, var_sequence_diff, hp_base);
+                }
+
+                // align events
+                std::vector<double> durations_by_kmer = DurationModel::generate_aligned_durations(variant_sequence,
+                                                                                                  event_sequences[j],
+                                                                                                  alignment_flags);
+                // event current measurement likelihood using the standard HMM
+                event_likelihoods[var_sequence_length] += profile_hmm_score(variant_sequence, event_sequences[j], alignment_flags);
+
+                // the call window parameter determines how much flanking sequence around the HP we include in the total duration calculation
+                int call_window = 2;
+                size_t variant_offset_start = k0 + 4 - call_window;
+                size_t variant_offset_end = k0 + hp_length + var_sequence_diff + call_window;
+                double sum_duration = 0.0f;
+                for(size_t k = variant_offset_start; k < variant_offset_end; k++) {
+                    sum_duration += durations_by_kmer[k];
+                }
+
+                double num_kmers = variant_offset_end - variant_offset_start;
+                double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
+                duration_likelihoods[var_sequence_length] += log_gamma;
+                if(opt::verbose > 3) {
+                   fprintf(stderr, "SUM_VAR\t%zu\t%d\t%d\t%d\t%d\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
                 }
             }
         }
 
-        // Make a call
-        double max_likelihood = -INFINITY;
-        int best_size = 0;
-        for(int size = min_del; size <= max_ins; ++size) {
-            printf("INDEL_LIKELIHOOD %d %.2lf\n", size, indel_likelihood[size - min_del]);
-            if(indel_likelihood[size - min_del] > max_likelihood) {
-                max_likelihood = indel_likelihood[size - min_del];
-                best_size = size;
+        std::stringstream duration_lik_out;
+        std::stringstream event_lik_out;
+        std::vector<double> score_by_length(duration_likelihoods.size());
+
+        // make a call
+        double max_score = -INFINITY;
+        size_t call = -1;
+
+        for(size_t len = MIN_HP_LENGTH; len <= MAX_HP_LENGTH; ++len) {
+            assert(len < duration_likelihoods.size());
+            double d_lik = duration_likelihoods[len];
+            double e_lik = event_likelihoods[len];
+
+            double score = d_lik + e_lik;
+            score_by_length[len] = score;
+            if(score > max_score) {
+                max_score = score;
+                call = len;
             }
+            duration_lik_out << d_lik << "\t";
+            event_lik_out << e_lik << "\t";
         }
 
-        printf("CALLED %d %.2lf %.2lf\n", best_size, max_likelihood, max_likelihood - indel_likelihood[0 - min_del]);
+        double score = max_score - score_by_length[hp_length];
+        if(opt::verbose > 3) {
+            double del_score = duration_likelihoods[hp_length - 1] - duration_likelihoods[hp_length];
+            double ins_score = duration_likelihoods[hp_length + 1] - duration_likelihoods[hp_length];
+            double del_e_score = event_likelihoods[hp_length - 1] - event_likelihoods[hp_length];
+            double ins_e_score = event_likelihoods[hp_length + 1] - event_likelihoods[hp_length];
+            fprintf(stderr, "CALL\t%zu\t%.2lf\n", call, score);
+            fprintf(stderr, "LIKELIHOOD\t%s\n", duration_lik_out.str().c_str());
+            fprintf(stderr, "EIKELIHOOD\t%s\n", event_lik_out.str().c_str());
+            fprintf(stderr, "REF_SCORE\t%zu\t%zu\t%.2lf\t%.2lf\n", ref_hp_start, hp_length, del_score, ins_score);
+            fprintf(stderr, "EVENT_SCORE\t%zu\t%zu\t%.2lf\t%.2lf\n", ref_hp_start, hp_length, del_e_score, ins_e_score);
+            fprintf(stderr, "COMBINED_SCORE\t%zu\t%zu\t%.2lf\t%.2lf\n", ref_hp_start, hp_length, del_score + del_e_score, ins_score + ins_e_score);
+        }
 
+        if(score < CALL_THRESHOLD)
+            continue;
+
+        int size_diff = call - hp_length;
         std::string contig = fixed_haplotype.get_reference_name();
-        if(best_size == 1) {
+        if(size_diff > 0) {
             // add a 1bp insertion in this region
             // the variant might conflict with other variants in the region
             // so we try multiple positions
+            // NB: it is intended that if the call is a 2bp (or greater) insertion
+            // we only insert 1bp (for now)
             for(size_t k = hap_hp_start; k <= hap_hp_end; ++k) {
                 Variant v;
                 v.ref_name = contig;
@@ -579,22 +659,21 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
                 v.ref_seq = fixed_haplotype.substr_by_reference(v.ref_position, v.ref_position).get_sequence();
                 if(v.ref_seq.size() == 1 && v.ref_seq[0] == hp_base) {
                     v.alt_seq = v.ref_seq + hp_base;
-
+                    v.quality = score;
                     // if the variant can be added here (ie it doesnt overlap a
                     // conflicting variant) then stop
                     if(fixed_haplotype.apply_variant(v)) {
                         break;
                     }
                 }
-
-                printf("COULD NOT APPLY INS\n");
             }
-        } else if(best_size == -1) {
+        } else if(size_diff < 0) {
             // add a 1bp deletion at this position
             for(size_t k = hap_hp_start; k <= hap_hp_end; ++k) {
                 Variant v;
                 v.ref_name = contig;
                 v.ref_position = input_haplotype.get_reference_position_for_haplotype_base(k);
+                v.quality = score;
                 if(v.ref_position == std::string::npos) {
                     continue;
                 }
@@ -608,7 +687,6 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
                         break;
                     }
                 }
-                printf("COULD NOT APPLY DEL %s\n", v.ref_seq.c_str());
             }
         }
     }
@@ -725,6 +803,12 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         fprintf(stderr, "input region: %s\n", alignments.get_reference_substring(contig, region_start - BUFFER, region_end + BUFFER).c_str());
     }
 
+/*
+    Haplotype called_haplotype(alignments.get_region_contig(),
+                               alignments.get_region_start(),
+                               alignments.get_reference());
+*/
+
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
@@ -784,7 +868,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         }
     }
 
-    called_haplotype = fix_homopolymers(called_haplotype, alignments, alignment_flags);
+    if(opt::fix_homopolymers) {
+        called_haplotype = fix_homopolymers(called_haplotype, alignments);
+    }
 
     if(opt::consensus_mode) {
         FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
@@ -816,6 +902,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
             case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
+            case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;

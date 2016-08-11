@@ -71,6 +71,9 @@ class AlignmentDB
                                                     double min_frequency,
                                                     int min_depth) const;
 
+        const std::vector<EventAlignmentRecord>& get_eventalignment_records() const { return m_event_records; }
+
+        // reference metadata
         std::string get_region_contig() const { return m_region_contig; }
         int get_region_start() const { return m_region_start; }
         int get_region_end() const { return m_region_end; }
