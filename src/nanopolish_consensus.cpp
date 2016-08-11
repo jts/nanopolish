@@ -160,14 +160,6 @@ double score_sequence(const std::string& sequence, const HMMInputData& data)
     return profile_hmm_score(sequence, data);
 }
 
-
-
-void debug_sequence(const std::string& name, uint32_t seq_id, uint32_t read_id, const HMMInputSequence& sequence, const HMMInputData& data)
-{
-    std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
-    print_alignment(name, seq_id, read_id, sequence, data, alignment);
-}
-
 void update_training_with_segment(const HMMInputSequence& sequence, const HMMInputData& data)
 {
     std::vector<HMMAlignmentState> alignment = profile_hmm_align(sequence, data);
