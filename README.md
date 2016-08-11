@@ -31,7 +31,7 @@ bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f
 samtools index reads.sorted.bam
 
 # Copy the nanopolish model files into the working directory
-cp /path/to/nanopolish/etc/r9-models/\* .
+cp /path/to/nanopolish/etc/r9-models/* .
 
 # Align the reads in event space
 nanopolish eventalign -t 8 --sam -r reads.fa -b reads.sorted.bam -g draft.fa --models nanopolish_models.fofn | samtools view -Sb - | samtools sort -f - reads.eventalign.sorted.bam
