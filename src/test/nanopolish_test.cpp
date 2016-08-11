@@ -281,65 +281,6 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
     return out;
 }
 
-TEST_CASE( "hmm", "[hmm]") {
-
-    // read the FAST5
-    SquiggleRead sr("test_read", "test/data/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch8_file30_strand.fast5");
-    sr.transform();
-
-    // The reference sequence to align to:
-    std::string ref_subseq = "ATCAGTAAAATAACGTAGAGCGGTAACCTTGCCATAAAGGTCGAGTTTA"
-                             "TTACCATCCTTGTTATAGACTTCGGCAGCGTGTGCTACGTTCGCAGCT";
-
-    // Generate a HMMInputData structure to tell the HMM
-    // which part of the read to align
-    HMMInputData input[2];
-    
-    // template strand
-    input[0].read = &sr;
-    input[0].event_start_idx = 3;
-    input[0].event_stop_idx = 88;
-    input[0].event_stride = 1;
-    input[0].rc = false;
-    input[0].strand = 0;
-    
-    // complement strand
-    input[1].read = &sr;
-    input[1].event_start_idx = 6788;
-    input[1].event_stop_idx = 6697;
-    input[1].event_stride = -1;
-    input[1].rc = true;
-    input[1].strand = 1;
-
-    // expected output
-    std::string expected_alignment[2];
-    expected_alignment[0] = 
-        "MMMMMEMKMKMMMMMMMKMMMKMMMKMMMMMMMMMKKMMEEEMMMMMMKMMMM" 
-        "MMMKMMMMMKMKMKMEMKKMKMKKMMMMMMEMMMMKMKMEEMMMMKMEEEEEM";
-
-    expected_alignment[1] = 
-        "MMKMMMKMEEMMKMKMKMEMMMKMMMKMEMMMKMMMKMMMMMMMMMKKMEMMMM"
-        "EMMMMMMMMKMKKMMMMMMMEMMMMMKMMMMMKMEMMMMMKMMMMMEEEEEEEEM";
-
-    double expected_viterbi_last_state[2] = { -237.7690734863, -266.2348022461 };
-    double expected_forward[2] = { -216.053604126, -254.2341003418 };
-
-    for(int si = 0; si <= 1; ++si) {
-
-        // viterbi align
-        std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(ref_subseq, input[si]);
-        std::string ea_str = event_alignment_to_string(event_alignment);
-    
-        // check
-        REQUIRE( ea_str == expected_alignment[si]);
-        REQUIRE( event_alignment.back().l_fm == Approx(expected_viterbi_last_state[si]));
-
-        // forward algorithm
-        double lp = profile_hmm_score(ref_subseq, input[si]);
-        REQUIRE(lp == Approx(expected_forward[si]));
-    }
-}
-
 std::vector< StateTrainingData >
 generate_training_data(const ParamMixture& mixture, size_t n_data,
                        const std::array< float, 2 >& read_var_rg = { .5f, 1.5f },
