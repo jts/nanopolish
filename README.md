@@ -30,8 +30,26 @@ bwa index draft.fa
 bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
 samtools index reads.sorted.bam
 
+# Copy the required model files into the working directory
+cp /path/to/nanopolish/etc/r9-models/\* .
+
+#eds that are input into nanopolish must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta he
+ader. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. First we need to map the reads in base and eve
+nt space to the draft assembly.
+
+```
+# Index the reference genome
+bwa index draft.fa
+
+# Align the reads in base space
+bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
+samtools index reads.sorted.bam
+
+# Copy the nanopolish model files into the working directory
+cp /path/to/nanopolish/etc/r9-models/\* .
+
 # Align the reads in event space
-nanopolish eventalign -t 8 --sam -r reads.fa -b reads.sorted.bam -g draft.fa --models ont.models.fofn | samtools view -Sb - | samtools sort -f - reads.eventalign.sorted.bam
+nanopolish eventalign -t 8 --sam -r reads.fa -b reads.sorted.bam -g draft.fa --models nanopolish_models.fofn | samtools view -Sb - | samtools sort -f - reads.eventalign.sorted.bam
 samtools index reads.eventalign.sorted.bam
 ```
 
@@ -39,7 +57,7 @@ Now, we use nanopolish to compute the consensus sequence. We'll run this in para
 
 ```
 python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
-    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -e reads.eventalign.sorted.bam -t 4 --min-candidate-frequency 0.1 --models ont.models.fofn
+    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -e reads.eventalign.sorted.bam -t 4 --min-candidate-frequency 0.1 --models nanopolish_models.fofn
 ```
 
 This command will run the consensus algorithm on eight 10kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
@@ -47,7 +65,7 @@ This command will run the consensus algorithm on eight 10kbp segments of the gen
 After all polishing jobs are complete, you can merge the individual segments together into the final assembly:
 
 ```
-python nanopolish_merge.py nanopolish.*.fa > polished.fa
+python nanopolish_merge.py polished.*.fa > polished_genome.fa
 ```
 
 ## To run using docker
@@ -56,7 +74,7 @@ First build the image from the dockerfile:
 ```
 docker build .
 ```
-Note the uuid given upon successful build. 
+Note the uuid given upon successful build.
 Then you can run nanopolish from the image:
 ```
 docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
