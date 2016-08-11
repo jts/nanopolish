@@ -132,6 +132,12 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             continue;
         }
 
+        // Detect and reject R7 reads
+        if(f_p->have_basecall_model(si)) {
+            fprintf(stderr, "Error: R7 read detected, please use nanopolish-0.4\n");
+            exit(EXIT_FAILURE);
+        }
+
         // Load the events for this strand
         std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(event_group, si);
 
