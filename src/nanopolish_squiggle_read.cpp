@@ -119,7 +119,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
     }
 
-    read_sequence = f_p->get_basecall_seq(basecall_group, read_type);
+    read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
 
     // Load PoreModel for both strands
     std::vector<EventRangeForBase> event_maps_1d[NUM_STRANDS];
@@ -139,7 +139,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         // Load the events for this strand
-        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(event_group, si);
+        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(si, event_group);
 
         // copy events
         events[si].resize(f5_events.size());
@@ -161,7 +161,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         // or discarded if this is a 2D read
 
         // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
-        read_sequences_1d[si] = f_p->get_basecall_seq(event_group, si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT);
+        read_sequences_1d[si] = f_p->get_basecall_seq(si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT, event_group);
         event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
         std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
