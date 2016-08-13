@@ -8,6 +8,7 @@
 #include <algorithm>
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_profile_hmm_r9.h"
+#include "nanopolish_profile_hmm_r7.h"
 
 // convenience function to run the HMM over multiple inputs and sum the result
 float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMInputData>& data, const uint32_t flags)
@@ -24,8 +25,7 @@ float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& da
     if(data.read->pore_model[data.strand].metadata.kit == KV_SQK007) {
         return profile_hmm_score_r9(sequence, data, flags);
     } else {
-        assert(false);
-        return 0.0f;
+        return profile_hmm_score_r7(sequence, data, flags);
     }
 }
 
@@ -34,7 +34,6 @@ std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequenc
     if(data.read->pore_model[data.strand].metadata.kit == KV_SQK007) {
         return profile_hmm_align_r9(sequence, data, flags);
     } else {
-        assert(false);
-        return std::vector<HMMAlignmentState>();
+        return profile_hmm_align_r7(sequence, data, flags);
     }
 }

@@ -188,6 +188,68 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     is_scaled = false;
 }
 
+PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet) : pmalphabet(alphabet)
+{
+    const size_t maxNucleotides=50;
+    char bases[maxNucleotides+1]="";
+
+    std::map<std::string, PoreModelStateParams> kmers;
+
+    std::vector<fast5::Model_Entry> model = f_p->get_basecall_model(strand);
+    k = array2str(model[0].kmer).length();
+    assert(k == 5 || k == 6);
+
+    // Copy into the pore model for this read
+    for(size_t mi = 0; mi < model.size(); ++mi) {
+        const fast5::Model_Entry& curr = model[mi];
+
+        std::string stringkmer = array2str(curr.kmer);
+        assert(stringkmer.size() == k);
+        kmers[stringkmer] = curr;
+        add_found_bases(bases, stringkmer.c_str());
+    }
+
+    if (pmalphabet == nullptr)
+        pmalphabet = best_alphabet(bases);
+    assert( pmalphabet != nullptr );
+
+    states.resize( pmalphabet->get_num_strings(k) );
+    assert(states.size() == model.size());
+
+    for (const auto &iter : kmers ) {
+        states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
+    }
+
+    // Load the scaling parameters for the pore model
+    fast5::Model_Parameters params = f_p->get_basecall_model_params(strand);
+    drift = params.drift;
+    scale = params.scale;
+    scale_sd = params.scale_sd;
+    shift = params.shift;
+    var = params.var;
+    var_sd = params.var_sd;
+
+    // no offset needed when loading directly from the fast5
+    shift_offset = 0.0f;
+
+    // apply shift/scale transformation to the pore model states
+    bake_gaussian_parameters();
+
+    // Read and shorten the model name
+    std::string temp_name = f_p->get_basecall_model_file(strand);
+    std::string leader = "/opt/chimaera/model/";
+
+    size_t lp = temp_name.find(leader);
+    // leader not found
+    if(lp == std::string::npos) {
+        name = temp_name;
+    } else {
+        name = temp_name.substr(leader.size());
+    }
+
+    std::replace(name.begin(), name.end(), '/', '_');
+}
+
 void PoreModel::write(const std::string filename, const std::string modelname) const
 {
     std::string outmodelname = modelname;

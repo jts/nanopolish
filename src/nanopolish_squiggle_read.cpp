@@ -102,21 +102,30 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     auto available_groups = f_p->get_basecall_group_list();
 
     // precedence: 2D_NNN, RNN_1D_NNN, 1D_NNN
+    bool is_r9_read = false;
+
     std::string basecall_group = "1D_000";
     std::string event_group = "1D_000";
 
-    read_type = SRT_TEMPLATE;
+    if(is_r9_read) {
+        read_type = SRT_TEMPLATE;
 
-    for(auto g : available_groups) {
-        if(g == "2D_000") {
-            basecall_group = g;
-            // for 2D reads we still take events from the 1D group
-            read_type = SRT_2D;
-        } else if(g == "RNN_1D_000" && g != "2D_000") {
-            basecall_group = g;
-            event_group = g;
-            read_type = SRT_TEMPLATE;
+        for(auto g : available_groups) {
+            if(g == "2D_000") {
+                basecall_group = g;
+                // for 2D reads we still take events from the 1D group
+                read_type = SRT_2D;
+            } else if(g == "RNN_1D_000" && g != "2D_000") {
+                basecall_group = g;
+                event_group = g;
+                read_type = SRT_TEMPLATE;
+            }
         }
+    } else {
+        // R7
+        basecall_group = "2D_000";
+        event_group = "2D_000";
+        read_type = SRT_2D;
     }
 
     read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
@@ -130,12 +139,6 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         // Do we want to load this strand?
         if(! (read_type == SRT_2D || read_type == si) ) {
             continue;
-        }
-
-        // Detect and reject R7 reads
-        if(f_p->have_basecall_model(si)) {
-            fprintf(stderr, "Error: R7 read detected, please use nanopolish-0.4\n");
-            exit(EXIT_FAILURE);
         }
 
         // Load the events for this strand
@@ -156,6 +159,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
             p_model_states.push_back(f5_event.p_model_state);
         }
 
+
         // we need the 1D event map and sequence to calculate calibration parameters
         // these will be copied into the member fields later if this is a 1D read,
         // or discarded if this is a 2D read
@@ -163,103 +167,22 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
         read_sequences_1d[si] = f_p->get_basecall_seq(si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT, event_group);
         event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
-        std::vector<EventAlignment> alignment =
-            get_eventalignment_for_1d_basecalls(read_sequences_1d[si], event_maps_1d[si], 5, si);
-
-        // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
-        double keep_fraction = 0.75;
-        std::vector<double> sorted_p_model_states = p_model_states;
-        std::sort(sorted_p_model_states.begin(), sorted_p_model_states.end());
-        double p_model_state_threshold = sorted_p_model_states[sorted_p_model_states.size() * (1 - keep_fraction)];
-
-        std::string blacklist_kmer = "CCTAG";
-        std::vector<EventAlignment> filtered;
-
-        assert(p_model_states.size() == events[si].size());
-
-        for(const auto& ea : alignment) {
-            if((!ea.rc && ea.ref_kmer == blacklist_kmer) ||
-               (ea.rc && ea.ref_kmer == gDNAAlphabet.reverse_complement(blacklist_kmer)))
-            {
-                continue;
-            }
-
-            if(p_model_states[ea.event_idx] < p_model_state_threshold)
-                continue;
-
-            filtered.push_back(ea);
-        }
-
-        // Load the pore model (if requested) and calibrate it
-        if( (flags & SRF_NO_MODEL) == 0) {
-
-            // For the template strad we only have one candidate model
-            // For complement we need to select between the two possible models
-            std::vector<const PoreModel*> candidate_models;
-            if(si == 0) {
-                candidate_models.push_back(&PoreModelSet::get_model("base", "t.007"));
-            } else {
-                for(const std::string& cmn : { "c.p1.007", "c.p2.007" } ) {
-                    if(PoreModelSet::has_model("base", cmn)) {
-                       candidate_models.push_back(&PoreModelSet::get_model("base", cmn));
-                    }
-                }
-            }
-
-            PoreModel best_model;
-            double best_model_var = INFINITY;
-
-            for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
-
-                pore_model[si] = *candidate_models[model_idx];
-
-                // Initialize to default scaling parameters
-                pore_model[si].shift = 0.0;
-                pore_model[si].scale = 1.0;
-                pore_model[si].drift = 0.0;
-                pore_model[si].var = 1.0;
-                pore_model[si].scale_sd = 1.0;
-                pore_model[si].var_sd = 1.0;
-
-                pore_model[si].bake_gaussian_parameters();
-                
-                // run recalibration to get the best set of scaling parameters and the residual
-                // between the (scaled) event levels and the model
-                bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
-                if(calibrated) {
-                    if(pore_model[si].var < best_model_var) {
-                        best_model_var = pore_model[si].var;
-                        best_model = pore_model[si];
-                    }
-                }
-
-#ifdef DEBUG_MODEL_SELECTION
-                fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
-                                 "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
-                                        read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale, 
-                                        pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
-#endif
-            }
-
-            if(best_model_var != INFINITY) {
-#ifdef DEBUG_MODEL_SELECTION
-                fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
-#endif
-                pore_model[si] = best_model;
-                pore_model[si].bake_gaussian_parameters();
-                
-                // initialize transition parameters
-                parameters[si].initialize(pore_model[si].metadata);
-            } else {
-                // could not find a model for this strand, discard it
-                events[si].clear();
-            }
+            
+        // run version-specific load
+        if(f_p->have_basecall_model(si)) {
+            _load_R7(f_p, si);
+        } else {
+            _load_R9(f_p, si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
         }
     }
 
     // Build the map from k-mers of the read sequence to events
     if(read_type == SRT_2D) {
-        build_event_map_2d(f_p, basecall_group);
+        if(pore_model[0].metadata.kit == KV_SQK007) {
+            build_event_map_2d_r9(f_p, basecall_group);
+        } else {
+            build_event_map_2d_r7(f_p, basecall_group);
+        }
     } else {
         assert(read_type < NUM_STRANDS);
         this->base_to_event_map.swap(event_maps_1d[read_type]);
@@ -286,6 +209,117 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     }
 
     delete f_p;
+}
+
+void SquiggleRead::_load_R7(fast5::File* f_p, uint32_t si)
+{
+    // Load the pore model for this strand
+    pore_model[si] = PoreModel( f_p, si );
+
+    // initialize transition parameters
+    parameters[si].initialize(get_model_metadata_from_name(pore_model[si].name));
+}
+
+void SquiggleRead::_load_R9(fast5::File* f_p, 
+                            uint32_t si, 
+                            const std::string& read_sequence_1d,
+                            const std::vector<EventRangeForBase>& event_map_1d,
+                            const std::vector<double>& p_model_states,
+                            const uint32_t flags)
+{
+    
+    std::vector<EventAlignment> alignment =
+        get_eventalignment_for_1d_basecalls(read_sequence_1d, event_map_1d, 5, si);
+
+    // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
+    double keep_fraction = 0.75;
+    std::vector<double> sorted_p_model_states = p_model_states;
+    std::sort(sorted_p_model_states.begin(), sorted_p_model_states.end());
+    double p_model_state_threshold = sorted_p_model_states[sorted_p_model_states.size() * (1 - keep_fraction)];
+
+    std::string blacklist_kmer = "CCTAG";
+    std::vector<EventAlignment> filtered;
+
+    assert(p_model_states.size() == events[si].size());
+
+    for(const auto& ea : alignment) {
+        if((!ea.rc && ea.ref_kmer == blacklist_kmer) ||
+           (ea.rc && ea.ref_kmer == gDNAAlphabet.reverse_complement(blacklist_kmer)))
+        {
+            continue;
+        }
+
+        if(p_model_states[ea.event_idx] < p_model_state_threshold)
+            continue;
+
+        filtered.push_back(ea);
+    }
+
+    // Load the pore model (if requested) and calibrate it
+    if( (flags & SRF_NO_MODEL) == 0) {
+
+        // For the template strad we only have one candidate model
+        // For complement we need to select between the two possible models
+        std::vector<const PoreModel*> candidate_models;
+        if(si == 0) {
+            candidate_models.push_back(&PoreModelSet::get_model("base", "t.007"));
+        } else {
+            for(const std::string& cmn : { "c.p1.007", "c.p2.007" } ) {
+                if(PoreModelSet::has_model("base", cmn)) {
+                   candidate_models.push_back(&PoreModelSet::get_model("base", cmn));
+                }
+            }
+        }
+
+        PoreModel best_model;
+        double best_model_var = INFINITY;
+
+        for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
+
+            pore_model[si] = *candidate_models[model_idx];
+
+            // Initialize to default scaling parameters
+            pore_model[si].shift = 0.0;
+            pore_model[si].scale = 1.0;
+            pore_model[si].drift = 0.0;
+            pore_model[si].var = 1.0;
+            pore_model[si].scale_sd = 1.0;
+            pore_model[si].var_sd = 1.0;
+
+            pore_model[si].bake_gaussian_parameters();
+            
+            // run recalibration to get the best set of scaling parameters and the residual
+            // between the (scaled) event levels and the model
+            bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
+            if(calibrated) {
+                if(pore_model[si].var < best_model_var) {
+                    best_model_var = pore_model[si].var;
+                    best_model = pore_model[si];
+                }
+            }
+
+#ifdef DEBUG_MODEL_SELECTION
+            fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
+                             "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
+                                    read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale, 
+                                    pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
+#endif
+        }
+
+        if(best_model_var != INFINITY) {
+#ifdef DEBUG_MODEL_SELECTION
+            fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
+#endif
+            pore_model[si] = best_model;
+            pore_model[si].bake_gaussian_parameters();
+            
+            // initialize transition parameters
+            parameters[si].initialize(pore_model[si].metadata);
+        } else {
+            // could not find a model for this strand, discard it
+            events[si].clear();
+        }
+    }
 }
 
 std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(fast5::File* f_p,
@@ -331,7 +365,7 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(fast5::File* f_p
     return out_event_map;
 }
 
-void SquiggleRead::build_event_map_2d(fast5::File* f_p, const std::string& basecall_group)
+void SquiggleRead::build_event_map_2d_r9(fast5::File* f_p, const std::string& basecall_group)
 {
     //
     // Build the map from read k-mers to events
@@ -402,6 +436,93 @@ void SquiggleRead::build_event_map_2d(fast5::File* f_p, const std::string& basec
 
                 assert(erfb.indices[si].start < (int)events[si].size());
                 assert(erfb.indices[si].stop < (int)events[si].size());
+            }
+        }
+        //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);
+        start_ea_idx = end_ea_idx;
+    }
+}
+
+//as above but with a hack to get around a metrichor bug...
+void SquiggleRead::build_event_map_2d_r7(fast5::File* f_p, const std::string& basecall_group)
+{
+    //
+    // Build the map from read k-mers to events
+    //
+    std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_basecall_event_alignment(basecall_group);
+    assert(!read_sequence.empty());
+
+    const uint32_t k = pore_model[T_IDX].k;
+    assert(pore_model[C_IDX].k == k);
+
+    uint32_t n_read_kmers = read_sequence.size() - k + 1;
+    base_to_event_map.resize(n_read_kmers);
+
+    uint32_t read_kidx = 0;
+
+    // The alignment format in the fast5 file is slightly bizarre in that it is
+    // (template_idx, complement_idx, kmer) tuples. Some read kmers may not have a
+    // tuple and some might have multiple tuples. We need to use the read kmer
+    // sequences to work out which read base each entry is referring to
+    uint32_t start_ea_idx = 0;
+    uint32_t end_ea_idx = 0;
+
+    while(start_ea_idx < event_alignments.size()) {
+
+hack:
+        uint32_t prev_kidx = read_kidx;
+
+        // Advance the kmer index until we have found the read kmer
+        // this tuple refers to
+        while(read_kidx < n_read_kmers &&
+              read_sequence.compare(read_kidx, k,
+                                    array2str(event_alignments[start_ea_idx].kmer),
+                                    0, k) != 0)
+        {
+            read_kidx += 1;
+        }
+        
+        // In the most recent version of metrichor occasionally
+        // a kmer will be present in the alignment table
+        // that is not in the 2D read. This awful hack
+        // will skip such k-mers. It is not a long-term
+        // solution, only until metrichor is fixed.
+        if(read_kidx - prev_kidx > 10) {
+            start_ea_idx += 1;
+            read_kidx = prev_kidx;
+            goto hack;
+        }
+
+        // Advance the event alignment end index to the last tuple
+        // with the same kmer as the start of this range
+        end_ea_idx = start_ea_idx;
+        while(end_ea_idx < event_alignments.size() &&
+                array2str(event_alignments[start_ea_idx].kmer).compare(0, k,
+                          array2str(event_alignments[end_ea_idx].kmer), 0, k) == 0)
+        {
+            end_ea_idx += 1;
+        }
+
+        //printf("Base-to-event map kidx: %d %s event_tuple [%d %d]\n", read_kidx, read_sequence.substr(read_kidx, k).c_str(), start_ea_idx, end_ea_idx);
+        EventRangeForBase& erfb =  base_to_event_map[read_kidx];
+        for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
+
+            fast5::Event_Alignment_Entry& eae = event_alignments[i];
+            
+            for(uint32_t si = 0; si <= 1; ++si) {
+                uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
+                
+                // no event for this strand, nothing to update
+                if(incoming_idx == -1)
+                    continue;
+
+                if(erfb.indices[si].start == -1) {
+                    erfb.indices[si].start = incoming_idx;        
+                }
+                erfb.indices[si].stop = incoming_idx;
+
+                assert(erfb.indices[si].start < events[si].size());
+                assert(erfb.indices[si].stop < events[si].size());
             }
         }
         //printf("\t[%d %d] [%d %d]\n", erfb.indices[0].start, erfb.indices[0].stop, erfb.indices[1].start, erfb.indices[1].stop);

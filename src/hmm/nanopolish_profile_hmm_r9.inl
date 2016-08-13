@@ -335,7 +335,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
-            float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
+            float lp_emission_m = log_probability_match_r9(*data.read, rank, event_idx, data.strand);
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;
