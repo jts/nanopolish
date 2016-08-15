@@ -39,7 +39,7 @@ HTS_LIB=./htslib/libhts.a
 HTS_INCLUDE=-I./htslib
 
 # Include the header-only fast5 library
-FAST5_INCLUDE=-I./fast5
+FAST5_INCLUDE=-I./fast5/src
 
 # Include the src subdirectories
 NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
