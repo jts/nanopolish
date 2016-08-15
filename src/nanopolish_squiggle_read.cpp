@@ -11,7 +11,7 @@
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_methyltrain.h"
-#include "src/fast5.hpp"
+#include <fast5.hpp>
 
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :

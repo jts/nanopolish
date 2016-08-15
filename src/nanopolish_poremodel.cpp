@@ -11,7 +11,7 @@
 #include <sstream>
 #include <cstring>
 #include <bits/stl_algo.h>
-#include "../fast5/src/fast5.hpp"
+#include <fast5.hpp>
 
 void PoreModel::bake_gaussian_parameters()
 {

@@ -15,7 +15,7 @@
 #include <string>
 #include <map>
 #include "nanopolish_model_names.h"
-#include "../fast5/src/fast5.hpp"
+#include <fast5.hpp>
 
 //
 struct PoreModelStateParams
