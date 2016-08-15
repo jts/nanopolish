@@ -99,10 +99,6 @@ class VariantKeyComp
         }
 };
 
-// Determine potential variants between the reference and haplotype string
-std::vector<Variant> extract_variants(const std::string& reference, 
-                                      const std::string& haplotype);
-
 // Remove variants that are in the vector fewer than min_count times
 void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 
