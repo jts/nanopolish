@@ -248,6 +248,8 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
     }
 
     std::replace(name.begin(), name.end(), '/', '_');
+
+    metadata = get_model_metadata_from_name(name);
 }
 
 void PoreModel::write(const std::string filename, const std::string modelname) const

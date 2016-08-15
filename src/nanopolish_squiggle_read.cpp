@@ -102,7 +102,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     auto available_groups = f_p->get_basecall_group_list();
 
     // precedence: 2D_NNN, RNN_1D_NNN, 1D_NNN
-    bool is_r9_read = false;
+    bool is_r9_read = !f_p->have_basecall_model(0);
 
     std::string basecall_group = "1D_000";
     std::string event_group = "1D_000";
@@ -169,7 +169,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
             
         // run version-specific load
-        if(f_p->have_basecall_model(si)) {
+        if(!is_r9_read) {
             _load_R7(f_p, si);
         } else {
             _load_R9(f_p, si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
@@ -532,6 +532,10 @@ hack:
 
 void SquiggleRead::replace_models(const std::string& model_type)
 {
+    // hack: do not replace if not 007 model
+    if(this->pore_model[0].metadata.kit != KV_SQK007) {
+        return;
+    }
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
