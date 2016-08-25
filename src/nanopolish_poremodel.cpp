@@ -110,7 +110,7 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
             parser >> dummy >> in_kit;
 
             if(in_kit == "SQK006") {
-                this->metadata.kit = KV_SQK007;
+                this->metadata.kit = KV_SQK006;
             } else if(in_kit == "SQK007") {
                 this->metadata.kit = KV_SQK007;
             } else {
