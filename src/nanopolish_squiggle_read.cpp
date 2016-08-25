@@ -84,6 +84,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
 
+    auto available_groups = f_p->get_basecall_group_list();
+
     // precedence: 2D_NNN, RNN_1D_NNN, 1D_NNN
     bool is_r9_read = !f_p->have_basecall_model(0);
     std::string basecall_group = "1D_000";
