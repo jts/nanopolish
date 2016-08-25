@@ -84,26 +84,8 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
 
-    // Check if an alternative analysis group is present in the read name
-    int group_id = -1;
-    /*
-    size_t bc_2d_pos = read_name.find("Basecall_2D");
-    if(bc_2d_pos != std::string::npos) {
-        int ret = sscanf(read_name.substr(bc_2d_pos).c_str(), "Basecall_2D_%03d_2d", &group_id);
-    }
-    */
-    // default to 0 group
-    if(group_id == -1) {
-        group_id = 0;
-    }
-
-    //f_p->set_basecalled_group_id(group_id);
-
-    auto available_groups = f_p->get_basecall_group_list();
-
     // precedence: 2D_NNN, RNN_1D_NNN, 1D_NNN
     bool is_r9_read = !f_p->have_basecall_model(0);
-
     std::string basecall_group = "1D_000";
     std::string event_group = "1D_000";
 
@@ -123,8 +105,19 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
     } else {
         // R7
+
+        // always use 2D basecalls
         basecall_group = "2D_000";
+
+        // Older R7 data has events in the 2D group
+        // Newer R7 data has events in the 1D group
+        // Switch the group that we use for events depending
+        // on event availability.
         event_group = "2D_000";
+        if(!f_p->have_basecall_events(0, "2D_000")) {
+            assert(f_p->have_basecall_events(0, "1D_000"));
+            event_group = "1D_000";
+        }
         read_type = SRT_2D;
     }
 
