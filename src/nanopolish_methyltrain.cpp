@@ -828,6 +828,7 @@ int methyltrain_main(int argc, char** argv)
     
     // copy the input model into a new type that will hold the trained models
     const PoreModelMap& input_models = PoreModelSet::get_models(opt::initial_model_type);
+    assert(!input_models.empty());
     for(auto model_iter : input_models) {
         PoreModel model_copy = model_iter.second;
         model_copy.type = opt::trained_model_type;

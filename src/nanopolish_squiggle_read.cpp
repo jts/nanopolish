@@ -503,16 +503,16 @@ hack:
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 
             fast5::Event_Alignment_Entry& eae = event_alignments[i];
-            
+
             for(uint32_t si = 0; si <= 1; ++si) {
                 uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
-                
+
                 // no event for this strand, nothing to update
                 if(incoming_idx == -1)
                     continue;
 
                 if(erfb.indices[si].start == -1) {
-                    erfb.indices[si].start = incoming_idx;        
+                    erfb.indices[si].start = incoming_idx;
                 }
                 erfb.indices[si].stop = incoming_idx;
 
@@ -527,11 +527,6 @@ hack:
 
 void SquiggleRead::replace_models(const std::string& model_type)
 {
-    // hack: do not replace if not 007 model
-    if(this->pore_model[0].metadata.kit != KV_SQK007) {
-        return;
-    }
-
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
         // only replace this model if the strand was loaded
