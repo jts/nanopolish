@@ -283,14 +283,14 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
 
 std::vector< StateTrainingData >
 generate_training_data(const ParamMixture& mixture, size_t n_data,
-                       const std::array< float, 2 >& read_var_rg = { .5f, 1.5f },
+                       const std::array< float, 2 >& scaled_read_var_rg = { .5f, 1.5f },
                        const std::array< float, 2 >& read_scale_sd_rg = { .5f, 1.5f },
                        const std::array< float, 2 >& read_var_sd_rg = { .5f, 1.5f })
 {
     // check parameter sizes
     size_t n_components = mixture.log_weights.size();
     assert(mixture.params.size() == n_components);
-    assert(read_var_rg[0] < read_var_rg[1]);
+    assert(scaled_read_var_rg[0] < scaled_read_var_rg[1]);
     assert(read_scale_sd_rg[0] < read_scale_sd_rg[1]);
     assert(read_var_sd_rg[0] < read_var_sd_rg[1]);
     // set random seed
@@ -320,9 +320,9 @@ generate_training_data(const ParamMixture& mixture, size_t n_data,
         size_t j = discrete_dist(weights.begin(), weights.end())(rg);
         ++population_size[j];
         assert(j < n_components);
-        // draw read_var
-        data[i].read_var = uniform_dist(read_var_rg[0], read_var_rg[1])(rg);
-        data[i].log_read_var = std::log(data[i].read_var);
+        // draw scaled_read_var
+        data[i].scaled_read_var = uniform_dist(scaled_read_var_rg[0], scaled_read_var_rg[1])(rg);
+        data[i].log_scaled_read_var = std::log(data[i].scaled_read_var);
         // draw read_scale_sd
         data[i].read_scale_sd = uniform_dist(read_scale_sd_rg[0], read_scale_sd_rg[1])(rg);
         data[i].log_read_scale_sd = std::log(data[i].read_scale_sd);
@@ -331,8 +331,8 @@ generate_training_data(const ParamMixture& mixture, size_t n_data,
         data[i].log_read_var_sd = std::log(data[i].read_var_sd);
         // scale the state
         auto scaled_params = mixture.params[j];
-        scaled_params.level_stdv *= data[i].read_var;
-        scaled_params.level_log_stdv += data[i].log_read_var;
+        scaled_params.level_stdv *= data[i].scaled_read_var;
+        scaled_params.level_log_stdv += data[i].log_scaled_read_var;
         scaled_params.sd_lambda *= data[i].read_var_sd / data[i].read_scale_sd;
         scaled_params.sd_log_lambda += data[i].log_read_var_sd - data[i].log_read_scale_sd;
         // draw level_mean & level_stdv
@@ -346,7 +346,7 @@ generate_training_data(const ParamMixture& mixture, size_t n_data,
             << "data " << i << " " << j << " "
             << data[i].level_mean << " "
             << data[i].level_stdv << " "
-            << data[i].read_var << " "
+            << data[i].scaled_read_var << " "
             << data[i].read_scale_sd << " "
             << data[i].read_var_sd << std::endl;
     }

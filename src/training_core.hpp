@@ -34,6 +34,8 @@ struct MinimalStateTrainingData
         this->log_level_stdv = std::log(this->level_stdv);
         this->read_var = sr.pore_model[ea.strand_idx].var;
         this->log_read_var = std::log(this->read_var);
+        this->scaled_read_var = sr.pore_model[ea.strand_idx].var / sr.pore_model[ea.strand_idx].scale;
+        this->log_scaled_read_var = std::log(this->scaled_read_var);
         this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
         this->log_read_scale_sd = std::log(this->read_scale_sd);
         this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
@@ -42,7 +44,8 @@ struct MinimalStateTrainingData
     
     MinimalStateTrainingData(double level_mean,
                              double level_stdv,
-                             double read_var)
+                             double read_var,
+                             double read_scale)
     {
         // scale the observation to the expected pore model
         this->level_mean = level_mean;
@@ -51,6 +54,8 @@ struct MinimalStateTrainingData
         this->log_level_stdv = std::log(this->level_stdv);
         this->read_var = read_var;
         this->log_read_var = std::log(this->read_var);
+        this->scaled_read_var = read_var / read_scale;
+        this->log_scaled_read_var = std::log(this->scaled_read_var);
         this->read_scale_sd = 1.0; // unused
         this->log_read_scale_sd = std::log(this->read_scale_sd);
         this->read_var_sd = 1.0; // unused
@@ -64,7 +69,7 @@ struct MinimalStateTrainingData
     }
     static void write_header_nonl(std::ostream& os)
     {
-        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tread_var\tread_scale_sd\tread_var_sd";
+        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tscaled_read_var\tread_scale_sd\tread_var_sd";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
@@ -79,7 +84,7 @@ struct MinimalStateTrainingData
            << kmer << '\t'
            << std::fixed << std::setprecision(2) << level_mean << '\t'
            << level_stdv << '\t'
-           << read_var << '\t'
+           << scaled_read_var << '\t'
            << read_scale_sd << '\t'
            << read_var_sd;
     }
@@ -93,6 +98,8 @@ struct MinimalStateTrainingData
     float log_level_stdv;
     float read_var;
     float log_read_var;
+    float scaled_read_var;
+    float log_scaled_read_var;
     float read_scale_sd;
     float log_read_scale_sd;
     float read_var_sd;

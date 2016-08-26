@@ -36,8 +36,8 @@ ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, con
             for(size_t j = 0; j < n_components; ++j) {
                 // We need to scale the mixture component parameters by the per-read var factor
                 PoreModelStateParams scaled_state = curr_mixture.params[j];
-                scaled_state.level_stdv *= data[i].read_var;
-                scaled_state.level_log_stdv += data[i].log_read_var;
+                scaled_state.level_stdv *= data[i].scaled_read_var;
+                scaled_state.level_log_stdv += data[i].log_scaled_read_var;
                 log_pdf[i][j] = log_normal_pdf(data[i].level_mean, scaled_state);
                 assert(not std::isnan(log_pdf[i][j]));
                 LOG("training_core", debug1)
@@ -106,15 +106,15 @@ ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, con
 
         // update stdvs
         //
-        //   var_j := sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / read_var_i )^2 ) / sum_i resp[i][j]
-        //          = sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / read_var_i )^2 ) / ( w'[j] * n_data )
+        //   var_j := sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / scaled_read_var_i )^2 ) / sum_i resp[i][j]
+        //          = sum_i ( resp[i][j] * ( ( level_mean_i - mu_j ) / scaled_read_var_i )^2 ) / ( w'[j] * n_data )
         //
         vector< float > new_log_var(2);
         for (size_t j = 0; j < n_components; ++j) {
             logsumset< float > numer_terms(use_multiset_logsum);
             for (size_t i = 0; i < n_data; ++i) {
                 float v = std::abs(data[i].level_mean - std::exp(new_log_mean[j]));
-                numer_terms.add(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0 * (std::log(v) - data[i].log_read_var) : 0.0));
+                numer_terms.add(log_resp[i][j] + (not std::isnan(v) and v > 0? 2.0 * (std::log(v) - data[i].log_scaled_read_var) : 0.0));
             }
             float log_numer = numer_terms.val();
             new_log_var[j] = log_numer - (log_n_data + new_mixture.log_weights[j]);
@@ -152,15 +152,15 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
 
     // compute gaussian pdfs
     //
-    //   pdf[i][j].first = gauss(mu_j, sigma_j * read_var_i, level_mean_i)
+    //   pdf[i][j].first = gauss(mu_j, sigma_j * scaled_read_var_i, level_mean_i)
     //
     vector< vector< std::pair< float, float > > > log_pdf(n_data);
     for (size_t i = 0; i < n_data; ++i) {
         log_pdf[i].resize(n_components);
         for (size_t j = 0; j < n_components; ++j) {
             PoreModelStateParams scaled_state = in_mixture.params[j];
-            scaled_state.level_stdv *= data[i].read_var;
-            scaled_state.level_log_stdv += data[i].log_read_var;
+            scaled_state.level_stdv *= data[i].scaled_read_var;
+            scaled_state.level_log_stdv += data[i].log_scaled_read_var;
             log_pdf[i][j].first = log_normal_pdf(data[i].level_mean, scaled_state);
             assert(not std::isnan(log_pdf[i][j].first));
             LOG("training_core", debug1)
