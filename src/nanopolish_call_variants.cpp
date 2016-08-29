@@ -841,8 +841,9 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     Haplotype called_haplotype(alignments.get_region_contig(),
                                alignments.get_region_start(),
                                alignments.get_reference());
-
+    // Calling strategy in consensus mode
     while(opt::consensus_mode && round++ < MAX_ROUNDS) {
+        assert(opt::consensus_mode);
         if(opt::verbose > 3) {
             fprintf(stderr, "Round %zu\n", round);
         }
@@ -866,6 +867,13 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                                  region_end,
                                                  alignment_flags);
         }
+    }
+
+    // Calling strategy in reference-based variant calling mode
+    if(!opt::consensus_mode) {
+        called_haplotype = call_haplotype_from_candidates(alignments,
+                                                          candidate_variants,
+                                                          alignment_flags);
     }
 
     if(opt::fix_homopolymers) {
