@@ -278,12 +278,14 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                     std::string rc_str = counts.str();
                     v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
 
+                    /*
                     std::stringstream scores;
                     std::ostream_iterator<float> scores_out(scores, ",");
                     std::copy(std::begin(relative_lp_by_read), std::end(relative_lp_by_read), scores_out);
                     std::string scores_str = scores.str();
                     v.add_info("Scores", scores_str.substr(0, scores_str.size() - 1));
-                    
+                    */
+
                     v.quality = best_lp - base_lp;
                 }
             }
