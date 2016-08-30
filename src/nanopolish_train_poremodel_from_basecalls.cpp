@@ -202,7 +202,7 @@ void alignment_to_training_data(const SquiggleRead* read,
         // If the scale/shift values are off, or the events are erroneous, the scaled events can have negative values
         // causing the training to implode. Filter these here.
         if(level >= 1.0) {
-            StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var);
+            StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var, read->pore_model[a.strand_idx].scale);
             out_data->at(kmer_rank).push_back(std);
         }
 
