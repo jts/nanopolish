@@ -27,35 +27,44 @@ struct MinimalStateTrainingData
                              const std::string&,
                              const std::string&)
     {
-        // scale the observation to the expected pore model
-        this->level_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
-        this->log_level_mean = std::log(this->level_mean);
-        this->level_stdv = sr.get_scaled_stdv(ea.event_idx, ea.strand_idx);
-        this->log_level_stdv = std::log(this->level_stdv);
-        this->read_var = sr.pore_model[ea.strand_idx].var;
-        this->log_read_var = std::log(this->read_var);
-        this->scaled_read_var = sr.pore_model[ea.strand_idx].var / sr.pore_model[ea.strand_idx].scale;
-        this->log_scaled_read_var = std::log(this->scaled_read_var);
+        initialize(sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx),
+                   sr.get_scaled_stdv(ea.event_idx, ea.strand_idx),
+                   sr.pore_model[ea.strand_idx].var,
+                   sr.pore_model[ea.strand_idx].scale,
+                   sr.get_event_var(ea.event_idx, ea.strand_idx));
+
         this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
         this->log_read_scale_sd = std::log(this->read_scale_sd);
         this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
         this->log_read_var_sd = std::log(this->read_var_sd);
     }
-    
+
     MinimalStateTrainingData(double level_mean,
                              double level_stdv,
                              double read_var,
-                             double read_scale)
+                             double read_scale,
+                             double event_var)
     {
-        // scale the observation to the expected pore model
+        initialize(level_mean, level_stdv, read_var, read_scale, event_var);
+    }
+
+    void initialize(double level_mean,
+                    double level_stdv,
+                    double read_var,
+                    double read_scale,
+                    double event_var)
+    {
         this->level_mean = level_mean;
         this->log_level_mean = std::log(this->level_mean);
         this->level_stdv = level_stdv;
         this->log_level_stdv = std::log(this->level_stdv);
         this->read_var = read_var;
         this->log_read_var = std::log(this->read_var);
-        this->scaled_read_var = read_var / read_scale;
+        this->scaled_read_var = event_var * read_var / read_scale;
         this->log_scaled_read_var = std::log(this->scaled_read_var);
+
+        // these fields are unused by default, the specialized constructor
+        // will set them if needed
         this->read_scale_sd = 1.0; // unused
         this->log_read_scale_sd = std::log(this->read_scale_sd);
         this->read_var_sd = 1.0; // unused
