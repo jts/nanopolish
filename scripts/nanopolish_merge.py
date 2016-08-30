@@ -60,7 +60,7 @@ def merge_into_consensus(consensus, incoming, overlap_length):
     return merged
 
 # Do not change, must match nanopolish_makerange.py segment lengths
-SEGMENT_LENGTH = 10000
+SEGMENT_LENGTH = 50000
 OVERLAP_LENGTH = 200
 
 segments_by_name = dict()

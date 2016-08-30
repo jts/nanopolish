@@ -79,10 +79,12 @@ inline float log_probability_match_r9(const SquiggleRead& read,
     float stdv = read.get_stdv(event_idx, strand);
     float log_stdv = read.get_log_stdv(event_idx, strand);
     PoreModelStateParams state = pm.get_scaled_state(kmer_rank);
-    
-    // add the event's stdv to the model stdv
-    state.level_stdv = sqrt(pow(state.level_stdv, 2.0) + pow(stdv, 2.0));
-    state.level_log_stdv = 0.5 * add_logs(2.0 * state.level_log_stdv, 2.0 * log_stdv);
+
+    // add per-event variance adjustment
+    float event_var = read.get_event_var(event_idx, strand);
+    float log_event_var = read.get_log_event_var(event_idx, strand);
+    state.level_stdv *= event_var;
+    state.level_log_stdv += log_event_var;
 
     float lp = log_normal_pdf(level, state);
 
