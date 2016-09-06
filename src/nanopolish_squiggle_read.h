@@ -39,8 +39,6 @@ struct SquiggleEvent
     double start_time; // start time of the event in seconds
     float duration;     // duration of the event in seconds
     float log_stdv;   // precompute for efficiency
-    float event_var;  // gaussian scaling factor for this event
-    float log_event_var; // precomputed
 };
 
 struct IndexPair
@@ -84,7 +82,6 @@ class SquiggleRead
             return events[strand][event_idx].duration;
         }
 
-
         // Return the observed current level after correcting for drift
         inline float get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
         {
@@ -102,18 +99,6 @@ class SquiggleRead
         inline float get_log_stdv(uint32_t event_idx, uint32_t strand) const
         {
             return events[strand][event_idx].log_stdv;
-        }
-
-        // Return the current stdv for the given event
-        inline float get_event_var(uint32_t event_idx, uint32_t strand) const
-        {
-            return events[strand][event_idx].event_var;
-        }
-
-        // Return log of the current stdv for the given event
-        inline float get_log_event_var(uint32_t event_idx, uint32_t strand) const
-        {
-            return events[strand][event_idx].log_event_var;
         }
 
         // Return the observed current level after correcting for drift, shift and scale

@@ -53,6 +53,7 @@ struct ScoredSite
         ll_unmethylated[1] = 0;
         ll_methylated[0] = 0;
         ll_methylated[1] = 0;
+        strands_scored = 0;
     }
 
     std::string chromosome;
@@ -64,6 +65,7 @@ struct ScoredSite
     // scores per strand
     double ll_unmethylated[2];
     double ll_methylated[2];
+    int strands_scored;
 
     //
     static bool sort_by_position(const ScoredSite& a, const ScoredSite& b) { return a.start_position < b.start_position; }
@@ -143,6 +145,11 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
     std::string read_name = bam_get_qname(record);
     std::string fast5_path = name_map.get_path(read_name);
     SquiggleRead sr(read_name, fast5_path);
+
+    // Skip non-2D reads
+    if(!sr.has_events_for_strand(T_IDX) || !sr.has_events_for_strand(C_IDX)) {
+        return;
+    }
 
     // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
@@ -288,6 +295,7 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
                     // upon output below the strand scores will be summed
                     iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
                     iter->second.ll_methylated[strand_idx] = methylated_score;
+                    iter->second.strands_scored += 1;
                 }
             }
 
@@ -307,6 +315,11 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
 
             const ScoredSite& ss = iter->second;
 
+            // only output when both strands scored this site
+            if(ss.strands_scored != 2) {
+                continue;
+            }
+
             double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
 
@@ -324,6 +337,7 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
             ll_ratio_sum_strand[1] += ss.ll_methylated[1] - ss.ll_unmethylated[1];
             ll_ratio_sum_both += diff;
         }
+
         std::string complement_model = sr.pore_model[C_IDX].name;
         fprintf(handles.read_writer, "%s\t%.2lf\t%zu\t%s\tNumPositive=%zu\n", fast5_path.c_str(), ll_ratio_sum_both, site_score_map.size(), complement_model.c_str(), num_positive);
     

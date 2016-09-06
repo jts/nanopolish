@@ -30,8 +30,7 @@ struct MinimalStateTrainingData
         initialize(sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx),
                    sr.get_scaled_stdv(ea.event_idx, ea.strand_idx),
                    sr.pore_model[ea.strand_idx].var,
-                   sr.pore_model[ea.strand_idx].scale,
-                   sr.get_event_var(ea.event_idx, ea.strand_idx));
+                   sr.pore_model[ea.strand_idx].scale);
 
         this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
         this->log_read_scale_sd = std::log(this->read_scale_sd);
@@ -42,17 +41,15 @@ struct MinimalStateTrainingData
     MinimalStateTrainingData(double level_mean,
                              double level_stdv,
                              double read_var,
-                             double read_scale,
-                             double event_var)
+                             double read_scale)
     {
-        initialize(level_mean, level_stdv, read_var, read_scale, event_var);
+        initialize(level_mean, level_stdv, read_var, read_scale);
     }
 
     void initialize(double level_mean,
                     double level_stdv,
                     double read_var,
-                    double read_scale,
-                    double event_var)
+                    double read_scale)
     {
         this->level_mean = level_mean;
         this->log_level_mean = std::log(this->level_mean);
@@ -60,7 +57,7 @@ struct MinimalStateTrainingData
         this->log_level_stdv = std::log(this->level_stdv);
         this->read_var = read_var;
         this->log_read_var = std::log(this->read_var);
-        this->scaled_read_var = event_var * read_var / read_scale;
+        this->scaled_read_var = read_var / read_scale;
         this->log_scaled_read_var = std::log(this->scaled_read_var);
 
         // these fields are unused by default, the specialized constructor

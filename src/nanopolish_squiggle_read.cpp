@@ -146,25 +146,12 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         for(size_t ei = 0; ei < f5_events.size(); ++ei) {
             const fast5::Event_Entry& f5_event = f5_events[ei];
 
-            // For R9 data we add an extra multiplicative factor
-            // to the gaussian variance when events have poorly estimated levels
-            // Calculate this factor here.
-            float event_var = 1.0;
-            if(is_r9_read) {
-                const float ev_max = 2;
-                const float ev_k = 1;
-                const float ev_x0 = 2.5;
-                event_var = 1 + (ev_max / (1 + exp(-ev_k * (f5_event.stdv - ev_x0))));
-            }
-
-            float log_event_var = log(event_var);
             events[si][ei] = { static_cast<float>(f5_event.mean),
                                static_cast<float>(f5_event.stdv),
                                f5_event.start,
                                static_cast<float>(f5_event.length),
-                               static_cast<float>(log(f5_event.stdv)),
-                               event_var,
-                               log_event_var };
+                               static_cast<float>(log(f5_event.stdv)) 
+                             };
             assert(f5_event.p_model_state >= 0.0 && f5_event.p_model_state <= 1.0);
             p_model_states.push_back(f5_event.p_model_state);
         }
