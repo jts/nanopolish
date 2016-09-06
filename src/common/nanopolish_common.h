@@ -122,6 +122,11 @@ size_t nChoosek(size_t n, size_t k);
 template<class T>
 std::string array2str(const T& array)
 {
-    return std::string(array.begin(), array.end());
+    std::string s(array.data(), array.size());
+    size_t null_pos = s.find('\0');
+    if(null_pos != std::string::npos) {
+        s.erase(null_pos);
+    }
+    return s;
 }
 #endif

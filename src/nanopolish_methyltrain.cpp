@@ -105,7 +105,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"      --filter-policy=STR              filter reads for [R7-methylation] or [R9-nucleotide] project\n"
+"      --filter-policy=STR              filter reads for [R7] or [R9] project\n"
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --rounds=NUM                     number of training rounds to perform\n"
@@ -527,9 +527,10 @@ void parse_methyltrain_options(int argc, char** argv)
 
     // Parse the training target string
     if(filter_policy_str != "") {
-        if(filter_policy_str == "R9-nucleotide") {
-        } else if(filter_policy_str == "R7-methylation") {
-            // default, do nothing
+        if(filter_policy_str == "R9") {
+            opt::min_event_duration = 0.002;
+        } else if(filter_policy_str == "R7") {
+            opt::min_event_duration = 0.005;
         } else {
             std::cerr << SUBPROGRAM ": unknown --filter-policy\n";
             die = true;
@@ -827,6 +828,7 @@ int methyltrain_main(int argc, char** argv)
     
     // copy the input model into a new type that will hold the trained models
     const PoreModelMap& input_models = PoreModelSet::get_models(opt::initial_model_type);
+    assert(!input_models.empty());
     for(auto model_iter : input_models) {
         PoreModel model_copy = model_iter.second;
         model_copy.type = opt::trained_model_type;

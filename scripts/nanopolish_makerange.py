@@ -3,7 +3,7 @@ from Bio import SeqIO
 
 recs = [ (rec.name, len(rec.seq)) for rec in SeqIO.parse(open(sys.argv[1]), "fasta")]
 
-SEGMENT_LENGTH = 10000
+SEGMENT_LENGTH = 50000
 OVERLAP_LENGTH = 200
 
 for name, length in recs:

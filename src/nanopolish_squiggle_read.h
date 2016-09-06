@@ -15,7 +15,7 @@
 #include "nanopolish_eventalign.h"
 #include <string>
 
-// the type of the read 
+// the type of the read
 // do not change as template must always be 0 and complement 1
 enum SquiggleReadType
 {
@@ -82,7 +82,6 @@ class SquiggleRead
             return events[strand][event_idx].duration;
         }
 
-
         // Return the observed current level after correcting for drift
         inline float get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
         {
@@ -101,7 +100,7 @@ class SquiggleRead
         {
             return events[strand][event_idx].log_stdv;
         }
-        
+
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
         {
@@ -115,7 +114,7 @@ class SquiggleRead
         {
             return events[strand][event_idx].stdv / pore_model[strand].scale_sd;
         }
-        
+
         inline float get_time(uint32_t event_idx, uint32_t strand) const
         {
             return events[strand][event_idx].start_time - events[strand][0].start_time;
@@ -172,6 +171,14 @@ class SquiggleRead
                                                                                this->pore_model[strand_idx].var);
         }
 
+        // Version-specific intialization functions
+        void _load_R7(fast5::File* f_p, uint32_t si);
+        void _load_R9(fast5::File* f_p,
+                      uint32_t si, 
+                      const std::string& read_sequence_1d,
+                      const std::vector<EventRangeForBase>& event_map_1d,
+                      const std::vector<double>& p_model_states,
+                      const uint32_t flags);
 
         //
         // Data
@@ -214,7 +221,8 @@ class SquiggleRead
                                                           std::vector<fast5::Event_Entry>& f5_events);
 
         // as above but for the 2D sequence. this fills in both the template and complete event indices
-        void build_event_map_2d(fast5::File* f_p, const std::string& basecall_group);
+        void build_event_map_2d_r7(fast5::File* f_p, const std::string& basecall_group);
+        void build_event_map_2d_r9(fast5::File* f_p, const std::string& basecall_group);
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;

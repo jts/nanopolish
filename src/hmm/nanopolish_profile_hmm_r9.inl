@@ -3,31 +3,17 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_profile_hmm -- Profile Hidden Markov Model
+// nanopolish_profile_hmm_r9 -- Profile Hidden Markov Model
+// for R9 data
 //
-inline float calculate_skip_probability(const HMMInputSequence& sequence,
-                                        const HMMInputData& data,
-                                        uint32_t ki,
-                                        uint32_t kj)
-{
-    const PoreModel& pm = data.read->pore_model[data.strand];
-    const TransitionParameters& parameters = data.read->parameters[data.strand];
-
-    uint32_t rank_i = sequence.get_kmer_rank(ki, pm.k, data.rc);
-    uint32_t rank_j = sequence.get_kmer_rank(kj, pm.k, data.rc);
-
-    GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
-    GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
-
-    return parameters.get_skip_probability(level_i.mean, level_j.mean);
-}
 
 //#define USE_EXTERNAL_PARAMS 1
 
+#define TRANS_CLIP_SELF 0.9
+#define TRANS_START_TO_CLIP 0.5
+
 inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)
 {
-    const TransitionParameters& parameters = data.read->parameters[data.strand];
-
     std::vector<BlockTransitions> transitions(num_kmers);
     
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
@@ -35,7 +21,7 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         // probability of skipping k_i from k_(i - 1)
         float p_stay = 0.4; 
 #ifndef USE_EXTERNAL_PARAMS
-        float p_skip = 0.0025; //ki > 0 ? calculate_skip_probability(sequence, data, ki - 1, ki) : 0.0f;
+        float p_skip = 0.0025; 
         float p_bad = 0.001;
         float p_bad_self = p_bad;
         float p_skip_self = 0.3;
@@ -84,10 +70,10 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
 }
 
 // Output writer for the Forward Algorithm
-class ProfileHMMForwardOutput
+class ProfileHMMForwardOutputR9
 {
     public:
-        ProfileHMMForwardOutput(FloatMatrix* p) : p_fm(p), lp_end(-INFINITY) {}
+        ProfileHMMForwardOutputR9(FloatMatrix* p) : p_fm(p), lp_end(-INFINITY) {}
         
         //
         inline void update_cell(uint32_t row, uint32_t col, const HMMUpdateScores& scores, float lp_emission)
@@ -129,16 +115,16 @@ class ProfileHMMForwardOutput
         }
     
     private:
-        ProfileHMMForwardOutput(); // not allowed
+        ProfileHMMForwardOutputR9(); // not allowed
         FloatMatrix* p_fm;
         float lp_end;
 };
 
 // Output writer for the Viterbi Algorithm
-class ProfileHMMViterbiOutput
+class ProfileHMMViterbiOutputR9
 {
     public:
-        ProfileHMMViterbiOutput(FloatMatrix* pf, UInt8Matrix* pb) : p_fm(pf), p_bm(pb), lp_end(-INFINITY) {}
+        ProfileHMMViterbiOutputR9(FloatMatrix* pf, UInt8Matrix* pb) : p_fm(pf), p_bm(pb), lp_end(-INFINITY) {}
         
         inline void update_cell(uint32_t row, uint32_t col, const HMMUpdateScores& scores, float lp_emission)
         {
@@ -194,7 +180,7 @@ class ProfileHMMViterbiOutput
         }
     
     private:
-        ProfileHMMViterbiOutput(); // not allowed
+        ProfileHMMViterbiOutputR9(); // not allowed
 
         FloatMatrix* p_fm;
         UInt8Matrix* p_bm;
@@ -206,7 +192,6 @@ class ProfileHMMViterbiOutput
 
 // Allocate a vector with the model probabilities of skipping the first i events
 inline std::vector<float> make_pre_flanking(const HMMInputData& data,
-                                            const TransitionParameters& parameters,
                                             const uint32_t e_start,
                                             const uint32_t num_events)
 {
@@ -215,18 +200,18 @@ inline std::vector<float> make_pre_flanking(const HMMInputData& data,
     // base cases
 
     // no skipping
-    pre_flank[0] = log(1 - parameters.trans_start_to_clip);
+    pre_flank[0] = log(1 - TRANS_START_TO_CLIP);
 
     // skipping the first event
     // this includes the transition probability into and out of the skip state
-    pre_flank[1] = log(parameters.trans_start_to_clip) + // transition from start to the background state
+    pre_flank[1] = log(TRANS_START_TO_CLIP) + // transition from start to the background state
                    log_probability_background(*data.read, e_start, data.strand) + // emit from background
-                   log(1 - parameters.trans_clip_self); // transition to silent pre state
+                   log(1 - TRANS_CLIP_SELF); // transition to silent pre state
 
     // skip the remaining events
     for(size_t i = 2; i < pre_flank.size(); ++i) {
         uint32_t event_idx = e_start + (i - 1) * data.event_stride;
-        pre_flank[i] = log(parameters.trans_clip_self) +
+        pre_flank[i] = log(TRANS_CLIP_SELF) + 
                        log_probability_background(*data.read, event_idx, data.strand) + // emit from background
                        pre_flank[i - 1]; // this accounts for the transition from the start & to the silent pre
     
@@ -238,7 +223,6 @@ inline std::vector<float> make_pre_flanking(const HMMInputData& data,
 // Allocate a vector with the model probabilities of skipping the remaining
 // events after the alignment of event i
 inline std::vector<float> make_post_flanking(const HMMInputData& data,
-                                             const TransitionParameters& parameters,
                                              const uint32_t e_start,
                                              const uint32_t num_events)
 {
@@ -247,21 +231,21 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
     std::vector<float> post_flank(num_events, 0.0f);
 
     // base case, all events aligned
-    post_flank[num_events - 1] = log(1 - parameters.trans_start_to_clip);
+    post_flank[num_events - 1] = log(1 - TRANS_START_TO_CLIP);
 
     if(num_events > 1) {
         // base case, all events aligned but 1
         {
             uint32_t event_idx = e_start + (num_events - 1) * data.event_stride; // last event
             assert(event_idx == data.event_stop_idx);
-            post_flank[num_events - 2] = log(parameters.trans_start_to_clip) + // transition from pre to background state
+            post_flank[num_events - 2] = log(TRANS_START_TO_CLIP) + // transition from pre to background state
                                          log_probability_background(*data.read, event_idx, data.strand) + // emit from background
-                                         log(1 - parameters.trans_clip_self); // transition to silent pre state
+                                         log(1 - TRANS_CLIP_SELF); // transition to silent pre state
         }
 
         for(int i = num_events - 3; i >= 0; --i) {
             uint32_t event_idx = e_start + (i + 1) * data.event_stride;
-            post_flank[i] = log(parameters.trans_clip_self) +
+            post_flank[i] = log(TRANS_CLIP_SELF) +
                             log_probability_background(*data.read, event_idx, data.strand) + // emit from background
                             post_flank[i + 1]; // this accounts for the transition from start, and to silent pre
         }
@@ -273,11 +257,11 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 // The templated ProfileHMMOutput class allows one to run either Viterbi
 // or the Forward algorithm.
 template<class ProfileHMMOutput>
-inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
-                                      const HMMInputData& _data,
-                                      const uint32_t,
-                                      uint32_t flags,
-                                      ProfileHMMOutput& output)
+inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
+                                         const HMMInputData& _data,
+                                         const uint32_t,
+                                         uint32_t flags,
+                                         ProfileHMMOutput& output)
 {
     PROFILE_FUNC("profile_hmm_fill_generic")
     HMMInputSequence sequence = _sequence;
@@ -297,11 +281,9 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
 
     uint32_t e_start = data.event_start_idx;
     
-    const TransitionParameters& parameters = data.read->parameters[data.strand];
-
     // Calculate number of blocks
     // A block of the HMM is a set of states for one kmer
-    uint32_t num_blocks = output.get_num_columns() / PS_NUM_STATES;
+    uint32_t num_blocks = output.get_num_columns() / PSR9_NUM_STATES;
     uint32_t last_event_row_idx = output.get_num_rows() - 1;
 
     // Precompute the transition probabilites for each kmer block
@@ -322,8 +304,8 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
 
     size_t num_events = output.get_num_rows() - 1;
 
-    std::vector<float> pre_flank = make_pre_flanking(data, parameters, e_start, num_events);
-    std::vector<float> post_flank = make_post_flanking(data, parameters, e_start, num_events);
+    std::vector<float> pre_flank = make_pre_flanking(data, e_start, num_events);
+    std::vector<float> post_flank = make_post_flanking(data, e_start, num_events);
     
     // The model is currently constrainted to always transition
     // from the terminal/clipped state to the first kmer (and from the
@@ -347,23 +329,23 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
             BlockTransitions& bt = transitions[kmer_idx];
 
             uint32_t prev_block = block - 1;
-            uint32_t prev_block_offset = PS_NUM_STATES * prev_block;
-            uint32_t curr_block_offset = PS_NUM_STATES * block;
+            uint32_t prev_block_offset = PSR9_NUM_STATES * prev_block;
+            uint32_t curr_block_offset = PSR9_NUM_STATES * block;
             
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
-            float lp_emission_m = log_probability_match(*data.read, rank, event_idx, data.strand);
+            float lp_emission_m = log_probability_match_r9(*data.read, rank, event_idx, data.strand);
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;
 
-            // state PS_MATCH
-            scores.x[HMT_FROM_SAME_M] = bt.lp_mm_self + output.get(row - 1, curr_block_offset + PS_MATCH);
-            scores.x[HMT_FROM_PREV_M] = bt.lp_mm_next + output.get(row - 1, prev_block_offset + PS_MATCH);
-            scores.x[HMT_FROM_SAME_B] = bt.lp_bm_self + output.get(row - 1, curr_block_offset + PS_BAD_EVENT);
-            scores.x[HMT_FROM_PREV_B] = bt.lp_bm_next + output.get(row - 1, prev_block_offset + PS_BAD_EVENT);
-            scores.x[HMT_FROM_PREV_K] = bt.lp_km + output.get(row - 1, prev_block_offset + PS_KMER_SKIP);
+            // state PSR9_MATCH
+            scores.x[HMT_FROM_SAME_M] = bt.lp_mm_self + output.get(row - 1, curr_block_offset + PSR9_MATCH);
+            scores.x[HMT_FROM_PREV_M] = bt.lp_mm_next + output.get(row - 1, prev_block_offset + PSR9_MATCH);
+            scores.x[HMT_FROM_SAME_B] = bt.lp_bm_self + output.get(row - 1, curr_block_offset + PSR9_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_B] = bt.lp_bm_next + output.get(row - 1, prev_block_offset + PSR9_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_K] = bt.lp_km + output.get(row - 1, prev_block_offset + PSR9_KMER_SKIP);
 
             // m_s is the probability of going from the start state
             // to this kmer. The start state is (currently) only 
@@ -374,67 +356,67 @@ inline float profile_hmm_fill_generic(const HMMInputSequence& _sequence,
                                         (event_idx == e_start ||
                                              (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
             
-            output.update_cell(row, curr_block_offset + PS_MATCH, scores, lp_emission_m);
+            output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
-            // state PS_BAD_EVENT
-            scores.x[HMT_FROM_SAME_M] = bt.lp_mb + output.get(row - 1, curr_block_offset + PS_MATCH);
+            // state PSR9_BAD_EVENT
+            scores.x[HMT_FROM_SAME_M] = bt.lp_mb + output.get(row - 1, curr_block_offset + PSR9_MATCH);
             scores.x[HMT_FROM_PREV_M] = -INFINITY; // not allowed
-            scores.x[HMT_FROM_SAME_B] = bt.lp_bb + output.get(row - 1, curr_block_offset + PS_BAD_EVENT);
+            scores.x[HMT_FROM_SAME_B] = bt.lp_bb + output.get(row - 1, curr_block_offset + PSR9_BAD_EVENT);
             scores.x[HMT_FROM_PREV_B] = -INFINITY;
             scores.x[HMT_FROM_PREV_K] = -INFINITY;
             scores.x[HMT_FROM_SOFT] = -INFINITY;
-            output.update_cell(row, curr_block_offset + PS_BAD_EVENT, scores, lp_emission_b);
+            output.update_cell(row, curr_block_offset + PSR9_BAD_EVENT, scores, lp_emission_b);
 
-            // state PS_KMER_SKIP
+            // state PSR9_KMER_SKIP
             scores.x[HMT_FROM_SAME_M] = -INFINITY;
-            scores.x[HMT_FROM_PREV_M] = bt.lp_mk + output.get(row, prev_block_offset + PS_MATCH);
+            scores.x[HMT_FROM_PREV_M] = bt.lp_mk + output.get(row, prev_block_offset + PSR9_MATCH);
             scores.x[HMT_FROM_SAME_B] = -INFINITY;
-            scores.x[HMT_FROM_PREV_B] = bt.lp_bk + output.get(row, prev_block_offset + PS_BAD_EVENT);
-            scores.x[HMT_FROM_PREV_K] = bt.lp_kk + output.get(row, prev_block_offset + PS_KMER_SKIP);
+            scores.x[HMT_FROM_PREV_B] = bt.lp_bk + output.get(row, prev_block_offset + PSR9_BAD_EVENT);
+            scores.x[HMT_FROM_PREV_K] = bt.lp_kk + output.get(row, prev_block_offset + PSR9_KMER_SKIP);
             scores.x[HMT_FROM_SOFT] = -INFINITY;
-            output.update_cell(row, curr_block_offset + PS_KMER_SKIP, scores, 0.0f); // no emission
+            output.update_cell(row, curr_block_offset + PSR9_KMER_SKIP, scores, 0.0f); // no emission
 
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 
             // last kmer/event match.
             if(kmer_idx == last_kmer_idx && ( (flags & HAF_ALLOW_POST_CLIP) || row == last_event_row_idx)) {
-                float lp1 = lp_ms + output.get(row, curr_block_offset + PS_MATCH) + post_flank[row - 1];
-                float lp2 = lp_ms + output.get(row, curr_block_offset + PS_BAD_EVENT) + post_flank[row - 1];
-                float lp3 = lp_ms + output.get(row, curr_block_offset + PS_KMER_SKIP) + post_flank[row - 1];
+                float lp1 = lp_ms + output.get(row, curr_block_offset + PSR9_MATCH) + post_flank[row - 1];
+                float lp2 = lp_ms + output.get(row, curr_block_offset + PSR9_BAD_EVENT) + post_flank[row - 1];
+                float lp3 = lp_ms + output.get(row, curr_block_offset + PSR9_KMER_SKIP) + post_flank[row - 1];
 
-                output.update_end(lp1, row, curr_block_offset + PS_MATCH);
-                output.update_end(lp2, row, curr_block_offset + PS_BAD_EVENT);
-                output.update_end(lp3, row, curr_block_offset + PS_KMER_SKIP);
+                output.update_end(lp1, row, curr_block_offset + PSR9_MATCH);
+                output.update_end(lp2, row, curr_block_offset + PSR9_BAD_EVENT);
+                output.update_end(lp3, row, curr_block_offset + PSR9_KMER_SKIP);
             }
 
 #ifdef DEBUG_LOCAL_ALIGNMENT
-            printf("[%d %d] start: %.2lf  pre: %.2lf fm: %.2lf\n", event_idx, kmer_idx, m_s + lp_emission_m, pre_flank[row - 1], output.get(row, curr_block_offset + PS_MATCH));
+            printf("[%d %d] start: %.2lf  pre: %.2lf fm: %.2lf\n", event_idx, kmer_idx, m_s + lp_emission_m, pre_flank[row - 1], output.get(row, curr_block_offset + PSR9_MATCH));
             printf("[%d %d]   end: %.2lf post: %.2lf\n", event_idx, kmer_idx, lp_end, post_flank[row - 1]);
 #endif
 
 #ifdef DEBUG_FILL    
             printf("Row %u block %u\n", row, block);
 
-            printf("\tPS_MATCH -- Transitions: [%.3lf %.3lf %.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf %.2lf %.2lf] out: %.2lf\n", 
+            printf("\tPSR9_MATCH -- Transitions: [%.3lf %.3lf %.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf %.2lf %.2lf] out: %.2lf\n", 
                     bt.lp_mm_self, bt.lp_mm_next, bt.lp_bm_self, bt.lp_bm_next, bt.lp_km, 
-                    output.get(row - 1, prev_block_offset + PS_MATCH),
-                    output.get(row - 1, curr_block_offset + PS_MATCH),
-                    output.get(row - 1, prev_block_offset + PS_BAD_EVENT),
-                    output.get(row - 1, curr_block_offset + PS_BAD_EVENT),
-                    output.get(row - 1, prev_block_offset + PS_KMER_SKIP),
-                    output.get(row, curr_block_offset + PS_MATCH));
-            printf("\tPS_BAD_EVENT -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] out: %.2lf\n", 
+                    output.get(row - 1, prev_block_offset + PSR9_MATCH),
+                    output.get(row - 1, curr_block_offset + PSR9_MATCH),
+                    output.get(row - 1, prev_block_offset + PSR9_BAD_EVENT),
+                    output.get(row - 1, curr_block_offset + PSR9_BAD_EVENT),
+                    output.get(row - 1, prev_block_offset + PSR9_KMER_SKIP),
+                    output.get(row, curr_block_offset + PSR9_MATCH));
+            printf("\tPSR9_BAD_EVENT -- Transitions: [%.3lf %.3lf] Prev: [%.2lf %.2lf] out: %.2lf\n", 
                     bt.lp_mb, bt.lp_bb,
-                    output.get(row - 1, curr_block_offset + PS_MATCH),
-                    output.get(row - 1, curr_block_offset + PS_BAD_EVENT),
-                    output.get(row, curr_block_offset + PS_BAD_EVENT));
+                    output.get(row - 1, curr_block_offset + PSR9_MATCH),
+                    output.get(row - 1, curr_block_offset + PSR9_BAD_EVENT),
+                    output.get(row, curr_block_offset + PSR9_BAD_EVENT));
 
-            printf("\tPS_KMER_SKIP -- Transitions: [%.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf] sum: %.2lf\n", 
+            printf("\tPSR9_KMER_SKIP -- Transitions: [%.3lf %.3lf %.3lf] Prev: [%.2lf %.2lf %.2lf] sum: %.2lf\n", 
                     bt.lp_mk, bt.lp_bk, bt.lp_kk,
-                    output.get(row, prev_block_offset + PS_MATCH),
-                    output.get(row, prev_block_offset + PS_BAD_EVENT),
-                    output.get(row, prev_block_offset + PS_KMER_SKIP),
-                    output.get(row, curr_block_offset + PS_KMER_SKIP));
+                    output.get(row, prev_block_offset + PSR9_MATCH),
+                    output.get(row, prev_block_offset + PSR9_BAD_EVENT),
+                    output.get(row, prev_block_offset + PSR9_KMER_SKIP),
+                    output.get(row, curr_block_offset + PSR9_KMER_SKIP));
 
             printf("\tEMISSION: %.2lf %.2lf\n", lp_emission_m, lp_emission_b);
 #endif

@@ -546,15 +546,17 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         for(size_t j = 0; j < event_sequences.size(); ++j) {
             assert(kmer_size == event_sequences[j].read->pore_model[0].k);
             assert(kmer_size == 6);
+            
+            const SquiggleRead* read = event_sequences[j].read;
+            size_t strand = event_sequences[j].strand;
 
             // skip small event regions
             if( abs(event_sequences[j].event_start_idx - event_sequences[j].event_stop_idx) < 10) {
                 continue;
             }
+            
 
             // Fit a gamma distribution to the durations in this region of the read
-            const SquiggleRead* read = event_sequences[j].read;
-            size_t strand = event_sequences[j].strand;
             double local_time = fabs(read->get_time(event_sequences[j].event_start_idx, strand) - read->get_time(event_sequences[j].event_stop_idx, strand));
             double local_bases = calling_sequence.size();
             double local_avg = local_time / local_bases;
@@ -594,7 +596,9 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
                 double num_kmers = variant_offset_end - variant_offset_start;
                 double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
-                duration_likelihoods[var_sequence_length] += log_gamma;
+                if(read->pore_model[strand].metadata.kit == KV_SQK007) {
+                    duration_likelihoods[var_sequence_length] += log_gamma;
+                }
                 if(opt::verbose > 3) {
                    fprintf(stderr, "SUM_VAR\t%zu\t%d\t%d\t%d\t%d\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
                 }
