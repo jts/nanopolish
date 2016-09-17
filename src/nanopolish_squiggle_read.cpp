@@ -531,6 +531,13 @@ void SquiggleRead::replace_models(const std::string& model_type)
 {
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
+        // For R7 data (006 and 005 kits) the ONT model is already
+        // read from the fast5 file. Don't try to replace the model
+        // with the external on.
+        if(this->pore_model[0].metadata.kit != KV_SQK007 && model_type == "ONT") {
+            return;
+        }
+
         // only replace this model if the strand was loaded
         if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
             continue;
