@@ -9,6 +9,7 @@
 #include <map>
 #include <functional>
 #include "logsum.h"
+#include "nanopolish_extract.h"
 #include "nanopolish_call_variants.h"
 #include "nanopolish_consensus.h"
 #include "nanopolish_eventalign.h"
@@ -23,6 +24,7 @@ int print_usage(int argc, char **argv);
 static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"help",        print_usage},
     {"--help",      print_usage},
+    {"extract",     extract_main},
     {"consensus",   consensus_main},
     {"eventalign",  eventalign_main},
     {"getmodel",    getmodel_main},

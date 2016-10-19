@@ -188,14 +188,14 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     is_scaled = false;
 }
 
-PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet) : pmalphabet(alphabet)
+PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& bc_gr, const Alphabet *alphabet) : pmalphabet(alphabet)
 {
     const size_t maxNucleotides=50;
     char bases[maxNucleotides+1]="";
 
     std::map<std::string, PoreModelStateParams> kmers;
 
-    std::vector<fast5::Model_Entry> model = f_p->get_basecall_model(strand);
+    std::vector<fast5::Model_Entry> model = f_p->get_basecall_model(strand, bc_gr);
     k = array2str(model[0].kmer).length();
     assert(k == 5 || k == 6);
 
@@ -221,7 +221,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
     }
 
     // Load the scaling parameters for the pore model
-    fast5::Model_Parameters params = f_p->get_basecall_model_params(strand);
+    fast5::Model_Parameters params = f_p->get_basecall_model_params(strand, bc_gr);
     drift = params.drift;
     scale = params.scale;
     scale_sd = params.scale_sd;
@@ -236,7 +236,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alph
     bake_gaussian_parameters();
 
     // Read and shorten the model name
-    std::string temp_name = f_p->get_basecall_model_file(strand);
+    std::string temp_name = f_p->get_basecall_model_file(strand, bc_gr);
     std::string leader = "/opt/chimaera/model/";
 
     size_t lp = temp_name.find(leader);

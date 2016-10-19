@@ -84,44 +84,32 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
 
-    auto available_groups = f_p->get_basecall_group_list();
-
-    // precedence: 2D_NNN, RNN_1D_NNN, 1D_NNN
-    bool is_r9_read = !f_p->have_basecall_model(0);
-    std::string basecall_group = "1D_000";
-    std::string event_group = "1D_000";
-
-    if(is_r9_read) {
-        read_type = SRT_TEMPLATE;
-
-        for(auto g : available_groups) {
-            if(g == "2D_000") {
-                basecall_group = g;
-                // for 2D reads we still take events from the 1D group
-                read_type = SRT_2D;
-            } else if(g == "RNN_1D_000" && g != "2D_000") {
-                basecall_group = g;
-                event_group = g;
-                read_type = SRT_TEMPLATE;
-            }
-        }
-    } else {
-        // R7
-
-        // always use 2D basecalls
-        basecall_group = "2D_000";
-
-        // Older R7 data has events in the 2D group
-        // Newer R7 data has events in the 1D group
-        // Switch the group that we use for events depending
-        // on event availability.
-        event_group = "2D_000";
-        if(!f_p->have_basecall_events(0, "2D_000")) {
-            assert(f_p->have_basecall_events(0, "1D_000"));
-            event_group = "1D_000";
-        }
-        read_type = SRT_2D;
+    std::string basecall_group;
+    {
+        // parse read name
+        size_t i = read_name.find_first_of('_');
+        assert(i != std::string::npos);
+        // 0..i : uuid
+        ++i;
+        size_t j = read_name.find_last_of('_', i);
+        assert(j != std::string::npos);
+        // i..j : basecall group
+        basecall_group = read_name.substr(i, j-i);
+        // j+1.. : read type
+        auto rt = read_name.substr(j+1);
+        assert(rt == "2d"
+               or rt == "template"
+               or rt == "complement");
+        read_type = (rt == "2d" ? SRT_2D : (rt == "template"? SRT_TEMPLATE : SRT_COMPLEMENT));
     }
+    assert(f_p->have_basecall_seq(read_type, basecall_group));
+    assert(not read_type == SRT_2D
+           or (f_p->have_basecall_events(0, basecall_group)
+               and f_p->have_basecall_events(1, basecall_group)));
+    assert(not read_type == SRT_TEMPLATE or f_p->have_basecall_events(0, basecall_group));
+    assert(not read_type == SRT_COMPLEMENT or f_p->have_basecall_events(1, basecall_group));
+
+    bool is_r9_read = !f_p->have_basecall_model(0, basecall_group);
 
     read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
 
@@ -137,7 +125,7 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         }
 
         // Load the events for this strand
-        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(si, event_group);
+        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(si, basecall_group);
 
         // copy events
         events[si].resize(f5_events.size());
@@ -162,14 +150,15 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
         // or discarded if this is a 2D read
 
         // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
-        read_sequences_1d[si] = f_p->get_basecall_seq(si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT, event_group);
+        read_sequences_1d[si] = f_p->get_basecall_seq(si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT,
+                                                      f_p->get_basecall_group_1d(basecall_group));
         event_maps_1d[si] = build_event_map_1d(f_p, read_sequences_1d[si], si, f5_events);
 
         // run version-specific load
         if(!is_r9_read) {
-            _load_R7(f_p, si);
+            _load_R7(f_p, si, basecall_group);
         } else {
-            _load_R9(f_p, si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
+            _load_R9(nullptr, si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
         }
     }
 
@@ -208,16 +197,16 @@ void SquiggleRead::load_from_fast5(const std::string& fast5_path, const uint32_t
     delete f_p;
 }
 
-void SquiggleRead::_load_R7(fast5::File* f_p, uint32_t si)
+void SquiggleRead::_load_R7(fast5::File* f_p, uint32_t si, const std::string& bc_gr)
 {
     // Load the pore model for this strand
-    pore_model[si] = PoreModel( f_p, si );
+    pore_model[si] = PoreModel( f_p, si, bc_gr );
 
     // initialize transition parameters
     parameters[si].initialize(get_model_metadata_from_name(pore_model[si].name));
 }
 
-void SquiggleRead::_load_R9(fast5::File* f_p, 
+void SquiggleRead::_load_R9(fast5::File*,
                             uint32_t si, 
                             const std::string& read_sequence_1d,
                             const std::vector<EventRangeForBase>& event_map_1d,

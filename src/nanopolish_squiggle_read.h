@@ -172,7 +172,7 @@ class SquiggleRead
         }
 
         // Version-specific intialization functions
-        void _load_R7(fast5::File* f_p, uint32_t si);
+        void _load_R7(fast5::File* f_p, uint32_t si, const std::string& bc_gr);
         void _load_R9(fast5::File* f_p,
                       uint32_t si, 
                       const std::string& read_sequence_1d,

@@ -67,7 +67,10 @@ class PoreModel
         // nicer might be to store the states as a map from kmer -> state
 
         PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
-        PoreModel(fast5::File *f_p, const size_t strand, const Alphabet *alphabet=NULL);
+        PoreModel(fast5::File *f_p,
+                  const size_t strand,
+                  const std::string& bc_gr = std::string(),
+                  const Alphabet *alphabet=NULL);
 
         void write(const std::string filename, const std::string modelname="") const;
 
