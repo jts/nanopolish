@@ -15,6 +15,13 @@
 #include "nanopolish_eventalign.h"
 #include <string>
 
+enum PoreType
+{
+    PT_UNKNOWN = 0,
+    PT_R7,
+    PT_R9,
+};
+
 // the type of the read
 // do not change as template must always be 0 and complement 1
 enum SquiggleReadType
@@ -67,9 +74,6 @@ class SquiggleRead
         //
         // I/O
         // 
-
-        // Load all the read data from a fast5 file
-        void load_from_fast5(const std::string& fast5_path, const uint32_t flags);
 
         //
         // Access to data
@@ -171,15 +175,6 @@ class SquiggleRead
                                                                                this->pore_model[strand_idx].var);
         }
 
-        // Version-specific intialization functions
-        void _load_R7(fast5::File* f_p, uint32_t si, const std::string& bc_gr);
-        void _load_R9(fast5::File* f_p,
-                      uint32_t si, 
-                      const std::string& read_sequence_1d,
-                      const std::vector<EventRangeForBase>& event_map_1d,
-                      const std::vector<double>& p_model_states,
-                      const uint32_t flags);
-
         //
         // Data
         //
@@ -187,6 +182,7 @@ class SquiggleRead
         // unique identifier of the read
         std::string read_name;
         SquiggleReadType read_type;
+        PoreType pore_type;
         std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
@@ -211,21 +207,43 @@ class SquiggleRead
         TransitionParameters parameters[2];
 
     private:
-        
+        // private data
+        fast5::File* f_p;
+        std::string basecall_group;
+
+        // warning triggers
+        static bool& show_warning_read_name_not_extract() { static bool val = true; return val; }
+
         SquiggleRead(const SquiggleRead&) {}
 
+        // Load all the read data from a fast5 file
+        void load_from_fast5(const uint32_t flags);
+
+        // Version-specific intialization functions
+        void _load_R7(uint32_t si);
+        void _load_R9(uint32_t si,
+                      const std::string& read_sequence_1d,
+                      const std::vector<EventRangeForBase>& event_map_1d,
+                      const std::vector<double>& p_model_states,
+                      const uint32_t flags);
+
         // make a map from a base of the 1D read sequence to the range of events supporting that base
-        std::vector<EventRangeForBase> build_event_map_1d(fast5::File* f_p, 
-                                                          const std::string& read_sequence_1d, 
+        std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
                                                           uint32_t strand, 
                                                           std::vector<fast5::Event_Entry>& f5_events);
 
         // as above but for the 2D sequence. this fills in both the template and complete event indices
-        void build_event_map_2d_r7(fast5::File* f_p, const std::string& basecall_group);
-        void build_event_map_2d_r9(fast5::File* f_p, const std::string& basecall_group);
+        void build_event_map_2d_r7();
+        void build_event_map_2d_r9();
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;
+        // detect pore_type
+        void detect_pore_type();
+        // detect basecall_group and read_type
+        void detect_basecall_group();
+        // check basecall_group and read_type
+        bool check_basecall_group() const;
 };
 
 #endif
