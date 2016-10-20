@@ -35,6 +35,8 @@ The two main uses of nanopolish are to calculate an improved consensus sequence 
 
 ### Computing a new consensus sequence for a draft assembly
 
+First we prepare the data by extracting the reads from the FAST5 files, and aligning them in base and event space to our draft assembly (`draft.fa`).
+
 ```
 # Extract the QC-passed reads from a directory of FAST5 files
 nanopolish extract --type [2d|template] directory/pass/ > reads.fa
