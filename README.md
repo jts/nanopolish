@@ -41,7 +41,7 @@ First we prepare the data by extracting the reads from the FAST5 files, and alig
 # Extract the QC-passed reads from a directory of FAST5 files
 nanopolish extract --type [2d|template] directory/pass/ > reads.fa
 
-# Index the reference genome
+# Index the draft genome
 bwa index draft.fa
 
 # Align the reads in base space
