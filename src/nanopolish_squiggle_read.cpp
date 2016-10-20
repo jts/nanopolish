@@ -691,7 +691,8 @@ void SquiggleRead::detect_basecall_group()
             if (not f_p->have_basecall_fastq(st, g)) continue;
             auto fq = f_p->get_basecall_fastq(st, g);
             auto fq_a = f_p->split_fq(fq);
-            if (fq_a[0] != read_name) continue;
+            auto p = std::mismatch(read_name.begin(), read_name.end(), fq_a[0].begin());
+            if (p.first != read_name.end()) continue;
             if (not basecall_group.empty())
             {
                 std::cerr << "SquiggleRead: multiple Fastq records match read name\n"
