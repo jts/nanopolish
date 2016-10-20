@@ -20,10 +20,10 @@ This will automatically download and install libhdf5.
 
 ## Nanopolish modules
 
-Nanopolish contains a number of subprograms that can be put together into a pipeline. The major modules are:
+The main subprograms of nanopolish are:
 
 ```
-nanopolish extract: extract reads in FASTA or FASTQ format from a set of FAST5 files
+nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
 nanopolish eventalign: align signal-level events to k-mers of a reference genome
 nanopolish variants: detect SNPs and indels with respect to a reference genome
 nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
@@ -31,14 +31,12 @@ nanopolish variants --consensus: calculate an improved consensus sequence for a 
 
 ## Analysis workflows
 
-The two main uses of nanopolish are to calculate an improved consensus sequence for a draft genome assembly, or to find SNPs and indels with respect to a reference sequence. 
+The two main uses of nanopolish are to calculate an improved consensus sequence for a draft genome assembly, and to find SNPs and indels with respect to a reference genome.
 
 ### Computing a new consensus sequence for a draft assembly
 
-The reads that are input into nanopolish must be output as a ```.fa``` file  by ```poretools```. This is important as ```poretools``` writes the path to the original ```.fast5``` file (containing the signal data) in the fasta header. These paths must be correct or nanopolish cannot find the events for each read. Let's say you have exported your reads to ```reads.fa``` and you want to polish ```draft.fa```. First we need to map the reads in base and event space to the draft assembly.
-
 ```
-# Extract the QC-passed reads from the FAST5 files
+# Extract the QC-passed reads from a directory of FAST5 files
 nanopolish extract --type [2d|template] directory/pass/ > reads.fa
 
 # Index the reference genome
