@@ -20,9 +20,9 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <fast5.hpp>
 #include "htslib/faidx.h"
 #include "nanopolish_poremodel.h"
-#include "nanopolish_squiggle_read.h"
 #include "profiler.h"
 
 //
@@ -102,22 +102,27 @@ int getmodel_main(int argc, char** argv)
 {
     parse_getmodel_options(argc, argv);
 
-    SquiggleRead sr("input", opt::input_file);
+    fast5::File f(opt::input_file);
 
     printf("strand\tkmer\tmodel_mean\tmodel_stdv\n");
 
     for(size_t si = 0; si < 2; ++si) {
-
-        char strand = si == 0 ? 't' : 'c';
-        
-        uint32_t k = sr.pore_model[si].k;
-        std::string kmer(k, 'A');
-        assert(sr.pore_model[si].get_num_states() == gDNAAlphabet.get_num_strings(k));
-
-        for(size_t ki = 0; ki < sr.pore_model[si].get_num_states(); ++ki) {
-            PoreModelStateParams params = sr.pore_model[si].get_parameters(ki);
-            printf("%c\t%s\t%.2lf\t%.2lf\n", strand, kmer.c_str(), params.level_mean, params.level_stdv);
-            gDNAAlphabet.lexicographic_next(kmer); // advance kmer
+        auto g_l = f.get_basecall_strand_group_list(si);
+        for (const auto& g : g_l) {
+            if (not f.have_basecall_model(si, g)) continue;
+            PoreModel pm(&f, si, g);
+            assert(pm.get_num_states() == gDNAAlphabet.get_num_strings(pm.k));
+            std::string kmer(pm.k, 'A');
+            for(size_t ki = 0; ki < pm.get_num_states(); ++ki) {
+                PoreModelStateParams params = pm.get_parameters(ki);
+                printf("%c\t%s\t%.2lf\t%.2lf\n",
+                       (si == 0? 't' : 'c'),
+                       kmer.c_str(),
+                       params.level_mean,
+                       params.level_stdv);
+                gDNAAlphabet.lexicographic_next(kmer); // advance kmer
+            }
+            break;
         }
     }
     return 0;
