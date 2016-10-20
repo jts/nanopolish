@@ -673,15 +673,6 @@ void SquiggleRead::detect_basecall_group()
         return;
     }
     while (false);
-    if (show_warning_read_name_not_extract())
-    {
-        std::cerr << "SquiggleRead: read name [" << read_name << "] not understood\n"
-                  << "SquiggleRead: consider re-extracting the reads with 'nanopolish extract'\n"
-                  << "SquiggleRead: as improper matching between read names and fast5 internal structures\n"
-                  << "SquiggleRead: can lead to hard-to-detect problems\n"
-                  << "SquiggleRead: using heuristic matching as fall-through\n";
-        show_warning_read_name_not_extract() = false;
-    }
     // option 2: find a Fastq record matching the read name
     auto gr_l = f_p->get_basecall_group_list();
     for (const auto& g : gr_l)
@@ -695,7 +686,8 @@ void SquiggleRead::detect_basecall_group()
             if (p.first != read_name.end()) continue;
             if (not basecall_group.empty())
             {
-                std::cerr << "SquiggleRead: multiple Fastq records match read name\n"
+                std::cerr << "SquiggleRead: basecall group detection failed:\n"
+                          << "SquiggleRead: multiple Fastq records match read name\n"
                           << "SquiggleRead: file name [" << fast5_path << "]\n"
                           << "SquiggleRead: read name [" << read_name << "]\n"
                           << "SquiggleRead: giving up; re-extract reads with 'nanopolish extract'\n";
@@ -707,7 +699,7 @@ void SquiggleRead::detect_basecall_group()
     }
     if (basecall_group.empty() or not check_basecall_group())
     {
-        std::cerr << "SquiggleRead: basecall group detection failed\n"
+        std::cerr << "SquiggleRead: basecall group detection failed:\n"
                   << "SquiggleRead: file name [" << fast5_path << "]\n"
                   << "SquiggleRead: read name [" << read_name << "]\n"
                   << "SquiggleRead: basecall group [" << basecall_group << "]\n"

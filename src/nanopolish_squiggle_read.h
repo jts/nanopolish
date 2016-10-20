@@ -211,9 +211,6 @@ class SquiggleRead
         fast5::File* f_p;
         std::string basecall_group;
 
-        // warning triggers
-        static bool& show_warning_read_name_not_extract() { static bool val = true; return val; }
-
         SquiggleRead(const SquiggleRead&) {}
 
         // Load all the read data from a fast5 file
