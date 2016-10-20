@@ -28,7 +28,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *EXTRACT_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] <dir>...\n"
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] <fast5|dir>...\n"
 "Extract reads in fasta format\n"
 "\n"
 "      --help                           display this help and exit\n"
@@ -46,7 +46,7 @@ namespace opt
     static bool recurse = false;
     static std::string read_type = "2d-or-template";
     static std::string output_file;
-    static std::deque< std::string > dirs;
+    static std::deque< std::string > paths;
 }
 static std::ostream* os_p;
 
@@ -160,35 +160,50 @@ void process_file(const std::string& fn)
     } while (false);
 } // process_file
 
-void process_dir(const std::string& dir)
+void process_path(const std::string& path)
 {
-    LOG(info) << "processing_dir: " << dir << "\n";
-    auto dir_list = list_directory(dir);
-    for (const auto& fn : dir_list)
+    LOG(info) << "processing_path: " << path << "\n";
+    if (is_directory(path))
     {
-        if (fn == "." or fn == "..") continue;
-        std::string full_fn = dir + (dir[dir.size() - 1] != '/'? "/" : "") + fn;
-        if (is_directory(full_fn))
+        auto dir_list = list_directory(path);
+        for (const auto& fn : dir_list)
         {
-            if (opt::recurse)
+            if (fn == "." or fn == "..") continue;
+            std::string full_fn = path + "/" + fn;
+            if (is_directory(full_fn))
             {
-                opt::dirs.push_back(full_fn);
+                if (opt::recurse)
+                {
+                    opt::paths.push_back(full_fn);
+                }
+                else
+                {
+                    LOG(info) << "ignoring_subdir: " << full_fn << "\n";
+                }
+            }
+            else if (fast5::File::is_valid_file(full_fn))
+            {
+                process_file(full_fn);
             }
             else
             {
-                LOG(info) << "ignoring_subdir: " << full_fn << "\n";
+                LOG(info) << "ignoring_file: " << full_fn << "\n";
             }
         }
-        else if (fast5::File::is_valid_file(full_fn))
+    }
+    else // not is_directory; must be a fast5 file
+    {
+        if (fast5::File::is_valid_file(path))
         {
-            process_file(full_fn);
+            process_file(path);
         }
         else
         {
-            LOG(info) << "ignoring_file: " << full_fn << "\n";
+            LOG(error) << "path [" << path << "] is neither a fast5 file nor a directory\n";
+            exit(EXIT_FAILURE);
         }
     }
-} // process_dir
+} // process_path
 
 static const char* shortopts = "vrt:o:";
 
@@ -230,20 +245,19 @@ void parse_extract_options(int argc, char** argv)
             case 'o': arg >> opt::output_file; break;
         }
     }
-    // parse dirs to process
+    // parse paths to process
     while (optind < argc)
     {
-        auto dir = argv[optind++];
-        if (not is_directory(dir))
+        std::string path = argv[optind++];
+        while (path.size() > 1 and path[path.size() - 1] == '/')
         {
-            std::cerr << SUBPROGRAM ": not a directory: " << dir << "\n";
-            die = true;
+            path.resize(path.size() - 1);
         }
-        opt::dirs.push_back(dir);
+        opt::paths.push_back(path);
     }
-    if (opt::dirs.empty())
+    if (opt::paths.empty())
     {
-        std::cerr << SUBPROGRAM ": no directories to process\n";
+        std::cerr << SUBPROGRAM ": no paths to process\n";
         die = true;
     }
     // check read type
@@ -262,7 +276,7 @@ void parse_extract_options(int argc, char** argv)
         std::cerr << "\n" << EXTRACT_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
-    LOG(info) << "dirs: " << alg::os_join(opt::dirs, " ") << "\n";
+    LOG(info) << "paths: " << alg::os_join(opt::paths, " ") << "\n";
     LOG(info) << "recurse: " << (opt::recurse? "yes" : "no") << "\n";
     LOG(info) << "read_type: " << opt::read_type << "\n";
 }
@@ -280,9 +294,9 @@ int extract_main(int argc, char** argv)
     {
         os_p = &std::cout;
     }
-    for (unsigned i = 0; i < opt::dirs.size(); ++i)
+    for (unsigned i = 0; i < opt::paths.size(); ++i)
     {
-        process_dir(opt::dirs[i]);
+        process_path(opt::paths[i]);
     }
     return 0;
 }
