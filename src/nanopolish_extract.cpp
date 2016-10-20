@@ -137,7 +137,7 @@ void process_file(const std::string& fn)
             auto fq_a = f.split_fq(fq);
             // construct name
             auto pos = fq_a[0].find_first_of('_');
-            std::string name = fq_a[0].substr(0, pos) + ":Basecall_" + p.second + ":";
+            std::string name = fq_a[0].substr(0, pos) + ":" + p.second + ":";
             if (p.first == 0)
             {
                 name += "template";

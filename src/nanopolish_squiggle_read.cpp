@@ -650,8 +650,6 @@ void SquiggleRead::detect_basecall_group()
         if (j == std::string::npos) break;
         // i..j : basecall group
         basecall_group = read_name.substr(i, j - i);
-        if (basecall_group.substr(0, 9) != "Basecall_") break;
-        basecall_group = basecall_group.substr(9);
         i = j + 1;
         j = read_name.find_first_of(':', i);
         if (j == std::string::npos) j = read_name.size();
