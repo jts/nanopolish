@@ -23,7 +23,7 @@ This will automatically download and install libhdf5.
 Nanopolish contains a number of subprograms that can be put together into a pipeline. The major modules are:
 
 ```
-nanopolish extrac: extract reads in FASTA or FASTQ format from a set of FAST5 files
+nanopolish extract: extract reads in FASTA or FASTQ format from a set of FAST5 files
 nanopolish eventalign: align signal-level events to k-mers of a reference genome
 nanopolish variants: detect SNPs and indels with respect to a reference genome
 nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
