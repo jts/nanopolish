@@ -1,8 +1,10 @@
-/// @author    Matei David, Ontario Institute for Cancer Research
-/// @version   1.0
-/// @date      2015
-/// @copyright MIT Public License
-///
+//---------------------------------------------------------
+// Copyright 2015 Ontario Institute for Cancer Research
+// Written by Matei David (matei.david@oicr.on.ca)
+// Part of https://github.com/mateidavid/hpptools
+//---------------------------------------------------------
+//
+
 /// Extensions of various standard algorithms.
 ///
 /// Contents:

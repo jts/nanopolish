@@ -1,3 +1,8 @@
+//---------------------------------------------------------
+// Copyright 2016 Ontario Institute for Cancer Research
+// Written by Matei David (matei.david@oicr.on.ca)
+//---------------------------------------------------------
+//
 #ifndef __FS_SUPPORT_HPP
 #define __FS_SUPPORT_HPP
 

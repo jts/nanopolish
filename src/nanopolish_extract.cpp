@@ -1,3 +1,8 @@
+//---------------------------------------------------------
+// Copyright 2016 Ontario Institute for Cancer Research
+// Written by Matei David (matei.david@oicr.on.ca)
+//---------------------------------------------------------
+//
 #include "nanopolish_extract.h"
 
 #include <iostream>
