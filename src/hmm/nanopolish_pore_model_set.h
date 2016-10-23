@@ -58,10 +58,14 @@ class PoreModelSet
             return instance;
         }
 
+        // Add this model into the collection
+        void register_model(const PoreModel& p);
+
+        PoreModelSet();
+
         // do not allow copies of this classs
         PoreModelSet(PoreModelSet const&) = delete;
         void operator=(PoreModelSet const&) = delete;
-        PoreModelSet() {}; // public constructor not allowed
 
         // this is a map from a pore model type (like "base" or "derived"
         // to a map of models indexed by their short name

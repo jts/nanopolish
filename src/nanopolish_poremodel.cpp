@@ -58,6 +58,9 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
 
     bool model_metadata_in_header = false;
     bool firstKmer = true;
+    std::string in_kit;
+    std::string in_strand;
+
     unsigned ninserted = 0;
 
     this->shift = 0.0;
@@ -85,39 +88,14 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         // Extract the strand from the header
         if (model_line.find("#strand") != std::string::npos) {
             std::string dummy;
-            std::string in_strand;
             parser >> dummy >> in_strand;
-
-            if(in_strand == "template") {
-                this->metadata.model_idx = 0;
-            } else if(in_strand == "complement.pop1") {
-                this->metadata.model_idx = 1;
-            } else if(in_strand == "complement.pop2") {
-                this->metadata.model_idx = 2;
-            } else {
-                fprintf(stderr, "Error, unrecognized model strand %s for input file %s\n",
-                    in_strand.c_str(), filename.c_str());
-                exit(EXIT_FAILURE);
-            }
-
             model_metadata_in_header = true;
         }
 
         // Extract the sequencing kit version from the header
         if (model_line.find("#kit") != std::string::npos) {
             std::string dummy;
-            std::string in_kit;
             parser >> dummy >> in_kit;
-
-            if(in_kit == "SQK006") {
-                this->metadata.kit = KV_SQK006;
-            } else if(in_kit == "SQK007") {
-                this->metadata.kit = KV_SQK007;
-            } else {
-                fprintf(stderr, "Error, unrecognized model kit %s for input file %s\n",
-                    in_kit.c_str(), filename.c_str());
-                exit(EXIT_FAILURE);
-            }
         }
 
         if (model_line.find("#type") != std::string::npos) {
@@ -164,13 +142,15 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         add_found_bases(bases, kmer.c_str());
 
         if (firstKmer) {
-            k = kmer.length();
+            this->k = kmer.length();
             firstKmer = false;
         }
     }
 
     if(!model_metadata_in_header) {
         this->metadata = get_model_metadata_from_name(this->name);
+    } else {
+        set_metadata(in_kit, in_strand);
     }
 
     if (pmalphabet == nullptr) 
@@ -289,5 +269,31 @@ void PoreModel::update_states( const std::vector<PoreModelStateParams> &othersta
     states = otherstates;
     if (is_scaled) {
         bake_gaussian_parameters();
+    }
+}
+
+void PoreModel::set_metadata(const std::string& kit, const std::string& strand)
+{
+    assert(!kit.empty());
+    assert(!strand.empty());
+
+    if(kit == "SQK006") {
+        this->metadata.kit = KV_SQK006;
+    } else if(kit == "SQK007") {
+        this->metadata.kit = KV_SQK007;
+    } else {
+        fprintf(stderr, "Error, unrecognized model kit %s\n", kit.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    if(strand == "template") {
+        this->metadata.model_idx = 0;
+    } else if(strand == "complement.pop1") {
+        this->metadata.model_idx = 1;
+    } else if(strand == "complement.pop2") {
+        this->metadata.model_idx = 2;
+    } else {
+        fprintf(stderr, "Error, unrecognized model strand %s\n", strand.c_str());
+        exit(EXIT_FAILURE);
     }
 }

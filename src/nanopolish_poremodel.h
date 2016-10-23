@@ -20,16 +20,37 @@
 //
 struct PoreModelStateParams
 {
+    //
+    // Data
+    //
+
+    // primary data, loaded from a file, fast5 or built-in model
     double level_mean;
     double level_stdv;
     double sd_mean;
     double sd_stdv;
 
+    // data calculated from the above, for convenience
     double level_log_stdv;
     double sd_lambda;
     double sd_log_lambda;
 
-    PoreModelStateParams& operator = (const fast5::Model_Entry& e)
+    //
+    // Constructors, initializors, etc
+    //
+    PoreModelStateParams() {};
+
+    PoreModelStateParams(double lm, double ls, double sm, double ss)
+    {
+        level_mean = lm;
+        level_stdv = ls;
+        sd_mean = sm;
+        sd_stdv = ss;
+        update_sd_lambda();
+        update_logs();
+    }
+
+    PoreModelStateParams& operator =(const fast5::Model_Entry& e)
     {
         level_mean = e.level_mean;
         level_stdv = e.level_stdv;
@@ -65,7 +86,6 @@ class PoreModel
         // These constructors and the output routine take an alphabet 
         // so that kmers are inserted/written in order
         // nicer might be to store the states as a map from kmer -> state
-
         PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
         PoreModel(fast5::File *f_p,
                   const size_t strand,
@@ -100,6 +120,9 @@ class PoreModel
         // update states with those given, or from another model
         void update_states( const PoreModel &other );
         void update_states( const std::vector<PoreModelStateParams> &otherstates );
+
+        // Set the metadata from a kit/strand string
+        void set_metadata(const std::string& kit, const std::string& strand);
 
         //
         // Data

@@ -8,10 +8,23 @@
 // can load during initialization.
 //
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_builtin_models.h"
+
+//
+PoreModelSet::PoreModelSet()
+{
+    // Copy the built-in models into the map
+    for(auto p : builtin_models) {
+        assert(!p.type.empty());
+        assert(!p.metadata.get_short_name().empty());
+        register_model(p);
+    }
+}
 
 //
 PoreModelSet::~PoreModelSet()
 {
+
 }
 
 //
@@ -34,11 +47,22 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
         PoreModel p(model_filename);
         assert(!p.name.empty());
         assert(!p.type.empty());
-
-        model_set.model_type_sets[p.type][p.metadata.get_short_name()] = p;
-
-        fprintf(stderr, "registering model %s-%s\n", p.metadata.get_short_name().c_str(), p.type.c_str());
+        model_set.register_model(p);
     }
+}
+
+void PoreModelSet::register_model(const PoreModel& p)
+{
+    // Check that this model doesn't exist already
+    auto& type_set = model_type_sets[p.type];
+    auto name_iter = type_set.find(p.metadata.get_short_name());
+    if(name_iter != type_set.end()) {
+        fprintf(stderr, "Warning: overwriting model %s-%s\n", p.metadata.get_short_name().c_str(), p.type.c_str());
+    }
+    type_set.insert(std::make_pair(p.metadata.get_short_name(), p));
+    fprintf(stderr, "[pore model set] registered model %s-%s(alphabet: %s)\n", p.metadata.get_short_name().c_str(), 
+                                                                               p.type.c_str(),
+                                                                               p.pmalphabet->get_name().c_str());
 }
 
 //

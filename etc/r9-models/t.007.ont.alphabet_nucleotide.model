@@ -1,7 +1,7 @@
-#model_name	template_median68pA.model
+#model_name	t.007
 #type	ONT
-#strand	template
 #kit	SQK007
+#strand	template
 kmer	level_mean	level_stdv	sd_mean	sd_stdv	ig_lambda	weight
 AAAAAA	83.459321	1.591638	1.321178	0.548785	7.657366	4145.236890
 AAAAAC	81.128876	1.616835	1.463961	0.640110	7.657366	3357.464182

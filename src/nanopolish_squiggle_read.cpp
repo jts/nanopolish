@@ -14,6 +14,8 @@
 #include "nanopolish_extract.h"
 #include <fast5.hpp>
 
+#define DEBUG_MODEL_SELECTION 1
+
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
     read_name(name),
