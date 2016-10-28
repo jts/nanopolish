@@ -146,15 +146,21 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
     std::string fast5_path = name_map.get_path(read_name);
     SquiggleRead sr(read_name, fast5_path);
 
+    /*
     // Skip non-2D reads
     if(!sr.has_events_for_strand(T_IDX) || !sr.has_events_for_strand(C_IDX)) {
         return;
     }
+    */
 
     // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+        if(!sr.has_events_for_strand(strand_idx)) {
+            continue;
+        }
+        
         std::vector<double> site_scores;
         std::vector<int> site_starts;
         std::vector<int> site_ends;
@@ -314,12 +320,6 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
             const ScoredSite& ss = iter->second;
-
-            // only output when both strands scored this site
-            if(ss.strands_scored != 2) {
-                continue;
-            }
-
             double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
 
@@ -360,6 +360,7 @@ void parse_methyltest_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::models_fofn; break;
+            case 'w': arg >> opt::region; break;
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
@@ -400,10 +401,7 @@ void parse_methyltest_options(int argc, char** argv)
         die = true;
     }
 
-    if(opt::models_fofn.empty()) {
-        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
-        die = true;
-    } else {
+    if(!opt::models_fofn.empty()) {
         // initialize the model set from the fofn
         PoreModelSet::initialize(opt::models_fofn);
     }

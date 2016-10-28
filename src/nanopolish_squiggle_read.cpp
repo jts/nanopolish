@@ -14,7 +14,7 @@
 #include "nanopolish_extract.h"
 #include <fast5.hpp>
 
-#define DEBUG_MODEL_SELECTION 1
+//#define DEBUG_MODEL_SELECTION 1
 
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
@@ -532,6 +532,7 @@ void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_typ
 
 void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
 {
+    WARN_ONCE("Copy all model data in replace");
     this->pore_model[strand_idx].update_states( model );
 }
 
