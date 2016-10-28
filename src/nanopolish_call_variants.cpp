@@ -104,6 +104,7 @@ namespace opt
     static std::string consensus_output;
     static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static double min_candidate_frequency = 0.2f;
+    static int min_candidate_depth = 20;
     static int calculate_all_support = false;
     static int snps_only = 0;
     static int show_progress = 0;
@@ -117,7 +118,7 @@ namespace opt
     static int debug_alignments = 0;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -143,6 +144,7 @@ static const struct option longopts[] = {
     { "outfile",                 required_argument, NULL, 'o' },
     { "threads",                 required_argument, NULL, 't' },
     { "min-candidate-frequency", required_argument, NULL, 'm' },
+    { "min-candidate-depth",     required_argument, NULL, 'd' },
     { "candidates",              required_argument, NULL, 'c' },
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
     { "p-skip",                  required_argument, NULL, OPT_P_SKIP },
@@ -150,7 +152,7 @@ static const struct option longopts[] = {
     { "p-bad",                   required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",              required_argument, NULL, OPT_P_BAD_SELF },
     { "consensus",               required_argument, NULL, OPT_CONSENSUS },
-    { "fix-homopolymers",        no_argument, NULL, OPT_FIX_HOMOPOLYMERS },
+    { "fix-homopolymers",        no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
     { "progress",                no_argument,       NULL, OPT_PROGRESS },
@@ -816,7 +818,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
-        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, 20);
+        candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, opt::min_candidate_depth);
     } else {
         candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
     }
@@ -909,6 +911,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
             case 'm': arg >> opt::min_candidate_frequency; break;
+            case 'd': arg >> opt::min_candidate_depth; break;
             case 'c': arg >> opt::candidates_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
