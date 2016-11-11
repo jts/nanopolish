@@ -492,7 +492,7 @@ void parse_methyltrain_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
         die = true;
     }
-    
+
     if(opt::genome_file.empty()) {
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
@@ -503,10 +503,7 @@ void parse_methyltrain_options(int argc, char** argv)
         die = true;
     }
 
-    if(opt::models_fofn.empty()) {
-        std::cerr << SUBPROGRAM ": a --models file must be provided\n";
-        die = true;
-    } else {
+    if(!opt::models_fofn.empty()) {
         // initialize the model set from the fofn
         PoreModelSet::initialize(opt::models_fofn);
     }

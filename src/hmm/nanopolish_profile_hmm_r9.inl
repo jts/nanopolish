@@ -7,7 +7,7 @@
 // for R9 data
 //
 
-//#define USE_EXTERNAL_PARAMS 1
+#define USE_EXTERNAL_PARAMS 1
 
 #define TRANS_CLIP_SELF 0.9
 #define TRANS_START_TO_CLIP 0.5
@@ -32,7 +32,6 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         float p_bad = g_p_bad;
         float p_bad_self = g_p_bad_self;
 #endif
-
         // transitions from match state in previous block
         float p_mk = p_skip; // probability of not observing an event at all
         float p_mb = p_bad; // probabilty of observing a bad event
