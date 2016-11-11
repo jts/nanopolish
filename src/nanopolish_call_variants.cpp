@@ -162,6 +162,21 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+// If there is a single contig in the .fai file, return its name
+// otherwise print an error message and exit
+std::string get_single_contig_or_fail()
+{
+    faidx_t *fai = fai_load(opt::genome_file.c_str());
+    size_t n_contigs = faidx_nseq(fai);
+    if(n_contigs > 1) {
+        fprintf(stderr, "Error: genome has multiple contigs, please use -w to specify input region\n");
+        exit(EXIT_FAILURE);
+    }
+
+    const char* name = faidx_iseq(fai, 0);
+    return std::string(name);
+}
+
 int get_contig_length(const std::string& contig)
 {
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -984,18 +999,26 @@ int call_variants_main(int argc, char** argv)
     parse_call_variants_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    // Parse the window string
-    // Replace ":" and "-" with spaces to make it parseable with stringstream
-    std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
-    std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
-
-    std::stringstream parser(opt::window);
     std::string contig;
     int start_base;
     int end_base;
 
-    parser >> contig >> start_base >> end_base;
-    end_base = std::min(end_base, get_contig_length(contig) - 1);
+    // If a window has been specified, only call variants/polish in that range
+    if(!opt::window.empty()) {
+        // Parse the window string
+        // Replace ":" and "-" with spaces to make it parseable with stringstream
+        std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
+        std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
+        std::stringstream parser(opt::window);
+
+        parser >> contig >> start_base >> end_base;
+        end_base = std::min(end_base, get_contig_length(contig) - 1);
+    } else {
+        // otherwise, run on the whole genome
+        contig = get_single_contig_or_fail();
+        start_base = 0;
+        end_base = get_contig_length(contig) - 1;
+    }
 
     FILE* out_fp;
     if(!opt::output_file.empty()) {
@@ -1005,9 +1028,6 @@ int call_variants_main(int argc, char** argv)
     }
 
     Variant::write_vcf_header(out_fp);
-
-    fprintf(stderr, "TODO: train model\n");
-    fprintf(stderr, "TODO: filter data\n");
 
     Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
 
