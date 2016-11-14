@@ -7,7 +7,7 @@
 // for R9 data
 //
 
-#define USE_EXTERNAL_PARAMS 1
+//#define USE_EXTERNAL_PARAMS 1
 
 #define TRANS_CLIP_SELF 0.9
 #define TRANS_START_TO_CLIP 0.5

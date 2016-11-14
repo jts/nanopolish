@@ -109,6 +109,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -s, --out-suffix=STR                 name output files like <strand>.out_suffix\n"
 "      --out-fofn=FILE                  write the names of the output models into FILE\n"
 "      --rounds=NUM                     number of training rounds to perform\n"
+"      --max-reads=NUM                  stop after processing NUM reads in each round\n"
 "      --progress                       print out a progress message\n"
 "      --stdv                           enable stdv modelling\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -133,6 +134,7 @@ namespace opt
     static unsigned progress = 0;
     static unsigned num_threads = 1;
     static unsigned batch_size = 128;
+    static unsigned max_reads = -1;
 
     // Constants that determine which events to use for training
     static float min_event_duration = 0.002;
@@ -157,7 +159,8 @@ enum { OPT_HELP = 1,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
-       OPT_P_BAD_SELF
+       OPT_P_BAD_SELF,
+       OPT_MAX_READS
      };
 
 static const struct option longopts[] = {
@@ -184,6 +187,7 @@ static const struct option longopts[] = {
     { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
     { "filter-policy",      required_argument, NULL, OPT_FILTER_POLICY },
     { "rounds",             required_argument, NULL, OPT_NUM_ROUNDS },
+    { "max-reads",          required_argument, NULL, OPT_MAX_READS },
     { NULL, 0, NULL, 0 }
 };
 
@@ -194,7 +198,7 @@ bool recalibrate_model(SquiggleRead &sr,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
                        const Alphabet* alphabet,
-                       const bool scale_var, 
+                       const bool scale_var,
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
@@ -241,8 +245,8 @@ bool recalibrate_model(SquiggleRead &sr,
             double mu = level_means[i];
             double e  = raw_events[i];
 
-            A(0,0) += inv_var;  A(0,1) += mu*inv_var;    
-                                A(1,1) += mu*mu*inv_var; 
+            A(0,0) += inv_var;  A(0,1) += mu*inv_var;
+                                A(1,1) += mu*mu*inv_var;
 
             b(0) += e*inv_var;
             b(1) += mu*e*inv_var;
@@ -294,7 +298,7 @@ bool recalibrate_model(SquiggleRead &sr,
         //                                                << sr.pore_model[strand_idx].drift << ", "
         //                                                << sr.pore_model[strand_idx].var   << std::endl;
     }
-        
+
     return recalibrated;
 }
 
@@ -462,6 +466,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
             case OPT_P_BAD: arg >> g_p_bad; break;
             case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
+            case OPT_MAX_READS: arg >> opt::max_reads; break;
             case OPT_HELP:
                 std::cout << METHYLTRAIN_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -605,14 +610,14 @@ void train_one_round(const Fast5Map& name_map, size_t round)
 
     do {
         assert(num_records_buffered < records.size());
-        
+
         // read a record into the next slot in the buffer
         result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
         num_records_buffered += result >= 0;
 
         // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
+        if(num_records_buffered == records.size() || result < 0 || (num_records_buffered + num_reads_realigned == opt::max_reads)) {
+            #pragma omp parallel for
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
@@ -628,11 +633,11 @@ void train_one_round(const Fast5Map& name_map, size_t round)
         if(opt::progress) {
             fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
         }
-    } while(result >= 0);
-    
+    } while(result >= 0 && num_reads_realigned < opt::max_reads);
+
     assert(num_records_buffered == 0);
     progress.end();
-    
+
     // open the summary file
     std::stringstream summary_fn;
     summary_fn << "methyltrain" << opt::out_suffix << ".summary";
