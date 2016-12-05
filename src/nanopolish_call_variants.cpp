@@ -113,6 +113,7 @@ namespace opt
     static int calibrate = 0;
     static int consensus_mode = 0;
     static int fix_homopolymers = 0;
+    static int ploidy = 1;
     static int min_distance_between_variants = 10;
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
@@ -241,6 +242,7 @@ void annotate_with_all_support(std::vector<Variant>& variants,
     }
 }
 
+// Given the input region, calculate all single base edits to the current assembly
 std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& alignments,
                                                           int region_start,
                                                           int region_end,
@@ -288,6 +290,8 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     return out_variants;
 }
 
+// Given the input set of variants, calculate the variants that have
+// a positive score
 std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
                                               const std::vector<Variant>& candidate_variants,
                                               uint32_t alignment_flags)
@@ -324,6 +328,8 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
     return out_variants;
 }
 
+// Given the input set of variants, calculate a new set
+// where each indel has been extended by a single base
 std::vector<Variant> expand_variants(const AlignmentDB& alignments,
                                      const std::vector<Variant>& candidate_variants,
                                      int region_start,
