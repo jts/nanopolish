@@ -863,6 +863,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     Haplotype called_haplotype(alignments.get_region_contig(),
                                alignments.get_region_start(),
                                alignments.get_reference());
+
     // Calling strategy in consensus mode
     while(opt::consensus_mode && round++ < MAX_ROUNDS) {
         assert(opt::consensus_mode);
