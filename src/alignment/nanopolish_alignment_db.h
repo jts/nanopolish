@@ -18,8 +18,10 @@
 // structs
 struct SequenceAlignmentRecord
 {
+    std::string read_name;
     std::string sequence;
     std::vector<AlignedPair> aligned_bases;
+    uint8_t rc; // with respect to reference genome
 };
 
 struct EventAlignmentRecord
@@ -27,7 +29,7 @@ struct EventAlignmentRecord
     SquiggleRead* sr;
     uint8_t rc; // with respect to reference genome
     uint8_t strand; // 0 = template, 1 = complement
-    uint8_t stride; // whether event indices increase or decrease along the reference
+    int8_t stride; // whether event indices increase or decrease along the reference
     std::vector<AlignedPair> aligned_events;
 };
 
@@ -84,7 +86,13 @@ class AlignmentDB
         
         void _load_sequence_by_region();
         void _load_events_by_region();
+        void _load_events_by_region_from_bam();
+        void _load_events_by_region_from_read();
+        void _load_squiggle_read(const std::string& read_name);
+
         void _clear_region();
+
+        void _debug_print_alignments();
 
         std::vector<EventAlignment> _build_event_alignment(const EventAlignmentRecord& event_record) const;
 

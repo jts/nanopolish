@@ -297,6 +297,8 @@ void AlignmentDB::load_region(const std::string& contig,
     // load event-space alignments
     _load_events_by_region();
 
+    //_debug_print_alignments();
+
     free(ref_segment);
     fai_destroy(fai);
 }
@@ -364,6 +366,8 @@ void AlignmentDB::_load_sequence_by_region()
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
         SequenceAlignmentRecord seq_record;
+        seq_record.read_name = bam_get_qname(handles.bam_record);
+        seq_record.rc = bam_is_rev(handles.bam_record);
 
         // copy sequence out of the record
         uint8_t* pseq = bam_get_seq(handles.bam_record);
@@ -397,6 +401,18 @@ void AlignmentDB::_load_events_by_region()
     assert(m_region_start >= 0);
     assert(m_region_end >= 0);
 
+    // running eventalign on whole genome data takes a long time
+    // optionally we can just infer the event-to-reference alignments
+    // by projecting from the read's basespace alignment
+    if(!m_event_bam.empty()) {
+        _load_events_by_region_from_bam();
+    } else {
+        _load_events_by_region_from_read();
+    }
+}
+
+void AlignmentDB::_load_events_by_region_from_bam()
+{
     BamHandles handles = _initialize_bam_itr(m_event_bam, m_region_contig, m_region_start, m_region_end);
 
     int result;
@@ -416,19 +432,7 @@ void AlignmentDB::_load_events_by_region()
         }
 
         std::string read_name = full_name.substr(0, suffix_pos);
-        std::string fast5_path = m_fast5_name_map.get_path(read_name);
-
-        // Do we need to load this fast5 file?
-        if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
-            SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
-            // Switch the read to use an alternative kmer model
-            if(!m_model_type_string.empty()) {
-                sr->replace_models(m_model_type_string);
-            }
-
-            m_squiggle_read_map[read_name] = sr;
-        }
-
+        _load_squiggle_read(read_name);
         event_record.sr = m_squiggle_read_map[read_name];
 
         // extract the event stride tag which tells us whether the
@@ -469,6 +473,101 @@ void AlignmentDB::_load_events_by_region()
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
+}
+
+void AlignmentDB::_load_events_by_region_from_read()
+{
+    for(size_t i = 0; i < m_sequence_records.size(); ++i) {
+        const SequenceAlignmentRecord& seq_record = m_sequence_records[i];
+
+        // conditionally load the squiggle read if it hasn't been loaded already
+        _load_squiggle_read(seq_record.read_name);
+        for(size_t si = 0; si < NUM_STRANDS; ++si) {
+            
+            // skip complement
+            if(si == C_IDX) {
+                continue;
+            }
+
+            EventAlignmentRecord event_record;
+            event_record.sr = m_squiggle_read_map[seq_record.read_name];
+            size_t k = event_record.sr->pore_model[si].k;
+            size_t read_length = event_record.sr->read_sequence.length();
+
+            // skip reads that do not have events here
+            if(!event_record.sr->has_events_for_strand(si)) {
+                continue;
+            }
+            
+            for(size_t j = 0; j < seq_record.aligned_bases.size(); ++j) {
+                // skip positions at the boundary
+                if(seq_record.aligned_bases[j].read_pos < k) {
+                    continue;
+                }
+
+                if(seq_record.aligned_bases[j].read_pos + k >= read_length) {
+                    continue;
+                }
+                size_t kmer_pos_ref_strand = seq_record.aligned_bases[j].read_pos;
+                size_t kmer_pos_read_strand = seq_record.rc ? event_record.sr->flip_k_strand(kmer_pos_ref_strand) : kmer_pos_ref_strand;
+                size_t event_idx = event_record.sr->get_closest_event_to(kmer_pos_read_strand, si);
+                event_record.aligned_events.push_back( { seq_record.aligned_bases[j].ref_pos, (int)event_idx });
+            }
+            event_record.rc = si == 0 ? seq_record.rc : !seq_record.rc;
+            event_record.strand = si;
+            event_record.stride = event_record.aligned_events.front().read_pos < event_record.aligned_events.back().read_pos ? 1 : -1;
+
+            m_event_records.push_back(event_record);
+        }
+    }
+}
+
+void AlignmentDB::_debug_print_alignments()
+{
+    // Build a map from a squiggle read to the middle base of the reference region it aligned to
+    std::map<std::string, int> read_to_ref_middle;
+    for(size_t i = 0; i < m_sequence_records.size(); ++i) {
+        const SequenceAlignmentRecord& record = m_sequence_records[i];
+        int middle = record.aligned_bases[record.aligned_bases.size()/2].ref_pos;
+        read_to_ref_middle.insert(std::make_pair(record.read_name, middle));
+    }
+
+    for(size_t i = 0; i < m_event_records.size(); ++i) {
+        const EventAlignmentRecord& record = m_event_records[i];
+        AlignedPair first = record.aligned_events.front();
+
+        int ref_middle = read_to_ref_middle[record.sr->read_name];
+        int event_middle_start, event_middle_end;
+        _find_by_ref_bounds(record.aligned_events, ref_middle, ref_middle, event_middle_start, event_middle_end);
+        AlignedPair last = record.aligned_events.back();
+        printf("event_record[%zu] name: %s strand: %zu stride: %d rc: %zu align bounds [%d %d] [%d %d] [%d %d]\n", 
+                i,
+                record.sr->read_name.c_str(),
+                record.strand,
+                record.stride,
+                record.rc,
+                first.ref_pos,
+                first.read_pos,
+                ref_middle,
+                event_middle_start,
+                last.ref_pos,
+                last.read_pos);
+    }
+}
+
+void AlignmentDB::_load_squiggle_read(const std::string& read_name)
+{
+    // Do we need to load this fast5 file?
+    if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
+        std::string fast5_path = m_fast5_name_map.get_path(read_name);
+        SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
+        // Switch the read to use an alternative kmer model
+        if(!m_model_type_string.empty()) {
+            sr->replace_models(m_model_type_string);
+        }
+
+        m_squiggle_read_map[read_name] = sr;
+    }
 }
 
 std::vector<EventAlignment> AlignmentDB::_build_event_alignment(const EventAlignmentRecord& event_record) const
