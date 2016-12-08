@@ -140,6 +140,7 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
                                         Haplotype base_haplotype, 
                                         const std::vector<HMMInputData>& input,
                                         const int max_haplotypes,
+                                        const int ploidy,
                                         const uint32_t alignment_flags)
 {
     size_t num_variants = candidate_variants.size();
@@ -161,144 +162,157 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     }
     max_r -= 1;
 
-    // Calculate the likelihood of the haplotype with no additional variants added
-    // also do some bookkeeping about per-read/per-model likelihoods
-    double base_lp = 0.0f;
-    double base_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-    int read_counts[6] = { 0, 0, 0, 0, 0, 0 };
+    // Construct haplotypes (including the base haplotype with no variants)
+    std::vector<Haplotype> haplotypes;
+    std::vector< std::vector<bool> > haplotype_variant_mask;
+    std::vector<bool> is_haplotype_valid;
 
-    std::vector<double> base_lp_by_read(input.size()); 
-    
-    #pragma omp parallel for
-    for(size_t j = 0; j < input.size(); ++j) {
-
-        double tmp = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
-
-        #pragma omp critical
-        {
-            base_lp_by_read[j] = tmp;
-            base_lp += tmp;
-
-            int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
-            int cid = 2 * mid + input[j].rc;
-            base_lp_by_model_strand[cid] += tmp;
-            read_counts[cid] += 1;
-        }
-    }
-
-    double best_lp = -INFINITY;
-    std::vector<Variant> best_variant_set;
-
-    // Score haplotypes by adding 1, 2, ..., max_r variant sets to it
-    for(size_t r = 1; r <= max_r; ++r) {
+    for(size_t r = 0; r <= max_r; ++r) {
         // From: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
         std::vector<bool> variant_selector(num_variants);
         std::fill(variant_selector.begin(), variant_selector.begin() + r, true);
 
         do {
             Haplotype current_haplotype = base_haplotype;
-            std::vector<Variant> current_variant_set;
             bool good_haplotype = true;
-
             for(size_t vi = 0; vi < num_variants; vi++) {
                 if(!variant_selector[vi]) {
                     continue;
                 }
 
-                current_variant_set.push_back(candidate_variants[vi]);
-                good_haplotype = good_haplotype && current_haplotype.apply_variant(current_variant_set.back());
+                good_haplotype = good_haplotype && current_haplotype.apply_variant(candidate_variants[vi]);
             }
             
             // skip the haplotype if all the variants couldnt be added to it
+            haplotypes.push_back(current_haplotype);
+            is_haplotype_valid.push_back(good_haplotype);
+            haplotype_variant_mask.push_back(variant_selector);
+
             if(!good_haplotype) {
                 continue;
             }
-
-            // score the haplotype
-            double current_lp = 0.0f;
-            double current_lp_by_model_strand[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-            size_t supporting_reads = 0;
-            std::vector<double> relative_lp_by_read(input.size(), 0.0f);
-
-            #pragma omp parallel for
-            for(size_t j = 0; j < input.size(); ++j) {
-                double tmp = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
-
-                #pragma omp critical
-                {
-                    current_lp += tmp;
-                    supporting_reads += tmp > base_lp_by_read[j];
-                    int mid = input[j].read->pore_model[input[j].strand].metadata.model_idx;
-                    int cid = 2 * mid + input[j].rc;
-                    current_lp_by_model_strand[cid] += tmp;
-                    relative_lp_by_read[j] = tmp - base_lp_by_read[j];
-                }
-            }
-
-            if(current_lp > best_lp && current_lp - base_lp > 0.1) {
-                best_lp = current_lp;
-                best_variant_set = current_variant_set;
-
-                // Annotate variants
-                for(size_t vi = 0; vi < best_variant_set.size(); ++vi) {
-                    Variant& v = best_variant_set[vi];
-                    v.add_info("TotalReads", input.size());
-                    v.add_info("SupportingReads", supporting_reads);
-                    v.add_info("SupportFraction", (double)supporting_reads / input.size());
-
-                    // Annotate variants with qualities from the three possible models
-                    std::string names[3] = { "Template", "Comp.P1", "Comp.P2" };
-
-                    for(int mid = 0; mid < 3; mid++) {
-                        int cid = 2 * mid;
-                        double s0 = current_lp_by_model_strand[cid] - base_lp_by_model_strand[cid];
-                        int c0 = read_counts[cid];
-
-                        double s1 = current_lp_by_model_strand[cid + 1] - base_lp_by_model_strand[cid + 1];
-                        int c1 = read_counts[cid + 1];
-
-                        std::stringstream ss;
-                        ss << std::setprecision(4) << s0 / c0 << "," << s1 / c1;
-                        v.add_info(names[mid], ss.str());
-                    }
-
-                    /*
-                    v.add_info("TemplateQuality", current_lp_by_strand[0] - base_lp_by_strand[0]);
-                    v.add_info("ComplementQuality", current_lp_by_strand[1] - base_lp_by_strand[1]);
-                    v.add_info("ForwardQuality", current_lp_by_rc[0] - base_lp_by_rc[0]);
-                    v.add_info("ReverseQuality", current_lp_by_rc[1] - base_lp_by_rc[1]);
-                    v.add_info("TAvgQuality", (current_lp_by_model[0] - base_lp_by_model[0]) / model_count[0]);
-                    v.add_info("C1AvgQuality", (current_lp_by_model[1] - base_lp_by_model[1]) / model_count[1]);
-                    v.add_info("C2AvgQuality", (current_lp_by_model[2] - base_lp_by_model[2]) / model_count[2]);
-                    */
-
-                    std::stringstream counts;
-                    std::ostream_iterator<int> rc_out(counts, ",");
-                    std::copy(std::begin(read_counts), std::end(read_counts), rc_out);
-                    std::string rc_str = counts.str();
-                    v.add_info("ReadCounts", rc_str.substr(0, rc_str.size() - 1));
-
-                    /*
-                    std::stringstream scores;
-                    std::ostream_iterator<float> scores_out(scores, ",");
-                    std::copy(std::begin(relative_lp_by_read), std::end(relative_lp_by_read), scores_out);
-                    std::string scores_str = scores.str();
-                    v.add_info("Scores", scores_str.substr(0, scores_str.size() - 1));
-                    */
-
-                    v.quality = best_lp - base_lp;
-                }
-            }
-#ifdef DEBUG_HAPLOTYPE_SELECTION
-            std::stringstream ss;
-            for(size_t vi = 0; vi < current_variant_set.size(); ++vi) {
-                const Variant& v = current_variant_set[vi];
-                ss << (vi > 0 ? "," : "") << v.key();
-            }
-            fprintf(stderr, "haplotype: %zu variants: %s relative score: %.2lf\n", hi, ss.str().c_str(), current_lp - base_lp);
-#endif
         } while(std::prev_permutation(variant_selector.begin(), variant_selector.end()));
     }
+
+    DoubleMatrix read_haplotype_scores;
+    allocate_matrix(read_haplotype_scores, input.size(), haplotypes.size());
+
+    // Score all reads against all haplotypes
+    #pragma omp parallel for
+    for(size_t ri = 0; ri < input.size(); ++ri) {
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            double score = 0.0f;
+            if(is_haplotype_valid[hi]) {
+                score = profile_hmm_score(haplotypes[hi].get_sequence(), input[ri], alignment_flags);
+            }
+            
+            #pragma omp critical
+            set(read_haplotype_scores, ri, hi, score);
+        }
+    }
+
+    // Select the haplotype with the highest score relative to the base haplotype (no variants)
+    double base_score = -INFINITY;
+    double best_score = -INFINITY;
+    double best_supporting_reads = 0;
+    std::vector<size_t> best_haplotype_set;
+
+    // Select the combination of haplotypes that maximizes the log-likelihood
+
+    // Uses the bitvector approach from https://www.mathsisfun.com/combinatorics/combinations-permutations.html
+    // (among many other places) to select haplotypes.
+    std::vector<bool> haplotype_selector(haplotypes.size() + ploidy - 1);
+    std::fill(haplotype_selector.begin(), haplotype_selector.begin() + ploidy, true);
+    
+    printf("Selecting haplotypes (%zu of %zu): \n", ploidy, haplotypes.size());
+    do {
+
+        // Convert haplotype mask into an array of haplotype indices
+        std::vector<size_t> current_haplotypes;
+        bool all_haplotypes_valid = true;
+
+        size_t curr_hi = 0;
+        for(const auto& bit : haplotype_selector) {
+            if(bit) {
+                assert(curr_hi < haplotypes.size());
+                all_haplotypes_valid = all_haplotypes_valid && is_haplotype_valid[curr_hi];
+                current_haplotypes.push_back(curr_hi);
+            } else {
+                curr_hi++;
+            }
+        }
+
+        bool is_base_set = true;
+/*
+        printf("\thaplotypes: ");
+        for(size_t i = 0; i < current_haplotypes.size(); ++i) {
+            printf("%zu ", current_haplotypes[i]);
+        }
+        printf("\n");
+*/
+        for(size_t i = 0; i < current_haplotypes.size(); ++i) {
+            is_base_set = is_base_set && (current_haplotypes[i] == 0);
+        }
+
+        if(!all_haplotypes_valid) {
+            continue;
+        }
+
+        double haplotype_set_score = 0.0f;
+
+        for(size_t ri = 0; ri < input.size(); ++ri) {
+            double set_sum = -INFINITY;
+            for(size_t j = 0; j < current_haplotypes.size(); ++j) {
+                size_t hi = current_haplotypes[j];
+                set_sum = add_logs(set_sum, get(read_haplotype_scores, ri, hi));
+            }
+            haplotype_set_score += set_sum;
+        }
+
+        if(is_base_set) {
+            base_score = haplotype_set_score;
+        }
+
+        if(haplotype_set_score > best_score) {
+            best_score = haplotype_set_score;
+            best_haplotype_set = current_haplotypes;
+//            best_supporting_reads = supporting_reads;
+        }
+    } while(std::prev_permutation(haplotype_selector.begin(), haplotype_selector.end()));
+
+
+    printf("Selected haplotypes: ");
+    for(size_t i = 0; i < best_haplotype_set.size(); ++i) {
+        printf("%zu ", best_haplotype_set[i]);
+    }
+    printf("%.2lf\n", best_score - base_score);
+
+    std::vector<Variant> best_variant_set;
+    if(best_score - base_score > 0.1) {
+
+        for(size_t vi = 0; vi < num_variants; vi++) {
+
+            size_t var_count = 0;
+            for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
+                var_count += haplotype_variant_mask[best_haplotype_set[j]][vi];
+            }
+
+            // is this variant a part of the variant set for the select haplotype?
+            if(var_count == 0) {
+                continue;
+            }
+
+            Variant v = candidate_variants[vi];
+            v.quality = best_score - base_score;
+            v.add_info("TotalReads", input.size());
+            v.add_info("AlleleCount", var_count);
+            //v.add_info("SupportFraction", best_supporting_reads / input.size());
+
+            best_variant_set.push_back(v);
+        }
+    }
+
+    free_matrix(read_haplotype_scores);
     return best_variant_set;
 }
 
