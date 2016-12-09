@@ -34,9 +34,12 @@ struct Variant
 
     void write_vcf(FILE* fp) const
     {
+        const char* gt_def = genotype.empty() ? NULL : "GT";
+        const char* gt_str = genotype.empty() ? NULL : genotype.c_str();
+
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
-        fprintf(fp, "%s\t%s\n", "PASS", info.c_str());
+        fprintf(fp, "%s\t%s\t%s\t%s\n", "PASS", info.c_str(), gt_def, gt_str);
     }
 
     void read_vcf(const std::string& line)
@@ -81,6 +84,7 @@ struct Variant
     std::string alt_seq;
     double quality;
     std::string info;
+    std::string genotype;
 };
 
 inline bool sortByPosition(const Variant& a, const Variant& b) 
@@ -111,12 +115,13 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
                                      const std::vector<HMMInputData>& input);
 
 // Select groups of variants to add to the base haplotype
-std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
-                                        Haplotype base_haplotype, 
-                                        const std::vector<HMMInputData>& input,
-                                        const int max_haplotypes,
-                                        const int ploidy,
-                                        const uint32_t alignment_flags);
+std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variants,
+                                   Haplotype base_haplotype, 
+                                   const std::vector<HMMInputData>& input,
+                                   const int max_haplotypes,
+                                   const int ploidy,
+                                   const bool genotype_all_input_variants,
+                                   const uint32_t alignment_flags);
 
 
 // Select variants that have a positive score wrt the base haplotype

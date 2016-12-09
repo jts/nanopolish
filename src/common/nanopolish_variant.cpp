@@ -136,12 +136,25 @@ std::vector<Variant> select_variants(const std::vector<Variant>& candidate_varia
     return selected_variants;
 }
 
-std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_variants,
-                                        Haplotype base_haplotype, 
-                                        const std::vector<HMMInputData>& input,
-                                        const int max_haplotypes,
-                                        const int ploidy,
-                                        const uint32_t alignment_flags)
+// this doesn't handle triallele ("1/2") genotypes, yet
+std::string make_genotype(size_t alt_alleles, size_t ploidy)
+{
+    assert(alt_alleles <= ploidy);
+    std::string out(ploidy + ploidy - 1, '/');
+    int num_ref = ploidy - alt_alleles;
+    for(size_t pos = 0; pos < out.size(); pos += 2) {
+        out[pos] = (pos / 2) < num_ref ? '0' : '1';
+    }
+    return out;
+}
+
+std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variants,
+                                   Haplotype base_haplotype, 
+                                   const std::vector<HMMInputData>& input,
+                                   const int max_haplotypes,
+                                   const int ploidy,
+                                   const bool genotype_all_input_variants,
+                                   const uint32_t alignment_flags)
 {
     size_t num_variants = candidate_variants.size();
 
@@ -280,6 +293,10 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
         }
     } while(std::prev_permutation(haplotype_selector.begin(), haplotype_selector.end()));
 
+    // TODO: set an appropriate threshold
+    if(best_score - base_score < 1) {
+        best_haplotype_set.assign(ploidy, 0); // set the called haplotypes to be the base (0)
+    }
 
     printf("Selected haplotypes: ");
     for(size_t i = 0; i < best_haplotype_set.size(); ++i) {
@@ -287,33 +304,52 @@ std::vector<Variant> select_variant_set(const std::vector<Variant>& candidate_va
     }
     printf("%.2lf\n", best_score - base_score);
 
-    std::vector<Variant> best_variant_set;
-    if(best_score - base_score > 0.1) {
-
+    /*
+    // Calculate the set of variants to call genotypes on and return
+    // -in variant discovery mode this is the union of all variants on called haplotypes
+    // -in genotype mode this is the complete set of input variants
+    std::vector<bool> output_variant_mask(candidate_variants.size(), false);
+    if(genotype_all_input_variants) {
+        output_variant_mask.assign(candidate_variants.size(), true);
+    } else {
         for(size_t vi = 0; vi < num_variants; vi++) {
-
-            size_t var_count = 0;
             for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
-                var_count += haplotype_variant_mask[best_haplotype_set[j]][vi];
+                output_variant_mask[vi] = output_variant_mask[vi] || haplotype_variant_mask[best_haplotype_set[j]][vi];
             }
-
-            // is this variant a part of the variant set for the select haplotype?
-            if(var_count == 0) {
-                continue;
-            }
-
-            Variant v = candidate_variants[vi];
-            v.quality = best_score - base_score;
-            v.add_info("TotalReads", input.size());
-            v.add_info("AlleleCount", var_count);
-            //v.add_info("SupportFraction", best_supporting_reads / input.size());
-
-            best_variant_set.push_back(v);
         }
+    }
+    */
+    std::vector<Variant> output_variants;
+    for(size_t vi = 0; vi < num_variants; vi++) {
+
+        /*
+        if(!output_variant_mask[vi]) {
+            continue;
+        }
+        */
+
+        size_t var_count = 0;
+        for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
+            var_count += haplotype_variant_mask[best_haplotype_set[j]][vi];
+        }
+
+        if( !(genotype_all_input_variants || var_count > 0)) {
+            continue;
+        }
+
+        Variant v = candidate_variants[vi];
+        v.quality = best_score - base_score;
+        v.add_info("TotalReads", input.size());
+        v.add_info("AlleleCount", var_count);
+        v.genotype = make_genotype(var_count, ploidy);
+
+        //v.add_info("SupportFraction", best_supporting_reads / input.size());
+
+        output_variants.push_back(v);
     }
 
     free_matrix(read_haplotype_scores);
-    return best_variant_set;
+    return output_variants;
 }
 
 std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,

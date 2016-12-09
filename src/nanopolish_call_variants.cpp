@@ -113,6 +113,7 @@ namespace opt
     static int calibrate = 0;
     static int consensus_mode = 0;
     static int fix_homopolymers = 0;
+    static int genotype_only = 0;
     static int ploidy = 0;
     static int min_distance_between_variants = 10;
     static int min_flanking_sequence = 30;
@@ -130,6 +131,7 @@ enum { OPT_HELP = 1,
        OPT_CALC_ALL_SUPPORT,
        OPT_CONSENSUS,
        OPT_FIX_HOMOPOLYMERS,
+       OPT_GENOTYPE,
        OPT_MODELS_FOFN,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
@@ -149,6 +151,7 @@ static const struct option longopts[] = {
     { "min-candidate-depth",     required_argument, NULL, 'd' },
     { "candidates",              required_argument, NULL, 'c' },
     { "ploidy",                  required_argument, NULL, 'p' },
+    { "genotype",                required_argument, NULL, OPT_GENOTYPE },
     { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
     { "p-skip",                  required_argument, NULL, OPT_P_SKIP },
     { "p-skip-self",             required_argument, NULL, OPT_P_SKIP_SELF },
@@ -391,6 +394,7 @@ std::vector<Variant> get_variants_from_vcf(const std::string& filename,
            (int)v.ref_position >= region_start &&
            (int)v.ref_position <= region_end)
         {
+            v.info.clear();
             out.push_back(v);
         }
     }
@@ -724,7 +728,8 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
 Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                          const std::vector<Variant>& candidate_variants,
-                                         uint32_t alignment_flags)
+                                         uint32_t alignment_flags,
+                                         FILE* vcf_out)
 {
     Haplotype derived_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
 
@@ -764,26 +769,22 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                 alignments.get_event_subsequences(alignments.get_region_contig(), calling_start, calling_end);
 
             // Subset the variants
-            std::vector<Variant> calling_variants(candidate_variants.begin() + curr_variant_idx,
+            std::vector<Variant> candidate_subset(candidate_variants.begin() + curr_variant_idx,
                                                   candidate_variants.begin() + end_variant_idx);
 
-            // Select the best set of variants
-            std::vector<Variant> selected_variants =
-                select_variant_set(calling_variants, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, alignment_flags);
+            // Call variants uing the nanopolish model
+            std::vector<Variant> called_variants =
+                call_variants(candidate_subset, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
 
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
             if(opt::calculate_all_support) {
-                annotate_with_all_support(selected_variants, calling_haplotype, event_sequences, alignment_flags);
+                annotate_with_all_support(called_variants, calling_haplotype, event_sequences, alignment_flags);
             }
 
             // Apply them to the final haplotype
-            for(size_t vi = 0; vi < selected_variants.size(); vi++) {
-
-                derived_haplotype.apply_variant(selected_variants[vi]);
-
-                if(opt::verbose > 1) {
-                    selected_variants[vi].write_vcf(stderr);
-                }
+           for(size_t vi = 0; vi < called_variants.size(); vi++) {
+                derived_haplotype.apply_variant(called_variants[vi]);
+                called_variants[vi].write_vcf(vcf_out);
             }
 
             if(opt::debug_alignments) {
@@ -807,7 +808,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 }
 
 
-Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end, FILE* out_fp)
 {
     const int BUFFER = opt::min_flanking_sequence + 10;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
@@ -885,7 +886,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         // Combine variants into sets that maximize their haplotype score
         called_haplotype = call_haplotype_from_candidates(alignments,
                                                           filtered_variants,
-                                                          alignment_flags);
+                                                          alignment_flags,
+                                                          NULL);
 
         if(opt::consensus_mode) {
             // Expand the called variant set by adding nearby variants
@@ -902,7 +904,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     if(!opt::consensus_mode) {
         called_haplotype = call_haplotype_from_candidates(alignments,
                                                           candidate_variants,
-                                                          alignment_flags);
+                                                          alignment_flags,
+                                                          out_fp);
     }
 
     if(opt::fix_homopolymers) {
@@ -942,6 +945,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
             case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
+            case OPT_GENOTYPE: opt::genotype_only = 1; arg >> opt::candidates_file; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
             case OPT_SNPS_ONLY: opt::snps_only = 1; break;
@@ -1041,12 +1045,7 @@ int call_variants_main(int argc, char** argv)
 
     Variant::write_vcf_header(out_fp);
 
-    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
-
-    std::vector<Variant> variants = haplotype.get_variants();
-    for(size_t vi = 0; vi < variants.size(); vi++) {
-        variants[vi].write_vcf(out_fp);
-    }
+    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, out_fp);
 
     if(out_fp != stdout) {
         fclose(out_fp);
