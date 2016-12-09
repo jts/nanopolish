@@ -35,6 +35,7 @@ static const char *EXTRACT_USAGE_MESSAGE =
 "      --version                        display version\n"
 "  -v, --verbose                        display verbose output\n"
 "  -r, --recurse                        recurse into subdirectories\n"
+"  -q, --fastq                          extract fastq (default: fasta)\n"
 "  -t, --type=TYPE                      read type: template, complement, 2d, 2d-or-template, all\n"
 "                                         (default: 2d-or-template)\n"
 "  -o, --output=FILE                    write output to FILE (default: stdout)\n"
@@ -45,6 +46,7 @@ namespace opt
     static unsigned int verbose = 0;
     static bool recurse = false;
     static std::string read_type = "2d-or-template";
+    static bool fastq = false;
     static std::string output_file;
     static std::deque< std::string > paths;
 }
@@ -150,8 +152,20 @@ void process_file(const std::string& fn)
             {
                 name += "2d";
             }
-            (*os_p) << ">" << name << " " << base_fn << " " << fn << "\n"
+            if (not opt::fastq)
+            {
+                (*os_p)
+                    << ">" << name << " " << base_fn << " " << fn << "\n"
                     << fq_a[1] << "\n";
+            }
+            else
+            {
+                (*os_p)
+                    << "@" << name << " " << base_fn << " " << fn << "\n"
+                    << fq_a[1] << "\n"
+                    << "+" << fq_a[2] << "\n"
+                    << fq_a[3] << "\n";
+            }
         }
         catch (hdf5_tools::Exception& e)
         {
@@ -205,7 +219,7 @@ void process_path(const std::string& path)
     }
 } // process_path
 
-static const char* shortopts = "vrt:o:";
+static const char* shortopts = "vrqt:o:";
 
 enum {
     OPT_HELP = 1,
@@ -219,6 +233,7 @@ static const struct option longopts[] = {
     { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
     { "verbose",            no_argument,       NULL, 'v' },
     { "recurse",            no_argument,       NULL, 'r' },
+    { "fastq",              no_argument,       NULL, 'q' },
     { "type",               required_argument, NULL, 't' },
     { "output",             required_argument, NULL, 'o' },
     { NULL, 0, NULL, 0 }
@@ -241,6 +256,7 @@ void parse_extract_options(int argc, char** argv)
                 break;
             case 'v': opt::verbose++; break;
             case 'r': opt::recurse = true; break;
+            case 'q': opt::fastq = true; break;
             case 't': arg >> opt::read_type; break;
             case 'o': arg >> opt::output_file; break;
         }
