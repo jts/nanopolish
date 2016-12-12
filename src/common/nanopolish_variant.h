@@ -18,7 +18,7 @@ class Haplotype;
 struct Variant
 {
     static void write_vcf_header(FILE* fp) {
-        fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO\n");
+        fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample\n");
     }
 
     Variant() { }

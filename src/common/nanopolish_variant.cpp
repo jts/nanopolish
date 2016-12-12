@@ -211,6 +211,8 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
     allocate_matrix(read_haplotype_scores, input.size(), haplotypes.size());
 
     // Score all reads against all haplotypes
+    std::vector<double> read_sum(input.size(), -INFINITY);
+    
     #pragma omp parallel for
     for(size_t ri = 0; ri < input.size(); ++ri) {
         for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
@@ -220,7 +222,10 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
             }
             
             #pragma omp critical
-            set(read_haplotype_scores, ri, hi, score);
+            {
+                set(read_haplotype_scores, ri, hi, score);
+                read_sum[ri] = add_logs(read_sum[ri], score);
+            }
         }
     }
 
@@ -236,10 +241,12 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
     // (among many other places) to select haplotypes.
     std::vector<bool> haplotype_selector(haplotypes.size() + ploidy - 1);
     std::fill(haplotype_selector.begin(), haplotype_selector.begin() + ploidy, true);
-    
-    printf("Selecting haplotypes (%zu of %zu): \n", ploidy, haplotypes.size());
-    do {
+   
+#ifdef DEBUG_HAPLOTYPE_SELECTION 
+    fprintf(stderr, "selecting haplotypes\n");
+#endif
 
+    do {
         // Convert haplotype mask into an array of haplotype indices
         std::vector<size_t> current_haplotypes;
         bool all_haplotypes_valid = true;
@@ -254,17 +261,12 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
                 curr_hi++;
             }
         }
-
+        
+        bool is_hom = true;
         bool is_base_set = true;
-/*
-        printf("\thaplotypes: ");
-        for(size_t i = 0; i < current_haplotypes.size(); ++i) {
-            printf("%zu ", current_haplotypes[i]);
-        }
-        printf("\n");
-*/
         for(size_t i = 0; i < current_haplotypes.size(); ++i) {
             is_base_set = is_base_set && (current_haplotypes[i] == 0);
+            is_hom = is_hom && (i == 0 || current_haplotypes[i] == current_haplotypes[i-1]);
         }
 
         if(!all_haplotypes_valid) {
@@ -272,61 +274,57 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
         }
 
         double haplotype_set_score = 0.0f;
+        std::vector<double> read_support(current_haplotypes.size(), 0.0f);
 
         for(size_t ri = 0; ri < input.size(); ++ri) {
             double set_sum = -INFINITY;
             for(size_t j = 0; j < current_haplotypes.size(); ++j) {
                 size_t hi = current_haplotypes[j];
-                set_sum = add_logs(set_sum, get(read_haplotype_scores, ri, hi));
+                double rhs = get(read_haplotype_scores, ri, hi);
+                set_sum = add_logs(set_sum, rhs);
+                read_support[j] += exp(rhs - read_sum[ri]);
             }
             haplotype_set_score += set_sum;
         }
+        
+        /*
+        // HACK: penalize hets
+        haplotype_set_score += is_hom ? 0.0 : -5.0;
+        */
 
         if(is_base_set) {
             base_score = haplotype_set_score;
         }
+        
+#ifdef DEBUG_HAPLOTYPE_SELECTION 
+        fprintf(stderr, "Haplotype set score: %.5lf\t", haplotype_set_score);
+        for(size_t i = 0; i < current_haplotypes.size(); ++i) {
+            fprintf(stderr, "\t%zu:%.2lf", current_haplotypes[i], read_support[i]);
+        }
+        fprintf(stderr, "\n");
+#endif
 
         if(haplotype_set_score > best_score) {
             best_score = haplotype_set_score;
             best_haplotype_set = current_haplotypes;
-//            best_supporting_reads = supporting_reads;
         }
     } while(std::prev_permutation(haplotype_selector.begin(), haplotype_selector.end()));
 
     // TODO: set an appropriate threshold
-    if(best_score - base_score < 1) {
+    if(best_score - base_score < 5) {
         best_haplotype_set.assign(ploidy, 0); // set the called haplotypes to be the base (0)
     }
 
+    /*
     printf("Selected haplotypes: ");
     for(size_t i = 0; i < best_haplotype_set.size(); ++i) {
         printf("%zu ", best_haplotype_set[i]);
     }
     printf("%.2lf\n", best_score - base_score);
-
-    /*
-    // Calculate the set of variants to call genotypes on and return
-    // -in variant discovery mode this is the union of all variants on called haplotypes
-    // -in genotype mode this is the complete set of input variants
-    std::vector<bool> output_variant_mask(candidate_variants.size(), false);
-    if(genotype_all_input_variants) {
-        output_variant_mask.assign(candidate_variants.size(), true);
-    } else {
-        for(size_t vi = 0; vi < num_variants; vi++) {
-            for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
-                output_variant_mask[vi] = output_variant_mask[vi] || haplotype_variant_mask[best_haplotype_set[j]][vi];
-            }
-        }
-    }
     */
+
     std::vector<Variant> output_variants;
     for(size_t vi = 0; vi < num_variants; vi++) {
-
-        /*
-        if(!output_variant_mask[vi]) {
-            continue;
-        }
-        */
 
         size_t var_count = 0;
         for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
@@ -338,7 +336,11 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
         }
 
         Variant v = candidate_variants[vi];
-        v.quality = best_score - base_score;
+        if(var_count > 0) {
+            v.quality = best_score - base_score;
+        } else {
+            v.quality = 0.0;
+        }
         v.add_info("TotalReads", input.size());
         v.add_info("AlleleCount", var_count);
         v.genotype = make_genotype(var_count, ploidy);
