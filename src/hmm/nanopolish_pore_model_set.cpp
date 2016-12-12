@@ -59,7 +59,7 @@ void PoreModelSet::register_model(const PoreModel& p)
     if(name_iter != type_set.end()) {
         fprintf(stderr, "Warning: overwriting model %s-%s\n", p.metadata.get_short_name().c_str(), p.type.c_str());
     }
-    type_set.insert(std::make_pair(p.metadata.get_short_name(), p));
+    type_set[p.metadata.get_short_name()] = p;
     fprintf(stderr, "[pore model set] registered model %s-%s(alphabet: %s)\n", p.metadata.get_short_name().c_str(), 
                                                                                p.type.c_str(),
                                                                                p.pmalphabet->get_name().c_str());
