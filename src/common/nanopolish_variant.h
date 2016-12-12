@@ -109,11 +109,6 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 // Remove snps or indels 
 void filter_out_non_snp_variants(std::vector<Variant>& variants);
 
-// Select variants to add to the base haplotype one-by-one
-std::vector<Variant> select_variants(const std::vector<Variant>& candidate_variants,
-                                     Haplotype base_haplotype, 
-                                     const std::vector<HMMInputData>& input);
-
 // Select groups of variants to add to the base haplotype
 std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variants,
                                    Haplotype base_haplotype, 
