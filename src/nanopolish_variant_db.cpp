@@ -10,11 +10,20 @@
 #include <sstream>
 #include "nanopolish_variant_db.h"
 
-Combinations::Combinations(size_t N, size_t k) 
+
+Combinations::Combinations(size_t N, size_t k, CombinationOption option) 
 { 
     assert(k <= N);
-    initial_setmask.resize(N, false);
-    std::fill(initial_setmask.begin(), initial_setmask.begin() + k, true);
+    m_option = option;
+
+    if(m_option == CO_WITHOUT_REPLACEMENT) {
+        initial_setmask.resize(N, false);
+        std::fill(initial_setmask.begin(), initial_setmask.begin() + k, true);
+    } else {
+        // Uses the bitvector approach from https://www.mathsisfun.com/combinatorics/combinations-permutations.html
+        initial_setmask.resize(N + k - 1, false);
+        std::fill(initial_setmask.begin(), initial_setmask.begin() + k, true);
+    }
     setmask = initial_setmask;
     m_done = false;
 }
@@ -26,6 +35,15 @@ bool Combinations::done()
 
 std::vector<size_t> Combinations::get() const
 {
+    if(m_option == CO_WITHOUT_REPLACEMENT) {
+        return _get_without_replacement();
+    } else {
+        return _get_with_replacement();
+    }
+}
+
+std::vector<size_t> Combinations::_get_without_replacement() const
+{
     assert(!m_done);
     std::vector<size_t> out;
     for(size_t i = 0; i < setmask.size(); ++i) {
@@ -36,15 +54,28 @@ std::vector<size_t> Combinations::get() const
     return out;
 }
 
+std::vector<size_t> Combinations::_get_with_replacement() const
+{
+    std::vector<size_t> out;
+    size_t curr_id = 0;
+    for(size_t i = 0; i < setmask.size(); ++i) {
+
+        if(setmask[i]) {
+            out.push_back(curr_id);
+        } else {
+            curr_id++;
+        }
+    }
+    return out;
+}
+
 std::string Combinations::get_as_string() const
 {
-    std::vector<size_t> comb = get();
-
+    std::vector<size_t> input = get();
     std::stringstream ss;
-    for(size_t i = 0; i < comb.size(); ++i) {
-
-        ss << comb[i];
-        if(i < comb.size() - 1) {
+    for(size_t i = 0; i < input.size(); ++i) {
+        ss << input[i];
+        if(i < input.size() - 1) {
             ss << ",";
         }
     }

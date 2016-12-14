@@ -17,25 +17,35 @@
 // typedefs
 typedef size_t VariantGroupID;
 
+enum CombinationOption
+{
+    CO_WITHOUT_REPLACEMENT,
+    CO_WITH_REPLACEMENT
+};
+
 // Algorithm from: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
 class Combinations
 {
     public:
-        Combinations(size_t N, size_t k);
+        Combinations(size_t N, size_t k, CombinationOption option = CO_WITHOUT_REPLACEMENT);
 
         // Have all combinations been processed?
         bool done();
 
-        // Get the current combinations, as a vector of indices
+        // Get the current combination, as a vector of indices
         std::vector<size_t> get() const;
+        std::string get_as_string() const;
 
         // Go to the next combination
         void next();
 
-        std::string get_as_string() const;
-    
     private:
+
+       std::vector<size_t> _get_without_replacement() const;
+       std::vector<size_t> _get_with_replacement() const;
+
        bool m_done;
+       CombinationOption m_option;
        std::vector<bool> setmask;
        std::vector<bool> initial_setmask;
 };

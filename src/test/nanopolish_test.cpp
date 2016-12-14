@@ -286,9 +286,9 @@ size_t factorial(size_t n)
     return out;
 }
 
-void test_combinations(size_t n, size_t k, std::vector<std::string> expected)
+void test_combinations(size_t n, size_t k, CombinationOption option, std::vector<std::string> expected)
 {
-    Combinations c(n, k);
+    Combinations c(n, k, option);
     size_t idx = 0;
     while(!c.done()) {
         std::string cs = c.get_as_string();
@@ -300,13 +300,14 @@ void test_combinations(size_t n, size_t k, std::vector<std::string> expected)
 }
 
 TEST_CASE( "combinations", "[combinations]") {
-    test_combinations(1,1, {"0"});
-    test_combinations(2,1, { "0", "1" });
-    test_combinations(2, 2, { "0,1" });
-    test_combinations(3, 2, { "0,1", "0,2", "1,2" });
-    test_combinations(4, 4, { "0,1,2,3", });
+    test_combinations(1, 1, CO_WITHOUT_REPLACEMENT, {"0"});
+    test_combinations(2, 1, CO_WITHOUT_REPLACEMENT, { "0", "1" });
+    test_combinations(2, 2, CO_WITHOUT_REPLACEMENT, { "0,1" });
+    test_combinations(3, 2, CO_WITHOUT_REPLACEMENT, { "0,1", "0,2", "1,2" });
+    test_combinations(4, 4, CO_WITHOUT_REPLACEMENT, { "0,1,2,3", });
     REQUIRE(factorial(4) == 24);
 
+    // Count we see the right number of combinations
     size_t n = 10;
     size_t k = 4;
     size_t n_comb = factorial(n) / (factorial(k) * factorial(n - k));
@@ -317,6 +318,12 @@ TEST_CASE( "combinations", "[combinations]") {
         c.next();
     }
     REQUIRE(count == n_comb);
+
+    // With replacement
+    test_combinations(1, 1, CO_WITH_REPLACEMENT, {"0"});
+    test_combinations(2, 1, CO_WITH_REPLACEMENT, { "0", "1" });
+    test_combinations(2, 2, CO_WITH_REPLACEMENT, { "0,0", "0,1", "1,0", "1,1" });
+    test_combinations(3, 2, CO_WITH_REPLACEMENT, { "0,0", "0,1", "0,2", "1,1", "1,2", "2,2"});
 }
 
 std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alignment)

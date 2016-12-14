@@ -15,7 +15,7 @@
 #include "nanopolish_model_names.h"
 #include "nanopolish_variant_db.h"
 
-#define DEBUG_HAPLOTYPE_SELECTION 1
+//#define DEBUG_HAPLOTYPE_SELECTION 1
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -151,7 +151,6 @@ std::vector<Variant> call_variants(const VariantGroup& variant_group,
 
     // Select the combination of haplotypes that maximizes the log-likelihood
 
-    // Uses the bitvector approach from https://www.mathsisfun.com/combinatorics/combinations-permutations.html
     // (among many other places) to select haplotypes.
     std::vector<bool> haplotype_selector(haplotypes.size() + ploidy - 1);
     std::fill(haplotype_selector.begin(), haplotype_selector.begin() + ploidy, true);
@@ -160,20 +159,10 @@ std::vector<Variant> call_variants(const VariantGroup& variant_group,
     fprintf(stderr, "selecting haplotypes\n");
 #endif
 
-    do {
-        // Convert haplotype mask into an array of haplotype indices
-        std::vector<size_t> current_haplotypes;
+    Combinations haplotype_combinations(haplotypes.size(), ploidy, CO_WITH_REPLACEMENT);
+    while(!haplotype_combinations.done()) {
 
-        size_t curr_hi = 0;
-        for(const auto& bit : haplotype_selector) {
-            if(bit) {
-                assert(curr_hi < haplotypes.size());
-                current_haplotypes.push_back(curr_hi);
-            } else {
-                curr_hi++;
-            }
-        }
-        
+        std::vector<size_t> current_haplotypes = haplotype_combinations.get();
         bool is_hom = true;
         bool is_base_set = true;
         for(size_t i = 0; i < current_haplotypes.size(); ++i) {
@@ -216,7 +205,8 @@ std::vector<Variant> call_variants(const VariantGroup& variant_group,
             best_score = haplotype_set_score;
             best_haplotype_set = current_haplotypes;
         }
-    } while(std::prev_permutation(haplotype_selector.begin(), haplotype_selector.end()));
+        haplotype_combinations.next();
+    }
 
     // TODO: set an appropriate threshold
     if(best_score - base_score < 5) {
