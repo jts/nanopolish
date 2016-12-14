@@ -18,6 +18,7 @@
 #include "nanopolish_alphabet.h"
 #include "nanopolish_emissions.h"
 #include "nanopolish_profile_hmm.h"
+#include "nanopolish_variant_db.h"
 #include "training_core.hpp"
 #include "invgauss.hpp"
 #include "logger.hpp"
@@ -270,6 +271,52 @@ TEST_CASE( "math", "[math]") {
 
     REQUIRE( normal_pdf(2.25, params) == Approx(0.1360275) );
     REQUIRE( log_normal_pdf(2.25, params) == Approx(log(normal_pdf(2.25, params))) );
+}
+
+size_t factorial(size_t n)
+{
+    if(n == 0 || n == 1) {
+        return 1;
+    }
+
+    size_t out = 1;
+    for(size_t i = 2; i <= n; ++i) {
+        out *= i;
+    }
+    return out;
+}
+
+void test_combinations(size_t n, size_t k, std::vector<std::string> expected)
+{
+    Combinations c(n, k);
+    size_t idx = 0;
+    while(!c.done()) {
+        std::string cs = c.get_as_string();
+        REQUIRE(cs == expected[idx]);
+        idx++;
+        c.next();
+    }
+    REQUIRE(idx == expected.size());
+}
+
+TEST_CASE( "combinations", "[combinations]") {
+    test_combinations(1,1, {"0"});
+    test_combinations(2,1, { "0", "1" });
+    test_combinations(2, 2, { "0,1" });
+    test_combinations(3, 2, { "0,1", "0,2", "1,2" });
+    test_combinations(4, 4, { "0,1,2,3", });
+    REQUIRE(factorial(4) == 24);
+
+    size_t n = 10;
+    size_t k = 4;
+    size_t n_comb = factorial(n) / (factorial(k) * factorial(n - k));
+    size_t count = 0;
+    Combinations c(n, k);
+    while(!c.done()) {
+        count++;
+        c.next();
+    }
+    REQUIRE(count == n_comb);
 }
 
 std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alignment)

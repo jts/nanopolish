@@ -35,6 +35,7 @@
 #include "nanopolish_haplotype.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_duration_model.h"
+#include "nanopolish_variant_db.h"
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
@@ -769,12 +770,13 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                 alignments.get_event_subsequences(alignments.get_region_contig(), calling_start, calling_end);
 
             // Subset the variants
-            std::vector<Variant> candidate_subset(candidate_variants.begin() + curr_variant_idx,
-                                                  candidate_variants.begin() + end_variant_idx);
+            VariantGroup vg(0,
+                            std::vector<Variant>(candidate_variants.begin() + curr_variant_idx,
+                                                 candidate_variants.begin() + end_variant_idx));
 
             // Call variants uing the nanopolish model
             std::vector<Variant> called_variants =
-                call_variants(candidate_subset, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
+                call_variants(vg, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
 
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
             if(opt::calculate_all_support) {

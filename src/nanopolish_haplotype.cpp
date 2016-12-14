@@ -70,6 +70,16 @@ bool Haplotype::apply_variant(const Variant& v)
     return true;
 }
 
+bool Haplotype::apply_variants(const std::vector<Variant>& variants)
+{
+    bool good = true;
+    for(const auto& v : variants) {
+        good = good && apply_variant(v);
+    }
+    return good;
+}
+
+
 // return a new haplotype subsetted by reference coordinates
 Haplotype Haplotype::substr_by_reference(size_t start, size_t end) const
 {

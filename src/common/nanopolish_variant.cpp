@@ -13,8 +13,9 @@
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 #include "nanopolish_model_names.h"
+#include "nanopolish_variant_db.h"
 
-//#define DEBUG_HAPLOTYPE_SELECTION 1
+#define DEBUG_HAPLOTYPE_SELECTION 1
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -74,7 +75,7 @@ std::string make_genotype(size_t alt_alleles, size_t ploidy)
     return out;
 }
 
-std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variants,
+std::vector<Variant> call_variants(const VariantGroup& variant_group,
                                    Haplotype base_haplotype, 
                                    const std::vector<HMMInputData>& input,
                                    const int max_haplotypes,
@@ -82,7 +83,7 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
                                    const bool genotype_all_input_variants,
                                    const uint32_t alignment_flags)
 {
-    size_t num_variants = candidate_variants.size();
+    size_t num_variants = variant_group.size();
 
     // Determine the maximum number of variants we can jointly test
     // without exceeding the maximum number of haplotypes
@@ -103,36 +104,26 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
 
     // Construct haplotypes (including the base haplotype with no variants)
     std::vector<Haplotype> haplotypes;
-    std::vector< std::vector<bool> > haplotype_variant_mask;
-    std::vector<bool> is_haplotype_valid;
+    std::vector< VariantCombination > haplotype_variant_combinations;
 
     for(size_t r = 0; r <= max_r; ++r) {
-        // From: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
-        std::vector<bool> variant_selector(num_variants);
-        std::fill(variant_selector.begin(), variant_selector.begin() + r, true);
 
-        do {
+        Combinations combinations(num_variants, r);
+        while(!combinations.done()) {
+            VariantCombination vc(variant_group.getID(), combinations.get());
+
+            // Apply variants to haplotype
             Haplotype current_haplotype = base_haplotype;
-            bool good_haplotype = true;
-            for(size_t vi = 0; vi < num_variants; vi++) {
-                if(!variant_selector[vi]) {
-                    continue;
-                }
-
-                good_haplotype = good_haplotype && current_haplotype.apply_variant(candidate_variants[vi]);
+            bool good_haplotype = current_haplotype.apply_variants(variant_group.get_variants(vc));
+            if(good_haplotype) {
+                haplotypes.push_back(current_haplotype);
+                haplotype_variant_combinations.push_back(vc);
             }
-            
-            // skip the haplotype if all the variants couldnt be added to it
-            haplotypes.push_back(current_haplotype);
-            is_haplotype_valid.push_back(good_haplotype);
-            haplotype_variant_mask.push_back(variant_selector);
-
-            if(!good_haplotype) {
-                continue;
-            }
-        } while(std::prev_permutation(variant_selector.begin(), variant_selector.end()));
+            combinations.next();
+        }
     }
 
+    // Score each haplotype
     DoubleMatrix read_haplotype_scores;
     allocate_matrix(read_haplotype_scores, input.size(), haplotypes.size());
 
@@ -142,10 +133,7 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
     #pragma omp parallel for
     for(size_t ri = 0; ri < input.size(); ++ri) {
         for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
-            double score = 0.0f;
-            if(is_haplotype_valid[hi]) {
-                score = profile_hmm_score(haplotypes[hi].get_sequence(), input[ri], alignment_flags);
-            }
+            double score = profile_hmm_score(haplotypes[hi].get_sequence(), input[ri], alignment_flags);
             
             #pragma omp critical
             {
@@ -175,13 +163,11 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
     do {
         // Convert haplotype mask into an array of haplotype indices
         std::vector<size_t> current_haplotypes;
-        bool all_haplotypes_valid = true;
 
         size_t curr_hi = 0;
         for(const auto& bit : haplotype_selector) {
             if(bit) {
                 assert(curr_hi < haplotypes.size());
-                all_haplotypes_valid = all_haplotypes_valid && is_haplotype_valid[curr_hi];
                 current_haplotypes.push_back(curr_hi);
             } else {
                 curr_hi++;
@@ -193,10 +179,6 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
         for(size_t i = 0; i < current_haplotypes.size(); ++i) {
             is_base_set = is_base_set && (current_haplotypes[i] == 0);
             is_hom = is_hom && (i == 0 || current_haplotypes[i] == current_haplotypes[i-1]);
-        }
-
-        if(!all_haplotypes_valid) {
-            continue;
         }
 
         double haplotype_set_score = 0.0f;
@@ -241,27 +223,23 @@ std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variant
         best_haplotype_set.assign(ploidy, 0); // set the called haplotypes to be the base (0)
     }
 
-    /*
-    printf("Selected haplotypes: ");
-    for(size_t i = 0; i < best_haplotype_set.size(); ++i) {
-        printf("%zu ", best_haplotype_set[i]);
-    }
-    printf("%.2lf\n", best_score - base_score);
-    */
-
     std::vector<Variant> output_variants;
     for(size_t vi = 0; vi < num_variants; vi++) {
 
         size_t var_count = 0;
         for(size_t j = 0; j < best_haplotype_set.size(); ++j) {
-            var_count += haplotype_variant_mask[best_haplotype_set[j]][vi];
+            const VariantCombination& curr_vc = haplotype_variant_combinations[best_haplotype_set[j]];
+
+            for(size_t k = 0; k < curr_vc.get_num_variants(); ++k) {
+                var_count += curr_vc.get_variant_id(k) == vi;
+            }
         }
 
         if( !(genotype_all_input_variants || var_count > 0)) {
             continue;
         }
 
-        Variant v = candidate_variants[vi];
+        Variant v = variant_group.get(vi);
         if(var_count > 0) {
             v.quality = best_score - base_score;
         } else {

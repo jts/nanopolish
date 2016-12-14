@@ -14,6 +14,7 @@
 
 // forward declare
 class Haplotype;
+class VariantGroup;
 
 struct Variant
 {
@@ -110,7 +111,7 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 void filter_out_non_snp_variants(std::vector<Variant>& variants);
 
 // Select groups of variants to add to the base haplotype
-std::vector<Variant> call_variants(const std::vector<Variant>& candidate_variants,
+std::vector<Variant> call_variants(const VariantGroup& variant_group,
                                    Haplotype base_haplotype, 
                                    const std::vector<HMMInputData>& input,
                                    const int max_haplotypes,

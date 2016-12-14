@@ -39,6 +39,10 @@ class Haplotype
         // add a variant into the haplotype
         // returns true if the variant is successfully added to the haplotype
         bool apply_variant(const Variant& v);
+        
+        // add multiple variants into the haplotype
+        // returns true if all variants are successfully added to the haplotype
+        bool apply_variants(const std::vector<Variant>& variants);
 
         // return all the variants on this haplotype
         std::vector<Variant> get_variants() const { return m_variants; }
