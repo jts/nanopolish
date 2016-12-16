@@ -122,7 +122,14 @@ void VariantGroup::set_combination_read_score(size_t combination_idx, const std:
 {
     assert(combination_idx < m_scores.size());
     m_scores[combination_idx][read_id] = score;
-    m_read_ids.insert(read_id);
+
+    auto itr = m_read_score_sum.find(read_id);
+
+    if(itr == m_read_score_sum.end()) {
+        m_read_score_sum[read_id] = score;
+    } else {
+        itr->second = add_logs(itr->second, score);
+    }
 }
 
 double VariantGroup::get_combination_read_score(size_t combination_idx, const std::string& read_id) const
@@ -133,9 +140,13 @@ double VariantGroup::get_combination_read_score(size_t combination_idx, const st
     return itr->second;
 }
 
-std::vector<std::string> VariantGroup::get_read_ids() const
+std::vector<std::pair<std::string, double>> VariantGroup::get_read_sum_scores() const
 {
-    return std::vector<std::string>(m_read_ids.begin(), m_read_ids.end());
+    std::vector<std::pair<std::string, double>> out;
+    for(const auto& itr : m_read_score_sum) {
+        out.push_back(std::make_pair(itr.first, itr.second));
+    }
+    return out;
 }
 
 //

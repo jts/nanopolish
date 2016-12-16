@@ -172,8 +172,8 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     fprintf(stderr, "Selecting haplotypes\n");
 #endif
     
-    // 
-    const std::vector<std::string> group_reads = variant_group.get_read_ids();
+    // Get read data for this group
+    const std::vector< std::pair<std::string, double>> group_reads = variant_group.get_read_sum_scores();
 
     Combinations vc_sets(variant_group.get_num_combinations(), ploidy, CO_WITH_REPLACEMENT);
     while(!vc_sets.done()) {
@@ -189,15 +189,17 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         }
 
         double set_score = 0.0f;
-        //std::vector<double> read_support(current_haplotypes.size(), 0.0f);
+        std::vector<double> read_support(current_set.size(), 0.0f);
 
-        for(const auto& read_id : group_reads) {
+        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+            const std::string& read_id = group_reads[ri].first;
+
             double set_sum = -INFINITY;
             for(size_t j = 0; j < current_set.size(); ++j) {
                 size_t vc_id = current_set[j];
                 double rhs = variant_group.get_combination_read_score(vc_id, read_id);
                 set_sum = add_logs(set_sum, rhs);
-                //read_support[j] += exp(rhs - read_sum[ri]);
+                read_support[j] += exp(rhs - group_reads[ri].second);
             }
             set_score += set_sum;
         }
@@ -210,7 +212,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
 #ifdef DEBUG_HAPLOTYPE_SELECTION 
         fprintf(stderr, "Current set score: %.5lf\t", set_score);
         for(size_t i = 0; i < current_set.size(); ++i) {
-            fprintf(stderr, "\t%zu:%.2lf", current_set[i], /*read_support[i]*/0.0f);
+            fprintf(stderr, "\t%zu:%.2lf", current_set[i], read_support[i]);
         }
         fprintf(stderr, "\n");
 #endif

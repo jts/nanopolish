@@ -107,8 +107,8 @@ class VariantGroup
         void set_combination_read_score(size_t combination_idx, const std::string& read_id, double score);
         double get_combination_read_score(size_t combination_idx, const std::string& read_id) const;
 
-        // Return the IDs of all reads used to score variants in this group
-        std::vector<std::string> get_read_ids() const;
+        // Return the IDs and sum scores of all reads used in this group
+        std::vector<std::pair<std::string, double>> get_read_sum_scores() const;
 
     private:
 
@@ -118,7 +118,7 @@ class VariantGroup
         typedef std::map<std::string, double> ReadScoreMap;
         std::vector<VariantCombination> m_combinations;
         std::vector<ReadScoreMap> m_scores;
-        std::set<std::string> m_read_ids;
+        std::map<std::string, double> m_read_score_sum;
 };
 
 class VariantDB
