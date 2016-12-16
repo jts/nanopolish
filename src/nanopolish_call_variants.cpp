@@ -733,6 +733,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                          FILE* vcf_out)
 {
     Haplotype derived_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
+    VariantDB variant_db;
 
     size_t curr_variant_idx = 0;
     while(curr_variant_idx < candidate_variants.size()) {
@@ -769,29 +770,19 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
             std::vector<HMMInputData> event_sequences =
                 alignments.get_event_subsequences(alignments.get_region_contig(), calling_start, calling_end);
 
-            // Subset the variants
-            VariantGroup vg(0,
-                            std::vector<Variant>(candidate_variants.begin() + curr_variant_idx,
-                                                 candidate_variants.begin() + end_variant_idx));
+            // Initialize a new group of variants
+            size_t group_id = variant_db.add_new_group(std::vector<Variant>(candidate_variants.begin() + curr_variant_idx,
+                                                                            candidate_variants.begin() + end_variant_idx));
 
-            // Call variants uing the nanopolish model
-            //std::vector<Variant> called_variants =
-                score_variant_group(vg, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
+            // score the variants using the nanopolish model
+            score_variant_group(variant_db.get_group(group_id),
+                                calling_haplotype,
+                                event_sequences,
+                                opt::max_haplotypes,
+                                opt::ploidy,
+                                opt::genotype_only,
+                                alignment_flags);
 
-            std::vector<Variant> called_variants = simple_call(vg, opt::ploidy, opt::genotype_only);
-
-            /*
-            // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
-            if(opt::calculate_all_support) {
-                annotate_with_all_support(called_variants, calling_haplotype, event_sequences, alignment_flags);
-            }
-            */
-
-            // Apply them to the final haplotype
-            for(size_t vi = 0; vi < called_variants.size(); vi++) {
-                derived_haplotype.apply_variant(called_variants[vi]);
-                called_variants[vi].write_vcf(vcf_out);
-            }
             if(opt::debug_alignments) {
                 print_debug_stats(alignments.get_region_contig(),
                                   calling_start,
@@ -807,6 +798,17 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 
         // advance to start of next region
         curr_variant_idx = end_variant_idx;
+    }
+
+    for(size_t gi = 0; gi < variant_db.get_num_groups(); ++gi) {
+
+        std::vector<Variant> called_variants = simple_call(variant_db.get_group(gi), opt::ploidy, opt::genotype_only);
+
+        // Apply them to the final haplotype
+        for(size_t vi = 0; vi < called_variants.size(); vi++) {
+            derived_haplotype.apply_variant(called_variants[vi]);
+            called_variants[vi].write_vcf(vcf_out);
+        }
     }
 
     return derived_haplotype;

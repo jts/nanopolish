@@ -152,7 +152,7 @@ std::vector<std::pair<std::string, double>> VariantGroup::get_read_sum_scores() 
 //
 // VariantDB
 //
-size_t VariantDB::add_new_variant_group(const std::vector<Variant>& variants)
+size_t VariantDB::add_new_group(const std::vector<Variant>& variants)
 {
     m_variant_groups.push_back(VariantGroup(m_variant_groups.size(), variants));
     return m_variant_groups.back().getID();

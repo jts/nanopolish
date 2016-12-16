@@ -124,14 +124,17 @@ class VariantGroup
 class VariantDB
 {
     public:
-        VariantDB();
+        VariantDB() {}
 
         // Add a new variant group into the collection
         // Returns the (numeric) ID of this group
-        size_t add_new_variant_group(const std::vector<Variant>& variants);
+        size_t add_new_group(const std::vector<Variant>& variants);
 
         // 
-        size_t get_num_variant_groups() const { return m_variant_groups.size(); }
+        size_t get_num_groups() const { return m_variant_groups.size(); }
+
+        //
+        VariantGroup& get_group(size_t i) { return m_variant_groups[i]; }
 
     private:
         std::vector<VariantGroup> m_variant_groups;
