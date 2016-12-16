@@ -11,6 +11,8 @@
 
 #include <string>
 #include <vector>
+#include <map>
+#include <set>
 #include <assert.h>
 #include "nanopolish_variant.h"
 
@@ -35,19 +37,22 @@ class Combinations
         // Get the current combination, as a vector of indices
         std::vector<size_t> get() const;
         std::string get_as_string() const;
-
+        
+        // Get the rank of the current combination (the rank of the N-th combination generated is N)
+        size_t get_rank() const { return m_rank; }
         // Go to the next combination
         void next();
 
     private:
 
-       std::vector<size_t> _get_without_replacement() const;
-       std::vector<size_t> _get_with_replacement() const;
-
-       bool m_done;
-       CombinationOption m_option;
-       std::vector<bool> setmask;
-       std::vector<bool> initial_setmask;
+        std::vector<size_t> _get_without_replacement() const;
+        std::vector<size_t> _get_with_replacement() const;
+        
+        size_t m_rank;
+        bool m_done;
+        CombinationOption m_option;
+        std::vector<bool> setmask;
+        std::vector<bool> initial_setmask;
 };
 
 // A variant combination is a subset of n variants
@@ -56,16 +61,15 @@ class Combinations
 class VariantCombination
 {
     public:
-        VariantCombination(VariantGroupID group_id, const std::vector<size_t>& variant_ids);
+        VariantCombination(const std::vector<size_t>& variant_ids);
         
-        //
         size_t get_num_variants() const { return m_variant_ids.size(); }
 
+        // Get the ID of the variant at idx in the combination
         size_t get_variant_id(size_t idx) const { return m_variant_ids[idx]; }
 
 
     private:
-        VariantGroupID m_group_id;
         std::vector<size_t> m_variant_ids;
 };
 
@@ -80,20 +84,41 @@ class VariantGroup
 
         // Return the ID of this group
         VariantGroupID getID() const { return m_group_id; }
+        
+        //
+        // Variant access
+        //
 
+        // get a single variant
         const Variant& get(size_t i) const { return m_variants[i]; }
         
+        // get a subset of variants according to the input combination
         const std::vector<Variant> get_variants(const VariantCombination& vc) const;
-
+        
         // Return the number of variants in the group
-        size_t size() const { return m_variants.size(); }
+        size_t get_num_variants() const { return m_variants.size(); }
+    
+        // Add a new variant combination to the collection. Returns its index.
+        size_t add_combination(const VariantCombination& vc);
+        const VariantCombination& get_combination(size_t idx) const { return m_combinations[idx]; }
+        size_t get_num_combinations() const { return m_combinations.size(); }
 
-        VariantCombination get_next_combination();
+        // Set the score computed by the HMM for a variant combination for a single read
+        void set_combination_read_score(size_t combination_idx, const std::string& read_id, double score);
+        double get_combination_read_score(size_t combination_idx, const std::string& read_id) const;
+
+        // Return the IDs of all reads used to score variants in this group
+        std::vector<std::string> get_read_ids() const;
 
     private:
 
         VariantGroupID m_group_id;
         std::vector<Variant> m_variants;
+
+        typedef std::map<std::string, double> ReadScoreMap;
+        std::vector<VariantCombination> m_combinations;
+        std::vector<ReadScoreMap> m_scores;
+        std::set<std::string> m_read_ids;
 };
 
 class VariantDB

@@ -775,20 +775,23 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                                  candidate_variants.begin() + end_variant_idx));
 
             // Call variants uing the nanopolish model
-            std::vector<Variant> called_variants =
-                call_variants(vg, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
+            //std::vector<Variant> called_variants =
+                score_variant_group(vg, calling_haplotype, event_sequences, opt::max_haplotypes, opt::ploidy, opt::genotype_only, alignment_flags);
 
+            std::vector<Variant> called_variants = simple_call(vg, opt::ploidy, opt::genotype_only);
+
+            /*
             // optionally annotate each variant with fraction of reads supporting A,C,G,T at this position
             if(opt::calculate_all_support) {
                 annotate_with_all_support(called_variants, calling_haplotype, event_sequences, alignment_flags);
             }
+            */
 
             // Apply them to the final haplotype
-           for(size_t vi = 0; vi < called_variants.size(); vi++) {
+            for(size_t vi = 0; vi < called_variants.size(); vi++) {
                 derived_haplotype.apply_variant(called_variants[vi]);
                 called_variants[vi].write_vcf(vcf_out);
             }
-
             if(opt::debug_alignments) {
                 print_debug_stats(alignments.get_region_contig(),
                                   calling_start,

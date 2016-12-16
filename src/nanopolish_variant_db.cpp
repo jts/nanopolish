@@ -14,6 +14,7 @@
 Combinations::Combinations(size_t N, size_t k, CombinationOption option) 
 { 
     assert(k <= N);
+    m_rank = 0;
     m_option = option;
 
     if(m_option == CO_WITHOUT_REPLACEMENT) {
@@ -85,15 +86,14 @@ std::string Combinations::get_as_string() const
 void Combinations::next()
 {
     std::prev_permutation(setmask.begin(), setmask.end());
+    m_rank++;
     m_done = (setmask == initial_setmask);
 }
 
 //
 // VariantCombinations
 //
-VariantCombination::VariantCombination(VariantGroupID group_id, const std::vector<size_t>& variant_ids) :
-                                                                                   m_group_id(group_id),
-                                                                                   m_variant_ids(variant_ids)
+VariantCombination::VariantCombination(const std::vector<size_t>& variant_ids) : m_variant_ids(variant_ids)
 {
 
 }
@@ -111,6 +111,32 @@ const std::vector<Variant> VariantGroup::get_variants(const VariantCombination& 
     return out;
 }
 
+size_t VariantGroup::add_combination(const VariantCombination& vc)
+{
+    m_combinations.push_back(vc);
+    m_scores.resize(m_combinations.size());
+    return m_combinations.size() - 1;
+}
+
+void VariantGroup::set_combination_read_score(size_t combination_idx, const std::string& read_id, double score)
+{
+    assert(combination_idx < m_scores.size());
+    m_scores[combination_idx][read_id] = score;
+    m_read_ids.insert(read_id);
+}
+
+double VariantGroup::get_combination_read_score(size_t combination_idx, const std::string& read_id) const
+{
+    assert(combination_idx < m_scores.size());
+    const auto& itr = m_scores[combination_idx].find(read_id);
+    assert(itr != m_scores[combination_idx].end());
+    return itr->second;
+}
+
+std::vector<std::string> VariantGroup::get_read_ids() const
+{
+    return std::vector<std::string>(m_read_ids.begin(), m_read_ids.end());
+}
 
 //
 // VariantDB
@@ -120,5 +146,3 @@ size_t VariantDB::add_new_variant_group(const std::vector<Variant>& variants)
     m_variant_groups.push_back(VariantGroup(m_variant_groups.size(), variants));
     return m_variant_groups.back().getID();
 }
-
-

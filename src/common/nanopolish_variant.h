@@ -110,15 +110,19 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 // Remove snps or indels 
 void filter_out_non_snp_variants(std::vector<Variant>& variants);
 
-// Select groups of variants to add to the base haplotype
-std::vector<Variant> call_variants(const VariantGroup& variant_group,
-                                   Haplotype base_haplotype, 
-                                   const std::vector<HMMInputData>& input,
-                                   const int max_haplotypes,
-                                   const int ploidy,
-                                   const bool genotype_all_input_variants,
-                                   const uint32_t alignment_flags);
+// Score the variants contained within the input group using the nanopolish HMM
+void score_variant_group(VariantGroup& variant_group,
+                         Haplotype base_haplotype, 
+                         const std::vector<HMMInputData>& input,
+                         const int max_haplotypes,
+                         const int ploidy,
+                         const bool genotype_all_input_variants,
+                         const uint32_t alignment_flags);
 
+// Call genotypes for the variants in this group
+std::vector<Variant> simple_call(VariantGroup& variant_group,
+                                 const int ploidy,
+                                 const bool genotype_all_input_variants);
 
 // Select variants that have a positive score wrt the base haplotype
 std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
