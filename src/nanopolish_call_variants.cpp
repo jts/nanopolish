@@ -800,17 +800,24 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         curr_variant_idx = end_variant_idx;
     }
 
-    for(size_t gi = 0; gi < variant_db.get_num_groups(); ++gi) {
+    bool use_multi_genotype = false;
 
-        std::vector<Variant> called_variants = simple_call(variant_db.get_group(gi), opt::ploidy, opt::genotype_only);
+    if(use_multi_genotype) {
+        std::vector<const VariantGroup*> neighbors;
+        neighbors.push_back(&variant_db.get_group(0));
+        std::vector<Variant> called_variants = multi_call(variant_db.get_group(1), neighbors, opt::ploidy, opt::genotype_only);
+    } else {
+        for(size_t gi = 0; gi < variant_db.get_num_groups(); ++gi) {
 
-        // Apply them to the final haplotype
-        for(size_t vi = 0; vi < called_variants.size(); vi++) {
-            derived_haplotype.apply_variant(called_variants[vi]);
-            called_variants[vi].write_vcf(vcf_out);
+            std::vector<Variant> called_variants = simple_call(variant_db.get_group(gi), opt::ploidy, opt::genotype_only);
+
+            // Apply them to the final haplotype
+            for(size_t vi = 0; vi < called_variants.size(); vi++) {
+                derived_haplotype.apply_variant(called_variants[vi]);
+                called_variants[vi].write_vcf(vcf_out);
+            }
         }
     }
-
     return derived_haplotype;
 }
 

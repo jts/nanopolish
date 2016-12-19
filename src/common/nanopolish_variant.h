@@ -119,10 +119,16 @@ void score_variant_group(VariantGroup& variant_group,
                          const bool genotype_all_input_variants,
                          const uint32_t alignment_flags);
 
-// Call genotypes for the variants in this group
+// Call genotypes for the variants in this group using a simple model
 std::vector<Variant> simple_call(VariantGroup& variant_group,
                                  const int ploidy,
                                  const bool genotype_all_input_variants);
+
+// Call genotypes for the variants in this group using support from nearby variants
+std::vector<Variant> multi_call(VariantGroup& variant_group,
+                                std::vector<const VariantGroup*> neighbor_groups,
+                                const int ploidy,
+                                const bool genotype_all_input_variants);
 
 // Select variants that have a positive score wrt the base haplotype
 std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,

@@ -167,6 +167,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     double best_score = -INFINITY;
     std::vector<size_t> best_set;
     std::vector<size_t> base_set;
+    double log_2 = log(2);
 
 #ifdef DEBUG_HAPLOTYPE_SELECTION 
     fprintf(stderr, "Selecting haplotypes\n");
@@ -198,9 +199,16 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             for(size_t j = 0; j < current_set.size(); ++j) {
                 size_t vc_id = current_set[j];
                 double rhs = variant_group.get_combination_read_score(vc_id, read_id);
-                set_sum = add_logs(set_sum, rhs);
+                fprintf(stderr, "\t\tread-haplotype: %s %zu %s %.2lf\n", read_id.c_str(), 
+                                                                         variant_group.get(0).ref_position, // hack
+                                                                         variant_group.get_vc_allele_string(vc_id).c_str(), rhs); 
+                set_sum = add_logs(set_sum, rhs - log_2);
                 read_support[j] += exp(rhs - group_reads[ri].second);
             }
+            fprintf(stderr, "\t\tread-genotype: %s %zu %.2lf\n", read_id.c_str(), 
+                                                                         variant_group.get(0).ref_position, // hack
+                                                                         /*variant_group.get_vc_allele_string(vc_id).c_str(),*/ set_sum); 
+
             set_score += set_sum;
         }
         
@@ -260,6 +268,176 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     return output_variants;
 
 }
+
+std::string prettyprint_multi(std::vector<size_t>& group_permutation_indices, 
+                              const std::vector<SizeTVecVec>& variant_group_permutations, 
+                              std::vector<const VariantGroup*> all_groups)
+{
+    std::stringstream ss;
+    for(size_t group_idx = 0; group_idx < group_permutation_indices.size(); ++group_idx) {
+        size_t group_perm_idx = group_permutation_indices[group_idx];
+        const auto& vc_vec = variant_group_permutations[group_idx][group_perm_idx]; 
+        for(size_t vc_idx = 0; vc_idx < vc_vec.size(); ++vc_idx) {
+            size_t id = vc_vec[vc_idx];
+            char sep = vc_idx == vc_vec.size() - 1 ? ' ' : '/';
+            ss << all_groups[group_idx]->get_vc_allele_string(id) << sep;
+        }
+    }
+    std::string out = ss.str();
+    return out.substr(0, out.size() - 1);
+}
+
+std::string prettyprint_haplotype(const std::vector<size_t>& haplotype, 
+                                  std::vector<const VariantGroup*> all_groups)
+{
+    std::stringstream ss;
+    for(size_t group_idx = 0; group_idx < haplotype.size(); ++group_idx) {
+        const auto& vc_idx = haplotype[group_idx];
+        const char* sep = group_idx == haplotype.size() - 1 ? "" : ",";
+        ss << all_groups[group_idx]->get_vc_allele_string(vc_idx) << sep;
+    }
+    return ss.str();
+}
+
+std::string prettyprint_genotype(std::vector<size_t>& genotype, 
+                                 const SizeTVecVec& haplotypes, 
+                                 std::vector<const VariantGroup*> all_groups)
+{
+    std::stringstream ss;
+    for(size_t gt_idx = 0; gt_idx < genotype.size(); ++gt_idx) {
+        size_t hap_idx = genotype[gt_idx];
+
+        // The haplotype should have one variant combo per group
+        assert(haplotypes[hap_idx].size() == all_groups.size());
+
+        for(size_t group_idx = 0; group_idx < haplotypes[hap_idx].size(); ++group_idx) {
+            const auto& vc_idx = haplotypes[hap_idx][group_idx];
+            const char* sep = group_idx == haplotypes[hap_idx].size() - 1 ? "" : ",";
+            ss << all_groups[group_idx]->get_vc_allele_string(vc_idx) << sep;
+        }
+        ss << "/";
+    }
+    std::string out = ss.str();
+    return out.substr(0, out.size() - 1);
+}
+
+typedef std::vector<size_t> Genotype;
+
+std::vector<Variant> multi_call(VariantGroup& variant_group,
+                                std::vector<const VariantGroup*> neighbor_groups,
+                                const int ploidy,
+                                const bool genotype_all_input_variants)
+{
+    // Select the best set of haplotypes that maximizes the probability of the data
+    double base_score = -INFINITY;
+    double best_score = -INFINITY;
+    std::vector<size_t> best_set;
+    std::vector<size_t> base_set;
+
+#ifdef DEBUG_HAPLOTYPE_SELECTION 
+    fprintf(stderr, "Selecting haplotypes\n");
+#endif
+
+    std::vector<const VariantGroup*> all_groups;
+    all_groups.push_back(&variant_group);
+    all_groups.insert(all_groups.end(), neighbor_groups.begin(), neighbor_groups.end());
+    
+    // Build an index of each variant combination for each variant group
+    SizeTVecVec variant_combinations_by_group(all_groups.size());
+    for(size_t gi = 0; gi < all_groups.size(); ++gi) {
+        std::vector<size_t> vc_ids;
+        for(size_t vci = 0; vci < all_groups[gi]->get_num_combinations(); ++vci) {
+            variant_combinations_by_group[gi].push_back(vci);
+        }
+    }
+
+    // Build haplotypes by generating all permutations of the variant combos for each group
+    SizeTVecVec haplotypes = cartesian_product(variant_combinations_by_group);
+
+    // Build genotypes by selecting ploidy haplotypes (with replacement) from the haplotypes
+    Combinations genotype_combos(haplotypes.size(), ploidy, CO_WITH_REPLACEMENT);
+    SizeTVecVec genotypes;
+    while(!genotype_combos.done()) {
+        genotypes.push_back(genotype_combos.get());
+        genotype_combos.next();
+    }
+    
+    // Score each genotype
+   
+    // get the read data for the variant group that we are genotyping
+    const std::vector< std::pair<std::string, double>> group_reads = variant_group.get_read_sum_scores();
+   
+    std::vector<double> scores(genotypes.size(), 0.0);
+    for(size_t i = 0; i < genotypes.size(); ++i) {
+        const auto& genotype = genotypes[i];
+
+        // Score all reads against this genotype
+        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+            auto read_id = group_reads[ri].first;
+            
+            double read_sum = -INFINITY;
+
+            for(size_t gt_idx = 0; gt_idx < genotype.size(); ++gt_idx) {
+                const auto& haplotype = haplotypes[genotype[gt_idx]];
+
+                // The haplotype should have one variant combo per group
+                assert(haplotype.size() == all_groups.size());
+                double hap_sum = 0.0f;
+                for(size_t group_idx = 0; group_idx < haplotype.size(); ++group_idx) {
+                    const auto& vc_idx = haplotype[group_idx];
+                    hap_sum += all_groups[group_idx]->get_combination_read_score(vc_idx, read_id);
+                }
+                std::string hap_str = prettyprint_haplotype(haplotype, all_groups);
+                fprintf(stderr, "\t\t%s %s %.2lf\n", read_id.c_str(), hap_str.c_str(), hap_sum);
+                read_sum = add_logs(read_sum, hap_sum);
+            }
+            scores[i] += read_sum;
+        }
+    }
+
+    for(size_t si = 0; si < scores.size(); ++si) {
+        std::string perm_pp = prettyprint_genotype(genotypes[si], haplotypes, all_groups);
+        fprintf(stderr, "perm[%zu]: %s %.2lf\n", si, perm_pp.c_str(), scores[si]);
+    }
+
+#if 0
+    // TODO: set an appropriate threshold
+    if(best_score - base_score < 5) {
+        best_set = base_set;
+    }
+
+    std::vector<Variant> output_variants;
+    for(size_t vi = 0; vi < variant_group.get_num_variants(); vi++) {
+
+        size_t var_count = 0;
+        for(size_t j = 0; j < best_set.size(); ++j) {
+            const VariantCombination& curr_vc = variant_group.get_combination(best_set[j]);
+
+            for(size_t k = 0; k < curr_vc.get_num_variants(); ++k) {
+                var_count += curr_vc.get_variant_id(k) == vi;
+            }
+        }
+        
+        if( !(genotype_all_input_variants || var_count > 0)) {
+            continue;
+        }
+
+        Variant v = variant_group.get(vi);
+        if(var_count > 0) {
+            v.quality = best_score - base_score;
+        } else {
+            v.quality = 0.0;
+        }
+        v.add_info("TotalReads", group_reads.size());
+        v.add_info("AlleleCount", var_count);
+        v.genotype = make_genotype(var_count, ploidy);
+        output_variants.push_back(v);
+    }
+#endif
+    std::vector<Variant> output_variants;
+    return output_variants;
+}
+
 
 std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
                                                       Haplotype base_haplotype, 

@@ -25,6 +25,10 @@ enum CombinationOption
     CO_WITH_REPLACEMENT
 };
 
+typedef std::vector<std::vector<size_t>> SizeTVecVec;
+
+SizeTVecVec cartesian_product(const SizeTVecVec& input);
+
 // Algorithm from: http://stackoverflow.com/questions/9430568/generating-combinations-in-c
 class Combinations
 {
@@ -68,7 +72,6 @@ class VariantCombination
         // Get the ID of the variant at idx in the combination
         size_t get_variant_id(size_t idx) const { return m_variant_ids[idx]; }
 
-
     private:
         std::vector<size_t> m_variant_ids;
 };
@@ -102,6 +105,7 @@ class VariantGroup
         size_t add_combination(const VariantCombination& vc);
         const VariantCombination& get_combination(size_t idx) const { return m_combinations[idx]; }
         size_t get_num_combinations() const { return m_combinations.size(); }
+        std::string get_vc_allele_string(size_t idx) const;
 
         // Set the score computed by the HMM for a variant combination for a single read
         void set_combination_read_score(size_t combination_idx, const std::string& read_id, double score);

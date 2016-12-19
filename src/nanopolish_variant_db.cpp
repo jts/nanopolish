@@ -10,6 +10,22 @@
 #include <sstream>
 #include "nanopolish_variant_db.h"
 
+// http://stackoverflow.com/a/17050528
+SizeTVecVec cartesian_product(const SizeTVecVec& input)
+{
+    SizeTVecVec s = {{}};
+    for (const auto& u : input) {
+        SizeTVecVec r;
+        for (const auto& x : s) {
+            for (const auto y : u) {
+                r.push_back(x);
+                r.back().push_back(y);
+            }
+        }
+        s = move(r);
+    }
+    return s;
+}
 
 Combinations::Combinations(size_t N, size_t k, CombinationOption option) 
 { 
@@ -116,6 +132,22 @@ size_t VariantGroup::add_combination(const VariantCombination& vc)
     m_combinations.push_back(vc);
     m_scores.resize(m_combinations.size());
     return m_combinations.size() - 1;
+}
+
+std::string VariantGroup::get_vc_allele_string(size_t idx) const
+{
+    const VariantCombination& vc = m_combinations[idx];
+    std::vector<bool> varmask(m_variants.size(), false);
+    for(size_t i = 0; i < vc.get_num_variants(); ++i) {
+        varmask[vc.get_variant_id(i)] = true;
+    }
+
+    std::stringstream ss;
+    for(size_t i = 0; i < m_variants.size(); ++i) {
+        ss << (varmask[i] ? m_variants[i].ref_seq : m_variants[i].alt_seq) << ",";
+    }
+    std::string out = ss.str();
+    return out.substr(0, out.size() - 1);
 }
 
 void VariantGroup::set_combination_read_score(size_t combination_idx, const std::string& read_id, double score)
