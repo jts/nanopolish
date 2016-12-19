@@ -353,43 +353,140 @@ std::vector<Variant> multi_call(VariantGroup& variant_group,
 
     // Build haplotypes by generating all permutations of the variant combos for each group
     SizeTVecVec haplotypes = cartesian_product(variant_combinations_by_group);
+    
+    // get the read data for the variant group that we are genotyping
+    const std::vector< std::pair<std::string, double>> group_reads = variant_group.get_read_sum_scores();
 
-    // Build genotypes by selecting ploidy haplotypes (with replacement) from the haplotypes
+    // Score each haplotype
+    DoubleMatrix read_haplotype_scores;
+    allocate_matrix(read_haplotype_scores, group_reads.size(), haplotypes.size());
+    
+    // Calculate and store read-haplotype scores
+    for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+        auto read_id = group_reads[ri].first;
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+
+            const auto& haplotype = haplotypes[hi];
+
+            // The haplotype should have one variant combo per group
+            assert(haplotype.size() == all_groups.size());
+            double hap_sum = 0.0f;
+            for(size_t group_idx = 0; group_idx < haplotype.size(); ++group_idx) {
+                const auto& vc_idx = haplotype[group_idx];
+                hap_sum += all_groups[group_idx]->get_combination_read_score(vc_idx, read_id);
+            }
+
+            set(read_haplotype_scores, ri, hi, hap_sum);
+        }
+    }
+
+    
+
+    // Dindel EM model
+    // Calculate expectation of read-haplotype indicator variables
+    DoubleMatrix z;
+    allocate_matrix(z, group_reads.size(), haplotypes.size());
+    for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            set(z, ri, hi, 0.5); // doEM initializes to 0.5, should be 1/haplotypes.size()?
+        }
+    }
+    
+    // log of haplotype frequencies
+    std::vector<double> pi(haplotypes.size(), log(1.0 / haplotypes.size()));
+
+    // counts of each haplotype
+    std::vector<double> nk(haplotypes.size(), 0.0f);
+    
+    // run EM
+    size_t iterations = 0;
+    while(1) {
+
+        for(size_t i = 0; i < haplotypes.size(); ++i) {
+            nk[i] = 0.0;
+        }
+
+        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+
+            // responsibility
+            double lognorm = -INFINITY;
+            for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+                set(z, ri, hi, pi[hi] + get(read_haplotype_scores, ri, hi));
+                lognorm = add_logs(lognorm, get(z, ri, hi));
+            }
+
+            // normalize
+            for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+                double t = get(z, ri, hi);
+                double et = exp(t - lognorm);
+                set(z, ri, hi, et);
+                nk[hi] += et;
+            }
+        }
+
+        // frequencies
+        double zh = 0.0f;
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            zh += nk[hi];
+        }
+
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            pi[hi] = log(nk[hi] / zh);
+        }
+
+        // debug output
+        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+            fprintf(stderr, "read-haplotype indicator - %s\t", group_reads[ri].first.c_str());
+            for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+                std::string hap_str = prettyprint_haplotype(haplotypes[hi], all_groups);
+                fprintf(stderr, "%s: %.3lf ", hap_str.c_str(), get(z, ri, hi));
+            }
+            fprintf(stderr, "\n");
+        }
+
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            std::string hap_str = prettyprint_haplotype(haplotypes[hi], all_groups);
+            fprintf(stderr, "hap[%zu]: %s read count: %.2lf\n", hi, hap_str.c_str(), nk[hi]);
+        }
+
+        fprintf(stderr, "haplotype frequencies:");
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            std::string hap_str = prettyprint_haplotype(haplotypes[hi], all_groups);
+            fprintf(stderr, "%s:%.3lf ", hap_str.c_str(), exp(pi[hi]));
+        }
+        fprintf(stderr, "\n");
+        
+        if(iterations++ > 2) {
+            break;
+        }
+    }
+
+    // Build genotypes by selecting ploidy haplotypes (with replacement)
     Combinations genotype_combos(haplotypes.size(), ploidy, CO_WITH_REPLACEMENT);
     SizeTVecVec genotypes;
     while(!genotype_combos.done()) {
         genotypes.push_back(genotype_combos.get());
         genotype_combos.next();
     }
-    
-    // Score each genotype
    
-    // get the read data for the variant group that we are genotyping
-    const std::vector< std::pair<std::string, double>> group_reads = variant_group.get_read_sum_scores();
-   
+    // Score genotypes
+    double log_2 = log(2.0f);
     std::vector<double> scores(genotypes.size(), 0.0);
     for(size_t i = 0; i < genotypes.size(); ++i) {
         const auto& genotype = genotypes[i];
 
         // Score all reads against this genotype
         for(size_t ri = 0; ri < group_reads.size(); ++ri) {
-            auto read_id = group_reads[ri].first;
             
             double read_sum = -INFINITY;
 
             for(size_t gt_idx = 0; gt_idx < genotype.size(); ++gt_idx) {
+                size_t hi = genotype[gt_idx];
+                double read_hap_score = get(read_haplotype_scores, ri, hi);
                 const auto& haplotype = haplotypes[genotype[gt_idx]];
-
-                // The haplotype should have one variant combo per group
-                assert(haplotype.size() == all_groups.size());
-                double hap_sum = 0.0f;
-                for(size_t group_idx = 0; group_idx < haplotype.size(); ++group_idx) {
-                    const auto& vc_idx = haplotype[group_idx];
-                    hap_sum += all_groups[group_idx]->get_combination_read_score(vc_idx, read_id);
-                }
                 std::string hap_str = prettyprint_haplotype(haplotype, all_groups);
-                fprintf(stderr, "\t\t%s %s %.2lf\n", read_id.c_str(), hap_str.c_str(), hap_sum);
-                read_sum = add_logs(read_sum, hap_sum);
+                fprintf(stderr, "\t\t%s %s %.2lf\n", group_reads[ri].first.c_str(), hap_str.c_str(), read_hap_score);
+                read_sum = add_logs(read_sum, read_hap_score - log_2);
             }
             scores[i] += read_sum;
         }
@@ -435,6 +532,9 @@ std::vector<Variant> multi_call(VariantGroup& variant_group,
     }
 #endif
     std::vector<Variant> output_variants;
+
+    free_matrix(read_haplotype_scores);
+    free_matrix(z);
     return output_variants;
 }
 

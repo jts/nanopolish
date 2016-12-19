@@ -805,7 +805,8 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
     if(use_multi_genotype) {
         std::vector<const VariantGroup*> neighbors;
         neighbors.push_back(&variant_db.get_group(0));
-        std::vector<Variant> called_variants = multi_call(variant_db.get_group(1), neighbors, opt::ploidy, opt::genotype_only);
+        neighbors.push_back(&variant_db.get_group(1));
+        std::vector<Variant> called_variants = multi_call(variant_db.get_group(2), neighbors, opt::ploidy, opt::genotype_only);
     } else {
         for(size_t gi = 0; gi < variant_db.get_num_groups(); ++gi) {
 
