@@ -35,6 +35,7 @@ struct Variant
 
     void write_vcf(FILE* fp) const
     {
+        assert(fp != NULL);
         const char* gt_def = genotype.empty() ? NULL : "GT";
         const char* gt_str = genotype.empty() ? NULL : genotype.c_str();
 

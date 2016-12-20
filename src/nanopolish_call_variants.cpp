@@ -902,7 +902,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         called_haplotype = call_haplotype_from_candidates(alignments,
                                                           filtered_variants,
                                                           alignment_flags,
-                                                          NULL);
+                                                          out_fp);
 
         if(opt::consensus_mode) {
             // Expand the called variant set by adding nearby variants
