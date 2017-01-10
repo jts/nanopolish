@@ -3,17 +3,16 @@
 // Written by Matei David (matei.david@oicr.on.ca)
 //---------------------------------------------------------
 //
-#include "nanopolish_extract.h"
 
 #include <iostream>
 #include <sstream>
 #include <getopt.h>
 
+#include "nanopolish_extract.h"
 #include "nanopolish_common.h"
 #include "fs_support.hpp"
 #include "logger.hpp"
 #include "alg.hpp"
-#include <fast5.hpp>
 
 //
 // Getopt
