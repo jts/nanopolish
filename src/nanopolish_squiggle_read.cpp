@@ -232,7 +232,6 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     events_per_base[si] = ((float)alignment.size() / total_kmers);
 
-
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
 
