@@ -200,6 +200,9 @@ class SquiggleRead
         double sample_rate;
         int64_t sample_start_time;
 
+        // summary stats
+        double events_per_base[2];
+
         //
         std::vector<EventRangeForBase> base_to_event_map;
 

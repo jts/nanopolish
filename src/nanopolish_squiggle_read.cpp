@@ -209,11 +209,19 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     assert(p_model_states.size() == events[si].size());
 
+    size_t total_kmers = 0;
+    std::string prev_kmer = "";
+    
     for(const auto& ea : alignment) {
         if((!ea.rc && ea.ref_kmer == blacklist_kmer) ||
            (ea.rc && ea.ref_kmer == gDNAAlphabet.reverse_complement(blacklist_kmer)))
         {
             continue;
+        }
+        
+        if(ea.ref_kmer != prev_kmer) {
+            prev_kmer = ea.ref_kmer;
+            total_kmers++;
         }
 
         if(p_model_states[ea.event_idx] < p_model_state_threshold)
@@ -221,6 +229,9 @@ void SquiggleRead::_load_R9(uint32_t si,
 
         filtered.push_back(ea);
     }
+
+    events_per_base[si] = ((float)alignment.size() / total_kmers);
+
 
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
@@ -698,6 +709,10 @@ void SquiggleRead::detect_basecall_group()
             }
             basecall_group = g;
             read_type = (st == 2? SRT_2D : (st == 0? SRT_TEMPLATE : SRT_COMPLEMENT));
+        }
+
+        if(not basecall_group.empty()) {
+            break;
         }
     }
     if (basecall_group.empty() or not check_basecall_group())
