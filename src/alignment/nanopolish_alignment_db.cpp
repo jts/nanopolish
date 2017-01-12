@@ -365,6 +365,12 @@ void AlignmentDB::_load_sequence_by_region()
 
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
+
+        // skip ambiguously mapped reads
+        if(handles.bam_record->core.qual == 0) {
+            continue;
+        }
+
         SequenceAlignmentRecord seq_record;
         seq_record.read_name = bam_get_qname(handles.bam_record);
         seq_record.rc = bam_is_rev(handles.bam_record);
