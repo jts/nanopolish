@@ -233,7 +233,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     }
 
     // TODO: set an appropriate threshold
-    if(best_score - base_score < 5) {
+    if(best_score - base_score < 20) {
         best_set = base_set;
     }
 
