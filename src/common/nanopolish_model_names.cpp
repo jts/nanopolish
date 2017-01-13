@@ -14,7 +14,7 @@
 
 static std::string strand_by_idx[] = { "template", "complement.pop1", "complement.pop2" };
 static std::string short_strand_by_idx[] = { "t", "c.p1", "c.p2" };
-static std::string short_kit_by_idx[] = { "005", "006", "007" };
+static std::string kit_name_by_idx[] = { "SQK005", "SQK006", "R9_250BPS", "R9_4_450BPS" };
 
 static std::map< std::string, ModelMetadata > known_models = {
 
@@ -27,25 +27,18 @@ static std::map< std::string, ModelMetadata > known_models = {
     { "r7.3_e6_70bps_6mer_template_median68pA.model", {T_IDX, 0, KV_SQK006 } },
     { "r7.3_e6_70bps_6mer_complement_median68pA_pop1.model", {C_IDX, 1, KV_SQK006 } },
     { "r7.3_e6_70bps_6mer_complement_median68pA_pop2.model", {C_IDX, 2, KV_SQK006 } },
-
-    // SQK007 models
-    { "r9.template.model", {T_IDX, 0, KV_SQK007 } },
-    { "r9.template.5mer.base.model", {T_IDX, 0, KV_SQK007 } },
-    { "r9.template.5mer.base.model.trained", {T_IDX, 0, KV_SQK007 } }
-
 };
 
 std::string ModelMetadata::get_short_name() const
 {
-    assert(this->model_idx < 3);
-    assert(this->kit < NUM_KITS);
-    return short_strand_by_idx[this->model_idx] + "." + short_kit_by_idx[this->kit];
+    assert(false);
+    return "";
 }
 
 std::string ModelMetadata::get_kit_name() const
 {
     assert(this->kit < NUM_KITS);
-    return "SQK" + short_kit_by_idx[this->kit];
+    return kit_name_by_idx[this->kit];
 }
 
 std::string ModelMetadata::get_strand_model_name() const

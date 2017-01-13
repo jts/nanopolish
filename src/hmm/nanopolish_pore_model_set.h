@@ -27,24 +27,30 @@ class PoreModelSet
         static void initialize(const std::string& fofn_filename);
 
         //
-        // check if a model with this type and short name exists
+        // check if a model with the specification exists
         //
-        static bool has_model(const std::string& type, const std::string& short_name);
+        static bool has_model(const std::string& kit_name, 
+                              const std::string& alphabet,
+                              const std::string& strand,
+                              size_t k);
 
         //
-        // get a model from the set using its type and short name
+        // get a model from the set
         //
-        static const PoreModel& get_model(const std::string& type, const std::string& short_name);
+        static const PoreModel& get_model(const std::string& kit_name, 
+                                          const std::string& alphabet,
+                                          const std::string& strand,
+                                          size_t k);
 
         //
         // get all the models for this type
         //
-        static const PoreModelMap& get_models(const std::string& type);
+        static const std::map<std::string, PoreModel>& get_models(const std::string& type);
 
         //
-        // insert the new model into the specified type
+        // 
         //
-        static void insert_model(const std::string& type, const PoreModel& model);
+        static void add_model(const PoreModel& p);
 
         // destructor
         ~PoreModelSet();
@@ -58,8 +64,16 @@ class PoreModelSet
             return instance;
         }
 
-        // Add this model into the collection
+        // Internal function for adding this model into the collection
         void register_model(const PoreModel& p);
+
+        // Build a unique identify string
+        std::string get_model_key(const PoreModel& model);
+
+        std::string get_model_key(const std::string& kit_name,
+                                  const std::string& alphabet,
+                                  const std::string& strand,
+                                  size_t k);
 
         PoreModelSet();
 
@@ -67,10 +81,8 @@ class PoreModelSet
         PoreModelSet(PoreModelSet const&) = delete;
         void operator=(PoreModelSet const&) = delete;
 
-        // this is a map from a pore model type (like "base" or "derived"
-        // to a map of models indexed by their short name
-        // for example m_model_type_sets["base"]["t.007"]
-        std::map<std::string, PoreModelMap> model_type_sets;
+        // map from a string representing a pore model to the actual model
+        std::map<std::string, PoreModel> model_map;
 };
 
 #endif

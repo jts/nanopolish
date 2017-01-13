@@ -62,8 +62,6 @@ print "PoreModel %s()\n{" % (args.function_name)
 print "\tPoreModel tmp;"
 # Output metadata
 assign("model_filename", quote(args.input))
-assign("name", quote(header_kv["model_name"]))
-assign("type", quote(header_kv["type"]))
 assign("k", K)
 
 # Output default values for scaling parameters

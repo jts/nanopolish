@@ -143,9 +143,10 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
 
     // Build the map from k-mers of the read sequence to events
     if(read_type == SRT_2D) {
-        if(pore_model[0].metadata.kit == KV_SQK007) {
+        if(pore_model[0].metadata.is_r9()) {
             build_event_map_2d_r9();
         } else {
+            assert(pore_model[0].metadata.is_r7());
             build_event_map_2d_r7();
         }
     } else {
@@ -194,6 +195,9 @@ void SquiggleRead::_load_R9(uint32_t si,
                             const std::vector<double>& p_model_states,
                             const uint32_t flags)
 {
+    size_t calibration_k = 5;
+    size_t final_model_k = 6;
+
     assert(f_p and f_p->is_open());
     std::vector<EventAlignment> alignment =
         get_eventalignment_for_1d_basecalls(read_sequence_1d, event_map_1d, 5, si);
@@ -235,15 +239,18 @@ void SquiggleRead::_load_R9(uint32_t si,
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
 
+        std::string kit = "R9_250BPS"; // TODO: read model_type from fast5, convert to kit
+        std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
+
         // For the template strad we only have one candidate model
         // For complement we need to select between the two possible models
         std::vector<const PoreModel*> candidate_models;
         if(si == 0) {
-            candidate_models.push_back(&PoreModelSet::get_model("base", "t.007"));
+            candidate_models.push_back(&PoreModelSet::get_model(kit, alphabet, "template", calibration_k));
         } else {
-            for(const std::string& cmn : { "c.p1.007", "c.p2.007" } ) {
-                if(PoreModelSet::has_model("base", cmn)) {
-                   candidate_models.push_back(&PoreModelSet::get_model("base", cmn));
+            for(const std::string& cmn : { "complement.pop1", "complement.pop2" } ) {
+                if(PoreModelSet::has_model(kit, alphabet, cmn, calibration_k)) {
+                   candidate_models.push_back(&PoreModelSet::get_model(kit, alphabet, cmn, calibration_k));
                 }
             }
         }
@@ -288,10 +295,36 @@ void SquiggleRead::_load_R9(uint32_t si,
             fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
             pore_model[si] = best_model;
-            pore_model[si].bake_gaussian_parameters();
             
+            // Save calibration parameters
+            double shift = pore_model[si].shift;
+            double scale = pore_model[si].scale;
+            double drift =  pore_model[si].drift;
+            double var = pore_model[si].var;
+            double scale_sd = pore_model[si].scale_sd;
+            double var_sd = pore_model[si].var_sd;
+
+            // Replace model
+            PoreModel final_model = PoreModelSet::get_model(kit, 
+                                                            alphabet, 
+                                                            best_model.metadata.get_strand_model_name(), 
+                                                            final_model_k);
+            pore_model[si] = final_model;
+
+            // Copy calibration params
+            pore_model[si].shift = shift;
+            pore_model[si].scale = scale;
+            pore_model[si].drift = drift;
+            pore_model[si].var = var;
+            pore_model[si].scale_sd = scale_sd;
+            pore_model[si].var_sd = var_sd;
+            
+            // Initialize gaussian params
+            pore_model[si].bake_gaussian_parameters();
+
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].metadata);
+
         } else {
             // could not find a model for this strand, discard it
             events[si].clear();
@@ -513,12 +546,14 @@ hack:
 
 void SquiggleRead::replace_models(const std::string& model_type)
 {
+    assert(false);
+#if 0
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
 
         // For R7 data (006 and 005 kits) the ONT model is already
         // read from the fast5 file. Don't try to replace the model
         // with the external on.
-        if(this->pore_model[0].metadata.kit != KV_SQK007 && model_type == "ONT") {
+        if(this->pore_model[0].metadata.is_r7() && model_type == "ONT") {
             return;
         }
 
@@ -531,19 +566,17 @@ void SquiggleRead::replace_models(const std::string& model_type)
             PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
         replace_model(strand_idx, incoming_model);
     }
+#endif
 }
 
 void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type)
 {
+    assert(false);
+#if 0
     PoreModel incoming_model =
         PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
     replace_model(strand_idx, incoming_model);
-}
-
-void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
-{
-    WARN_ONCE("Copy all model data in replace");
-    this->pore_model[strand_idx].update_states( model );
+#endif
 }
 
 // Return a vector of eventalignments for the events that made up the 2D basecalls in the read

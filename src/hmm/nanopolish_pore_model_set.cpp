@@ -15,8 +15,6 @@ PoreModelSet::PoreModelSet()
 {
     // Copy the built-in models into the map
     for(auto p : builtin_models) {
-        assert(!p.type.empty());
-        assert(!p.metadata.get_short_name().empty());
         register_model(p);
     }
 }
@@ -54,71 +52,76 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
 void PoreModelSet::register_model(const PoreModel& p)
 {
     // Check that this model doesn't exist already
-    auto& type_set = model_type_sets[p.type];
-    auto name_iter = type_set.find(p.metadata.get_short_name());
-    if(name_iter != type_set.end()) {
-        fprintf(stderr, "Warning: overwriting model %s-%s\n", p.metadata.get_short_name().c_str(), p.type.c_str());
-    }
-    type_set[p.metadata.get_short_name()] = p;
-    fprintf(stderr, "[pore model set] registered model %s-%s(alphabet: %s)\n", p.metadata.get_short_name().c_str(), 
-                                                                               p.type.c_str(),
-                                                                               p.pmalphabet->get_name().c_str());
-}
-
-//
-bool PoreModelSet::has_model(const std::string& type, const std::string& short_name)
-{
-    PoreModelSet& model_set = getInstance();
-    
-    auto iter_type = model_set.model_type_sets.find(type);
-    if(iter_type == model_set.model_type_sets.end()) {
-        return false;
+    std::string key = get_model_key(p);
+    auto iter = model_map.find(key);
+    if(iter != model_map.end()) {
+        fprintf(stderr, "Warning: overwriting model %s\n", key.c_str());
     }
     
-    auto iter_short_name = iter_type->second.find(short_name);
-    return iter_short_name != iter_type->second.end();
-}
-
-//
-const PoreModel& PoreModelSet::get_model(const std::string& type, const std::string& short_name)
-{
-    PoreModelSet& model_set = getInstance();
-    
-    auto iter_type = model_set.model_type_sets.find(type);
-    if(iter_type == model_set.model_type_sets.end()) {
-        fprintf(stderr, "Error: cannot find model type %s\n", type.c_str());
-        exit(EXIT_FAILURE);
-    }
-    
-    auto iter_short_name = iter_type->second.find(short_name);
-    if(iter_short_name == iter_type->second.end()) {
-        fprintf(stderr, "Error: cannot find model %s for type %s\n", short_name.c_str(), type.c_str());
-        exit(EXIT_FAILURE);
-    }
-    
-    return iter_short_name->second;
-}
-
-//
-const PoreModelMap& PoreModelSet::get_models(const std::string& type)
-{
-    PoreModelSet& model_set = getInstance();
-    
-    auto iter_type = model_set.model_type_sets.find(type);
-    if(iter_type == model_set.model_type_sets.end()) {
-        fprintf(stderr, "Error: cannot find model type %s\n", type.c_str());
-        exit(EXIT_FAILURE);
-    }
-    
-    return iter_type->second;
-}
-
-void PoreModelSet::insert_model(const std::string& type, const PoreModel& model)
-{
     #pragma omp critical
-    {
-        PoreModelSet& model_set = getInstance();
-        std::string key = model.metadata.get_short_name();
-        model_set.model_type_sets[type][key] = model;
+    model_map[key] = p;
+
+    fprintf(stderr, "[pore model set] registered model %s\n", key.c_str());
+}
+
+void PoreModelSet::add_model(const PoreModel& p)
+{
+    PoreModelSet& model_set = getInstance();
+    model_set.register_model(p);
+}
+
+//
+bool PoreModelSet::has_model(const std::string& kit_name,
+                             const std::string& alphabet,
+                             const std::string& strand,
+                             size_t k)
+{
+    PoreModelSet& model_set = getInstance();
+    std::string model_key = model_set.get_model_key(kit_name, alphabet, strand, k);
+    auto iter = model_set.model_map.find(model_key);
+    return iter != model_set.model_map.end();
+}
+
+//
+const PoreModel& PoreModelSet::get_model(const std::string& kit_name,
+                                         const std::string& alphabet,
+                                         const std::string& strand,
+                                         size_t k)
+{
+    PoreModelSet& model_set = getInstance();
+    std::string model_key = model_set.get_model_key(kit_name, alphabet, strand, k);
+    auto iter = model_set.model_map.find(model_key);
+    if(iter == model_set.model_map.end()) {
+        fprintf(stderr, "Error: cannot find model with key %s\n", model_key.c_str());
+        exit(EXIT_FAILURE);
     }
+    return iter->second;
+}
+
+//
+const std::map<std::string, PoreModel>& PoreModelSet::get_models(const std::string& type)
+{
+    assert(false);
+    // TODO: this needs a rewrite to select by a certain variable.
+    PoreModelSet& model_set = getInstance();
+    return model_set.model_map;   
+}
+
+std::string PoreModelSet::get_model_key(const PoreModel& model)
+{
+    return get_model_key(model.metadata.get_kit_name(),
+                         model.pmalphabet->get_name(),
+                         model.metadata.get_strand_model_name(),
+                         model.k);
+}
+
+//
+std::string PoreModelSet::get_model_key(const std::string& kit_name,
+                                        const std::string& alphabet,
+                                        const std::string& strand,
+                                        size_t k)
+{
+    std::stringstream ss;
+    ss << kit_name << "." << alphabet << "." << k << "." << strand;
+    return ss.str();
 }

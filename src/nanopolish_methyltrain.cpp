@@ -781,7 +781,7 @@ void train_one_round(const Fast5Map& name_map, size_t round)
             }
 
             // add the updated model into the collection (or replace what is already there)
-            PoreModelSet::insert_model(opt::trained_model_type, updated_model);
+            PoreModelSet::add_model(updated_model);
         }
     }
 
@@ -834,7 +834,7 @@ int methyltrain_main(int argc, char** argv)
     for(auto model_iter : input_models) {
         PoreModel model_copy = model_iter.second;
         model_copy.type = opt::trained_model_type;
-        PoreModelSet::insert_model(model_copy.type, model_copy);
+        PoreModelSet::add_model(model_copy);
     }
 
     // Set the alphabet for this run to be the alphabet for the first model

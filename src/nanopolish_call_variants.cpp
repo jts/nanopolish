@@ -625,7 +625,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
                 double num_kmers = variant_offset_end - variant_offset_start;
                 double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
-                if(read->pore_model[strand].metadata.kit == KV_SQK007) {
+                if(read->pore_model[strand].metadata.is_r9()) {
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {

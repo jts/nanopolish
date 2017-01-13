@@ -567,11 +567,6 @@ void AlignmentDB::_load_squiggle_read(const std::string& read_name)
     if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
         std::string fast5_path = m_fast5_name_map.get_path(read_name);
         SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
-        // Switch the read to use an alternative kmer model
-        if(!m_model_type_string.empty()) {
-            sr->replace_models(m_model_type_string);
-        }
-
         m_squiggle_read_map[read_name] = sr;
     }
 }
