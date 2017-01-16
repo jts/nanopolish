@@ -61,7 +61,7 @@ void TransitionParameters::initialize(const ModelMetadata& metadata)
         } else {
             initialize_sqkmap006_complement();
         }
-    } else if(metadata.kit == KV_SQK007) {
+    } else if(metadata.is_r9()) {
         if(metadata.strand_idx == T_IDX) {
             initialize_sqkmap007_template();
         } else {
