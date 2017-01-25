@@ -12,7 +12,6 @@ def make_all_mers(k):
 
 parser = argparse.ArgumentParser( description='Reduce a 6-mer model to a 5-mer model')
 parser.add_argument('-i', '--input', type=str, required=True)
-parser.add_argument('-t', '--type', type=str, required=False, default="dropmodel")
 args = parser.parse_args()
 
 # Read the initial model from a file
@@ -21,7 +20,7 @@ f = open(args.input)
 K = 0
 model = dict()
 
-header_lines_to_copy = { "#strand", "#kit" }
+header_lines_to_copy = { "#strand", "#kit", "#ont_model_name", "#alphabet" }
 header_lines = list()
 input_model_name = ""
 
@@ -33,8 +32,6 @@ for line in f:
     if line[0] == '#' or line.find("kmer") == 0:
         if fields[0] in header_lines_to_copy:
             header_lines.append(line)
-        if fields[0] == "#model_name":
-            input_model_name = fields[1]
     else:
         # store the k-mer size
         if K == 0:
@@ -48,12 +45,18 @@ for line in f:
 # reduce the k-mer size by 1 and output the new model
 P = K - 1
 pmers = make_all_mers(P)
-print("#model_name\t" + args.input + ".dropmodel")
-print("#type\t" + args.type)
-print("\n".join(header_lines))
-print("#derived_from\t" + input_model_name)
 
-print "\t".join(["kmer", "level_mean", "level_stdv", "sd_mean", "sd_stdv"])
+outname = args.input
+kmer_str = str(K) + "mer"
+pmer_str = str(P) + "mer"
+assert(outname.find(kmer_str) != -1)
+outname = args.input.replace(kmer_str, pmer_str)
+outfile = open(outname, "w")
+header_lines.append("#k\t" + str(P))
+header_lines.append("#original_file\t" + args.input)
+
+outfile.write("\n".join(header_lines) + "\n")
+outfile.write("\t".join(["kmer", "level_mean", "level_stdv", "sd_mean", "sd_stdv"]) + "\n")
 
 num_samples_per_kmer = 1000
 
@@ -70,4 +73,4 @@ for pmer in pmers:
     m = numpy.mean(samples)
     s = numpy.std(samples)
     out = [m, s, 0.0, 0.0, 0.0]
-    print "\t".join([pmer] + [str(x) for x in out])
+    outfile.write("\t".join([pmer] + [str(x) for x in out]) + "\n")
