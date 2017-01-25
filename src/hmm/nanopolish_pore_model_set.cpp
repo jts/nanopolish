@@ -26,10 +26,12 @@ PoreModelSet::~PoreModelSet()
 }
 
 //
-void PoreModelSet::initialize(const std::string& fofn_filename)
+std::vector<std::string> PoreModelSet::initialize(const std::string& fofn_filename)
 {
     // grab singleton instance
     PoreModelSet& model_set = getInstance();
+
+    std::vector<std::string> out;
     
     // open the fofn file reader
     std::ifstream fofn_reader(fofn_filename);
@@ -43,13 +45,15 @@ void PoreModelSet::initialize(const std::string& fofn_filename)
 
         // read the model
         PoreModel p(model_filename);
-        assert(!p.name.empty());
-        assert(!p.type.empty());
-        model_set.register_model(p);
+
+        // add the model and push the new reference to it to the output
+        const PoreModel& imported = model_set.register_model(p);
+        out.push_back(model_set.get_model_key(imported));
     }
+    return out;
 }
 
-void PoreModelSet::register_model(const PoreModel& p)
+PoreModel& PoreModelSet::register_model(const PoreModel& p)
 {
     // Check that this model doesn't exist already
     std::string key = get_model_key(p);
@@ -62,6 +66,7 @@ void PoreModelSet::register_model(const PoreModel& p)
     model_map[key] = p;
 
     fprintf(stderr, "[pore model set] registered model %s\n", key.c_str());
+    return model_map[key];
 }
 
 void PoreModelSet::add_model(const PoreModel& p)
@@ -89,30 +94,44 @@ const PoreModel& PoreModelSet::get_model(const std::string& kit_name,
                                          size_t k)
 {
     PoreModelSet& model_set = getInstance();
-    std::string model_key = model_set.get_model_key(kit_name, alphabet, strand, k);
-    auto iter = model_set.model_map.find(model_key);
+    return get_model_by_key(model_set.get_model_key(kit_name, alphabet, strand, k));
+}
+
+const PoreModel& PoreModelSet::get_model_by_key(const std::string& key)
+{
+    PoreModelSet& model_set = getInstance();
+    auto iter = model_set.model_map.find(key);
     if(iter == model_set.model_map.end()) {
-        fprintf(stderr, "Error: cannot find model with key %s\n", model_key.c_str());
+        fprintf(stderr, "Error: cannot find model with key %s\n", key.c_str());
         exit(EXIT_FAILURE);
     }
     return iter->second;
 }
 
 //
-const std::map<std::string, PoreModel>& PoreModelSet::get_models(const std::string& type)
+PoreModelMap PoreModelSet::copy_strand_models(const std::string& kit_name,
+                                              const std::string& alphabet,
+                                              size_t k)
 {
-    assert(false);
-    // TODO: this needs a rewrite to select by a certain variable.
+    PoreModelMap out;
     PoreModelSet& model_set = getInstance();
-    return model_set.model_map;   
+    for(const auto& kv : model_set.model_map) {
+        const PoreModel& model = kv.second;
+        if(model.metadata.get_kit_name() == kit_name &&
+           model.pmalphabet->get_name() == alphabet &&
+           model.k == k) {
+            out.insert(kv);
+        }
+    }
+    return out;
 }
 
 std::string PoreModelSet::get_model_key(const PoreModel& model)
 {
-    return get_model_key(model.metadata.get_kit_name(),
-                         model.pmalphabet->get_name(),
-                         model.metadata.get_strand_model_name(),
-                         model.k);
+    return PoreModelSet::get_model_key(model.metadata.get_kit_name(),
+                                       model.pmalphabet->get_name(),
+                                       model.metadata.get_strand_model_name(),
+                                       model.k);
 }
 
 //
@@ -122,6 +141,6 @@ std::string PoreModelSet::get_model_key(const std::string& kit_name,
                                         size_t k)
 {
     std::stringstream ss;
-    ss << kit_name << "." << alphabet << "." << k << "." << strand;
+    ss << kit_name << "." << alphabet << "." << k << "mer." << strand;
     return ss.str();
 }

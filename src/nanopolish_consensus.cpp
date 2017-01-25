@@ -82,7 +82,6 @@ namespace opt
     static std::string output_file;
     static std::string window;
     static std::string models_fofn;
-    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static int show_progress = 0;
     static int num_threads = 1;
 }
@@ -701,8 +700,7 @@ std::string call_consensus_for_window(const Fast5Map& name_map, const std::strin
                                                         contig,
                                                         start_base,
                                                         end_base,
-                                                        minor_segment_stride,
-                                                        opt::alternative_model_type);
+                                                        minor_segment_stride);
     uint32_t num_segments = window.anchored_columns.size();
 
     // If there are not reads or not enough segments do not try to call a consensus sequence

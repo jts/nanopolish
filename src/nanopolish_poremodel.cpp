@@ -153,6 +153,8 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         set_metadata(in_kit, in_strand);
     }
 
+    assert(metadata.model_idx < 3);
+
     if (pmalphabet == nullptr) 
         pmalphabet = best_alphabet(bases);
 

@@ -23,8 +23,9 @@ class PoreModelSet
 
         //
         // initialize the model set from a .fofn file
+        // returns the keys of the imported models
         //
-        static void initialize(const std::string& fofn_filename);
+        static std::vector<std::string> initialize(const std::string& fofn_filename);
 
         //
         // check if a model with the specification exists
@@ -33,6 +34,11 @@ class PoreModelSet
                               const std::string& alphabet,
                               const std::string& strand,
                               size_t k);
+        
+        //
+        // Build a descriptive key from this pore model
+        //
+        static std::string get_model_key(const PoreModel& model);
 
         //
         // get a model from the set
@@ -42,10 +48,14 @@ class PoreModelSet
                                           const std::string& strand,
                                           size_t k);
 
+        static const PoreModel& get_model_by_key(const std::string& key);
+
         //
-        // get all the models for this type
+        // get all the models for the combination of parameters
         //
-        static const std::map<std::string, PoreModel>& get_models(const std::string& type);
+        static PoreModelMap copy_strand_models(const std::string& kit_name,
+                                               const std::string& alphabet,
+                                               size_t k);
 
         //
         // 
@@ -65,15 +75,14 @@ class PoreModelSet
         }
 
         // Internal function for adding this model into the collection
-        void register_model(const PoreModel& p);
+        // Returns a reference to the model in the map
+        PoreModel& register_model(const PoreModel& p);
 
         // Build a unique identify string
-        std::string get_model_key(const PoreModel& model);
-
-        std::string get_model_key(const std::string& kit_name,
-                                  const std::string& alphabet,
-                                  const std::string& strand,
-                                  size_t k);
+        static std::string get_model_key(const std::string& kit_name,
+                                         const std::string& alphabet,
+                                         const std::string& strand,
+                                         size_t k);
 
         PoreModelSet();
 

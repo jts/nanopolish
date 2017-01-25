@@ -23,8 +23,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            const std::string& contig_name,
                                            int start,
                                            int end,
-                                           int stride,
-                                           const std::string& alternative_model_type)
+                                           int stride)
 {
     // Initialize return data
     HMMRealignmentInput ret;
@@ -79,9 +78,6 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
         // load read
         ret.reads.push_back(std::unique_ptr<SquiggleRead>(new SquiggleRead(read_name, fast5_path)));
         SquiggleRead& sr = *ret.reads.back();
-        if(!alternative_model_type.empty()) {
-            sr.replace_models(alternative_model_type);
-        }
 
         // Recalibrate each strand
         for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; strand_idx++) {

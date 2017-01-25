@@ -87,8 +87,7 @@ HMMRealignmentInput build_input_for_region(const std::string& bam_filename,
                                            const std::string& contig_name,
                                            int start, 
                                            int end, 
-                                           int stride,
-                                           const std::string& alternative_model_type);
+                                           int stride);
 
 // Return a vector specifying pairs of bases that have been aligned to each other
 // This function can handle an "event cigar" bam record, which requires the ability

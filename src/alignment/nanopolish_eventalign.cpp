@@ -77,7 +77,6 @@ namespace opt
     static std::string region;
     static std::string summary_file;
     static std::string models_fofn;
-    static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static int output_sam = 0;
     static int progress = 0;
     static int num_threads = 1;
@@ -515,10 +514,6 @@ void realign_read(EventalignWriter writer,
 
     // load read
     SquiggleRead sr(read_name, fast5_path, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
-
-    if(!opt::alternative_model_type.empty()) {
-        sr.replace_models(opt::alternative_model_type);
-    }
 
     if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 

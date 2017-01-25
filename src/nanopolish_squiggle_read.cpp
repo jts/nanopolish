@@ -50,7 +50,7 @@ int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t stran
 //
 int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 {
-    uint32_t k = pore_model[T_IDX].k;
+    uint32_t k = pore_model[strand].k;
 
     int stop_before = std::max(0, k_idx - 1000);
     int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - (int32_t)k + 1);
@@ -239,7 +239,7 @@ void SquiggleRead::_load_R9(uint32_t si,
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
 
-        std::string kit = "R9_250BPS"; // TODO: read model_type from fast5, convert to kit
+        std::string kit = "r9_250bps"; // TODO: read model_type from fast5, convert to kit
         std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
 
         // For the template strad we only have one candidate model
@@ -338,7 +338,7 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 {
     assert(f_p and f_p->is_open());
     std::vector<EventRangeForBase> out_event_map;
-    const uint32_t k = pore_model[T_IDX].k;
+    const uint32_t k = pore_model[strand].k;
     assert(f5_events.size() == events[strand].size());
 
     // initialize - one entry per read kmer
@@ -544,18 +544,9 @@ hack:
     }
 }
 
-void SquiggleRead::replace_models(const std::string& model_type)
+void SquiggleRead::replace_models(const std::string& kit_name, const std::string& alphabet, size_t k)
 {
-    assert(false);
-#if 0
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-
-        // For R7 data (006 and 005 kits) the ONT model is already
-        // read from the fast5 file. Don't try to replace the model
-        // with the external on.
-        if(this->pore_model[0].metadata.is_r7() && model_type == "ONT") {
-            return;
-        }
 
         // only replace this model if the strand was loaded
         if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
@@ -563,10 +554,21 @@ void SquiggleRead::replace_models(const std::string& model_type)
         }
 
         PoreModel incoming_model =
-            PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
+            PoreModelSet::get_model(kit_name, 
+                                    alphabet, 
+                                    this->pore_model[strand_idx].metadata.get_strand_model_name(),
+                                    k);
         replace_model(strand_idx, incoming_model);
     }
-#endif
+}
+
+void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
+{
+    WARN_ONCE("Copy all model data in replace");
+    this->pore_model[strand_idx].metadata = model.metadata;
+    this->pore_model[strand_idx].k = model.k;
+    this->pore_model[strand_idx].pmalphabet = model.pmalphabet;
+    this->pore_model[strand_idx].update_states( model );
 }
 
 void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type)
