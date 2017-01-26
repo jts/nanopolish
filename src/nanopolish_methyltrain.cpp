@@ -348,6 +348,7 @@ void add_aligned_events(const Fast5Map& name_map,
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
+        
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
         if (alignment_output.size() == 0)
             return;
@@ -379,11 +380,11 @@ void add_aligned_events(const Fast5Map& name_map,
                 }
             }
         }
-
         //
         // Get the data structure holding the training data for this strand
         //
         auto emission_map_iter = training.find(model_key);
+
         assert(emission_map_iter != training.end());
         auto& emission_map = emission_map_iter->second;
 
@@ -536,6 +537,8 @@ void parse_methyltrain_options(int argc, char** argv)
     if(filter_policy_str != "") {
         if(filter_policy_str == "R9") {
             opt::min_event_duration = 0.002;
+        } else if(filter_policy_str == "R9.4") {
+            opt::min_event_duration = 0.001;
         } else if(filter_policy_str == "R7") {
             opt::min_event_duration = 0.005;
         } else {

@@ -54,7 +54,7 @@ int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 
     int stop_before = std::max(0, k_idx - 1000);
     int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - (int32_t)k + 1);
-    
+
     int event_before = get_next_event(k_idx, stop_before, -1, strand);
     int event_after = get_next_event(k_idx, stop_after, 1, strand);
 
@@ -117,7 +117,7 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
                                static_cast<float>(f5_event.stdv),
                                f5_event.start,
                                static_cast<float>(f5_event.length),
-                               static_cast<float>(log(f5_event.stdv)) 
+                               static_cast<float>(log(f5_event.stdv))
                              };
             assert(f5_event.p_model_state >= 0.0 && f5_event.p_model_state <= 1.0);
             p_model_states.push_back(f5_event.p_model_state);
@@ -215,14 +215,14 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     size_t total_kmers = 0;
     std::string prev_kmer = "";
-    
+
     for(const auto& ea : alignment) {
         if((!ea.rc && ea.ref_kmer == blacklist_kmer) ||
            (ea.rc && ea.ref_kmer == gDNAAlphabet.reverse_complement(blacklist_kmer)))
         {
             continue;
         }
-        
+
         if(ea.ref_kmer != prev_kmer) {
             prev_kmer = ea.ref_kmer;
             total_kmers++;
@@ -239,7 +239,22 @@ void SquiggleRead::_load_R9(uint32_t si,
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
 
-        std::string kit = "r9_250bps"; // TODO: read model_type from fast5, convert to kit
+        auto config = f_p->get_basecall_config(basecall_group);
+        auto mt_iter = config.find("general/model_type");
+        std::string kit = "r9_250bps"; //
+        if(mt_iter != config.end()) {
+            if(mt_iter->second == "r9_250bps_nn") {
+                // intentially blank, default as above
+            } else if(mt_iter->second == "r94_450bps") {
+                kit = "r9.4_450bps";
+            } else {
+                fprintf(stderr, "Unknown model type string: %s, please report on the github repository\n");
+                exit(1);
+            }
+        } else {
+            WARN_ONCE("Warning: model type could not be detected from fast5, defaulting to R9-250bps")
+        }
+
         std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
 
         // For the template strad we only have one candidate model
@@ -271,7 +286,7 @@ void SquiggleRead::_load_R9(uint32_t si,
             pore_model[si].var_sd = 1.0;
 
             pore_model[si].bake_gaussian_parameters();
-            
+
             // run recalibration to get the best set of scaling parameters and the residual
             // between the (scaled) event levels and the model
             bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);

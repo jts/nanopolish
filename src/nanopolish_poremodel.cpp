@@ -283,6 +283,8 @@ void PoreModel::set_metadata(const std::string& kit, const std::string& strand)
         this->metadata.kit = KV_SQK006;
     } else if(kit == "r9_250bps") {
         this->metadata.kit = KV_R9_250BPS;
+    } else if(kit == "r9.4_450bps") {
+        this->metadata.kit = KV_R9_4_450BPS;
     } else {
         fprintf(stderr, "Error, unrecognized model kit %s\n", kit.c_str());
         exit(EXIT_FAILURE);
@@ -290,10 +292,13 @@ void PoreModel::set_metadata(const std::string& kit, const std::string& strand)
 
     if(strand == "template") {
         this->metadata.model_idx = 0;
+        this->metadata.strand_idx = 0;
     } else if(strand == "complement.pop1") {
         this->metadata.model_idx = 1;
+        this->metadata.strand_idx = 1;
     } else if(strand == "complement.pop2") {
         this->metadata.model_idx = 2;
+        this->metadata.strand_idx = 1;
     } else {
         fprintf(stderr, "Error, unrecognized model strand %s\n", strand.c_str());
         exit(EXIT_FAILURE);
