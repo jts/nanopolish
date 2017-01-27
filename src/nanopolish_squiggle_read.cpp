@@ -243,12 +243,16 @@ void SquiggleRead::_load_R9(uint32_t si,
         auto mt_iter = config.find("general/model_type");
         std::string kit = "r9_250bps"; //
         if(mt_iter != config.end()) {
-            if(mt_iter->second == "r9_250bps_nn") {
+            std::string mt = mt_iter->second;
+
+            // all 250bps data should use this model (according to ONT see
+            // https://github.com/nanoporetech/kmer_models/issues/3)
+            if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps") {
                 // intentially blank, default as above
-            } else if(mt_iter->second == "r94_450bps") {
+            } else if(mt == "r94_450bps" || mt == "r9_450bps") {
                 kit = "r9.4_450bps";
             } else {
-                fprintf(stderr, "Unknown model type string: %s, please report on the github repository\n");
+                fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
                 exit(1);
             }
         } else {
@@ -299,8 +303,8 @@ void SquiggleRead::_load_R9(uint32_t si,
 
 #ifdef DEBUG_MODEL_SELECTION
             fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
-                             "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n", 
-                                    read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale, 
+                             "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
+                                    read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale,
                                     pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
 #endif
         }
@@ -310,7 +314,7 @@ void SquiggleRead::_load_R9(uint32_t si,
             fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
             pore_model[si] = best_model;
-            
+
             // Save calibration parameters
             double shift = pore_model[si].shift;
             double scale = pore_model[si].scale;
@@ -320,9 +324,9 @@ void SquiggleRead::_load_R9(uint32_t si,
             double var_sd = pore_model[si].var_sd;
 
             // Replace model
-            PoreModel final_model = PoreModelSet::get_model(kit, 
-                                                            alphabet, 
-                                                            best_model.metadata.get_strand_model_name(), 
+            PoreModel final_model = PoreModelSet::get_model(kit,
+                                                            alphabet,
+                                                            best_model.metadata.get_strand_model_name(),
                                                             final_model_k);
             pore_model[si] = final_model;
 
@@ -333,13 +337,12 @@ void SquiggleRead::_load_R9(uint32_t si,
             pore_model[si].var = var;
             pore_model[si].scale_sd = scale_sd;
             pore_model[si].var_sd = var_sd;
-            
+
             // Initialize gaussian params
             pore_model[si].bake_gaussian_parameters();
 
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].metadata);
-
         } else {
             // could not find a model for this strand, discard it
             events[si].clear();

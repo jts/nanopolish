@@ -15,7 +15,7 @@
 #include "nanopolish_model_names.h"
 #include "nanopolish_variant_db.h"
 
-#define DEBUG_HAPLOTYPE_SELECTION 1
+//#define DEBUG_HAPLOTYPE_SELECTION 1
 
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
@@ -199,16 +199,20 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             for(size_t j = 0; j < current_set.size(); ++j) {
                 size_t vc_id = current_set[j];
                 double rhs = variant_group.get_combination_read_score(vc_id, read_id);
+                /*
                 fprintf(stderr, "\t\tread-haplotype: %s %zu %s %.2lf\n", read_id.c_str(), 
                                                                          variant_group.get(0).ref_position, // hack
                                                                          variant_group.get_vc_allele_string(vc_id).c_str(), rhs); 
+                */
                 set_sum = add_logs(set_sum, rhs - log_2);
                 read_support[j] += exp(rhs - group_reads[ri].second);
             }
+
+            /*
             fprintf(stderr, "\t\tread-genotype: %s %zu %.2lf\n", read_id.c_str(), 
                                                                          variant_group.get(0).ref_position, // hack
-                                                                         /*variant_group.get_vc_allele_string(vc_id).c_str(),*/ set_sum); 
-
+                                                                         set_sum); 
+            */
             set_score += set_sum;
         }
         
