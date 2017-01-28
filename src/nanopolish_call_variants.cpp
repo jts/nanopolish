@@ -373,35 +373,6 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
     return out_variants;
 }
 
-std::vector<Variant> get_variants_from_vcf(const std::string& filename,
-                                           const std::string& contig,
-                                           int region_start,
-                                           int region_end)
-{
-    std::vector<Variant> out;
-    std::ifstream infile(filename);
-    std::string line;
-    while(getline(infile, line)) {
-
-        // skip headers
-        if(line[0] == '#') {
-            continue;
-        }
-
-        // parse variant
-        Variant v(line);
-
-        if(v.ref_name == contig &&
-           (int)v.ref_position >= region_start &&
-           (int)v.ref_position <= region_end)
-        {
-            v.info.clear();
-            out.push_back(v);
-        }
-    }
-    return out;
-}
-
 void print_debug_stats(const std::string& contig,
                        const int start_position,
                        const int stop_position,
@@ -858,7 +829,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     if(opt::candidates_file.empty()) {
         candidate_variants = alignments.get_variants_in_region(contig, region_start, region_end, opt::min_candidate_frequency, opt::min_candidate_depth);
     } else {
-        candidate_variants = get_variants_from_vcf(opt::candidates_file, contig, region_start, region_end);
+        candidate_variants = read_variants_for_region(opt::candidates_file, contig, region_start, region_end);
     }
 
     if(opt::consensus_mode) {
@@ -1037,12 +1008,7 @@ int call_variants_main(int argc, char** argv)
     // If a window has been specified, only call variants/polish in that range
     if(!opt::window.empty()) {
         // Parse the window string
-        // Replace ":" and "-" with spaces to make it parseable with stringstream
-        std::replace(opt::window.begin(), opt::window.end(), ':', ' ');
-        std::replace(opt::window.begin(), opt::window.end(), '-', ' ');
-        std::stringstream parser(opt::window);
-
-        parser >> contig >> start_base >> end_base;
+        parse_region_string(opt::window, contig, start_base, end_base);
         end_base = std::min(end_base, get_contig_length(contig) - 1);
     } else {
         // otherwise, run on the whole genome

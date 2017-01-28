@@ -23,6 +23,60 @@ struct BamHandles
     hts_itr_t* itr;
 };
 
+//
+// SequenceAlignmentRecord
+//
+SequenceAlignmentRecord::SequenceAlignmentRecord(const bam1_t* record)
+{
+    this->read_name = bam_get_qname(record);
+    this->rc = bam_is_rev(record);
+
+    // copy sequence out of the record
+    uint8_t* pseq = bam_get_seq(record);
+    this->sequence.resize(record->core.l_qseq);
+    for(int i = 0; i < record->core.l_qseq; ++i) {
+        this->sequence[i] = seq_nt16_str[bam_seqi(pseq, i)];
+    }
+    
+    // copy read base-to-reference alignment
+    this->aligned_bases = get_aligned_pairs(record);
+}
+
+//
+// EventAlignmentRecord
+//
+EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
+                                           const int strand_idx,
+                                           const SequenceAlignmentRecord& seq_record)
+{
+    this->sr = sr;
+    size_t k = this->sr->pore_model[strand_idx].k;
+    size_t read_length = this->sr->read_sequence.length();
+    
+    for(size_t i = 0; i < seq_record.aligned_bases.size(); ++i) {
+        // skip positions at the boundary
+        if(seq_record.aligned_bases[i].read_pos < k) {
+            continue;
+        }
+
+        if(seq_record.aligned_bases[i].read_pos + k >= read_length) {
+            continue;
+        }
+
+        size_t kmer_pos_ref_strand = seq_record.aligned_bases[i].read_pos;
+        size_t kmer_pos_read_strand = seq_record.rc ? this->sr->flip_k_strand(kmer_pos_ref_strand) : kmer_pos_ref_strand;
+        size_t event_idx = this->sr->get_closest_event_to(kmer_pos_read_strand, strand_idx);
+        this->aligned_events.push_back( { seq_record.aligned_bases[i].ref_pos, (int)event_idx });
+    }
+    this->rc = strand_idx == 0 ? seq_record.rc : !seq_record.rc;
+    this->strand = strand_idx;
+    this->stride = this->aligned_events.front().read_pos < this->aligned_events.back().read_pos ? 1 : -1;
+}
+
+//
+// AlignmentDB
+//
+
 AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
@@ -371,28 +425,7 @@ void AlignmentDB::_load_sequence_by_region()
             continue;
         }
 
-        SequenceAlignmentRecord seq_record;
-        seq_record.read_name = bam_get_qname(handles.bam_record);
-        seq_record.rc = bam_is_rev(handles.bam_record);
-
-        // copy sequence out of the record
-        uint8_t* pseq = bam_get_seq(handles.bam_record);
-        seq_record.sequence.resize(handles.bam_record->core.l_qseq);
-        for(int i = 0; i < handles.bam_record->core.l_qseq; ++i) {
-            seq_record.sequence[i] = seq_nt16_str[bam_seqi(pseq, i)];
-        }
-        
-        // copy read base-to-reference alignment
-        seq_record.aligned_bases = get_aligned_pairs(handles.bam_record);
-        m_sequence_records.push_back(seq_record);
-        
-        /*
-        printf("sequence_record[%zu] prefix: %s alignstart: [%d %d]\n", 
-            m_sequence_records.size() - 1,
-            m_sequence_records.back().sequence.substr(0, 20).c_str(),
-            m_sequence_records.back().aligned_bases.front().ref_pos,
-            m_sequence_records.back().aligned_bases.front().read_pos);
-        */
+        m_sequence_records.emplace_back(handles.bam_record);
     }
 
     // cleanup
@@ -494,36 +527,14 @@ void AlignmentDB::_load_events_by_region_from_read()
             if(si == C_IDX) {
                 continue;
             }
-
-            EventAlignmentRecord event_record;
-            event_record.sr = m_squiggle_read_map[seq_record.read_name];
-            size_t k = event_record.sr->pore_model[si].k;
-            size_t read_length = event_record.sr->read_sequence.length();
-
+    
             // skip reads that do not have events here
-            if(!event_record.sr->has_events_for_strand(si)) {
+            SquiggleRead* sr = m_squiggle_read_map[seq_record.read_name];
+            if(!sr->has_events_for_strand(si)) {
                 continue;
             }
-            
-            for(size_t j = 0; j < seq_record.aligned_bases.size(); ++j) {
-                // skip positions at the boundary
-                if(seq_record.aligned_bases[j].read_pos < k) {
-                    continue;
-                }
 
-                if(seq_record.aligned_bases[j].read_pos + k >= read_length) {
-                    continue;
-                }
-                size_t kmer_pos_ref_strand = seq_record.aligned_bases[j].read_pos;
-                size_t kmer_pos_read_strand = seq_record.rc ? event_record.sr->flip_k_strand(kmer_pos_ref_strand) : kmer_pos_ref_strand;
-                size_t event_idx = event_record.sr->get_closest_event_to(kmer_pos_read_strand, si);
-                event_record.aligned_events.push_back( { seq_record.aligned_bases[j].ref_pos, (int)event_idx });
-            }
-            event_record.rc = si == 0 ? seq_record.rc : !seq_record.rc;
-            event_record.strand = si;
-            event_record.stride = event_record.aligned_events.front().read_pos < event_record.aligned_events.back().read_pos ? 1 : -1;
-
-            m_event_records.push_back(event_record);
+            m_event_records.emplace_back(sr, si, seq_record);
         }
     }
 }
@@ -609,7 +620,7 @@ bool AlignmentDB::_find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs
                                       int ref_start,
                                       int ref_stop,
                                       AlignedPairConstIter& start_iter,
-                                      AlignedPairConstIter& stop_iter) const
+                                      AlignedPairConstIter& stop_iter)
 {
     AlignedPairRefLBComp lb_comp;
     start_iter = std::lower_bound(pairs.begin(), pairs.end(),
@@ -636,7 +647,7 @@ bool AlignmentDB::_find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
                                       int ref_start,
                                       int ref_stop,
                                       int& read_start,
-                                      int& read_stop) const
+                                      int& read_stop)
 {
     AlignedPairConstIter start_iter;
     AlignedPairConstIter stop_iter;

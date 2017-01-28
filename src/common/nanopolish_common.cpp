@@ -29,6 +29,18 @@ std::vector<std::string> split(std::string in, char delimiter)
     return out;
 }
 
+void parse_region_string(const std::string& region, std::string& contig, int& start, int& end)
+{
+    std::string region_copy = region;
+    // Parse the window string
+    // Replace ":" and "-" with spaces to make it parseable with stringstream
+    std::replace(region_copy.begin(), region_copy.end(), ':', ' ');
+    std::replace(region_copy.begin(), region_copy.end(), '-', ' ');
+
+    std::stringstream parser(region_copy);
+    parser >> contig >> start >> end;
+}
+
 bool ends_with(const std::string& str, const std::string& suffix)
 {
     if(suffix.empty()) {

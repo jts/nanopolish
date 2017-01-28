@@ -25,6 +25,56 @@ std::string remove_gaps(const std::string& str)
     return ret;
 }
 
+std::vector<Variant> read_variants_from_file(const std::string& filename)
+{
+    std::vector<Variant> out;
+    std::ifstream infile(filename);
+    std::string line;
+    while(getline(infile, line)) {
+
+        // skip headers
+        if(line[0] == '#') {
+            continue;
+        }
+
+        // parse variant
+        Variant v(line);
+        v.info.clear();
+        out.push_back(v);
+    }
+    return out;
+}
+
+std::vector<Variant> read_variants_for_region(const std::string& filename,
+                                              const std::string& contig,
+                                              int region_start,
+                                              int region_end)
+{
+    std::vector<Variant> out;
+    std::ifstream infile(filename);
+    std::string line;
+    while(getline(infile, line)) {
+
+        // skip headers
+        if(line[0] == '#') {
+            continue;
+        }
+
+        // parse variant
+        Variant v(line);
+
+        if(v.ref_name == contig &&
+           (int)v.ref_position >= region_start &&
+           (int)v.ref_position <= region_end)
+        {
+            v.info.clear();
+            out.push_back(v);
+        }
+    }
+    return out;
+}
+
+
 void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
 {
     std::map<std::string, std::pair<Variant, int>> map;

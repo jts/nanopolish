@@ -18,6 +18,8 @@
 // structs
 struct SequenceAlignmentRecord
 {
+    SequenceAlignmentRecord(const bam1_t* record);
+
     std::string read_name;
     std::string sequence;
     std::vector<AlignedPair> aligned_bases;
@@ -26,6 +28,11 @@ struct SequenceAlignmentRecord
 
 struct EventAlignmentRecord
 {
+    EventAlignmentRecord() {}
+    EventAlignmentRecord(SquiggleRead* sr,
+                         const int strand_idx,
+                         const SequenceAlignmentRecord& seq_record);
+
     SquiggleRead* sr;
     uint8_t rc; // with respect to reference genome
     uint8_t strand; // 0 = template, 1 = complement
@@ -81,7 +88,22 @@ class AlignmentDB
         int get_region_end() const { return m_region_end; }
         
         void set_alternative_model_type(const std::string model_type_string) { m_model_type_string = model_type_string; }
+        
+        // Search the vector of AlignedPairs using lower_bound/upper_bound
+        // and the input reference coordinates. If the search succeeds,
+        // set read_start/read_stop to be the read_pos of the bounding elements
+        // and return true. 
+        static bool _find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                 int ref_start,
+                                 int ref_stop,
+                                 int& read_start,
+                                 int& read_stop);
 
+        static bool _find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,
+                                      int ref_start,
+                                      int ref_stop,
+                                      AlignedPairConstIter& start_iter,
+                                      AlignedPairConstIter& stop_iter);
     private:
         
         void _load_sequence_by_region();
@@ -96,21 +118,6 @@ class AlignmentDB
 
         std::vector<EventAlignment> _build_event_alignment(const EventAlignmentRecord& event_record) const;
 
-        // Search the vector of AlignedPairs using lower_bound/upper_bound
-        // and the input reference coordinates. If the search succeeds,
-        // set read_start/read_stop to be the read_pos of the bounding elements
-        // and return true. 
-        bool _find_by_ref_bounds(const std::vector<AlignedPair>& pairs,
-                                 int ref_start,
-                                 int ref_stop,
-                                 int& read_start,
-                                 int& read_stop) const;
-
-        bool _find_iter_by_ref_bounds(const std::vector<AlignedPair>& pairs,
-                                      int ref_start,
-                                      int ref_stop,
-                                      AlignedPairConstIter& start_iter,
-                                      AlignedPairConstIter& stop_iter) const;
 
         //
         // data

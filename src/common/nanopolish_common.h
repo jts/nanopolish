@@ -111,6 +111,9 @@ std::vector<std::string> split(std::string in, char delimiter);
 // returns true if the provided string ends with the given suffix
 bool ends_with(const std::string& str, const std::string& suffix);
 
+// parse a region string (chr:start-end)
+void parse_region_string(const std::string& region, std::string& contig, int& start, int& end);
+
 // from: http://stackoverflow.com/questions/9330915/number-of-combinations-n-choose-r-in-c
 size_t nChoosek(size_t n, size_t k);
 

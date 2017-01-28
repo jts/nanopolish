@@ -80,6 +80,8 @@ struct Variant
         }
     }
 
+    bool is_snp() const { return ref_seq.length() == 1 && alt_seq.length() == 1; }
+
     std::string ref_name;
     size_t ref_position;
     std::string ref_seq;
@@ -104,6 +106,13 @@ class VariantKeyComp
             return a.key() < b.key();
         }
 };
+
+// Read a collection of variants from a VCF file
+std::vector<Variant> read_variants_from_file(const std::string& filename);
+std::vector<Variant> read_variants_for_region(const std::string& filename,
+                                              const std::string& contig,
+                                              int region_start,
+                                              int region_end);
 
 // Remove variants that are in the vector fewer than min_count times
 void filter_variants_by_count(std::vector<Variant>& variants, int min_count);

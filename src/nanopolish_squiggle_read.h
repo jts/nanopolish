@@ -154,7 +154,7 @@ class SquiggleRead
         void replace_model(size_t strand_idx, const PoreModel& model);
 
         // returns true if this read has events for this strand
-        bool has_events_for_strand(size_t strand_idx) { return !this->events[strand_idx].empty(); }
+        bool has_events_for_strand(size_t strand_idx) const { return !this->events[strand_idx].empty(); }
 
         // Create an eventalignment between the events of this read and its 1D basecalled sequence
         std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
