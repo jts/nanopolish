@@ -105,6 +105,10 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
     omp_set_num_threads(prev_num_threads);
  
     // cleanup   
+    for(size_t i = 0; i < records.size(); ++i) {
+        bam_destroy1(records[i]);
+    }
+
     sam_itr_destroy(itr);
     bam_hdr_destroy(hdr);
     sam_close(bam_fh);

@@ -352,6 +352,11 @@ int phase_reads_main(int argc, char** argv)
     auto f = std::bind(phase_single_read, name_map, fai, std::ref(variants), _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
+    
+    sam_close(bam_fh);
+    bam_hdr_destroy(hdr);
+    fai_destroy(fai);
+
     //sam_close(sam_out);
     return EXIT_SUCCESS;
 }
