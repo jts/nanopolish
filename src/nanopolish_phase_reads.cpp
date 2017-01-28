@@ -34,6 +34,7 @@
 #include "nanopolish_haplotype.h"
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_bam_processor.h"
+#include "nanopolish_bam_utils.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -175,6 +176,7 @@ void parse_phase_reads_options(int argc, char** argv)
 void phase_single_read(const Fast5Map& name_map,
                        const faidx_t* fai,
                        const std::vector<Variant>& variants,
+                       samFile* sam_fp,
                        const bam_hdr_t* hdr,
                        const bam1_t* record,
                        size_t read_idx,
@@ -194,9 +196,6 @@ void phase_single_read(const Fast5Map& name_map,
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
     int alignment_end_pos = bam_endpos(record);
-
-    fprintf(stderr, "Phasing %s [%s:%d-%d]\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos);
-    fprintf(stderr, "first: %s last: %s\n", variants.front().key().c_str(), variants.back().key().c_str());
     
     // Search the variant collection for the index of the first/last variants to phase
     Variant lower_search;
@@ -213,8 +212,6 @@ void phase_single_read(const Fast5Map& name_map,
     if(lower_iter == variants.end()) {
         return;
     }
-    fprintf(stderr, "lower: %s upper: %s\n", lower_iter->key().c_str(), 
-                                             upper_iter != variants.end() ? upper_iter->key().c_str() : "<end>");
 
     int fetched_len;
     std::string reference_seq = get_reference_region_ts(fai, 
@@ -283,7 +280,7 @@ void phase_single_read(const Fast5Map& name_map,
             if(good_haplotype) {
                 double alt_score = profile_hmm_score(calling_haplotype.get_sequence(), data, alignment_flags);
                 char call = alt_score > ref_score ? v.alt_seq[0] : v.ref_seq[0];
-                fprintf(stderr, "\t%s score: %.2lf %.2lf %c\n", v.key().c_str(), ref_score, alt_score, call);
+                //fprintf(stderr, "\t%s score: %.2lf %.2lf %c\n", v.key().c_str(), ref_score, alt_score, call);
 
                 int out_position = v.ref_position - alignment_start_pos;
                 assert(read_outseq[out_position] == v.ref_seq[0]);
@@ -291,22 +288,33 @@ void phase_single_read(const Fast5Map& name_map,
             }
         }
 
-        // write the read to stdout in SAM format
+        // Construct the output bam record
+        bam1_t* out_record = bam_init1();
+        
+        // basic stats
+        out_record->core.tid = record->core.tid;
+        out_record->core.pos = alignment_start_pos;
+        out_record->core.qual = record->core.qual;
+        out_record->core.flag = 0;
+        
+        // no read pairs
+        out_record->core.mtid = -1;
+        out_record->core.mpos = -1;
+        out_record->core.isize = 0;
+
+        std::vector<uint32_t> cigar;
+        uint32_t cigar_op = read_outseq.size() << BAM_CIGAR_SHIFT | BAM_CMATCH;
+        cigar.push_back(cigar_op);
+        write_bam_vardata(out_record, read_name, cigar, read_outseq, "*");
+
         #pragma omp critical
         {
-            WARN_ONCE("write to bam1_t");
-            // hacky, should go through a new bam1_t record
-            fprintf(stdout, "%s\t0\t%s\t%d\t60\t%dM\t*\t0\t0\t%s\t%s\tXS:i:0\n", 
-                    read_name.c_str(),
-                    ref_name.c_str(), 
-                    alignment_start_pos + 1, 
-                    read_outseq.length(), 
-                    read_outseq.c_str(), 
-                    read_outqual.c_str());
+            sam_write1(sam_fp, hdr, out_record);
         }
+        bam_destroy1(out_record); // automatically frees malloc'd segment
+
     } // for strand
 }
-
 
 int phase_reads_main(int argc, char** argv)
 {
@@ -339,17 +347,14 @@ int phase_reads_main(int argc, char** argv)
     htsFile* bam_fh = sam_open(opt::bam_file.c_str(), "r");
     assert(bam_fh != NULL);
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-
-    /*
+    
     samFile* sam_out = sam_open("-", "w");
     sam_hdr_write(sam_out, hdr);
-    bam_hdr_destroy(hdr);
-    */
 
     // the BamProcessor framework calls the input function with the 
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(phase_single_read, name_map, fai, std::ref(variants), _1, _2, _3, _4, _5);
+    auto f = std::bind(phase_single_read, name_map, fai, std::ref(variants), sam_out, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
     
@@ -357,6 +362,6 @@ int phase_reads_main(int argc, char** argv)
     bam_hdr_destroy(hdr);
     fai_destroy(fai);
 
-    //sam_close(sam_out);
+    sam_close(sam_out);
     return EXIT_SUCCESS;
 }
