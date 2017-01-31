@@ -145,8 +145,10 @@ void process_file(const std::string& fn)
             auto fq = f.get_basecall_fastq(p.first, p.second);
             auto fq_a = f.split_fq(fq);
             // construct name
-            auto pos = fq_a[0].find_first_of('_');
-            std::string name = fq_a[0].substr(0, pos) + ":" + p.second + ":";
+            std::string name;
+            std::istringstream(fq_a[0]) >> name;
+            std::replace(name.begin(), name.end(), ':', '_');
+            name += ":" + p.second + ":";
             if (p.first == 0)
             {
                 name += "template";
