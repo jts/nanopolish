@@ -21,7 +21,25 @@ BamProcessor::BamProcessor(const std::string& bam_file,
                             m_num_threads(num_threads)
 
 {
+    // load bam file
+    m_bam_fh = sam_open(m_bam_file.c_str(), "r");
+    assert(m_bam_fh != NULL);
 
+    // load bam index file
+    std::string index_filename = m_bam_file + ".bai";
+    m_bam_idx = bam_index_load(index_filename.c_str());
+    assert(m_bam_idx != NULL);
+
+    // read the bam header
+    m_hdr = sam_hdr_read(m_bam_fh);
+    assert(m_hdr != NULL);
+}
+
+BamProcessor::~BamProcessor()
+{
+    bam_hdr_destroy(m_hdr);
+    sam_close(m_bam_fh);
+    hts_idx_destroy(m_bam_idx);
 }
 
 void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr, 
@@ -30,18 +48,9 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
                                            int region_start,
                                            int region_end)> func)
 {
-    // load bam file
-    htsFile* bam_fh = sam_open(m_bam_file.c_str(), "r");
-    assert(bam_fh != NULL);
-
-    // load bam index file
-    std::string index_filename = m_bam_file + ".bai";
-    hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
-    assert(bam_idx != NULL);
-
-    // read the bam header
-    bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-
+    assert(m_bam_fh != NULL);
+    assert(m_bam_idx != NULL);
+    assert(m_hdr != NULL);
     hts_itr_t* itr;
 
     // If processing a region of the genome, pass clipping coordinates to the work function
@@ -49,10 +58,10 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
     int clip_end = -1;
 
     if(m_region.empty()) {
-        itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
+        itr = sam_itr_queryi(m_bam_idx, HTS_IDX_START, 0, 0);
     } else {
-        fprintf(stderr, "Region: %s\n", m_region.c_str());
-        itr = sam_itr_querys(bam_idx, hdr, m_region.c_str());
+        fprintf(stderr, "[bam process] iterating over region: %s\n", m_region.c_str());
+        itr = sam_itr_querys(m_bam_idx, m_hdr, m_region.c_str());
         hts_parse_reg(m_region.c_str(), &clip_start, &clip_end);
     }
 
@@ -63,6 +72,8 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
         exit(1);
     }
 #endif
+    
+    // store number of threads so we can restore it after we're done
     int prev_num_threads = omp_get_num_threads();
     omp_set_num_threads(m_num_threads);
 
@@ -80,7 +91,7 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
         assert(num_records_buffered < records.size());
 
         // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
+        result = sam_itr_next(m_bam_fh, itr, records[num_records_buffered]);
         num_records_buffered += result >= 0;
 
         // realign if we've hit the max buffer size or reached the end of file
@@ -90,7 +101,7 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    func(hdr, record, read_idx, clip_start, clip_end);
+                    func(m_hdr, record, read_idx, clip_start, clip_end);
                 }
             }
 
@@ -110,7 +121,4 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
     }
 
     sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
-    sam_close(bam_fh);
-    hts_idx_destroy(bam_idx);
 }

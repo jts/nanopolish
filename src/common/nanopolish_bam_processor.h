@@ -23,6 +23,10 @@ class BamProcessor
                      const std::string& region,
                      const int num_threads);
 
+        ~BamProcessor();
+
+        const bam_hdr_t* get_bam_header() const { return m_hdr; }
+
         // place a limit on the number of reads to process before stopping
         void set_max_reads(size_t max) { m_max_reads = max; }
 
@@ -36,6 +40,11 @@ class BamProcessor
     private:
         std::string m_bam_file;
         std::string m_region;
+    
+        htsFile* m_bam_fh;
+        hts_idx_t* m_bam_idx;
+        bam_hdr_t* m_hdr;
+
         int m_batch_size = 128;
         int m_num_threads = 1;
         size_t m_max_reads = -1;

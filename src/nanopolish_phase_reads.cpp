@@ -183,6 +183,8 @@ void phase_single_read(const Fast5Map& name_map,
                        int region_start,
                        int region_end)
 {
+    const double MAX_Q_SCORE = 30;
+    const double BAM_Q_OFFSET = 0;
     int tid = omp_get_thread_num();
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
     
@@ -221,7 +223,7 @@ void phase_single_read(const Fast5Map& name_map,
                                                         &fetched_len);
 
     std::string read_outseq = reference_seq;
-    std::string read_outqual = "*";
+    std::string read_outqual(reference_seq.length(), MAX_Q_SCORE + BAM_Q_OFFSET);
 
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
@@ -279,12 +281,28 @@ void phase_single_read(const Fast5Map& name_map,
             bool good_haplotype = calling_haplotype.apply_variant(v);
             if(good_haplotype) {
                 double alt_score = profile_hmm_score(calling_haplotype.get_sequence(), data, alignment_flags);
-                char call = alt_score > ref_score ? v.alt_seq[0] : v.ref_seq[0];
-                //fprintf(stderr, "\t%s score: %.2lf %.2lf %c\n", v.key().c_str(), ref_score, alt_score, call);
+                double log_sum = add_logs(alt_score, ref_score);
+                double log_p_ref = ref_score - log_sum;
+                double log_p_alt = alt_score - log_sum;
+                char call;
+                double log_p_wrong;
+                if(alt_score > ref_score) {
+                     call = v.alt_seq[0];
+                     log_p_wrong = log_p_ref;
+                } else {
+                    call = v.ref_seq[0];
+                    log_p_wrong = log_p_alt;
+                }
+
+                double q_score = -10 * log_p_wrong / log(10);
+                q_score = std::min(MAX_Q_SCORE, q_score);
+                char q_char = (int)q_score + 33;
+                //fprintf(stderr, "\t%s score: %.2lf %.2lf %c p_wrong: %.3lf Q: %d QC: %c\n", v.key().c_str(), ref_score, alt_score, call, log_p_wrong, (int)q_score, q_char);
 
                 int out_position = v.ref_position - alignment_start_pos;
                 assert(read_outseq[out_position] == v.ref_seq[0]);
                 read_outseq[out_position] = call;
+                read_outqual[out_position] = q_char;
             }
         }
 
@@ -295,7 +313,7 @@ void phase_single_read(const Fast5Map& name_map,
         out_record->core.tid = record->core.tid;
         out_record->core.pos = alignment_start_pos;
         out_record->core.qual = record->core.qual;
-        out_record->core.flag = 0;
+        out_record->core.flag = record->core.flag & BAM_FSUPPLEMENTARY;
         
         // no read pairs
         out_record->core.mtid = -1;
@@ -305,7 +323,7 @@ void phase_single_read(const Fast5Map& name_map,
         std::vector<uint32_t> cigar;
         uint32_t cigar_op = read_outseq.size() << BAM_CIGAR_SHIFT | BAM_CMATCH;
         cigar.push_back(cigar_op);
-        write_bam_vardata(out_record, read_name, cigar, read_outseq, "*");
+        write_bam_vardata(out_record, read_name, cigar, read_outseq, read_outqual);
 
         #pragma omp critical
         {
@@ -343,25 +361,21 @@ int phase_reads_main(int argc, char** argv)
     // Sort variants by reference coordinate
     std::sort(variants.begin(), variants.end(), sortByPosition);
     
-    // Copy the bam header to std
-    htsFile* bam_fh = sam_open(opt::bam_file.c_str(), "r");
-    assert(bam_fh != NULL);
-    bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    
     samFile* sam_out = sam_open("-", "w");
-    sam_hdr_write(sam_out, hdr);
 
     // the BamProcessor framework calls the input function with the 
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     auto f = std::bind(phase_single_read, name_map, fai, std::ref(variants), sam_out, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+    
+    // Copy the bam header to std
+    sam_hdr_write(sam_out, processor.get_bam_header());
+    
     processor.parallel_run(f);
     
-    sam_close(bam_fh);
-    bam_hdr_destroy(hdr);
     fai_destroy(fai);
-
     sam_close(sam_out);
+    
     return EXIT_SUCCESS;
 }
