@@ -147,13 +147,7 @@ void process_file(const std::string& fn)
             // construct name
             std::string name;
             std::istringstream(fq_a[0]) >> name;
-            std::string::size_type pos = 0;
-            while (true)
-            {
-                pos = name.find(':', pos);
-                if (pos == std::string::npos) break;
-                name[pos] = '_';
-            }
+            std::replace(name.begin(), name.end(), ':', '_');
             name += ":" + p.second + ":";
             if (p.first == 0)
             {
