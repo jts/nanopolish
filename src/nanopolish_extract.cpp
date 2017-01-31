@@ -48,6 +48,8 @@ namespace opt
     static bool fastq = false;
     static std::string output_file;
     static std::deque< std::string > paths;
+    static unsigned total_files_count = 0;
+    static unsigned total_files_used_count = 0;
 }
 static std::ostream* os_p;
 
@@ -115,7 +117,7 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
 
 void process_file(const std::string& fn)
 {
-    LOG(debug) << "processing_file: " << fn << "\n";
+    LOG(debug) << fn << "\n";
     auto pos = fn.find_last_of('/');
     std::string base_fn = (pos != std::string::npos? fn.substr(pos + 1) : fn);
     if (base_fn.substr(base_fn.size() - 6) == ".fast5")
@@ -129,9 +131,15 @@ void process_file(const std::string& fn)
         {
             // open file
             f.open(fn);
+            ++opt::total_files_count;
             // get preferred basecall groups
             auto l = get_preferred_basecall_groups(f, opt::read_type);
-            if (l.empty()) return;
+            if (l.empty())
+            {
+                LOG(info) << "file [" << fn << "]: no basecalling data suitable for nanoplish\n";
+                return;
+            }
+            ++opt::total_files_used_count;
             const auto& p = l.front();
             // get and parse fastq
             auto fq = f.get_basecall_fastq(p.first, p.second);
@@ -175,7 +183,7 @@ void process_file(const std::string& fn)
 
 void process_path(const std::string& path)
 {
-    LOG(info) << "processing_path: " << path << "\n";
+    LOG(info) << path << "\n";
     if (is_directory(path))
     {
         auto dir_list = list_directory(path);
@@ -241,6 +249,7 @@ static const struct option longopts[] = {
 void parse_extract_options(int argc, char** argv)
 {
     bool die = false;
+    std::vector< std::string> log_level;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
@@ -251,7 +260,7 @@ void parse_extract_options(int argc, char** argv)
                 std::cout << EXTRACT_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_LOG_LEVEL:
-                Logger::set_level_from_option(arg.str());
+                log_level.push_back(arg.str());
                 break;
             case 'v': opt::verbose++; break;
             case 'r': opt::recurse = true; break;
@@ -260,6 +269,10 @@ void parse_extract_options(int argc, char** argv)
             case 'o': arg >> opt::output_file; break;
         }
     }
+    // set log levels
+    auto default_level = (int)level_wrapper::warning + opt::verbose;
+    Logger::set_default_level(default_level);
+    Logger::set_levels_from_options(log_level, &std::clog);
     // parse paths to process
     while (optind < argc)
     {
@@ -313,5 +326,8 @@ int extract_main(int argc, char** argv)
     {
         process_path(opt::paths[i]);
     }
+    std::clog << "[extract] found " << opt::total_files_count
+              << " files, extracted " << opt::total_files_used_count
+              << " reads\n";
     return 0;
 }
