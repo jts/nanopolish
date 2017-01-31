@@ -11,7 +11,11 @@ for model_file in sys.stdin:
     outfile = "builtin_models/%s.inl" % basename
     function_name = "initialize_%s_builtin" % (basename)
     
-    os.system("python scripts/convert_model_to_header.py -i %s -f %s > src/%s" % (model_file, function_name, outfile))
+    ret = os.system("python scripts/convert_model_to_header.py -i %s -f %s > src/%s" % (model_file, function_name, outfile))
+    if ret != 0:
+        sys.stderr.write("Error processing %s\n" % model_file)
+        sys.exit(1)
+
     functions.append(function_name)
     outfiles.append(outfile)
 
