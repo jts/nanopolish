@@ -348,7 +348,7 @@ void add_aligned_events(const Fast5Map& name_map,
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
-        
+
         std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
         if (alignment_output.size() == 0)
             return;

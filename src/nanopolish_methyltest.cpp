@@ -167,8 +167,10 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
         std::vector<int> site_count;
 
         // replace the baked-in pore model with the methylation model
-        // (including unmethylated kmers) for this strand
-        sr.replace_model(strand_idx, opt::cpg_methylation_model_type);
+        const PoreModel& curr_model = sr.pore_model[strand_idx];
+        sr.replace_models(curr_model.metadata.get_kit_name(), 
+                          "cpg",
+                          curr_model.k);
 
         size_t k = sr.pore_model[strand_idx].k;
 
