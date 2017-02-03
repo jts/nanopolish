@@ -322,7 +322,7 @@ TEST_CASE( "combinations", "[combinations]") {
     // With replacement
     test_combinations(1, 1, CO_WITH_REPLACEMENT, {"0"});
     test_combinations(2, 1, CO_WITH_REPLACEMENT, { "0", "1" });
-    test_combinations(2, 2, CO_WITH_REPLACEMENT, { "0,0", "0,1", "1,0", "1,1" });
+    test_combinations(2, 2, CO_WITH_REPLACEMENT, { "0,0", "0,1", "1,1" });
     test_combinations(3, 2, CO_WITH_REPLACEMENT, { "0,0", "0,1", "0,2", "1,1", "1,2", "2,2"});
 }
 
