@@ -56,6 +56,8 @@ struct Variant
         ss >> quality;
         ss >> dummy; // FILTER, not used
         ss >> info;
+        ss >> dummy; // GT tag
+        ss >> genotype;
 
         // VCF is 1-based but we internally represent a variant as 0-based
         ref_position -= 1;

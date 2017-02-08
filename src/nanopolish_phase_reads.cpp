@@ -210,6 +210,8 @@ void phase_single_read(const Fast5Map& name_map,
     upper_search.ref_position = alignment_end_pos;
     auto upper_iter = std::upper_bound(variants.begin(), variants.end(), upper_search, sortByPosition);
 
+    fprintf(stderr, "%s %s:%zu-%zu %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+
     // no variants to phase?
     if(lower_iter == variants.end()) {
         return;
@@ -267,7 +269,7 @@ void phase_single_read(const Fast5Map& name_map,
                                                             e2);
 
             // The events of this read do not span the calling window, skip
-            if(!bounded) {
+            if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > 10) {
                 continue;
             }
 
@@ -357,9 +359,12 @@ int phase_reads_main(int argc, char** argv)
          variants = read_variants_from_file(opt::variants_file);
     }
 
-    fprintf(stderr, "Loaded %zu variants\n", variants.size());
     // Sort variants by reference coordinate
     std::sort(variants.begin(), variants.end(), sortByPosition);
+    
+    // remove hom reference
+    auto new_end = std::remove_if(variants.begin(), variants.end(), [](Variant v) { return v.genotype == "0/0"; });
+    variants.erase( new_end, variants.end());
     
     samFile* sam_out = sam_open("-", "w");
 

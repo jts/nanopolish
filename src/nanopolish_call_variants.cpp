@@ -852,7 +852,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // in consensus mode we iterate until a maximum number of rounds is reached
     // or the variant set converges
     size_t round = 0;
-    size_t MAX_ROUNDS = 5;
+    size_t MAX_ROUNDS = 50;
     Haplotype called_haplotype(alignments.get_region_contig(),
                                alignments.get_region_start(),
                                alignments.get_reference());

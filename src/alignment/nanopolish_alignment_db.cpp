@@ -173,11 +173,16 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
                                            e1,
                                            e2);
         if(bounded) {
-            assert(e1 >= 0);
-            assert(e2 >= 0);
-            data.event_start_idx = e1;
-            data.event_stop_idx = e2;
-            out.push_back(data);
+            double ratio = fabs(e1 - e2) / fabs(stop_position - start_position);
+            if(ratio < 10) {
+                assert(e1 >= 0);
+                assert(e2 >= 0);
+                data.event_start_idx = e1;
+                data.event_stop_idx = e2;
+                out.push_back(data);
+            }  else {
+                fprintf(stderr, "skipped events for read %s (event/bp ratio: %.2lf %zu %zu)\n", record.sr->read_name.c_str(), ratio, e1, e2);
+            }
         }
     }
 

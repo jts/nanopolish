@@ -74,7 +74,6 @@ std::vector<Variant> read_variants_for_region(const std::string& filename,
     return out;
 }
 
-
 void filter_variants_by_count(std::vector<Variant>& variants, int min_count)
 {
     std::map<std::string, std::pair<Variant, int>> map;
@@ -217,6 +216,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     double best_score = -INFINITY;
     std::vector<size_t> best_set;
     std::vector<size_t> base_set;
+
     double log_2 = log(2);
 
 #ifdef DEBUG_HAPLOTYPE_SELECTION 
@@ -291,6 +291,24 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         best_set = base_set;
     }
 
+    // Calculate the number of reads that support each variant allele
+    std::vector<double> read_variant_support(variant_group.get_num_variants(), 0.0f);
+    for(size_t vc_id = 0; vc_id < variant_group.get_num_combinations(); ++vc_id) {
+
+        const VariantCombination& vc = variant_group.get_combination(vc_id);
+        
+        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
+            const std::string& read_id = group_reads[ri].first;
+            double read_sum = group_reads[ri].second;
+            double read_haplotype_score = variant_group.get_combination_read_score(vc_id, read_id);
+            double posterior_read_from_haplotype = exp(read_haplotype_score - read_sum);
+
+            for(size_t var_idx = 0; var_idx < vc.get_num_variants(); ++var_idx) {
+                read_variant_support[vc.get_variant_id(var_idx)] += posterior_read_from_haplotype;
+            }
+        }
+    }
+
     std::vector<Variant> output_variants;
     for(size_t vi = 0; vi < variant_group.get_num_variants(); vi++) {
 
@@ -315,6 +333,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         }
         v.add_info("TotalReads", group_reads.size());
         v.add_info("AlleleCount", var_count);
+        v.add_info("SupportFraction", read_variant_support[vi] / group_reads.size());
         v.genotype = make_genotype(var_count, ploidy);
         output_variants.push_back(v);
     }
