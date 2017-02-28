@@ -15,6 +15,8 @@
 #include "nanopolish_anchor.h"
 #include "nanopolish_variant.h"
 
+#define MAX_EVENT_TO_BP_RATIO 20
+
 // structs
 struct SequenceAlignmentRecord
 {

@@ -174,15 +174,17 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
                                            e2);
         if(bounded) {
             double ratio = fabs(e1 - e2) / fabs(stop_position - start_position);
-            if(ratio < 10) {
+
+            // Some low quality reads appear to have "stuck" states where you get 
+            // a long run of consecutive stays. They can cause an assertion in the HMM
+            // so we added this heuristic to catch these.
+            if(ratio < MAX_EVENT_TO_BP_RATIO) {
                 assert(e1 >= 0);
                 assert(e2 >= 0);
                 data.event_start_idx = e1;
                 data.event_stop_idx = e2;
                 out.push_back(data);
-            }  else {
-                fprintf(stderr, "skipped events for read %s (event/bp ratio: %.2lf %zu %zu)\n", record.sr->read_name.c_str(), ratio, e1, e2);
-            }
+            }  
         }
     }
 
@@ -426,7 +428,7 @@ void AlignmentDB::_load_sequence_by_region()
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
 
         // skip ambiguously mapped reads
-        if(handles.bam_record->core.qual == 0) {
+        if(handles.bam_record->core.qual < 20) {
             continue;
         }
 
