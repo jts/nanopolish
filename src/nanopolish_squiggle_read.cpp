@@ -174,6 +174,12 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
         sample_rate = channel_params.sampling_rate;
     }
 
+    // Filter poor quality reads that have too many "stays"
+    if(events_per_base[0] > 3.0) {
+        events[0].clear();
+        events[1].clear();
+    }
+
     delete f_p;
     f_p = nullptr;
 }
