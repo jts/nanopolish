@@ -59,6 +59,11 @@ class AlignmentDB
         void load_region(const std::string& contig,
                          int start_position,
                          int stop_position);
+    
+        // Some high quality basecallers, like scrappie, may not output event
+        // annotations. This call is to support using scrappie basecalls
+        // with metrichor events.
+        void set_alternative_basecalls_bam(const std::string& alternative_sequence_bam);
         
         const std::string& get_reference() const { return m_region_ref_sequence; }
 
@@ -108,10 +113,9 @@ class AlignmentDB
                                       AlignedPairConstIter& stop_iter);
     private:
         
-        void _load_sequence_by_region();
-        void _load_events_by_region();
-        void _load_events_by_region_from_bam();
-        void _load_events_by_region_from_read();
+        std::vector<SequenceAlignmentRecord> _load_sequence_by_region(const std::string& sequence_bam);
+        std::vector<EventAlignmentRecord> _load_events_by_region_from_bam(const std::string& event_bam);
+        std::vector<EventAlignmentRecord> _load_events_by_region_from_read(const std::vector<SequenceAlignmentRecord>& sequence_records);
         void _load_squiggle_read(const std::string& read_name);
 
         void _clear_region();
@@ -127,6 +131,7 @@ class AlignmentDB
         std::string m_reference_file;
         std::string m_sequence_bam;
         std::string m_event_bam;
+        std::string m_alternative_basecalls_bam;
 
         // parameters
         bool m_calibrate_on_load;

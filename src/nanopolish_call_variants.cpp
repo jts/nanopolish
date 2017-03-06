@@ -88,6 +88,8 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
 "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
+"  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
+"                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
 "      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
 "      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -105,6 +107,7 @@ namespace opt
     static std::string window;
     static std::string consensus_output;
     static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
+    static std::string alternative_basecalls_bam;
     static double min_candidate_frequency = 0.2f;
     static int min_candidate_depth = 20;
     static int calculate_all_support = false;
@@ -122,7 +125,7 @@ namespace opt
     static int debug_alignments = 0;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -140,31 +143,32 @@ enum { OPT_HELP = 1,
        OPT_P_BAD_SELF };
 
 static const struct option longopts[] = {
-    { "verbose",                 no_argument,       NULL, 'v' },
-    { "reads",                   required_argument, NULL, 'r' },
-    { "bam",                     required_argument, NULL, 'b' },
-    { "event-bam",               required_argument, NULL, 'e' },
-    { "genome",                  required_argument, NULL, 'g' },
-    { "window",                  required_argument, NULL, 'w' },
-    { "outfile",                 required_argument, NULL, 'o' },
-    { "threads",                 required_argument, NULL, 't' },
-    { "min-candidate-frequency", required_argument, NULL, 'm' },
-    { "min-candidate-depth",     required_argument, NULL, 'd' },
-    { "candidates",              required_argument, NULL, 'c' },
-    { "ploidy",                  required_argument, NULL, 'p' },
-    { "genotype",                required_argument, NULL, OPT_GENOTYPE },
-    { "models-fofn",             required_argument, NULL, OPT_MODELS_FOFN },
-    { "p-skip",                  required_argument, NULL, OPT_P_SKIP },
-    { "p-skip-self",             required_argument, NULL, OPT_P_SKIP_SELF },
-    { "p-bad",                   required_argument, NULL, OPT_P_BAD },
-    { "p-bad-self",              required_argument, NULL, OPT_P_BAD_SELF },
-    { "consensus",               required_argument, NULL, OPT_CONSENSUS },
-    { "fix-homopolymers",        no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
-    { "calculate-all-support",   no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
-    { "snps",                    no_argument,       NULL, OPT_SNPS_ONLY },
-    { "progress",                no_argument,       NULL, OPT_PROGRESS },
-    { "help",                    no_argument,       NULL, OPT_HELP },
-    { "version",                 no_argument,       NULL, OPT_VERSION },
+    { "verbose",                   no_argument,       NULL, 'v' },
+    { "reads",                     required_argument, NULL, 'r' },
+    { "bam",                       required_argument, NULL, 'b' },
+    { "event-bam",                 required_argument, NULL, 'e' },
+    { "genome",                    required_argument, NULL, 'g' },
+    { "window",                    required_argument, NULL, 'w' },
+    { "outfile",                   required_argument, NULL, 'o' },
+    { "threads",                   required_argument, NULL, 't' },
+    { "min-candidate-frequency",   required_argument, NULL, 'm' },
+    { "min-candidate-depth",       required_argument, NULL, 'd' },
+    { "candidates",                required_argument, NULL, 'c' },
+    { "ploidy",                    required_argument, NULL, 'p' },
+    { "alternative-basecalls-bam", required_argument, NULL, 'a' },
+    { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
+    { "models-fofn",               required_argument, NULL, OPT_MODELS_FOFN },
+    { "p-skip",                    required_argument, NULL, OPT_P_SKIP },
+    { "p-skip-self",               required_argument, NULL, OPT_P_SKIP_SELF },
+    { "p-bad",                     required_argument, NULL, OPT_P_BAD },
+    { "p-bad-self",                required_argument, NULL, OPT_P_BAD_SELF },
+    { "consensus",                 required_argument, NULL, OPT_CONSENSUS },
+    { "fix-homopolymers",          no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
+    { "calculate-all-support",     no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
+    { "snps",                      no_argument,       NULL, OPT_SNPS_ONLY },
+    { "progress",                  no_argument,       NULL, OPT_PROGRESS },
+    { "help",                      no_argument,       NULL, OPT_HELP },
+    { "version",                   no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
 
@@ -804,8 +808,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         region_start = BUFFER;
     AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
 
-    if(!opt::alternative_model_type.empty()) {
-        alignments.set_alternative_model_type(opt::alternative_model_type);
+    if(!opt::alternative_basecalls_bam.empty()) {
+        alignments.set_alternative_basecalls_bam(opt::alternative_basecalls_bam);
     }
 
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
@@ -926,6 +930,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'd': arg >> opt::min_candidate_depth; break;
             case 'c': arg >> opt::candidates_file; break;
             case 'p': arg >> opt::ploidy; break;
+            case 'a': arg >> opt::alternative_basecalls_bam; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;

@@ -96,6 +96,11 @@ AlignmentDB::~AlignmentDB()
     _clear_region();
 }
 
+void AlignmentDB::set_alternative_basecalls_bam(const std::string& alternative_basecalls_bam)
+{
+    m_alternative_basecalls_bam = alternative_basecalls_bam;
+}
+
 std::string AlignmentDB::get_reference_substring(const std::string& contig,
                                                  int start_position,
                                                  int stop_position) const
@@ -337,7 +342,6 @@ void AlignmentDB::load_region(const std::string& contig,
                               int start_position,
                               int stop_position)
 {
-
     // load reference fai file
     faidx_t *fai = fai_load(m_reference_file.c_str());
 
@@ -345,6 +349,10 @@ void AlignmentDB::load_region(const std::string& contig,
     m_region_contig = contig;
     m_region_start = start_position;
     m_region_end = std::min(stop_position, faidx_seq_len(fai, contig.c_str()));
+    
+    assert(!m_region_contig.empty());
+    assert(m_region_start >= 0);
+    assert(m_region_end >= 0);
 
     // load the reference sequence for this region
     // its ok to use the unthreadsafe fetch_seq here since we have our own fai
@@ -353,10 +361,20 @@ void AlignmentDB::load_region(const std::string& contig,
     m_region_ref_sequence = ref_segment;
     
     // load base-space alignments
-    _load_sequence_by_region();
+    m_sequence_records = _load_sequence_by_region(m_sequence_bam);
 
-    // load event-space alignments
-    _load_events_by_region();
+    // load event-space alignments, possibly inferred from the base-space alignments
+    if(m_event_bam.empty()) {
+        m_event_records = _load_events_by_region_from_read(m_sequence_records);
+    } else {
+        m_event_records = _load_events_by_region_from_bam(m_event_bam);
+    }
+
+    // If an alternative basecall set was provided, load it
+    // intentially overwriting the current records
+    if(!m_alternative_basecalls_bam.empty()) {
+        m_sequence_records = _load_sequence_by_region(m_alternative_basecalls_bam);
+    }
 
     //_debug_print_alignments();
 
@@ -416,13 +434,14 @@ BamHandles _initialize_bam_itr(const std::string& bam_filename,
     return handles;
 }
 
-void AlignmentDB::_load_sequence_by_region()
+std::vector<SequenceAlignmentRecord> AlignmentDB::_load_sequence_by_region(const std::string& sequence_bam)
 {
     assert(!m_region_contig.empty());
     assert(m_region_start >= 0);
     assert(m_region_end >= 0);
 
-    BamHandles handles = _initialize_bam_itr(m_sequence_bam, m_region_contig, m_region_start, m_region_end);
+    BamHandles handles = _initialize_bam_itr(sequence_bam, m_region_contig, m_region_start, m_region_end);
+    std::vector<SequenceAlignmentRecord> records;
 
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
@@ -432,34 +451,22 @@ void AlignmentDB::_load_sequence_by_region()
             continue;
         }
 
-        m_sequence_records.emplace_back(handles.bam_record);
+        records.emplace_back(handles.bam_record);
     }
 
     // cleanup
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
+    
+    return records;
 }
 
-void AlignmentDB::_load_events_by_region()
+std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(const std::string& event_bam)
 {
-    assert(!m_region_contig.empty());
-    assert(m_region_start >= 0);
-    assert(m_region_end >= 0);
+    BamHandles handles = _initialize_bam_itr(event_bam, m_region_contig, m_region_start, m_region_end);
 
-    // running eventalign on whole genome data takes a long time
-    // optionally we can just infer the event-to-reference alignments
-    // by projecting from the read's basespace alignment
-    if(!m_event_bam.empty()) {
-        _load_events_by_region_from_bam();
-    } else {
-        _load_events_by_region_from_read();
-    }
-}
-
-void AlignmentDB::_load_events_by_region_from_bam()
-{
-    BamHandles handles = _initialize_bam_itr(m_event_bam, m_region_contig, m_region_start, m_region_end);
+    std::vector<EventAlignmentRecord> records;
 
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
@@ -492,7 +499,7 @@ void AlignmentDB::_load_events_by_region_from_bam()
         event_record.rc = bam_is_rev(handles.bam_record);
         event_record.stride = event_stride;
         event_record.strand = is_template ? T_IDX : C_IDX;
-        m_event_records.push_back(event_record);
+        records.push_back(event_record);
         
         if(m_calibrate_on_load) {
             std::vector<EventAlignment> event_alignment = _build_event_alignment(event_record);
@@ -519,12 +526,15 @@ void AlignmentDB::_load_events_by_region_from_bam()
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
+    
+    return records;
 }
 
-void AlignmentDB::_load_events_by_region_from_read()
+std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(const std::vector<SequenceAlignmentRecord>& sequence_records)
 {
-    for(size_t i = 0; i < m_sequence_records.size(); ++i) {
-        const SequenceAlignmentRecord& seq_record = m_sequence_records[i];
+    std::vector<EventAlignmentRecord> records;
+    for(size_t i = 0; i < sequence_records.size(); ++i) {
+        const SequenceAlignmentRecord& seq_record = sequence_records[i];
 
         // conditionally load the squiggle read if it hasn't been loaded already
         _load_squiggle_read(seq_record.read_name);
@@ -541,9 +551,11 @@ void AlignmentDB::_load_events_by_region_from_read()
                 continue;
             }
 
-            m_event_records.emplace_back(sr, si, seq_record);
+            records.emplace_back(sr, si, seq_record);
         }
     }
+
+    return records;
 }
 
 void AlignmentDB::_debug_print_alignments()
