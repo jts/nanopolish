@@ -86,7 +86,7 @@ samtools index reads.sorted.bam
 nanopolish methyltest -t 8 -r reads.fa -g reference.fa -b reads.sorted.bam
 ```
 
-This will produce three output files. The *.sites.bed file contains per-CpG site level information. The log-likelihood ratio is encoded in the `LogLikRatio` tag of each record. The other two output files (*.read.tsv, *.strand.tsv) contains read and strand-level summaries that is only useful for debugging. These files will be removed in the future.
+This will produce three output files. The \*.sites.bed file contains per-CpG site level information. The log-likelihood ratio is encoded in the `LogLikRatio` tag of each record. The other two output files (\*.read.tsv, \*.strand.tsv) contains read and strand-level summaries that is only useful for debugging. These files will be removed in the future.
 
 ## To run using docker
 
