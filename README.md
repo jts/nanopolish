@@ -26,6 +26,7 @@ The main subprograms of nanopolish are:
 nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
 nanopolish eventalign: align signal-level events to k-mers of a reference genome
 nanopolish variants: detect SNPs and indels with respect to a reference genome
+nanopolish methyltest: call methylation
 nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
 ```
 
@@ -68,6 +69,24 @@ python nanopolish_merge.py polished.*.fa > polished_genome.fa
 ## Fixing homopolymers
 
 Nanopolish 0.5 contains an experimental ```--fix-homopolymers``` option that will use event durations to improve the consensus accuracy around homopolymers. This option has only been tested on deep (>100X) data where it gives a minor improvement in accuracy. It is left off by default for now until it is tested further.
+
+## Calling Methylation
+
+nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). Here are instructions for running this analysis:
+
+```
+# Extract all reads from a directory of FAST5 files
+nanopolish extract -r --type [2d|template] directory/ > reads.fa
+
+# Align the reads in base space to a reference genome
+bwa mem -x ont2d -t 8 reference.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
+samtools index reads.sorted.bam
+
+# Run methyltest
+nanopolish methyltest -t 8 -r reads.fa -g reference.fa -b reads.sorted.bam
+```
+
+This will produce three output files. The *.sites.bed file contains per-CpG site level information. The log-likelihood ratio is encoded in the `LogLikRatio` tag of each record. The other two output files (*.read.tsv, *.strand.tsv) contains read and strand-level summaries that is only useful for debugging. These files will be removed in the future.
 
 ## To run using docker
 
