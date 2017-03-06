@@ -76,7 +76,7 @@ nanopolish can use the signal-level information measured by the sequencer to det
 
 ```
 # Extract all reads from a directory of FAST5 files
-nanopolish extract -r --type [2d|template] directory/ > reads.fa
+nanopolish extract -r --type template directory/ > reads.fa
 
 # Align the reads in base space to a reference genome
 bwa mem -x ont2d -t 8 reference.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
