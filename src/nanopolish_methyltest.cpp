@@ -31,9 +31,12 @@
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_bam_processor.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+
+using namespace std::placeholders;
 
 //
 // Structs
@@ -132,12 +135,14 @@ static const struct option longopts[] = {
 };
 
 // Test CpG sites in this read for methylation
-void calculate_methylation_for_read(const Fast5Map& name_map,
+void calculate_methylation_for_read(const OutputHandles& handles,
+                                    const Fast5Map& name_map,
                                     const faidx_t* fai,
                                     const bam_hdr_t* hdr,
                                     const bam1_t* record,
                                     size_t read_idx,
-                                    const OutputHandles& handles)
+                                    int region_start,
+                                    int region_end)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -311,31 +316,18 @@ void calculate_methylation_for_read(const Fast5Map& name_map,
     
     #pragma omp critical(methyltest_write)
     {
-        // these variables are sums over all sites within a read
-        double ll_ratio_sum_strand[2] = { 0.0f, 0.0f };
-        double ll_ratio_sum_both = 0;
-        size_t num_positive = 0;
-
         // write all sites for this read
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
 
             const ScoredSite& ss = iter->second;
             double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
-
             double diff = sum_ll_m - sum_ll_u;
-            num_positive += diff > 0;
 
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
-            fprintf(handles.site_writer, "ReadIdx=%zu;", read_idx);
-            fprintf(handles.site_writer, "LogLikMeth=%.2lf;LogLikUnmeth=%.2lf;LogLikRatio=%.2lf;", sum_ll_m, sum_ll_u, diff);
-            fprintf(handles.site_writer, "LogLikMethByStrand=%.2lf,%.2lf;", ss.ll_methylated[0], ss.ll_methylated[1]);
-            fprintf(handles.site_writer, "LogLikUnmethByStrand=%.2lf,%.2lf;", ss.ll_unmethylated[0], ss.ll_unmethylated[1]);
-            fprintf(handles.site_writer, "NumCpGs=%d;Sequence=%s\n", ss.n_cpg, ss.sequence.c_str());
-
-            ll_ratio_sum_strand[0] += ss.ll_methylated[0] - ss.ll_unmethylated[0];
-            ll_ratio_sum_strand[1] += ss.ll_methylated[1] - ss.ll_unmethylated[1];
-            ll_ratio_sum_both += diff;
+            fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
+            fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
+            fprintf(handles.site_writer, "%zu\t\t%d\t%s\n", ss.strands_scored, ss.n_cpg, ss.sequence.c_str());
         }
     }
 }
@@ -456,62 +448,24 @@ int methyltest_main(int argc, char** argv)
     // Initialize writers
     OutputHandles handles;
     handles.site_writer = stdout;
+    
+    // Write header
+    fprintf(handles.site_writer, "chromosome\tstart\tend\tread_name\t"
+                                 "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
+                                 "num_calling_strands\tnum_cpgs\tsequence\n");
 
-    // Initialize iteration
-    std::vector<bam1_t*> records(opt::batch_size, NULL);
-    for(size_t i = 0; i < records.size(); ++i) {
-        records[i] = bam_init1();
-    }
-
-    int result;
-    size_t num_reads_processed = 0;
-    size_t num_records_buffered = 0;
-    Progress progress("[methyltest]");
-
-    do {
-        assert(num_records_buffered < records.size());
-
-        // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
-        num_records_buffered += result >= 0;
-
-        // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-
-            #pragma omp parallel for
-            for(size_t i = 0; i < num_records_buffered; ++i) {
-                bam1_t* record = records[i];
-                size_t read_idx = num_reads_processed + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    calculate_methylation_for_read(name_map, fai, hdr, record, read_idx, handles);
-                }
-            }
-
-            num_reads_processed += num_records_buffered;
-            num_records_buffered = 0;
-
-        }
-    } while(result >= 0);
-
-    assert(num_records_buffered == 0);
-    progress.end();
-
-    // cleanup records
-    for(size_t i = 0; i < records.size(); ++i) {
-        bam_destroy1(records[i]);
-    }
+    // the BamProcessor framework calls the input function with the 
+    // bam record, read index, etc passed as parameters
+    // bind the other parameters the worker function needs here
+    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), name_map, fai, _1, _2, _3, _4, _5);
+    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+    processor.parallel_run(f);
 
     // cleanup
     if(handles.site_writer != stdout) {
         fclose(handles.site_writer);
     }
 
-    sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
-    fai_destroy(fai);
-    sam_close(bam_fh);
-    hts_idx_destroy(bam_idx);
-    
     return EXIT_SUCCESS;
 }
 
