@@ -3,11 +3,11 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_methyltest -- test a methylation model
+// nanopolish_call_methylation -- identify methylated bases
 //
-#ifndef NANOPOLISH_METHYLTEST_H
-#define NANOPOLISH_METHYLTEST_H
+#ifndef NANOPOLISH_CALL_METHYLATION_H
+#define NANOPOLISH_CALL_METHYLATION_H
 
-int methyltest_main(int argc, char** argv);
+int call_methylation_main(int argc, char** argv);
 
 #endif

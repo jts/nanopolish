@@ -3,7 +3,7 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_methyltest -- test CpG sites for methylation
+// nanopolish_call_methylation -- identify methylated bases
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,22 +80,21 @@ Alphabet* mtest_alphabet = &gMCpGAlphabet;
 //
 // Getopt
 //
-#define SUBPROGRAM "methyltest"
+#define SUBPROGRAM "call-methylation"
 
-static const char *METHYLTEST_VERSION_MESSAGE =
+static const char *CALL_METHYLATION_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Written by Jared Simpson.\n"
 "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
-static const char *METHYLTEST_USAGE_MESSAGE =
+static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Test CpG sites for methylation\n"
+"Classify nucleotides as methylated or not.\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
-"  -m, --models-fofn=FILE               read the models from the FOFN\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
@@ -304,7 +303,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         } // for group
     } // for strands
     
-    #pragma omp critical(methyltest_write)
+    #pragma omp critical(call_methylation_write)
     {
         // write all sites for this read
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
@@ -322,7 +321,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     }
 }
 
-void parse_methyltest_options(int argc, char** argv)
+void parse_call_methylation_options(int argc, char** argv)
 {
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
@@ -338,10 +337,10 @@ void parse_methyltest_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
-                std::cout << METHYLTEST_USAGE_MESSAGE;
+                std::cout << CALL_METHYLATION_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_VERSION:
-                std::cout << METHYLTEST_VERSION_MESSAGE;
+                std::cout << CALL_METHYLATION_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
         }
     }
@@ -382,15 +381,14 @@ void parse_methyltest_options(int argc, char** argv)
 
     if (die)
     {
-        std::cout << "\n" << METHYLTEST_USAGE_MESSAGE;
+        std::cout << "\n" << CALL_METHYLATION_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
 }
 
-int methyltest_main(int argc, char** argv)
+int call_methylation_main(int argc, char** argv)
 {
-
-    parse_methyltest_options(argc, argv);
+    parse_call_methylation_options(argc, argv);
     Fast5Map name_map(opt::reads_file);
 
     // load reference fai file

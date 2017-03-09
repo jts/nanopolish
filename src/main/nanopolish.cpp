@@ -15,7 +15,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_getmodel.h"
 #include "nanopolish_methyltrain.h"
-#include "nanopolish_methyltest.h"
+#include "nanopolish_call_methylation.h"
 #include "nanopolish_scorereads.h"
 #include "nanopolish_phase_reads.h"
 #include "nanopolish_train_poremodel_from_basecalls.h"
@@ -31,9 +31,9 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"getmodel",    getmodel_main},
     {"variants",    call_variants_main},
     {"methyltrain", methyltrain_main},
-    {"methyltest",  methyltest_main},
     {"scorereads",  scorereads_main} ,
     {"phase-reads",  phase_reads_main} ,
+    {"call-methylation",  call_methylation_main},
     {"train-poremodel-from-basecalls",  train_poremodel_from_basecalls_main}
 };
 
