@@ -269,7 +269,7 @@ void phase_single_read(const Fast5Map& name_map,
                                                             e2);
 
             // The events of this read do not span the calling window, skip
-            if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > 10) {
+            if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > MAX_EVENT_TO_BP_RATIO) {
                 continue;
             }
 

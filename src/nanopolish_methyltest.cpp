@@ -32,6 +32,7 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_bam_processor.h"
+#include "nanopolish_alignment_db.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -148,14 +149,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     std::string read_name = bam_get_qname(record);
     std::string fast5_path = name_map.get_path(read_name);
     SquiggleRead sr(read_name, fast5_path);
-
-    /*
-    // Skip non-2D reads
-    if(!sr.has_events_for_strand(T_IDX) || !sr.has_events_for_strand(C_IDX)) {
-        return;
-    }
-    */
-
+    
     // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
 
@@ -163,6 +157,10 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
+        
+        // Build the event-to-reference map for this read from the bam record
+        SequenceAlignmentRecord seq_align_record(record);
+        EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
         
         std::vector<double> site_scores;
         std::vector<int> site_starts;
@@ -177,38 +175,15 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 
         size_t k = sr.pore_model[strand_idx].k;
 
-        // Align in event space using the new model
-        EventAlignmentParameters params;
-        params.sr = &sr;
-        params.fai = fai;
-        params.hdr = hdr;
-        params.record = record;
-        params.strand_idx = strand_idx;
-        params.read_idx = read_idx;
-        params.alphabet = mtest_alphabet;
-
-        std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
-        if(alignment_output.empty())
-            continue;
-        std::string contig = alignment_output.front().ref_name.c_str();
-        
-        // Convert the EventAlignment to a map between reference positions and events
-        std::vector<AlignedPair> event_aligned_pairs;
-        for(size_t i = 0; i < alignment_output.size(); ++i) {
-
-            AlignedPair ap = { alignment_output[i].ref_position,
-                               alignment_output[i].event_idx };
-            event_aligned_pairs.push_back(ap);
-        }
-
-        int ref_start_pos = event_aligned_pairs.front().ref_pos;
-        int ref_end_pos = event_aligned_pairs.back().ref_pos;
+        std::string contig = hdr->target_name[record->core.tid];
+        int ref_start_pos = record->core.pos;
+        int ref_end_pos =  bam_endpos(record);
 
         // Extract the reference sequence for this region
         int fetched_len = 0;
         assert(ref_end_pos >= ref_start_pos);
-        std::string ref_seq = get_reference_region_ts(params.fai, contig.c_str(), ref_start_pos, 
-                                                  ref_end_pos, &fetched_len);
+        std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
+                                                      ref_end_pos, &fetched_len);
         
         // Remove non-ACGT bases from this reference segment
         ref_seq = gDNAAlphabet.disambiguate(ref_seq);
@@ -238,26 +213,28 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             // the coordinates on the reference substring for this group of sites
             int sub_start_pos = cpg_sites[curr_idx] - min_separation;
             int sub_end_pos = cpg_sites[end_idx - 1] + min_separation;
-
-            if(sub_start_pos > min_separation && cpg_sites[end_idx - 1] - cpg_sites[curr_idx] < 200) {
+            int span = cpg_sites[end_idx - 1] - cpg_sites[curr_idx];
+            if(sub_start_pos > min_separation && span < 200) {
     
                 std::string subseq = ref_seq.substr(sub_start_pos, sub_end_pos - sub_start_pos + 1);
                 std::string rc_subseq = mtest_alphabet->reverse_complement(subseq);
 
-                // using the reference-to-event map, look up the event indices for this segment
-                AlignedPairRefLBComp lb_comp;
-                AlignedPairConstIter start_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
-                                                                   sub_start_pos + ref_start_pos, lb_comp);
+                int calling_start = sub_start_pos + ref_start_pos;
+                int calling_end = sub_end_pos + ref_start_pos;
 
-                AlignedPairConstIter stop_iter = std::lower_bound(event_aligned_pairs.begin(), event_aligned_pairs.end(),
-                                                                  sub_end_pos + ref_start_pos, lb_comp);
+                // using the reference-to-event map, look up the event indices for this segment
+                int e1,e2;
+                bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events, 
+                                                                calling_start,
+                                                                calling_end,
+                                                                e1, 
+                                                                e2);
+
+                double ratio = fabs(e2 - e1) / (calling_start - calling_end); 
                 
                 // Only process this region if the the read is aligned within the boundaries
                 // and the span between the start/end is not unusually short
-                if(start_iter != event_aligned_pairs.end() && stop_iter != event_aligned_pairs.end() &&
-                    abs(start_iter->read_pos - stop_iter->read_pos) > 10) 
-                {
-                    
+                if(bounded && abs(e2 - e1) > 10 && ratio < MAX_EVENT_TO_BP_RATIO) {
                     uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
                     // Set up event data
@@ -265,9 +242,9 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                     data.read = &sr;
                     data.anchor_index = -1; // unused
                     data.strand = strand_idx;
-                    data.rc = alignment_output.front().rc;
-                    data.event_start_idx = start_iter->read_pos;
-                    data.event_stop_idx = stop_iter->read_pos;
+                    data.rc = event_align_record.rc;
+                    data.event_start_idx = e1;
+                    data.event_stop_idx = e2;
                     data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
                  
                     // Calculate the likelihood of the unmethylated sequence
@@ -400,42 +377,10 @@ void parse_methyltest_options(int argc, char** argv)
 int methyltest_main(int argc, char** argv)
 {
     parse_methyltest_options(argc, argv);
-    omp_set_num_threads(opt::num_threads);
-
     Fast5Map name_map(opt::reads_file);
-
-    // Open the BAM and iterate over reads
-
-    // load bam file
-    htsFile* bam_fh = sam_open(opt::bam_file.c_str(), "r");
-    assert(bam_fh != NULL);
-
-    // load bam index file
-    std::string index_filename = opt::bam_file + ".bai";
-    hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
-    assert(bam_idx != NULL);
-
-    // read the bam header
-    bam_hdr_t* hdr = sam_hdr_read(bam_fh);
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
-
-    hts_itr_t* itr;
-
-    // If processing a region of the genome, only emit events aligned to this window
-    int clip_start = -1;
-    int clip_end = -1;
-
-    if(opt::region.empty()) {
-        // TODO: is this valid?
-        itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
-    } else {
-
-        fprintf(stderr, "Region: %s\n", opt::region.c_str());
-        itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
-        hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
-    }
 
 #ifndef H5_HAVE_THREADSAFE
     if(opt::num_threads > 1) {
@@ -465,6 +410,8 @@ int methyltest_main(int argc, char** argv)
     if(handles.site_writer != stdout) {
         fclose(handles.site_writer);
     }
+
+    fai_destroy(fai);
 
     return EXIT_SUCCESS;
 }
