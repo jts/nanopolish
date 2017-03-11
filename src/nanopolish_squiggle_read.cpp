@@ -370,27 +370,45 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
     out_event_map.resize(n_read_kmers);
 
     // The range for the first k-mer always starts at event 0
-    assert(f5_events[0].move == 0);
+    // JTS 2017-03: Albacore fast5s start with move 1
+    assert(f5_events[0].move == 0 || f5_events[0].move == 1);
     out_event_map[0].indices[strand].start = 0;
 
     size_t curr_k_idx = 0;
-    for(size_t ei = 0; ei < f5_events.size(); ++ei) {
+    for(size_t ei = 1; ei < f5_events.size(); ++ei) {
         const fast5::Event_Entry& f5_event = f5_events[ei];
 
+        // Calculate the number of kmers to move along the basecalled sequence
+        // We do not use the value provided in the fast5 due to an albacore bug.
+        int move = 0;
+        std::string event_kmer = array2str(f5_event.model_state);
+
+        while(curr_k_idx + move < n_read_kmers) {
+            if(read_sequence_1d.compare(curr_k_idx + move, k, event_kmer, 0, k) == 0) {
+                break;
+            }
+            move++;
+        }
+
+        // If we didn't find the k-mer in the basecalled sequence
+        // something went terribly wrong and we can't proceed.
+        assert(curr_k_idx + move < n_read_kmers);
+
         // Does this event correspond to a different k-mer than the previous one?
-        if(f5_event.move > 0) {
+        if(move > 0) {
             assert(ei != 0);
 
             // end the range for the current k-mer
             out_event_map[curr_k_idx].indices[strand].stop = ei - 1;
-            curr_k_idx += f5_event.move;
+            //printf("ki: %zu [%zu %zu]\n", curr_k_idx, out_event_map[curr_k_idx].indices[strand].start, out_event_map[curr_k_idx].indices[strand].stop);
+            curr_k_idx += move;
 
             // start the range for the next kmer
             out_event_map[curr_k_idx].indices[strand].start = ei;
+        
         }
 
-        assert(read_sequence_1d.compare(curr_k_idx, k,
-                                        array2str(f5_event.model_state), 0, k) == 0);
+        assert(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) == 0);
     }
 
     // end the last range
