@@ -403,7 +403,7 @@ void print_debug_stats(const std::string& contig,
         double base_avg = base_score / num_events;
         double called_avg = called_score / num_events;
         const PoreModel& pm = data.read->pore_model[data.strand];
-        fprintf(stats_out, "%s\t%zu\t%zu\t", data.read->read_name.c_str(), data.strand, data.rc);
+        fprintf(stats_out, "%s\t%d\t%d\t", data.read->read_name.c_str(), data.strand, data.rc);
         fprintf(stats_out, "%.2lf\t%.2lf\t\t%.2lf\t%.2lf\t%.2lf\t", base_score, called_score, base_avg, called_avg, called_score - base_score);
         fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", pm.shift, pm.scale, pm.drift, pm.var);
 
@@ -451,7 +451,7 @@ void print_debug_stats(const std::string& contig,
 
             char diff = base_kmer != called_kmer ? 'D' : ' ';
             fprintf(alignment_out, "%s\t%zu\t%.2lf\t%.2lf\t%.4lf\t", data.read->read_name.c_str(), event_idx, event_mean, event_stdv, event_duration);
-            fprintf(alignment_out, "%c\t%c\t%zu\t%zu\t\t", base_align[bi].state, called_align[ci].state, base_align[bi].kmer_idx, called_align[ci].kmer_idx);
+            fprintf(alignment_out, "%c\t%c\t%u\t%u\t\t", base_align[bi].state, called_align[ci].state, base_align[bi].kmer_idx, called_align[ci].kmer_idx);
             fprintf(alignment_out, "%s\t%.2lf\t%s\t%.2lf\t", base_kmer.c_str(), base_model.level_mean, called_kmer.c_str(), called_model.level_mean);
             fprintf(alignment_out, "%.2lf\t%.2lf\t%c\t%.2lf\n", base_standard_level, called_standard_level, diff, sum_called_abs_sl - sum_base_abs_sl);
 
@@ -604,7 +604,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {
-                   fprintf(stderr, "SUM_VAR\t%zu\t%d\t%d\t%d\t%d\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
+                   fprintf(stderr, "SUM_VAR\t%zu\t%zu\t%d\t%d\t%lu\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
                 }
             }
         }

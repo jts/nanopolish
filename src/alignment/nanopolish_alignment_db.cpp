@@ -576,7 +576,7 @@ void AlignmentDB::_debug_print_alignments()
         int event_middle_start, event_middle_end;
         _find_by_ref_bounds(record.aligned_events, ref_middle, ref_middle, event_middle_start, event_middle_end);
         AlignedPair last = record.aligned_events.back();
-        printf("event_record[%zu] name: %s strand: %zu stride: %d rc: %zu align bounds [%d %d] [%d %d] [%d %d]\n", 
+        printf("event_record[%zu] name: %s strand: %d stride: %d rc: %d align bounds [%d %d] [%d %d] [%d %d]\n", 
                 i,
                 record.sr->read_name.c_str(),
                 record.strand,
