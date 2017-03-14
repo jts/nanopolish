@@ -130,7 +130,7 @@ void parse_phase_reads_options(int argc, char** argv)
                 std::cout << PHASE_READS_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_LOG_LEVEL:
-                Logger::set_level_from_option(arg.str());
+                logger::Logger::set_level_from_option(arg.str());
                 break;
         }
     }
@@ -210,7 +210,7 @@ void phase_single_read(const Fast5Map& name_map,
     upper_search.ref_position = alignment_end_pos;
     auto upper_iter = std::upper_bound(variants.begin(), variants.end(), upper_search, sortByPosition);
 
-    fprintf(stderr, "%s %s:%zu-%zu %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    fprintf(stderr, "%s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
 
     // no variants to phase?
     if(lower_iter == variants.end()) {

@@ -177,13 +177,13 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& b
 
     std::map<std::string, PoreModelStateParams> kmers;
 
-    std::vector<fast5::Model_Entry> model = f_p->get_basecall_model(strand, bc_gr);
+    auto model = f_p->get_basecall_model(strand, bc_gr);
     k = array2str(model[0].kmer).length();
     assert(k == 5 || k == 6);
 
     // Copy into the pore model for this read
     for(size_t mi = 0; mi < model.size(); ++mi) {
-        const fast5::Model_Entry& curr = model[mi];
+        auto const & curr = model[mi];
 
         std::string stringkmer = array2str(curr.kmer);
         assert(stringkmer.size() == k);
@@ -203,7 +203,7 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& b
     }
 
     // Load the scaling parameters for the pore model
-    fast5::Model_Parameters params = f_p->get_basecall_model_params(strand, bc_gr);
+    auto params = f_p->get_basecall_model_params(strand, bc_gr);
     drift = params.drift;
     scale = params.scale;
     scale_sd = params.scale_sd;

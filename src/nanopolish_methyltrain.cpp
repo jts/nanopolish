@@ -485,7 +485,7 @@ void parse_methyltrain_options(int argc, char** argv)
                 std::cout << METHYLTRAIN_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_LOG_LEVEL:
-                Logger::set_level_from_option(arg.str());
+                logger::Logger::set_level_from_option(arg.str());
                 break;
         }
     }

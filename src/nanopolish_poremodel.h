@@ -50,7 +50,7 @@ struct PoreModelStateParams
         update_logs();
     }
 
-    PoreModelStateParams& operator =(const fast5::Model_Entry& e)
+    PoreModelStateParams& operator =(const fast5::Basecall_Model_State& e)
     {
         level_mean = e.level_mean;
         level_stdv = e.level_stdv;

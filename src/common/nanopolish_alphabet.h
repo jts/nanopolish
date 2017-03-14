@@ -234,7 +234,7 @@ class Alphabet
         }
 
         // does this alphabet contain all of the nucleotides in bases?
-        virtual inline bool contains_all(const char *bases) const = 0;
+        virtual bool contains_all(const char *bases) const = 0;
 };
 
 #define BASIC_MEMBER_BOILERPLATE \

@@ -107,14 +107,14 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
         }
 
         // Load the events for this strand
-        std::vector<fast5::Event_Entry> f5_events = f_p->get_basecall_events(si, basecall_group);
+        auto f5_events = f_p->get_basecall_events(si, basecall_group);
 
         // copy events
         events[si].resize(f5_events.size());
         std::vector<double> p_model_states;
 
         for(size_t ei = 0; ei < f5_events.size(); ++ei) {
-            const fast5::Event_Entry& f5_event = f5_events[ei];
+            auto const & f5_event = f5_events[ei];
 
             events[si][ei] = { static_cast<float>(f5_event.mean),
                                static_cast<float>(f5_event.stdv),
@@ -133,7 +133,7 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
 
         // NB we use event_group in this call rather than basecall_group as we want the 1D basecalls that match the events
         read_sequences_1d[si] = f_p->get_basecall_seq(si == 0 ? SRT_TEMPLATE : SRT_COMPLEMENT,
-                                                      f_p->get_basecall_group_1d(basecall_group));
+                                                      f_p->get_basecall_1d_group(basecall_group));
         event_maps_1d[si] = build_event_map_1d(read_sequences_1d[si], si, f5_events);
 
         // run version-specific load
@@ -173,7 +173,7 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
         sample_start_time = f_p->get_raw_samples_params(sample_read_name).start_time;
 
         // retreive parameters
-        fast5::Channel_Id_Parameters channel_params = f_p->get_channel_id_params();
+        auto channel_params = f_p->get_channel_id_params();
         sample_rate = channel_params.sampling_rate;
     }
 
@@ -361,7 +361,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 
 std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::string& read_sequence_1d,
                                                                 uint32_t strand,
-                                                                std::vector<fast5::Event_Entry>& f5_events)
+                                                                std::vector<fast5::Basecall_Event>& f5_events)
 {
     assert(f_p and f_p->is_open());
     std::vector<EventRangeForBase> out_event_map;
@@ -379,7 +379,7 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 
     size_t curr_k_idx = 0;
     for(size_t ei = 1; ei < f5_events.size(); ++ei) {
-        const fast5::Event_Entry& f5_event = f5_events[ei];
+        auto const & f5_event = f5_events[ei];
 
         // Calculate the number of kmers to move along the basecalled sequence
         // We do not use the value provided in the fast5 due to an albacore bug.
@@ -427,7 +427,7 @@ void SquiggleRead::build_event_map_2d_r9()
     //
     // Build the map from read k-mers to events
     //
-    std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_basecall_event_alignment(basecall_group);
+    auto event_alignments = f_p->get_basecall_alignment(basecall_group);
     assert(!read_sequence.empty());
 
     // R9 change: use k from the event table as this might not match the pore model
@@ -473,7 +473,7 @@ void SquiggleRead::build_event_map_2d_r9()
         EventRangeForBase& erfb =  base_to_event_map[read_kidx];
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 
-            fast5::Event_Alignment_Entry& eae = event_alignments[i];
+            auto const & eae = event_alignments[i];
 
             for(uint32_t si = 0; si <= 1; ++si) {
                 int incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
@@ -508,7 +508,7 @@ void SquiggleRead::build_event_map_2d_r7()
     //
     // Build the map from read k-mers to events
     //
-    std::vector<fast5::Event_Alignment_Entry> event_alignments = f_p->get_basecall_event_alignment(basecall_group);
+    auto event_alignments = f_p->get_basecall_alignment(basecall_group);
     assert(!read_sequence.empty());
 
     const uint32_t k = pore_model[T_IDX].k;
@@ -566,7 +566,7 @@ hack:
         EventRangeForBase& erfb =  base_to_event_map[read_kidx];
         for(uint32_t i = start_ea_idx; i < end_ea_idx; ++i) {
 
-            fast5::Event_Alignment_Entry& eae = event_alignments[i];
+            auto const & eae = event_alignments[i];
 
             for(uint32_t si = 0; si <= 1; ++si) {
                 uint32_t incoming_idx = si == 0 ? eae.template_index : eae.complement_index;
