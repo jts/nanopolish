@@ -230,7 +230,7 @@ class SquiggleRead
         // make a map from a base of the 1D read sequence to the range of events supporting that base
         std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
                                                           uint32_t strand, 
-                                                          std::vector<fast5::Event_Entry>& f5_events);
+                                                          std::vector<fast5::Basecall_Event>& f5_events);
 
         // as above but for the 2D sequence. this fills in both the template and complete event indices
         void build_event_map_2d_r7();

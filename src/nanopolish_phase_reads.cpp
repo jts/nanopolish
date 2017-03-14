@@ -130,7 +130,7 @@ void parse_phase_reads_options(int argc, char** argv)
                 std::cout << PHASE_READS_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
             case OPT_LOG_LEVEL:
-                Logger::set_level_from_option(arg.str());
+                logger::Logger::set_level_from_option(arg.str());
                 break;
         }
     }

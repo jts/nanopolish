@@ -4,6 +4,12 @@
 //---------------------------------------------------------
 //
 
+//
+// Getopt
+//
+#define SUBPROGRAM "extract"
+#define LOG_FACILITY SUBPROGRAM
+
 #include <iostream>
 #include <sstream>
 #include <getopt.h>
@@ -13,12 +19,6 @@
 #include "fs_support.hpp"
 #include "logger.hpp"
 #include "alg.hpp"
-
-//
-// Getopt
-//
-#define SUBPROGRAM "extract"
-#define LOG_FACILITY SUBPROGRAM
 
 static const char *EXTRACT_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
@@ -272,9 +272,9 @@ void parse_extract_options(int argc, char** argv)
         }
     }
     // set log levels
-    auto default_level = (int)level_wrapper::warning + opt::verbose;
-    Logger::set_default_level(default_level);
-    Logger::set_levels_from_options(log_level, &std::clog);
+    auto default_level = (int)logger::warning + opt::verbose;
+    logger::Logger::set_default_level(default_level);
+    logger::Logger::set_levels_from_options(log_level, &std::clog);
     // parse paths to process
     while (optind < argc)
     {
