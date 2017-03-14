@@ -24,7 +24,10 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, con
     drift_correction_performed(false),
     f_p(nullptr)
 {
-    load_from_fast5(flags);
+    #pragma omp critical(sr_load_fast5)
+    {
+        load_from_fast5(flags);
+    }
 
     // perform drift correction and other scalings
     transform();
