@@ -316,7 +316,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
             fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
-            fprintf(handles.site_writer, "%zu\t%d\t%s\n", ss.strands_scored, ss.n_cpg, ss.sequence.c_str());
+            fprintf(handles.site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_cpg, ss.sequence.c_str());
         }
     }
 }
