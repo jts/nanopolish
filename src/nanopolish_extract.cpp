@@ -35,7 +35,7 @@ static const char *EXTRACT_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "  -r, --recurse                        recurse into subdirectories\n"
 "  -q, --fastq                          extract fastq (default: fasta)\n"
-"  -t, --type=TYPE                      read type: template, complement, 2d, 2d-or-template, all\n"
+"  -t, --type=TYPE                      read type: template, complement, 2d, 2d-or-template, any\n"
 "                                         (default: 2d-or-template)\n"
 "  -o, --output=FILE                    write output to FILE (default: stdout)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -59,7 +59,7 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
     bool have_2d = false;
     std::vector< std::pair< unsigned, std::string > > res;
     // check 2d
-    if (read_type == "all"
+    if (read_type == "any"
         or read_type == "2d"
         or read_type == "2d-or-template")
     {
@@ -72,7 +72,7 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
             {
                 have_2d = true;
                 res.push_back(std::make_pair(2, gr));
-                if (read_type != "all")
+                if (read_type != "any")
                 {
                     break;
                 }
@@ -82,7 +82,7 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
     // check 1d
     for (unsigned st = 0; st < 2; ++st)
     {
-        if (opt::read_type == "all"
+        if (opt::read_type == "any"
             or (st == 0
                 and (opt::read_type == "template"
                      or (not have_2d and opt::read_type == "2d-or-template")))
@@ -96,7 +96,7 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
                     and f.have_basecall_events(st, gr))
                 {
                     res.push_back(std::make_pair(st, gr));
-                    if (read_type != "all")
+                    if (read_type != "any")
                     {
                         break;
                     }
@@ -295,7 +295,7 @@ void parse_extract_options(int argc, char** argv)
              or opt::read_type == "complement"
              or opt::read_type == "2d"
              or opt::read_type == "2d-or-template"
-             or opt::read_type == "all"))
+             or opt::read_type == "any"))
     {
         std::cerr << SUBPROGRAM ": invalid read type: " << opt::read_type << "\n";
         die = true;
