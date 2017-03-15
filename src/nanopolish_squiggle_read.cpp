@@ -257,7 +257,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 
         auto config = f_p->get_basecall_config(basecall_group);
         auto mt_iter = config.find("general/model_type");
-        std::string kit = "r9_250bps"; //
+        std::string kit = "r9.4_450bps"; //
         if(mt_iter != config.end()) {
             std::string mt = mt_iter->second;
 
@@ -272,7 +272,7 @@ void SquiggleRead::_load_R9(uint32_t si,
                 exit(1);
             }
         } else {
-            WARN_ONCE("Warning: model type could not be detected from fast5, defaulting to R9-250bps")
+            WARN_ONCE("Warning: model type could not be detected from fast5, defaulting to R9.4-450bps")
         }
 
         std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
