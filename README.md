@@ -24,15 +24,13 @@ The main subprograms of nanopolish are:
 
 ```
 nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
-nanopolish eventalign: align signal-level events to k-mers of a reference genome
+nanopolish call-methylation: predict genomic bases that may be methylated
 nanopolish variants: detect SNPs and indels with respect to a reference genome
-nanopolish methyltest: call methylation
 nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
+nanopolish eventalign: align signal-level events to k-mers of a reference genome
 ```
 
-## Analysis workflows
-
-The two main uses of nanopolish are to calculate an improved consensus sequence for a draft genome assembly, and to find SNPs and indels with respect to a reference genome.
+## Analysis workflow examples
 
 ### Computing a new consensus sequence for a draft assembly
 
