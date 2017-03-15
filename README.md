@@ -82,11 +82,17 @@ nanopolish extract -r --type template directory/ > reads.fa
 bwa mem -x ont2d -t 8 reference.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
 samtools index reads.sorted.bam
 
-# Run methyltest
-nanopolish methyltest -t 8 -r reads.fa -g reference.fa -b reads.sorted.bam
+# Run the methylation caller
+nanopolish call-methylation -t 8 -r reads.fa -g reference.fa -b reads.sorted.bam > methylation.tsv
 ```
 
-This will produce three output files. The \*.sites.bed file contains per-CpG site level information. The log-likelihood ratio is encoded in the `LogLikRatio` tag of each record. The other two output files (\*.read.tsv, \*.strand.tsv) contains read and strand-level summaries that is only useful for debugging. These files will be removed in the future.
+The output of call-methylation is a tab-separated file containing per-read log-likelihood ratios (positive values indicate more evidence for 5-mC, negative values indicate more evidence for C). Each line contains the name of the read that covered the CpG site, which allows adjacent sites to be phased together. We have provided a script to calculate per-site methylation frequencies using call-methylation's output:
+
+```
+python /path/to/nanopolish/scripts/calculate_methylation_frequency -c 2.5 -i methylation.tsv > frequencies.tsv
+```
+
+The output of this script is a tab-seperated file containing the genomic position of the CpG site, the number of reads that covered the site, and the percentage of those reads that were predicted to be methylated. The `-c 2.5` option requires the absolute value of the log-likelihood ratio to be at least 2.5 to make a call, otherwise the read will be ignored. This helps reduce calling errors as only sites with sufficient evidence will be included in the calculation.
 
 ## To run using docker
 
