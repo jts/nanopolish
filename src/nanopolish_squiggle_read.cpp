@@ -219,6 +219,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     std::string blacklist_kmer = "CCTAG";
     std::vector<EventAlignment> filtered;
+    filtered.reserve(alignment.size());
 
     assert(p_model_states.size() == events[si].size());
 
@@ -656,10 +657,10 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
 
             EventAlignment ea;
             // ref data
-            ea.ref_name = "read"; // not needed
+            //ea.ref_name = "read";
+            ea.read_idx = -1; // not needed
             ea.ref_kmer = kmer;
             ea.ref_position = ki;
-            ea.read_idx = -1; // not needed
             ea.strand_idx = strand_idx;
             ea.event_idx = event_idx;
             ea.rc = false;
