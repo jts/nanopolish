@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
 
-A nanopore consensus algorithm using a signal-level hidden Markov model.
+Software package for signal-level analysis of Oxford Nanopore sequencing data.
 
 ## Dependencies
 
