@@ -64,10 +64,6 @@ After all polishing jobs are complete, you can merge the individual segments tog
 python nanopolish_merge.py polished.*.fa > polished_genome.fa
 ```
 
-## Fixing homopolymers
-
-Nanopolish 0.5 contains an experimental ```--fix-homopolymers``` option that will use event durations to improve the consensus accuracy around homopolymers. This option has only been tested on deep (>100X) data where it gives a minor improvement in accuracy. It is left off by default for now until it is tested further.
-
 ## Calling Methylation
 
 nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). Here are instructions for running this analysis:
