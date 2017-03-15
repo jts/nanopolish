@@ -257,14 +257,14 @@ void SquiggleRead::_load_R9(uint32_t si,
 
         auto config = f_p->get_basecall_config(basecall_group);
         auto mt_iter = config.find("general/model_type");
-        std::string kit = "r9.4_450bps"; //
+        std::string kit = "r9.4_450bps";
         if(mt_iter != config.end()) {
             std::string mt = mt_iter->second;
 
             // all 250bps data should use this model (according to ONT see
             // https://github.com/nanoporetech/kmer_models/issues/3)
             if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps") {
-                // intentially blank, default as above
+                kit = "r9_250bps";
             } else if(mt == "r94_450bps" || mt == "r9_450bps") {
                 kit = "r9.4_450bps";
             } else {
@@ -618,8 +618,9 @@ void SquiggleRead::replace_models(const std::string& kit_name, const std::string
 
 void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
 {
-    WARN_ONCE("Copy all model data in replace");
     this->pore_model[strand_idx].metadata = model.metadata;
+    this->pore_model[strand_idx].name = model.name;
+    this->pore_model[strand_idx].type = model.type;
     this->pore_model[strand_idx].k = model.k;
     this->pore_model[strand_idx].pmalphabet = model.pmalphabet;
     this->pore_model[strand_idx].update_states( model );

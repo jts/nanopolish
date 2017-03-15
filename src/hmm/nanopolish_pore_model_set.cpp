@@ -65,7 +65,6 @@ PoreModel& PoreModelSet::register_model(const PoreModel& p)
     #pragma omp critical
     model_map[key] = p;
 
-    fprintf(stderr, "[pore model set] registered model %s\n", key.c_str());
     return model_map[key];
 }
 
