@@ -34,7 +34,7 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 ### Computing a new consensus sequence for a draft assembly
 
-First we prepare the data by extracting the reads from the FAST5 files, and aligning them in base and event space to our draft assembly (`draft.fa`).
+First we prepare the data by extracting the reads from the FAST5 files, and aligning the basecalls to our draft assembly (`draft.fa`).
 
 ```
 # Extract the QC-passed reads from a directory of FAST5 files
@@ -43,10 +43,9 @@ nanopolish extract --type [2d|template] directory/pass/ > reads.fa
 # Index the draft genome
 bwa index draft.fa
 
-# Align the reads in base space
-bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools view -Sb - | samtools sort -f - reads.sorted.bam
+# Align the basecalled reads to the draft sequence
+bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
 samtools index reads.sorted.bam
-
 ```
 
 Now, we use nanopolish to compute the consensus sequence. We'll run this in parallel:
@@ -56,7 +55,7 @@ python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results 
     nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
 ```
 
-This command will run the consensus algorithm on eight 10kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
+This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
 
 After all polishing jobs are complete, you can merge the individual segments together into the final assembly:
 
@@ -66,13 +65,13 @@ python nanopolish_merge.py polished.*.fa > polished_genome.fa
 
 ## Calling Methylation
 
-nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). Here are instructions for running this analysis:
+nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). Here's how you run it:
 
 ```
 # Extract all reads from a directory of FAST5 files
 nanopolish extract -r --type template directory/ > reads.fa
 
-# Align the reads in base space to a reference genome
+# Align the basecalled reads to a reference genome
 bwa mem -x ont2d -t 8 reference.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
 samtools index reads.sorted.bam
 
@@ -80,7 +79,7 @@ samtools index reads.sorted.bam
 nanopolish call-methylation -t 8 -r reads.fa -g reference.fa -b reads.sorted.bam > methylation.tsv
 ```
 
-The output of call-methylation is a tab-separated file containing per-read log-likelihood ratios (positive values indicate more evidence for 5-mC, negative values indicate more evidence for C). Each line contains the name of the read that covered the CpG site, which allows adjacent sites to be phased together. We have provided a script to calculate per-site methylation frequencies using call-methylation's output:
+The output of call-methylation is a tab-separated file containing per-read log-likelihood ratios (positive values indicate more evidence for 5-mC, negative values indicate more evidence for C). Each line contains the name of the read that covered the CpG site, which allows methylation calls to be phased. We have provided a script to calculate per-site methylation frequencies using call-methylation's output:
 
 ```
 python /path/to/nanopolish/scripts/calculate_methylation_frequency -c 2.5 -i methylation.tsv > frequencies.tsv
