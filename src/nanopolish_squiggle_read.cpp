@@ -136,11 +136,17 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
                                                       f_p->get_basecall_1d_group(basecall_group));
         event_maps_1d[si] = build_event_map_1d(read_sequences_1d[si], si, f5_events);
 
-        // run version-specific load
-        if(pore_type == PT_R7) {
-            _load_R7(si);
+        // Constructing the event map can fail due to an albacore bug
+        // in this case, we have to set this strand to be invalid
+        if(!event_maps_1d[si].empty()) {
+            // run version-specific load
+            if(pore_type == PT_R7) {
+                _load_R7(si);
+            } else {
+                _load_R9(si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
+            }
         } else {
-            _load_R9(si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
+            events[si].clear();
         }
     }
 
@@ -396,7 +402,10 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 
         // If we didn't find the k-mer in the basecalled sequence
         // something went terribly wrong and we can't proceed.
-        assert(curr_k_idx + move < n_read_kmers);
+        if(curr_k_idx + move >= n_read_kmers) {
+            out_event_map.clear();
+            return out_event_map;
+        }
 
         // Does this event correspond to a different k-mer than the previous one?
         if(move > 0) {
@@ -409,7 +418,6 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 
             // start the range for the next kmer
             out_event_map[curr_k_idx].indices[strand].start = ei;
-        
         }
 
         assert(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) == 0);
