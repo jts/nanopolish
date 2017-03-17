@@ -76,7 +76,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "      --snps                           only call SNPs\n"
-"      --consensus                      run in consensus calling mode\n"
+"      --consensus=FILE                 run in consensus calling mode and write polished sequence to FILE\n"
 "      --fix-homopolymers               run the experimental homopolymer caller\n"
 "  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
