@@ -263,7 +263,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 
             // all 250bps data should use this model (according to ONT see
             // https://github.com/nanoporetech/kmer_models/issues/3)
-            if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps") {
+            if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn") {
                 kit = "r9_250bps";
             } else if(mt == "r94_450bps" || mt == "r9_450bps") {
                 kit = "r9.4_450bps";
