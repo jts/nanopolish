@@ -366,6 +366,21 @@ void SquiggleRead::_load_R9(uint32_t si,
     }
 }
 
+inline size_t search_for_event_kmer(const std::string sequence,
+                                    size_t start,
+                                    size_t num_seq_kmers,
+                                    size_t k,
+                                    const std::string& event_kmer,
+                                    size_t max_steps)
+{
+    for(size_t i = 0; i + start < num_seq_kmers && i <= max_steps; ++i) {
+        if(sequence.compare(start + i, k, event_kmer, 0, k) == 0) {
+            return i;
+        }
+    }
+    return max_steps + 1;
+}
+
 std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::string& read_sequence_1d,
                                                                 uint32_t strand,
                                                                 std::vector<fast5::Basecall_Event>& f5_events)
@@ -373,6 +388,7 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
     assert(f_p and f_p->is_open());
     std::vector<EventRangeForBase> out_event_map;
     const uint32_t k = pore_model[strand].k;
+    size_t max_kmer_move = 10;
     assert(f5_events.size() == events[strand].size());
 
     // initialize - one entry per read kmer
@@ -384,48 +400,65 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
     assert(f5_events[0].move == 0 || f5_events[0].move == 1);
     out_event_map[0].indices[strand].start = 0;
 
+    size_t curr_event_skip = 0;
+    size_t max_event_skip = 0;
     size_t curr_k_idx = 0;
-    for(size_t ei = 1; ei < f5_events.size(); ++ei) {
+    size_t ei = 1;
+    while(ei < f5_events.size()) {
         auto const & f5_event = f5_events[ei];
 
         // Calculate the number of kmers to move along the basecalled sequence
         // We do not use the value provided in the fast5 due to an albacore bug.
-        int move = 0;
         std::string event_kmer = array2str(f5_event.model_state);
+        int kmer_move = search_for_event_kmer(read_sequence_1d, curr_k_idx, n_read_kmers, k, event_kmer, max_kmer_move);
 
-        while(curr_k_idx + move < n_read_kmers) {
-            if(read_sequence_1d.compare(curr_k_idx + move, k, event_kmer, 0, k) == 0) {
-                break;
-            }
-            move++;
+        /*
+        if(kmer_move != f5_event.move) {
+            fprintf(stderr, "%s move mismatch at event %zu of %zu (%d %d)\n", read_name.c_str(), ei, f5_events.size(), kmer_move, f5_event.move);
         }
+        */
 
+        /*
         // If we didn't find the k-mer in the basecalled sequence
         // something went terribly wrong and we can't proceed.
         if(curr_k_idx + move >= n_read_kmers) {
+            fprintf(stderr, "sadly skipping malformed albacore read %s\n", read_name.c_str());
             out_event_map.clear();
             return out_event_map;
         }
+        */
 
         // Does this event correspond to a different k-mer than the previous one?
-        if(move > 0) {
-            assert(ei != 0);
+        if(kmer_move > max_kmer_move) {
+            // invalid k-mer move, skip this event without updating anything
+            curr_event_skip += 1;
+        } else {
+            max_event_skip = std::max(max_event_skip, curr_event_skip);
+            curr_event_skip = 0;
+            if(kmer_move > 0) {
+                assert(ei != 0);
 
-            // end the range for the current k-mer
-            out_event_map[curr_k_idx].indices[strand].stop = ei - 1;
-            //printf("ki: %zu [%zu %zu]\n", curr_k_idx, out_event_map[curr_k_idx].indices[strand].start, out_event_map[curr_k_idx].indices[strand].stop);
-            curr_k_idx += move;
+                // end the range for the current k-mer
+                out_event_map[curr_k_idx].indices[strand].stop = ei - 1;
+                //printf("ki: %zu [%zu %zu]\n", curr_k_idx, out_event_map[curr_k_idx].indices[strand].start, out_event_map[curr_k_idx].indices[strand].stop);
+                curr_k_idx += kmer_move;
 
-            // start the range for the next kmer
-            out_event_map[curr_k_idx].indices[strand].start = ei;
+                // start the range for the next kmer
+                out_event_map[curr_k_idx].indices[strand].start = ei;
+                assert(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) == 0);
+            }
         }
-
-        assert(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) == 0);
+        ei += 1;
     }
 
     // end the last range
     out_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
     assert(out_event_map[curr_k_idx].indices[strand].start <= out_event_map[curr_k_idx].indices[strand].stop);
+
+    //fprintf(stderr, "finished processing %s. max skip: %zu\n", read_name.c_str(), max_event_skip);
+    if(max_event_skip > 20) {
+        out_event_map.clear();
+    }
     return out_event_map;
 }
 
