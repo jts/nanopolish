@@ -146,7 +146,6 @@ void score_variant_group(VariantGroup& variant_group,
         } else {
             break;
         }
-        //printf("n: %zu r: %zu nCr: %zu sum: %zu\n", num_variants, max_r, num_haplotypes_r, sum_num_haplotypes);
         max_r += 1;
     }
     max_r -= 1;
@@ -226,7 +225,13 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
     // Get read data for this group
     const std::vector< std::pair<std::string, double>> group_reads = variant_group.get_read_sum_scores();
 
-    Combinations vc_sets(variant_group.get_num_combinations(), ploidy, CO_WITH_REPLACEMENT);
+    // Skip groups that only have one possibility (these are typically malformed VCF records)
+    size_t variant_combos_in_group = variant_group.get_num_combinations();
+    if (variant_combos_in_group <= 1) {
+        return std::vector<Variant>();
+    }
+
+    Combinations vc_sets(variant_combos_in_group, ploidy, CO_WITH_REPLACEMENT);
     while(!vc_sets.done()) {
 
         // The current combination is represented as a vector of haplotype IDs
