@@ -11,6 +11,6 @@ for name, length in recs:
 
     for n in xrange(0, length, SEGMENT_LENGTH):
         if ( n + SEGMENT_LENGTH) > length:
-            print "%s:%d-%d" % (name, n, length - 1)
+            print("%s:%d-%d" % (name, n, length - 1))
         else:
-            print "%s:%d-%d" % (name, n, n + SEGMENT_LENGTH + OVERLAP_LENGTH)
+            print("%s:%d-%d" % (name, n, n + SEGMENT_LENGTH + OVERLAP_LENGTH))
