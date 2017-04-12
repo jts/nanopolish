@@ -21,10 +21,12 @@
 #include "nanopolish_train_poremodel_from_basecalls.h"
 
 int print_usage(int argc, char **argv);
+int print_version(int argc, char **argv);
 
 static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"help",        print_usage},
     {"--help",      print_usage},
+    {"--version",   print_version},
     {"extract",     extract_main},
     {"consensus",   consensus_main},
     {"eventalign",  eventalign_main},
@@ -43,8 +45,19 @@ int print_usage(int, char **)
     std::cout << "  valid commands: " << std::endl;
     for (const auto &item : programs){
         std::cout << "    " << item.first << std::endl;
-    } 
+    }
     std::cout << "  for help on given command, type nanopolish command --help" << std::endl;
+    return 0;
+}
+
+int print_version(int, char **)
+{
+    static const char *VERSION_MESSAGE =
+    "nanopolish version " PACKAGE_VERSION "\n"
+    "Written by Jared Simpson.\n"
+    "\n"
+    "Copyright 2015-2017 Ontario Institute for Cancer Research\n";
+    std::cout << VERSION_MESSAGE << std::endl;
     return 0;
 }
 
