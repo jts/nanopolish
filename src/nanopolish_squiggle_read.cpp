@@ -222,15 +222,13 @@ void SquiggleRead::_load_R9(uint32_t si,
     fast5::Attr_Map basecall_attributes = f_p->get_basecall_params(basecall_group);
     std::string basecaller_name = basecall_attributes["name"];
 
+    bool is_albacore = false;
     if(basecaller_name.find("Albacore") != -1) {
-        //fprintf(stderr, "Albacore detected\n");
+        is_albacore = true;
         SemVer ver = parse_semver_string(basecall_attributes["version"]);
         if(ver.major >= 1) {
             label_shift = -1;
         }
-        //fprintf(stderr, "\tmajor version: %d\n", ver.major);
-    } else {
-        //fprintf(stderr, "Not albacore: %s version: %s\n", basecaller_name.c_str(), basecall_attributes["version"].c_str());
     }
 
     std::vector<EventAlignment> alignment =
@@ -275,23 +273,30 @@ void SquiggleRead::_load_R9(uint32_t si,
     if( (flags & SRF_NO_MODEL) == 0) {
 
         auto config = f_p->get_basecall_config(basecall_group);
-        auto mt_iter = config.find("general/model_type");
-        std::string kit = "r9.4_450bps";
-        if(mt_iter != config.end()) {
-            std::string mt = mt_iter->second;
+        std::string mt = "";
 
-            // all 250bps data should use this model (according to ONT see
-            // https://github.com/nanoporetech/kmer_models/issues/3)
-            if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn") {
-                kit = "r9_250bps";
-            } else if(mt == "r94_450bps" || mt == "r9_450bps") {
-                kit = "r9.4_450bps";
-            } else {
-                fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
-                exit(1);
-            }
+        if(is_albacore) {
+            mt = config["basecall_1d/model"];
+
+            // remove prefix/suffix
+            auto fields = split(mt, '_');
+            assert(fields.size() == 4);
+            mt = fields[1] + "_" + fields[2];
         } else {
-            WARN_ONCE("Warning: model type could not be detected from fast5, defaulting to R9.4-450bps")
+            mt = config["general/model_type"];
+        }
+
+        std::string kit = "r9.4_450bps";
+
+        // all 250bps data should use this model (according to ONT see
+        // https://github.com/nanoporetech/kmer_models/issues/3)
+        if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn") {
+            kit = "r9_250bps";
+        } else if(mt == "r94_450bps" || mt == "r9_450bps" || mt == "r9.4_450bps") {
+            kit = "r9.4_450bps";
+        } else {
+            fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
+            exit(1);
         }
 
         std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
