@@ -41,6 +41,21 @@ void parse_region_string(const std::string& region, std::string& contig, int& st
     parser >> contig >> start >> end;
 }
 
+SemVer parse_semver_string(const std::string& semver_str)
+{
+    SemVer out;
+    const auto& vec = split(semver_str, '.');
+    if(vec.size() == 3) {
+        out = { atoi(vec[0].c_str()),
+                atoi(vec[1].c_str()),
+                atoi(vec[2].c_str()) 
+              };
+    } else {
+        out = { 0, 0, 0 };
+    }
+    return out;
+}
+
 bool ends_with(const std::string& str, const std::string& suffix)
 {
     if(suffix.empty()) {

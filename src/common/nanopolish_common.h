@@ -82,6 +82,14 @@ struct GaussianParameters
 };
 
 //
+struct SemVer
+{
+    int major;
+    int minor;
+    int patch;
+};
+
+//
 // Functions
 //
 #define ESL_LOG_SUM 1
@@ -113,6 +121,9 @@ bool ends_with(const std::string& str, const std::string& suffix);
 
 // parse a region string (chr:start-end)
 void parse_region_string(const std::string& region, std::string& contig, int& start, int& end);
+
+// parse a software version string using the semver convention
+SemVer parse_semver_string(const std::string& semver_str);
 
 // from: http://stackoverflow.com/questions/9330915/number-of-combinations-n-choose-r-in-c
 size_t nChoosek(size_t n, size_t k);

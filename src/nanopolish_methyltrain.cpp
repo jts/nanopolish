@@ -211,7 +211,8 @@ bool recalibrate_model(SquiggleRead &sr,
     //                                                << sr.pore_model[strand_idx].var   << std::endl;
 
     // extract necessary vectors from the read and the pore model; note do not want scaled values
-    for ( const auto &ea : alignment_output ) {
+    for(size_t ei = 0; ei < alignment_output.size(); ++ei) {
+        const auto& ea = alignment_output[ei];
         if(ea.hmm_state == 'M') {
             std::string model_kmer = ea.rc ? alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
             uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
@@ -221,6 +222,12 @@ bool recalibrate_model(SquiggleRead &sr,
             level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
             if (scale_drift)
                 times.push_back  ( sr.get_time(ea.event_idx, strand_idx) );
+
+            /*
+            fprintf(stdout, "recalibrate ei: %zu level: %.2lf kmer: %s model: %.2lf\n", 
+                    ei, sr.get_uncorrected_level(ea.event_idx, strand_idx), model_kmer.c_str(), 
+                    sr.pore_model[strand_idx].states[rank].level_mean);
+            */
         }
     }
 

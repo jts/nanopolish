@@ -255,13 +255,15 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
     size_t read_idx = 0;
     for(auto* read : reads) {
         
+        assert(false && "This is deprecated until it handles label_shift");
         // extract alignment of events to k-mers
         assert(read->read_type != SRT_2D);
         std::vector<EventAlignment> alignment = 
             read->get_eventalignment_for_1d_basecalls(read->read_sequence,
                                                       read->base_to_event_map,
                                                       basecalled_k,
-                                                      training_strand);
+                                                      training_strand,
+                                                      0);
 
         // convert the alignment into model training data for this read
         KmerTrainingData ktd(num_kmers_in_alphabet);
@@ -303,12 +305,14 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
             read->pore_model[training_strand] = current_pore_model;
 
             // generate alignment
+            assert(false && "This is deprecated until it handles label_shift");
             assert(read->read_type != SRT_2D);
             std::vector<EventAlignment> alignment = 
                 read->get_eventalignment_for_1d_basecalls(read->read_sequence,
                                                           read->base_to_event_map,
                                                           basecalled_k,
-                                                          training_strand);
+                                                          training_strand,
+                                                          0);
 
             // filter the alignment to only contain k-mers that have a distribution
             std::vector<EventAlignment> filtered_alignment;

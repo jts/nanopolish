@@ -214,8 +214,27 @@ void SquiggleRead::_load_R9(uint32_t si,
     size_t final_model_k = 6;
 
     assert(f_p and f_p->is_open());
+
+    // The k-mer label semantics differ between basecallers
+    // We use a "label_shift" parameter to determine how to line up the labels
+    // with events so that we can recalibrate the models.
+    int label_shift = 0;
+    fast5::Attr_Map basecall_attributes = f_p->get_basecall_params(basecall_group);
+    std::string basecaller_name = basecall_attributes["name"];
+
+    if(basecaller_name.find("Albacore") != -1) {
+        //fprintf(stderr, "Albacore detected\n");
+        SemVer ver = parse_semver_string(basecall_attributes["version"]);
+        if(ver.major >= 1) {
+            label_shift = -1;
+        }
+        //fprintf(stderr, "\tmajor version: %d\n", ver.major);
+    } else {
+        //fprintf(stderr, "Not albacore: %s version: %s\n", basecaller_name.c_str(), basecall_attributes["version"].c_str());
+    }
+
     std::vector<EventAlignment> alignment =
-        get_eventalignment_for_1d_basecalls(read_sequence_1d, event_map_1d, 5, si);
+        get_eventalignment_for_1d_basecalls(read_sequence_1d, event_map_1d, calibration_k, si, label_shift);
 
     // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
     double keep_fraction = 0.75;
@@ -397,7 +416,8 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 
     // The range for the first k-mer always starts at event 0
     // JTS 2017-03: Albacore fast5s start with move 1
-    assert(f5_events[0].move == 0 || f5_events[0].move == 1);
+    // JTS 2017-04: Albacore v1.0.1 fast5s can have any value for the first move
+    //assert(f5_events[0].move == 0 || f5_events[0].move == 1);
     out_event_map[0].indices[strand].start = 0;
 
     size_t curr_event_skip = 0;
@@ -412,36 +432,44 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
         std::string event_kmer = array2str(f5_event.model_state);
         int kmer_move = search_for_event_kmer(read_sequence_1d, curr_k_idx, n_read_kmers, k, event_kmer, max_kmer_move);
 
+        // The Albacore transducer model can emit move 1s in homopolymer sequence, which will not
+        // be caught by the kmer_move calculation above. To handle this we record when a k-mer movement
+        // is ambiguous and use the event move in this case below.
+        bool ambiguous_kmer = read_sequence_1d.substr(curr_k_idx, k) == read_sequence_1d.substr(curr_k_idx + 1, k) &&
+                              read_sequence_1d.substr(curr_k_idx, k) == event_kmer;
+
         /*
         if(kmer_move != f5_event.move) {
             fprintf(stderr, "%s move mismatch at event %zu of %zu (%d %d)\n", read_name.c_str(), ei, f5_events.size(), kmer_move, f5_event.move);
+            fprintf(stderr, "read kmer: %s next read kmer: %s event kmer: %s\n", read_sequence_1d.substr(curr_k_idx, k).c_str(),
+                                                                                 read_sequence_1d.substr(curr_k_idx + 1, k).c_str(),
+                                                                                 event_kmer.c_str());
+            break;
         }
         */
 
-        /*
-        // If we didn't find the k-mer in the basecalled sequence
-        // something went terribly wrong and we can't proceed.
-        if(curr_k_idx + move >= n_read_kmers) {
-            fprintf(stderr, "sadly skipping malformed albacore read %s\n", read_name.c_str());
-            out_event_map.clear();
-            return out_event_map;
-        }
-        */
-
-        // Does this event correspond to a different k-mer than the previous one?
+        // If the event k-mer is not found nearby in the event sequence
         if(kmer_move > max_kmer_move) {
             // invalid k-mer move, skip this event without updating anything
             curr_event_skip += 1;
         } else {
+
             max_event_skip = std::max(max_event_skip, curr_event_skip);
             curr_event_skip = 0;
+
+            // special case to handle transducer
+            if(ambiguous_kmer) {
+                kmer_move = f5_event.move;
+            }
+
             if(kmer_move > 0) {
                 assert(ei != 0);
 
                 // end the range for the current k-mer
                 out_event_map[curr_k_idx].indices[strand].stop = ei - 1;
-                //printf("ki: %zu [%zu %zu]\n", curr_k_idx, out_event_map[curr_k_idx].indices[strand].start, out_event_map[curr_k_idx].indices[strand].stop);
+                //fprintf(stderr, "kmer index: %zu inferred event range: [%zu %zu]\n", curr_k_idx, out_event_map[curr_k_idx].indices[strand].start, out_event_map[curr_k_idx].indices[strand].stop);
                 curr_k_idx += kmer_move;
+                //fprintf(stderr, "next kmer: %zu ei: %zu [%s %s]\n", curr_k_idx, ei, read_sequence_1d.substr(curr_k_idx, k).c_str(), event_kmer.c_str());
 
                 // start the range for the next kmer
                 out_event_map[curr_k_idx].indices[strand].start = ei;
@@ -669,11 +697,12 @@ void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_typ
 #endif
 }
 
-// Return a vector of eventalignments for the events that made up the 2D basecalls in the read
+// Return a vector of eventalignments for the events that made up the basecalls in the read
 std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
                                                                               const std::vector<EventRangeForBase>& base_to_event_map_1d,
                                                                               const size_t k,
-                                                                              const size_t strand_idx) const
+                                                                              const size_t strand_idx,
+                                                                              const int shift_offset) const
 {
     std::vector<EventAlignment> alignment;
 
@@ -681,12 +710,17 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
     size_t n_kmers = read_sequence_1d.size() - k + 1;
     size_t prev_kmer_rank = -1;
 
-    for(size_t ki = 0; ki < n_kmers; ++ki) {
+    for(int ki = 0; ki < n_kmers; ++ki) {
         IndexPair event_range_for_kmer = base_to_event_map_1d[ki].indices[strand_idx];
 
         // skip kmers without events
         if(event_range_for_kmer.start == -1)
             continue;
+
+        // skip k-mers that cannot be shifted to a valid position
+        if(ki + shift_offset < 0 || ki + shift_offset >= n_kmers) {
+            continue;
+        }
 
         for(size_t event_idx = event_range_for_kmer.start;
             event_idx <= event_range_for_kmer.stop; event_idx++)
@@ -694,7 +728,7 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
             assert(event_idx < this->events[strand_idx].size());
 
             // since we use the 1D read seqence here we never have to reverse complement
-            std::string kmer = read_sequence_1d.substr(ki, k);
+            std::string kmer = read_sequence_1d.substr(ki + shift_offset, k);
             size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
 
             EventAlignment ea;
