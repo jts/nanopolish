@@ -101,15 +101,24 @@ void AlignmentDB::set_alternative_basecalls_bam(const std::string& alternative_b
     m_alternative_basecalls_bam = alternative_basecalls_bam;
 }
 
+bool AlignmentDB::are_coordinates_valid(const std::string& contig,
+                                        int start_position,
+                                        int stop_position) const
+{
+    return m_region_contig == contig &&
+           start_position >= m_region_start &&
+           stop_position <= m_region_end;
+}
+
 std::string AlignmentDB::get_reference_substring(const std::string& contig,
                                                  int start_position,
                                                  int stop_position) const
 {
-    assert(m_region_contig == contig);
-    if(m_region_start > start_position || m_region_end < stop_position) {
+    if(!are_coordinates_valid(contig, start_position, stop_position)) {
         fprintf(stderr, "[alignmentdb] error: requested coordinates "
-                "[%d %d] is outside of region boundary [%d %d]\n", 
-                start_position, stop_position, m_region_start, m_region_end);
+                "[%s %d %d] is outside of region boundary [%s %d %d]\n",
+                contig.c_str(), start_position, stop_position,
+                m_region_contig.c_str(), m_region_start, m_region_end);
         exit(EXIT_FAILURE);
     }
 
