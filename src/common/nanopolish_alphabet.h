@@ -12,6 +12,7 @@
 #include <cstring>
 #include <inttypes.h>
 #include <assert.h>
+#include <algorithm>
 #include "nanopolish_iupac.h"
 
 #define METHYLATED_SYMBOL 'M'
@@ -151,7 +152,10 @@ class Alphabet
         // return a new copy of the string with IUPAC ambiguity characters changed
         virtual std::string disambiguate(const std::string& str) const
         {
+            // create output and convert lower case to upper case
             std::string out(str);
+            std::transform(out.begin(), out.end(), out.begin(), ::toupper);
+
             size_t i = 0;
             while(i < out.length()) {
                 size_t stride = 1;
@@ -160,7 +164,7 @@ class Alphabet
                 // Does this location (partially) match a methylated recognition site?
                 for(size_t j = 0; j < num_recognition_sites(); ++j) {
 
-                    RecognitionMatch match = match_to_site(str, i, get_recognition_site_methylated(j), recognition_length());
+                    RecognitionMatch match = match_to_site(out, i, get_recognition_site_methylated(j), recognition_length());
                     if(match.length > 0) {
                         stride = match.length; // skip to end of match
                         is_recognition_site = true;
