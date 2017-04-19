@@ -429,6 +429,7 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
     size_t max_event_skip = 0;
     size_t curr_k_idx = 0;
     size_t ei = 1;
+    bool parse_error = false;
     while(ei < f5_events.size()) {
         auto const & f5_event = f5_events[ei];
 
@@ -478,18 +479,22 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
 
                 // start the range for the next kmer
                 out_event_map[curr_k_idx].indices[strand].start = ei;
-                assert(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) == 0);
+
+                // ensure parsing is sane
+                if(read_sequence_1d.compare(curr_k_idx, k, event_kmer, 0, k) != 0) {
+                    parse_error = true;
+                    break;
+                }
             }
         }
         ei += 1;
     }
 
     // end the last range
-    out_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
-    assert(out_event_map[curr_k_idx].indices[strand].start <= out_event_map[curr_k_idx].indices[strand].stop);
-
-    //fprintf(stderr, "finished processing %s. max skip: %zu\n", read_name.c_str(), max_event_skip);
-    if(max_event_skip > 20) {
+    if(!parse_error && max_event_skip <= 20) {
+        out_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
+        assert(out_event_map[curr_k_idx].indices[strand].start <= out_event_map[curr_k_idx].indices[strand].stop);
+    } else {
         out_event_map.clear();
     }
     return out_event_map;
