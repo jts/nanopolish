@@ -37,6 +37,8 @@ static const char *EXTRACT_USAGE_MESSAGE =
 "  -q, --fastq                          extract fastq (default: fasta)\n"
 "  -t, --type=TYPE                      read type: template, complement, 2d, 2d-or-template, any\n"
 "                                         (default: 2d-or-template)\n"
+"  -b, --basecaller=NAME[:VERSION]      consider only data produced by basecaller NAME,\n"
+"                                         optionally with given exact VERSION\n"
 "  -o, --output=FILE                    write output to FILE (default: stdout)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -45,6 +47,8 @@ namespace opt
     static unsigned int verbose = 0;
     static bool recurse = false;
     static std::string read_type = "2d-or-template";
+    static std::string basecaller_name;
+    static std::string basecaller_version;
     static bool fastq = false;
     static std::string output_file;
     static std::deque< std::string > paths;
@@ -54,25 +58,35 @@ namespace opt
 static std::ostream* os_p;
 
 std::vector< std::pair< unsigned, std::string > >
-get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type)
+get_preferred_basecall_groups(const fast5::File& f)
 {
     bool have_2d = false;
     std::vector< std::pair< unsigned, std::string > > res;
     // check 2d
-    if (read_type == "any"
-        or read_type == "2d"
-        or read_type == "2d-or-template")
+    if (opt::read_type == "any"
+        or opt::read_type == "2d"
+        or opt::read_type == "2d-or-template")
     {
         const auto& gr_l = f.get_basecall_strand_group_list(2);
         for (const auto& gr : gr_l)
         {
+            if (not opt::basecaller_name.empty())
+            {
+                auto bcd = f.get_basecall_group_description(gr);
+                if ((bcd.name != opt::basecaller_name) or
+                    (not opt::basecaller_version.empty() and
+                     bcd.version != opt::basecaller_version))
+                {
+                    continue;
+                }
+            }
             if (f.have_basecall_fastq(2, gr)
                 and f.have_basecall_events(0, gr)
                 and f.have_basecall_events(1, gr))
             {
                 have_2d = true;
                 res.push_back(std::make_pair(2, gr));
-                if (read_type != "any")
+                if (opt::read_type != "any")
                 {
                     break;
                 }
@@ -92,11 +106,21 @@ get_preferred_basecall_groups(const fast5::File& f, const std::string& read_type
             const auto& gr_l = f.get_basecall_strand_group_list(st);
             for (const auto& gr : gr_l)
             {
+                if (not opt::basecaller_name.empty())
+                {
+                    auto bcd = f.get_basecall_group_description(gr);
+                    if ((bcd.name != opt::basecaller_name) or
+                        (not opt::basecaller_version.empty() and
+                         bcd.version != opt::basecaller_version))
+                    {
+                        continue;
+                    }
+                }
                 if (f.have_basecall_fastq(st, gr)
                     and f.have_basecall_events(st, gr))
                 {
                     res.push_back(std::make_pair(st, gr));
-                    if (read_type != "any")
+                    if (opt::read_type != "any")
                     {
                         break;
                     }
@@ -133,7 +157,7 @@ void process_file(const std::string& fn)
             f.open(fn);
             ++opt::total_files_count;
             // get preferred basecall groups
-            auto l = get_preferred_basecall_groups(f, opt::read_type);
+            auto l = get_preferred_basecall_groups(f);
             if (l.empty())
             {
                 LOG(info) << "file [" << fn << "]: no basecalling data suitable for nanoplish\n";
@@ -228,7 +252,7 @@ void process_path(const std::string& path)
     }
 } // process_path
 
-static const char* shortopts = "vrqt:o:";
+static const char* shortopts = "vrqt:o:b:";
 
 enum {
     OPT_HELP = 1,
@@ -245,6 +269,7 @@ static const struct option longopts[] = {
     { "fastq",              no_argument,       NULL, 'q' },
     { "type",               required_argument, NULL, 't' },
     { "output",             required_argument, NULL, 'o' },
+    { "basecaller",         required_argument, NULL, 'b' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -269,6 +294,15 @@ void parse_extract_options(int argc, char** argv)
             case 'q': opt::fastq = true; break;
             case 't': arg >> opt::read_type; break;
             case 'o': arg >> opt::output_file; break;
+        case 'b':
+            arg >> opt::basecaller_name;
+            auto i = opt::basecaller_name.find(':');
+            if (i != std::string::npos)
+            {
+                opt::basecaller_version = opt::basecaller_name.substr(i + 1);
+                opt::basecaller_name.resize(i);
+            }
+            break;
         }
     }
     // set log levels
@@ -309,6 +343,8 @@ void parse_extract_options(int argc, char** argv)
     LOG(info) << "paths: " << alg::os_join(opt::paths, " ") << "\n";
     LOG(info) << "recurse: " << (opt::recurse? "yes" : "no") << "\n";
     LOG(info) << "read_type: " << opt::read_type << "\n";
+    LOG(info) << "basecaller_name: " << opt::basecaller_name << "\n";
+    LOG(info) << "basecaller_version: " << opt::basecaller_version << "\n";
 }
 
 int extract_main(int argc, char** argv)
