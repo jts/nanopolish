@@ -148,7 +148,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     std::string read_name = bam_get_qname(record);
     std::string fast5_path = name_map.get_path(read_name);
     SquiggleRead sr(read_name, fast5_path);
-    
+
     // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
 
@@ -156,21 +156,31 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
-        
+
+        // replace the baked-in pore model with the methylation model
+        const PoreModel& curr_model = sr.pore_model[strand_idx];
+
+        // check if there is a cpg model for this strand
+        if(! PoreModelSet::has_model(curr_model.metadata.get_kit_name(),
+                                     "cpg",
+                                     sr.pore_model[strand_idx].metadata.get_strand_model_name(),
+                                     curr_model.k)) {
+            continue;
+        }
+
+        sr.replace_models(curr_model.metadata.get_kit_name(),
+                          "cpg",
+                          curr_model.k);
+
         // Build the event-to-reference map for this read from the bam record
         SequenceAlignmentRecord seq_align_record(record);
         EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-        
+
         std::vector<double> site_scores;
         std::vector<int> site_starts;
         std::vector<int> site_ends;
         std::vector<int> site_count;
 
-        // replace the baked-in pore model with the methylation model
-        const PoreModel& curr_model = sr.pore_model[strand_idx];
-        sr.replace_models(curr_model.metadata.get_kit_name(), 
-                          "cpg",
-                          curr_model.k);
 
         size_t k = sr.pore_model[strand_idx].k;
 
