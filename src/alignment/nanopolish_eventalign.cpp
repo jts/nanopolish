@@ -922,8 +922,8 @@ int eventalign_main(int argc, char** argv)
         
         // read a record into the next slot in the buffer
         result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
+        
         num_records_buffered += result >= 0;
-
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0) {
             #pragma omp parallel for            

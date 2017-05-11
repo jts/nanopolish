@@ -276,7 +276,12 @@ void SquiggleRead::_load_R9(uint32_t si,
         std::string mt = "";
 
         if(is_albacore) {
+
+            // Deal with albacore 1.1.0 changing the model convention
             mt = config["basecall_1d/model"];
+            if(mt == "") {
+                mt = config["basecall_1d/template_model"];
+            }
 
             // remove prefix/suffix
             auto fields = split(mt, '_');
@@ -290,7 +295,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 
         // all 250bps data should use this model (according to ONT see
         // https://github.com/nanoporetech/kmer_models/issues/3)
-        if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn") {
+        if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn" || mt == "r9.4_250bps") {
             kit = "r9_250bps";
         } else if(mt == "r94_450bps" || mt == "r9_450bps" || mt == "r9.4_450bps") {
             kit = "r9.4_450bps";
