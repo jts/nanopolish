@@ -16,6 +16,11 @@
 
 //#define DEBUG_MODEL_SELECTION 1
 
+// Track the number of skipped reads to warn the use at the end of the run
+// Workaround for albacore issues.  Temporary, I hope
+int g_total_reads = 0;
+int g_unparseable_reads = 0;
+
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
     read_name(name),
@@ -500,8 +505,10 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
         out_event_map[curr_k_idx].indices[strand].stop = events[strand].size() - 1;
         assert(out_event_map[curr_k_idx].indices[strand].start <= out_event_map[curr_k_idx].indices[strand].stop);
     } else {
+        g_unparseable_reads += 1;
         out_event_map.clear();
     }
+    g_total_reads += 1;
     return out_event_map;
 }
 

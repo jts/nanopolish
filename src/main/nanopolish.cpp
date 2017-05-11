@@ -63,6 +63,7 @@ int print_version(int, char **)
 
 int main(int argc, char** argv)
 {
+    int ret = 0;
     if(argc <= 1) {
         printf("error: no command provided\n");
         print_usage(argc - 1 , argv + 1);
@@ -71,8 +72,16 @@ int main(int argc, char** argv)
         std::string command(argv[1]);
         auto iter = programs.find(command);
         if (iter != programs.end()) 
-            return iter->second( argc - 1, argv + 1);
+            ret = iter->second( argc - 1, argv + 1);
         else
-            return print_usage( argc - 1, argv + 1);
+            ret = print_usage( argc - 1, argv + 1);
     }
+
+    // Emit a warning when some reads had to be skipped
+    extern int g_total_reads;
+    extern int g_unparseable_reads;
+    if(g_unparseable_reads > 0) {
+        fprintf(stderr, "warning: nanopolish could not parse %d read out of %d\n", g_unparseable_reads, g_total_reads);
+    }
+    return ret;
 }
