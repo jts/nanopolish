@@ -81,7 +81,7 @@ int main(int argc, char** argv)
     extern int g_total_reads;
     extern int g_unparseable_reads;
     if(g_unparseable_reads > 0) {
-        fprintf(stderr, "warning: nanopolish could not parse %d read out of %d\n", g_unparseable_reads, g_total_reads);
+        fprintf(stderr, "warning: nanopolish could not parse %d reads out of %d\n", g_unparseable_reads, g_total_reads);
     }
     return ret;
 }
