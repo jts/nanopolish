@@ -161,10 +161,11 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         const PoreModel& curr_model = sr.pore_model[strand_idx];
 
         // check if there is a cpg model for this strand
-        if(! PoreModelSet::has_model(curr_model.metadata.get_kit_name(),
-                                     "cpg",
-                                     sr.pore_model[strand_idx].metadata.get_strand_model_name(),
-                                     curr_model.k)) {
+        if(!PoreModelSet::has_model(curr_model.metadata.get_kit_name(),
+                                    "cpg",
+                                    curr_model.metadata.get_strand_model_name(),
+                                    curr_model.k))
+        {
             continue;
         }
 
