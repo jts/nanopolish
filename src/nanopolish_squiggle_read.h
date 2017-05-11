@@ -159,8 +159,9 @@ class SquiggleRead
         // Create an eventalignment between the events of this read and its 1D basecalled sequence
         std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
                                                                         const std::vector<EventRangeForBase>& base_to_event_map_1d, 
-                                                                        const size_t k, 
-                                                                        const size_t strand_idx) const;
+                                                                        const size_t k,
+                                                                        const size_t strand_idx,
+                                                                        const int label_shift) const;
 
         // Sample-level access
         size_t get_sample_index_at_time(size_t sample_time) const;

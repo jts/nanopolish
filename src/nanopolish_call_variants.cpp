@@ -299,8 +299,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     return out_variants;
 }
 
-// Given the input set of variants, calculate the variants that have
-// a positive score
+// Given the input set of variants, calculate the variants that have a positive score
 std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
                                               const std::vector<Variant>& candidate_variants,
                                               uint32_t alignment_flags)
@@ -316,6 +315,10 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
 
         int calling_start = v.ref_position - opt::min_flanking_sequence;
         int calling_end = v.ref_position + v.ref_seq.size() + opt::min_flanking_sequence;
+
+        if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
+            continue;
+        }
 
         Haplotype test_haplotype(contig,
                                  calling_start,
@@ -362,10 +365,13 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
 
         // deletion
         Variant v = candidate_variants[vi];
-        v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
-        assert(v.ref_seq != candidate_variants[vi].ref_seq);
-        assert(v.ref_seq.substr(0, candidate_variants[vi].ref_seq.size()) == candidate_variants[vi].ref_seq);
-        out_variants.push_back(v);
+        
+        if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size())) {
+            v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
+            assert(v.ref_seq != candidate_variants[vi].ref_seq);
+            assert(v.ref_seq.substr(0, candidate_variants[vi].ref_seq.size()) == candidate_variants[vi].ref_seq);
+            out_variants.push_back(v);
+        }
 
         // insertion
         for(size_t j = 0; j < 4; ++j) {

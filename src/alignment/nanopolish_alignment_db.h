@@ -67,6 +67,10 @@ class AlignmentDB
         
         const std::string& get_reference() const { return m_region_ref_sequence; }
 
+        bool are_coordinates_valid(const std::string& contig,
+                                   int start_position,
+                                   int stop_position) const;
+
         std::string get_reference_substring(const std::string& contig,
                                             int start_position,
                                             int stop_position) const;
