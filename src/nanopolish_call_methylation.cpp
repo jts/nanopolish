@@ -169,9 +169,10 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             continue;
         }
 
-        sr.replace_models(curr_model.metadata.get_kit_name(),
-                          "cpg",
-                          curr_model.k);
+        sr.replace_strand_model(strand_idx,
+                                curr_model.metadata.get_kit_name(),
+                                "cpg",
+                                curr_model.k);
 
         // Build the event-to-reference map for this read from the bam record
         SequenceAlignmentRecord seq_align_record(record);

@@ -149,6 +149,7 @@ class SquiggleRead
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
         // replace the pore models with the models specified in the map or by a string
+        void replace_strand_model(size_t strand_idx, const std::string& kit_name, const std::string& alphabet, size_t k);
         void replace_models(const std::string& kit_name, const std::string& alphabet, size_t k);
         void replace_model(size_t strand_idx, const std::string& model_type);
         void replace_model(size_t strand_idx, const PoreModel& model);

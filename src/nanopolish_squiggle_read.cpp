@@ -681,21 +681,26 @@ hack:
     }
 }
 
+void SquiggleRead::replace_strand_model(size_t strand_idx, const std::string& kit_name, const std::string& alphabet, size_t k)
+{
+    // only replace this model if the strand was loaded
+    if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
+        return;
+    }
+
+    PoreModel incoming_model =
+        PoreModelSet::get_model(kit_name,
+                                alphabet,
+                                this->pore_model[strand_idx].metadata.get_strand_model_name(),
+                                k);
+
+    replace_model(strand_idx, incoming_model);
+}
+
 void SquiggleRead::replace_models(const std::string& kit_name, const std::string& alphabet, size_t k)
 {
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-
-        // only replace this model if the strand was loaded
-        if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
-            continue;
-        }
-
-        PoreModel incoming_model =
-            PoreModelSet::get_model(kit_name, 
-                                    alphabet, 
-                                    this->pore_model[strand_idx].metadata.get_strand_model_name(),
-                                    k);
-        replace_model(strand_idx, incoming_model);
+        replace_strand_model(strand_idx, kit_name, alphabet, k);
     }
 }
 
