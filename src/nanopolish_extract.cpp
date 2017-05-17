@@ -80,6 +80,7 @@ get_preferred_basecall_groups(const fast5::File& f)
                     continue;
                 }
             }
+
             if (f.have_basecall_fastq(2, gr)
                 and f.have_basecall_events(0, gr)
                 and f.have_basecall_events(1, gr))
