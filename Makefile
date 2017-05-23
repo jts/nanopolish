@@ -65,7 +65,7 @@ htslib/libhts.a:
 lib/libhdf5.a:
 	wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz
 	tar -xzf hdf5-1.8.14.tar.gz
-	cd hdf5-1.8.14; ./configure --enable-threadsafe --prefix=`pwd`/..; make; make install
+	cd hdf5-1.8.14 && ./configure --enable-threadsafe --prefix=`pwd`/.. && make && make install
 
 
 # Download and install eigen if not already downloaded
