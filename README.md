@@ -2,17 +2,19 @@
 
 [![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
 
-Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish is designed to calculate a new consensus sequence for a draft genome assembly produced by a program like [CANU](https://github.com/marbl/canu). It does not error correct reads.
+Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
 ## Dependencies
 
-[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). It is automatically downloaded and compiled during `make` step but you can disable it with: `HDF5=nofetch make`. It is not necessary to install it (and `make install` is not called either). The nanopolish binary will link using a libhdf5.a (statically).
+[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). By default this is automatically downloaded and compiled when running `make` but this can be disabled with: `HDF5=nofetch make`. The nanopolish binary will link using a libhdf5.a (statically).
 
-[eigen](http://eigen.tuxfamily.org). It is automatically downloaded and compiled/ Currently you cannot override that.
+[eigen](http://eigen.tuxfamily.org). This is automatically downloaded and included when compiling with `make`.
 
-[biopython](http://www.biopython.org)
+[biopython](http://www.biopython.org) is required to run the helps in `scripts/`.
 
-A compiler that supports C++11 is need to build the sources. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/). libhdf5 can be automatically installed by the Makefile if you do not have it already (see below).
+[htslib](http://github.com/samtools/htslib). This is included as a submodule and compiled automatically.
+
+A compiler that supports C++11 is needed to build the sources. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
 
 ## Installation instructions
 
@@ -22,7 +24,7 @@ You will need to run ```git clone --recursive https://github.com/jts/nanopolish.
 make
 ```
 
-This will automatically download and install libhdf5.
+This will automatically download and install libhdf5 and eigen.
 
 ## Nanopolish modules
 
@@ -40,13 +42,15 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 ### Computing a new consensus sequence for a draft assembly
 
+The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like [canu](https://github.com/marbl/canu). This section describes how to do this, starting with your draft assembly which should have megabase-sized contigs.
+
 First we prepare the data by extracting the reads from the FAST5 files, and aligning the basecalls to our draft assembly (`draft.fa`).
 
 ```
 # Extract the QC-passed reads from a directory of FAST5 files
 nanopolish extract --type [2d|template] directory/pass/ > reads.fa
 
-# Index the draft genome (produced by [CANU](https://github.com/marbl/canu) with megabase-sized contigs)
+# Index the draft genome
 bwa index draft.fa
 
 # Align the basecalled reads to the draft sequence
@@ -54,7 +58,7 @@ bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools sort -o reads.sorted.bam -T r
 samtools index reads.sorted.bam
 ```
 
-Now, we use nanopolish to compute the consensus sequence (50kb blocks of the genome will be output). We'll run this in parallel:
+Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We'll run this in parallel:
 
 ```
 python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
