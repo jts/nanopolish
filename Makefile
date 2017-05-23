@@ -14,8 +14,10 @@ CXXFLAGS += -std=c++11 -fopenmp
 CFLAGS ?= -O3
 CXX ?= g++
 CC ?= gcc
-# Change the value of HDF5 below to any value to disable compilation of bundled HDF5 code
+
+# Change the value of HDF5 or EIGEN below to any value to disable compilation of bundled HDF5 code
 HDF5=install
+EIGEN=install
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -33,6 +35,14 @@ else
     H5_LIB=
     H5_INCLUDE=
     LIBS += -lhdf5
+endif
+
+# Default to automatically installing EIGEN
+ifeq ($(EIGEN), install)
+    EIGEN_CHECK=eigen/INSTALL
+else
+    # Use system-wide eigen
+    EIGEN_CHECK=
 endif
 
 # Build and link the libhts submodule
@@ -70,9 +80,7 @@ lib/libhdf5.a:
 
 
 # Download and install eigen if not already downloaded
-EIGEN=eigen/INSTALL
-
-$(EIGEN):
+eigen/INSTALL:
 	if [ ! -e 3.2.5.tar.bz2 ]; then wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2; fi
 	tar -xjvf 3.2.5.tar.bz2 || exit 255
 	mv eigen-eigen-bdd17ee3b1b3 eigen || exit 255
@@ -94,7 +102,7 @@ C_OBJ=$(C_SRC:.c=.o)
 PHONY=depend
 depend: .depend
 
-.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN)
+.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
 
@@ -108,7 +116,7 @@ include .depend
 	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
 
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
 	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
 
 # Link test executable
