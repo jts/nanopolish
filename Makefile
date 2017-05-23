@@ -9,11 +9,12 @@ SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 
 #Basic flags every build needs
 LIBS=-lz
-CXXFLAGS = -g -O3
+CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp
-CFLAGS=-O3
-CXX=g++
-CC=gcc
+CFLAGS ?= -O3
+CXX ?= g++
+CC ?= gcc
+# Change the value of HDF5 below to any value to disable compilation of bundled HDF5 code
 HDF5=install
 
 # Check operating system, OSX doesn't have -lrt
@@ -34,7 +35,7 @@ else
     LIBS += -lhdf5
 endif
 
-# Bulild and link the libhts submodule
+# Build and link the libhts submodule
 HTS_LIB=./htslib/libhts.a
 HTS_INCLUDE=-I./htslib
 
@@ -57,14 +58,14 @@ all: $(PROGRAM) $(TEST_PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
-	cd htslib; make
+	cd htslib && make || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
 lib/libhdf5.a:
-	wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz
-	tar -xzf hdf5-1.8.14.tar.gz
+	if [ ! -e hdf5-1.8.14.tar.gz ]; then wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz; fi
+	tar -xzf hdf5-1.8.14.tar.gz || exit 255
 	cd hdf5-1.8.14 && ./configure --enable-threadsafe --prefix=`pwd`/.. && make && make install
 
 
@@ -72,9 +73,9 @@ lib/libhdf5.a:
 EIGEN=eigen/INSTALL
 
 $(EIGEN):
-	wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2
-	tar -xjvf 3.2.5.tar.bz2
-	mv eigen-eigen-bdd17ee3b1b3 eigen
+	if [ ! -e 3.2.5.tar.bz2 ]; then wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2; fi
+	tar -xjvf 3.2.5.tar.bz2 || exit 255
+	mv eigen-eigen-bdd17ee3b1b3 eigen || exit 255
 
 #
 # Source files
