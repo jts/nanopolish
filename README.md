@@ -2,11 +2,17 @@
 
 [![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
 
-Software package for signal-level analysis of Oxford Nanopore sequencing data.
+Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish is designed to calculate a new consensus sequence for a draft genome assembly produced by a program like [CANU](https://github.com/marbl/canu). It does not error correct reads.
 
 ## Dependencies
 
-The program requires [libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) and a compiler that supports C++11. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/). libhdf5 can be automatically installed by the Makefile if you do not have it already (see below).
+[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). It is automatically downloaded and compiled during `make` step but you can disable it with: `HDF5=nofetch make`. It is not necessary to install it (and `make install` is not called either). The nanopolish binary will link using a libhdf5.a (statically).
+
+[eigen](http://eigen.tuxfamily.org). It is automatically downloaded and compiled/ Currently you cannot override that.
+
+[biopython](http://www.biopython.org)
+
+A compiler that supports C++11 is need to build the sources. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/). libhdf5 can be automatically installed by the Makefile if you do not have it already (see below).
 
 ## Installation instructions
 
@@ -40,7 +46,7 @@ First we prepare the data by extracting the reads from the FAST5 files, and alig
 # Extract the QC-passed reads from a directory of FAST5 files
 nanopolish extract --type [2d|template] directory/pass/ > reads.fa
 
-# Index the draft genome
+# Index the draft genome (produced by [CANU](https://github.com/marbl/canu) with megabase-sized contigs)
 bwa index draft.fa
 
 # Align the basecalled reads to the draft sequence
@@ -48,7 +54,7 @@ bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools sort -o reads.sorted.bam -T r
 samtools index reads.sorted.bam
 ```
 
-Now, we use nanopolish to compute the consensus sequence. We'll run this in parallel:
+Now, we use nanopolish to compute the consensus sequence (50kb blocks of the genome will be output). We'll run this in parallel:
 
 ```
 python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
@@ -57,7 +63,7 @@ python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results 
 
 This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
 
-After all polishing jobs are complete, you can merge the individual segments together into the final assembly:
+After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly:
 
 ```
 python nanopolish_merge.py polished.*.fa > polished_genome.fa
