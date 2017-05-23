@@ -14,7 +14,8 @@ CXXFLAGS += -std=c++11 -fopenmp
 CFLAGS ?= -O3
 CXX ?= g++
 CC ?= gcc
-HDF5=install # change to any value to disable compilation of bundled HDF5 code
+# Change the value of HDF5 below to any value to disable compilation of bundled HDF5 code
+HDF5=install
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -34,7 +35,7 @@ else
     LIBS += -lhdf5
 endif
 
-# Bulild and link the libhts submodule
+# Build and link the libhts submodule
 HTS_LIB=./htslib/libhts.a
 HTS_INCLUDE=-I./htslib
 
