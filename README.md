@@ -6,13 +6,13 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Dependencies
 
-[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html). By default this is automatically downloaded and compiled when running `make` but this can be disabled with: `HDF5=nofetch make`. The nanopolish binary will link libhdf5.a statically.
+[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) is automatically downloaded and compiled when running `make` but this can be disabled with: `HDF5=nofetch make`. The nanopolish binary will link libhdf5.a statically.
 
-[eigen](http://eigen.tuxfamily.org). This is automatically downloaded and included when compiling with `make`.
+[eigen](http://eigen.tuxfamily.org) is also automatically downloaded and included when compiling with `make`.
 
-[biopython](http://www.biopython.org) is required to run the helps in `scripts/`.
+[biopython](http://www.biopython.org) is required to run the helpers in `scripts/`.
 
-[htslib](http://github.com/samtools/htslib). This is included as a submodule and compiled automatically.
+[htslib](http://github.com/samtools/htslib) is included as a submodule and compiled automatically.
 
 A compiler that supports C++11 is needed to build the sources. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
 
