@@ -186,9 +186,9 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
                                            stop_position,
                                            e1,
                                            e2);
+
         if(bounded) {
             double ratio = fabs(e1 - e2) / fabs(stop_position - start_position);
-
             // Some low quality reads appear to have "stuck" states where you get 
             // a long run of consecutive stays. They can cause an assertion in the HMM
             // so we added this heuristic to catch these.

@@ -21,6 +21,8 @@
 // Workaround for albacore issues.  Temporary, I hope
 int g_total_reads = 0;
 int g_unparseable_reads = 0;
+int g_qc_fail_reads = 0;
+int g_failed_calibration_reads = 0;
 
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
@@ -191,6 +193,7 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
 
     // Filter poor quality reads that have too many "stays"
     if(events_per_base[0] > 3.0) {
+        g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
     }
@@ -395,7 +398,7 @@ void SquiggleRead::_load_R9(uint32_t si,
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].metadata);
         } else {
-            g_unparseable_reads += 1;
+            g_failed_calibration_reads += 1;
             // could not find a model for this strand, discard it
             events[si].clear();
         }
