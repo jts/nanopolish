@@ -522,7 +522,7 @@ void filter_outlier_data(std::vector<HMMInputData>& input, const std::string& se
         const HMMInputData& rs = input[ri];
 
         double curr = score_sequence(sequence, rs);
-        double n_events = abs(rs.event_start_idx - rs.event_stop_idx) + 1.0f;
+        double n_events = rs.event_start_idx - rs.event_stop_idx + 1.0f;
         double lp_per_event = curr / n_events;
 
         if(opt::verbose >= 1) {
@@ -634,7 +634,7 @@ void run_splice_segment(HMMRealignmentInput& window, uint32_t segment_id, const 
         int32_t min_k_dist = base.length();
         uint32_t event_idx = 0;
         for(uint32_t di = 0; di < decodes.size(); ++di) {
-            int32_t dist = abs(decodes[di].kmer_idx - midpoint_kmer);
+            int32_t dist = decodes[di].kmer_idx - midpoint_kmer;
             if(dist <= min_k_dist) {
                 min_k_dist = dist;
                 event_idx = decodes[di].event_idx;
