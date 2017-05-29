@@ -15,6 +15,7 @@
 #include <fast5.hpp>
 
 //#define DEBUG_MODEL_SELECTION 1
+//#define DEBUG_RECONSTRUCTION 1
 
 // Track the number of skipped reads to warn the use at the end of the run
 // Workaround for albacore issues.  Temporary, I hope
@@ -359,7 +360,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 #endif
         }
 
-        if(best_model_var != INFINITY) {
+        if(best_model_var < 2.5) {
 #ifdef DEBUG_MODEL_SELECTION
             fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
@@ -394,6 +395,7 @@ void SquiggleRead::_load_R9(uint32_t si,
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].metadata);
         } else {
+            g_unparseable_reads += 1;
             // could not find a model for this strand, discard it
             events[si].clear();
         }
@@ -558,6 +560,7 @@ size_t process_event_map_segment(const std::string read_sequence_1d,
     return curr_k_idx;
 }
 
+
 std::vector<EventRangeForBase> SquiggleRead::read_reconstruction(const std::string& read_sequence_1d,
                                                                  uint32_t strand,
                                                                  std::vector<fast5::Basecall_Event>& f5_events)
@@ -579,113 +582,74 @@ std::vector<EventRangeForBase> SquiggleRead::read_reconstruction(const std::stri
     assert(curr_event_idx == 0);
 
     // Initialize the reconstructed sequence with the first 3-mer of the first k-mer
+#if DEBUG_RECONSTRUCTION
     fprintf(stderr, "processing fast5: %s\n", this->fast5_path.c_str());
+#endif
 
-    size_t curr_base_position = 1;
-
+    // We keep track of the number of mismatches between the read sequence
+    // and the event table. We skip duplicate mismatches to the same kmer
+    // by tracking the kmen in previous_event_kmer
+    std::string previous_event_kmer = "";
     size_t distinct_mismatches = 0;
-    std::string previous_kmer = "";
+
+    // Initialize
+    out_event_map[curr_k_idx].indices[strand].start = curr_event_idx;
+    curr_event_idx = 1;
+
     while(curr_event_idx < f5_events.size()) {
-        curr_base_position += f5_events[curr_event_idx].move;
-        curr_k_idx = curr_base_position - 2;
+        int move = f5_events[curr_event_idx].move;
+        if(move > 0) {
+            // End current range
+            out_event_map[curr_k_idx].indices[strand].stop = curr_event_idx - 1;
+
+            // start new range
+            curr_k_idx += move;
+
+            // parse error
+            if(curr_k_idx >= n_read_kmers) {
+                break;
+            }
+
+            assert(curr_k_idx < out_event_map.size());
+            out_event_map[curr_k_idx].indices[strand].start = curr_event_idx;
+        }
+
         std::string inferred_kmer = read_sequence_1d.substr(curr_k_idx, k);
         std::string event_kmer = array2str(f5_events[curr_event_idx].model_state);
 
+        // Check if the k-mer in the read sequene matches that in the event table
+        // If not we increment the counter to predict whether the parse was succesfull
         if(inferred_kmer != event_kmer) {
-            distinct_mismatches += event_kmer != previous_kmer;
+            distinct_mismatches += event_kmer != previous_event_kmer;
+#if DEBUG_RECONSTRUCTION
             std::string long_context = read_sequence_1d.substr(curr_k_idx - k, 3*k);
             fprintf(stderr, "[reconstruction] k:%zu e:%zu %s %s match? %zu move: %zu context: %s\n",
                 curr_k_idx, curr_event_idx,
                 inferred_kmer.c_str(), event_kmer.c_str(),
                 inferred_kmer == event_kmer, f5_events[curr_event_idx].move, long_context.c_str());
+#endif
         }
+
         curr_event_idx += 1;
-
-        previous_kmer = event_kmer;
+        previous_event_kmer = event_kmer;
     }
 
-    std::string classification = ((float)distinct_mismatches / n_read_kmers < .5) ? "goodread" : "badread";
-    fprintf(stderr, "[final] %s %zu out of %zu kmers mismatch classification: %s\n", this->fast5_path.c_str(), distinct_mismatches, n_read_kmers, classification.c_str());
-    out_event_map.clear();
-    return out_event_map;
-}
-
-std::vector<EventRangeForBase> SquiggleRead::event_reconstruction(const std::string& read_sequence_1d,
-                                                                  uint32_t strand,
-                                                                  std::vector<fast5::Basecall_Event>& f5_events)
-{
-    // reconstruct sequence from event table
-    assert(f_p and f_p->is_open());
-    std::vector<EventRangeForBase> out_event_map;
-    const uint32_t k = pore_model[strand].k;
-
-    // initialize - one entry per read kmer
-    uint32_t n_read_kmers = read_sequence_1d.size() - k + 1;
-    out_event_map.resize(n_read_kmers);
-
-    size_t curr_k_idx = 0;
-    size_t curr_event_idx = 0;
-
-    // Find the next occurrence of the event k-mer in the read sequence
-    std::string reconstructed = "";
-
-    // Albacore represents `move` as how much sequence to add starting from the middle of the event kmer
-    assert(k == 5);
-    assert(curr_event_idx == 0);
-
-    // Initialize the reconstructed sequence with the first 3-mer of the first k-mer
-    reconstructed.append(array2str(f5_events[curr_event_idx].model_state).substr(0, 3));
-    curr_event_idx += 1;
-    fprintf(stderr, "processing fast5: %s\n", this->fast5_path.c_str());
-
-    std::string previous_kmer = "";
-    while(curr_event_idx < f5_events.size()) {
-        bool display = false;
-        std::string event_kmer = array2str(f5_events[curr_event_idx].model_state);
-
-        int context_offset = std::max((int)reconstructed.length() - 5, 0);
-        std::string context = read_sequence_1d.substr(context_offset, 15);
-
-        int move = f5_events[curr_event_idx].move;
-        if(move > 3) {
-            display = true;
-            fprintf(stderr, "[%zu] long move: %zu kmer: %s curr: %s basecalled: %s previous kmer: %s\n",
-                curr_event_idx,
-                move,
-                event_kmer.c_str(),
-                reconstructed.substr(context_offset).c_str(),
-                context.c_str(),
-                previous_kmer.c_str());
-        }
-
-        // When move is greater than 3 we need to extract some bases from the previous k-mer
-        int offset = 3 - move;
-        std::string incoming = "";
-        if(offset < 0) {
-            // get suffix from previous k-mer
-            incoming = previous_kmer.substr(k + offset) + event_kmer.substr(0, k + offset);
-        } else {
-            incoming = event_kmer.substr(offset, move);
-        }
-
-        reconstructed.append(incoming);
-        if(display) {
-            fprintf(stderr, "[reconstruction] [%zu %zu] match ? %zu reconstructed suffix: %s\n", reconstructed.length(), read_sequence_1d.length(), read_sequence_1d.substr(0, reconstructed.length()) == reconstructed, reconstructed.substr(context_offset).c_str());
-        }
-        curr_event_idx += 1;
-        previous_kmer = event_kmer;
+    const double MISMATCH_THRESHOLD = 0.05;
+    double mismatch_rate = (float)distinct_mismatches / n_read_kmers;
+    if(mismatch_rate > MISMATCH_THRESHOLD || curr_k_idx >= n_read_kmers) {
+        // poor read, skip
+        g_unparseable_reads += 1;
+        out_event_map.clear();
+    } else {
+        // good read, continue
+        out_event_map[curr_k_idx].indices[strand].stop = curr_event_idx - 1;
     }
 
-    // Add in the terminating suffix
-    if(reconstructed.length() <= read_sequence_1d.length()) {
-        size_t remainder = read_sequence_1d.length() - reconstructed.length();
-        reconstructed.append(array2str(f5_events.back().model_state).substr(k - remainder));
-    }
-
-    std::string classification = read_sequence_1d.substr(0, reconstructed.length()) == reconstructed ? "goodread" : "badread";
-    fprintf(stderr, "[final] %s [%zu %zu] classification: %s\n", this->fast5_path.c_str(), reconstructed.length(), read_sequence_1d.length(), classification.c_str());
-
-    out_event_map.clear();
+#if DEBUG_RECONSTRUCTION
+    std::string classification = !out_event_map.empty() ? "goodread" : "badread";
+    fprintf(stderr, "[final] %s %zu out of %zu kmers mismatch (%.2lf) classification: %s\n", this->fast5_path.c_str(), distinct_mismatches, n_read_kmers, mismatch_rate, classification.c_str());
+#endif
+    g_total_reads += 1;
     return out_event_map;
 }
 
@@ -696,95 +660,6 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::strin
     return read_reconstruction(read_sequence_1d, strand, f5_events);
 }
 
-#if 0
-std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d(const std::string& read_sequence_1d,
-                                                                uint32_t strand,
-                                                                std::vector<fast5::Basecall_Event>& f5_events)
-{
-    assert(f_p and f_p->is_open());
-    std::vector<EventRangeForBase> out_event_map;
-    const uint32_t k = pore_model[strand].k;
-
-    // initialize - one entry per read kmer
-    uint32_t n_read_kmers = read_sequence_1d.size() - k + 1;
-    out_event_map.resize(n_read_kmers);
-
-    //segment_by_moves(read_sequence_1d, f5_events, out_event_map);
-    //return out_event_map;
-
-    size_t max_search_distance = 200;
-    size_t curr_k_idx = 0;
-    size_t curr_event_idx = 0;
-
-    // Find the next occurrence of the event k-mer in the read sequence
-    while(curr_event_idx < f5_events.size()) {
-
-        // Calculate the number of kmers to move along the basecalled sequence
-        // We do not use the value provided in the fast5 due to an albacore bug.
-        std::string event_kmer = array2str(f5_events[curr_event_idx].model_state);
-        int read_sequence_move = search_for_event_kmer(read_sequence_1d, curr_k_idx, n_read_kmers, k, event_kmer, max_search_distance);
-
-        if(read_sequence_move <= max_search_distance) {
-            //fprintf(stderr, "[search success] event %zu found %zu steps at k-mer index %zu\n", curr_event_idx, read_sequence_move, read_sequence_move + curr_k_idx);
-
-            // process this segment
-            size_t segment_last_kmer_idx = process_event_map_segment(read_sequence_1d, curr_k_idx + read_sequence_move, curr_event_idx, strand, f5_events, out_event_map);
-            size_t segment_last_event_idx = out_event_map[segment_last_kmer_idx].indices[strand].stop;
-
-            size_t kmer_span = segment_last_kmer_idx - curr_k_idx + 1;
-            size_t event_span = segment_last_event_idx - curr_event_idx + 1;
-
-            if(kmer_span < 10 || event_span < 10) {
-                // reject segment
-                // TODO: overwrite results
-                fprintf(stderr, "[segment rejected] kmers: [%zu %zu] events: [%zu %zu]\n", curr_k_idx, segment_last_kmer_idx, curr_event_idx, segment_last_event_idx);
-                curr_event_idx += 1;
-
-            } else {
-                fprintf(stderr, "[segment accepted] kmers: [%zu %zu] events: [%zu %zu]\n", curr_k_idx, segment_last_kmer_idx, curr_event_idx, segment_last_event_idx);
-                // accept segment, update indices
-                curr_k_idx = segment_last_kmer_idx + 1;
-                curr_event_idx = segment_last_event_idx + 1;
-
-                // Skip over unique k-mers
-                // This is an attempt to get out of the bad regions of the read where the moves are misannotated
-                size_t events_skipped = 0;
-                size_t skip_count = 0;
-                size_t skip_target = 1;
-                std::string previous_kmer = "";
-                while(curr_event_idx < f5_events.size() && skip_count < skip_target) {
-                    event_kmer = array2str(f5_events[curr_event_idx].model_state);
-                    if(event_kmer != previous_kmer) {
-                        skip_count++;
-                        previous_kmer = event_kmer;
-                    }
-                    events_skipped += 1;
-                    curr_event_idx += 1;
-                }
-                fprintf(stderr, "[skip] bypass %zu events\n", events_skipped);
-            }
-        } else {
-            fprintf(stderr, "\t[search failed] candidate segment start event %zu not found, skipping\n", curr_event_idx);
-            curr_event_idx += 1;
-        }
-    }
-
-    out_event_map.clear();
-    return out_event_map;
-    /*
-    // The range for the first k-mer always starts at event 0
-    // JTS 2017-03: Albacore fast5s start with move 1
-    // JTS 2017-04: Albacore v1.0.1 fast5s can have any value for the first move
-    //assert(f5_events[0].move == 0 || f5_events[0].move == 1);
-    out_event_map[0].indices[strand].start = 0;
-
-    size_t curr_k_idx = 0;
-    size_t ei = 1;
-    */
-}
-#endif
-
-#if 0
 std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d_old(const std::string& read_sequence_1d,
                                                                     uint32_t strand,
                                                                     std::vector<fast5::Basecall_Event>& f5_events)
@@ -826,10 +701,12 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d_old(const std::s
 
 
         if(kmer_move != f5_event.move) {
+            /*
             fprintf(stderr, "%s move mismatch at event %zu of %zu (%d %d)\n", read_name.c_str(), ei, f5_events.size(), kmer_move, f5_event.move);
             fprintf(stderr, "read kmer: %s next read kmer: %s event kmer: %s\n", read_sequence_1d.substr(curr_k_idx, k).c_str(),
                                                                                  read_sequence_1d.substr(curr_k_idx + 1, k).c_str(),
                                                                                  event_kmer.c_str());
+            */
             //break;
         }
 
@@ -880,7 +757,6 @@ std::vector<EventRangeForBase> SquiggleRead::build_event_map_1d_old(const std::s
     g_total_reads += 1;
     return out_event_map;
 }
-#endif
 
 void SquiggleRead::build_event_map_2d_r9()
 {
