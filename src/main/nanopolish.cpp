@@ -82,6 +82,8 @@ int main(int argc, char** argv)
     extern int g_unparseable_reads;
     extern int g_qc_fail_reads;
     extern int g_failed_calibration_reads;
-    fprintf(stderr, "[post-run summary] total reads: %d unparseable: %d qc fail: %d could not calibrate: %d\n", g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads);
+    if(g_total_reads > 0) {
+        fprintf(stderr, "[post-run summary] total reads: %d unparseable: %d qc fail: %d could not calibrate: %d\n", g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads);
+    }
     return ret;
 }
