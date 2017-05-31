@@ -32,6 +32,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, con
     drift_correction_performed(false),
     f_p(nullptr)
 {
+    events_per_base[0] = events_per_base[1] = 0.0f;
+
     #pragma omp critical(sr_load_fast5)
     {
         load_from_fast5(flags);
@@ -192,7 +194,7 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
     }
 
     // Filter poor quality reads that have too many "stays"
-    if(events_per_base[0] > 3.0) {
+    if(!events[0].empty() && events_per_base[0] > 5.0) {
         g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
@@ -255,7 +257,9 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     assert(p_model_states.size() == events[si].size());
 
-    size_t total_kmers = 0;
+    // This vector tracks the number of events observed (by the basecaller) for each kmer
+    std::vector<size_t> event_counts;
+    event_counts.reserve(read_sequence_1d.length());
     std::string prev_kmer = "";
 
     for(const auto& ea : alignment) {
@@ -267,7 +271,10 @@ void SquiggleRead::_load_R9(uint32_t si,
 
         if(ea.ref_kmer != prev_kmer) {
             prev_kmer = ea.ref_kmer;
-            total_kmers++;
+            event_counts.push_back(1);
+        } else {
+            assert(!event_counts.empty());
+            event_counts.back() += 1;
         }
 
         if(p_model_states[ea.event_idx] < p_model_state_threshold)
@@ -276,7 +283,26 @@ void SquiggleRead::_load_R9(uint32_t si,
         filtered.push_back(ea);
     }
 
-    events_per_base[si] = ((float)alignment.size() / total_kmers);
+
+    // Estimate the events-per-base sequencing rate
+    // This is used for QC and to parameterize the HMM
+    // We trim off the lowest and highest trim_frac event counts
+    // to avoid the extremely long stays that occasionally occur
+    std::sort(event_counts.begin(), event_counts.end());
+    double trim_frac = 0.05;
+    size_t trim_start_idx = trim_frac * (float)event_counts.size();
+    size_t trim_end_idx = (1 - trim_frac) * (float)event_counts.size();
+    size_t event_count_sum = 0;
+    for(size_t i = trim_start_idx; i < trim_end_idx; ++i) {
+        event_count_sum += event_counts[i];
+    }
+
+    // Estimate sequencing rate
+    double total_duration = get_time(events[0].size() - 1, 0);
+    double rate = read_sequence_1d.size() / total_duration;
+
+    events_per_base[si] = (float)event_count_sum / (trim_end_idx - trim_start_idx);
+    //fprintf(stderr, "events per base: %.2lf rate: %.2lf\n", events_per_base[si], rate);
 
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
