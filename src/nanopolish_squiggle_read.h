@@ -234,10 +234,6 @@ class SquiggleRead
                                                           uint32_t strand, 
                                                           std::vector<fast5::Basecall_Event>& f5_events);
         
-        std::vector<EventRangeForBase> build_event_map_1d_old(const std::string& read_sequence_1d,
-                                                              uint32_t strand,
-                                                              std::vector<fast5::Basecall_Event>& f5_events);
-        
         std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
                                                            uint32_t strand, 
                                                            std::vector<fast5::Basecall_Event>& f5_events);
