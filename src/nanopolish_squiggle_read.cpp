@@ -334,6 +334,8 @@ void SquiggleRead::_load_R9(uint32_t si,
             kit = "r9_250bps";
         } else if(mt == "r94_450bps" || mt == "r9_450bps" || mt == "r9.4_450bps") {
             kit = "r9.4_450bps";
+        } else if(mt == "r9.5_450bps") {
+            kit = "r9.4_450bps";
         } else {
             fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
             exit(1);
