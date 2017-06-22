@@ -87,6 +87,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
 "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
+"  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
 "  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
 "                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
@@ -125,7 +126,7 @@ namespace opt
     static int debug_alignments = 0;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v:x:";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -153,6 +154,7 @@ static const struct option longopts[] = {
     { "threads",                   required_argument, NULL, 't' },
     { "min-candidate-frequency",   required_argument, NULL, 'm' },
     { "min-candidate-depth",       required_argument, NULL, 'd' },
+    { "max-haplotypes",            required_argument, NULL, 'x' },
     { "candidates",                required_argument, NULL, 'c' },
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
@@ -934,6 +936,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'o': arg >> opt::output_file; break;
             case 'm': arg >> opt::min_candidate_frequency; break;
             case 'd': arg >> opt::min_candidate_depth; break;
+            case 'x': arg >> opt::max_haplotypes; break;
             case 'c': arg >> opt::candidates_file; break;
             case 'p': arg >> opt::ploidy; break;
             case 'a': arg >> opt::alternative_basecalls_bam; break;
