@@ -126,7 +126,7 @@ namespace opt
     static int debug_alignments = 0;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v:x:";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
