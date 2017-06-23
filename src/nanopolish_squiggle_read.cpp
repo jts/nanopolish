@@ -225,20 +225,59 @@ void SquiggleRead::_load_R9(uint32_t si,
     size_t final_model_k = 6;
 
     assert(f_p and f_p->is_open());
-
-    // The k-mer label semantics differ between basecallers
+    
+    // The k-mer label semantics differ between basecaller versions and models
     // We use a "label_shift" parameter to determine how to line up the labels
     // with events so that we can recalibrate the models.
-    int label_shift = 0;
     fast5::Attr_Map basecall_attributes = f_p->get_basecall_params(basecall_group);
     std::string basecaller_name = basecall_attributes["name"];
 
     bool is_albacore = false;
+    bool is_albacore_1_or_later = false;
     if(basecaller_name.find("Albacore") != -1) {
         is_albacore = true;
         SemVer ver = parse_semver_string(basecall_attributes["version"]);
         if(ver.major >= 1) {
-            label_shift = -1;
+            is_albacore_1_or_later = true;
+        }
+    }
+
+    // Parse kit name and label_shift from the model type encoded in the fast5
+    std::string kit = "";
+    int label_shift = 0;
+    if( (flags & SRF_NO_MODEL) == 0) {
+
+        auto config = f_p->get_basecall_config(basecall_group);
+        std::string mt = "";
+
+        if(is_albacore) {
+
+            // Deal with albacore 1.1.0 changing the model convention
+            mt = config["basecall_1d/model"];
+            if(mt == "") {
+                mt = config["basecall_1d/template_model"];
+            }
+
+            // remove prefix/suffix
+            auto fields = split(mt, '_');
+            assert(fields.size() == 4);
+            mt = fields[1] + "_" + fields[2];
+        } else {
+            mt = config["general/model_type"];
+        }
+
+        kit = "r9.4_450bps";
+        // all 250bps data should use this model (according to ONT see
+        // https://github.com/nanoporetech/kmer_models/issues/3)
+        if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn" || mt == "r9.4_250bps") {
+            label_shift = 0;
+            kit = "r9_250bps";
+        } else if(mt == "r94_450bps" || mt == "r9_450bps" || mt == "r9.4_450bps" || mt == "r9.5_450bps") {
+            label_shift = is_albacore_1_or_later ? -1 : 0;
+            kit = "r9.4_450bps";
+        } else {
+            fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
+            exit(1);
         }
     }
 
@@ -306,40 +345,6 @@ void SquiggleRead::_load_R9(uint32_t si,
 
     // Load the pore model (if requested) and calibrate it
     if( (flags & SRF_NO_MODEL) == 0) {
-
-        auto config = f_p->get_basecall_config(basecall_group);
-        std::string mt = "";
-
-        if(is_albacore) {
-
-            // Deal with albacore 1.1.0 changing the model convention
-            mt = config["basecall_1d/model"];
-            if(mt == "") {
-                mt = config["basecall_1d/template_model"];
-            }
-
-            // remove prefix/suffix
-            auto fields = split(mt, '_');
-            assert(fields.size() == 4);
-            mt = fields[1] + "_" + fields[2];
-        } else {
-            mt = config["general/model_type"];
-        }
-
-        std::string kit = "r9.4_450bps";
-
-        // all 250bps data should use this model (according to ONT see
-        // https://github.com/nanoporetech/kmer_models/issues/3)
-        if(mt == "r9_250bps_nn" || mt == "r9_250bps" || mt == "r94_250bps" || mt == "r94_250bps_nn" || mt == "r9.4_250bps") {
-            kit = "r9_250bps";
-        } else if(mt == "r94_450bps" || mt == "r9_450bps" || mt == "r9.4_450bps") {
-            kit = "r9.4_450bps";
-        } else if(mt == "r9.5_450bps") {
-            kit = "r9.4_450bps";
-        } else {
-            fprintf(stderr, "Unknown model type string: %s, please report on github.\n", mt.c_str());
-            exit(1);
-        }
 
         std::string alphabet = "nucleotide"; // always calibrate with the nucleotide alphabet
 
