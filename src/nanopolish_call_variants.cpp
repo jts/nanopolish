@@ -88,6 +88,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
 "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
 "  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
+"      --max-rounds=N                   perform N rounds of consensus sequence improvement (default: 50)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
 "  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
 "                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
@@ -97,7 +98,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 
 namespace opt
 {
-    static unsigned int verbose;
+    static unsigned int verbose = 0;
     static std::string reads_file;
     static std::string bam_file;
     static std::string event_bam_file;
@@ -123,10 +124,11 @@ namespace opt
     static int min_distance_between_variants = 10;
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
+    static int max_rounds = 50;
     static int debug_alignments = 0;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:v:x:";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -138,6 +140,7 @@ enum { OPT_HELP = 1,
        OPT_FIX_HOMOPOLYMERS,
        OPT_GENOTYPE,
        OPT_MODELS_FOFN,
+       OPT_MAX_ROUNDS,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
@@ -158,6 +161,7 @@ static const struct option longopts[] = {
     { "candidates",                required_argument, NULL, 'c' },
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
+    { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
     { "models-fofn",               required_argument, NULL, OPT_MODELS_FOFN },
     { "p-skip",                    required_argument, NULL, OPT_P_SKIP },
@@ -864,13 +868,12 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // in consensus mode we iterate until a maximum number of rounds is reached
     // or the variant set converges
     size_t round = 0;
-    size_t MAX_ROUNDS = 50;
     Haplotype called_haplotype(alignments.get_region_contig(),
                                alignments.get_region_start(),
                                alignments.get_reference());
 
     // Calling strategy in consensus mode
-    while(opt::consensus_mode && round++ < MAX_ROUNDS) {
+    while(opt::consensus_mode && round++ < opt::max_rounds) {
         assert(opt::consensus_mode);
         if(opt::verbose > 3) {
             fprintf(stderr, "Round %zu\n", round);
@@ -945,6 +948,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
             case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
+            case OPT_MAX_ROUNDS: arg >> opt::max_rounds; break;
             case OPT_GENOTYPE: opt::genotype_only = 1; arg >> opt::candidates_file; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
             case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
