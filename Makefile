@@ -74,7 +74,7 @@ htslib/libhts.a:
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
 lib/libhdf5.a:
-	if [ ! -e hdf5-1.8.14.tar.gz ]; then wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz; fi
+	if [ ! -e hdf5-1.8.14.tar.gz ]; then wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz; fi
 	tar -xzf hdf5-1.8.14.tar.gz || exit 255
 	cd hdf5-1.8.14 && ./configure --enable-threadsafe --prefix=`pwd`/.. && make && make install
 
