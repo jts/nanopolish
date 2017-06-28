@@ -125,6 +125,7 @@ namespace opt
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
+    static int max_reads_for_screening = 30;
     static int debug_alignments = 0;
 }
 
@@ -332,6 +333,12 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
 
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(contig, calling_start, calling_end);
+
+        // Downsample for more consistent run time
+        if(opt::max_reads_for_screening < event_sequences.size()) {
+            std::random_shuffle(event_sequences.begin(), event_sequences.end());
+            event_sequences.resize(opt::max_reads_for_screening);
+        }
 
         Variant scored_variant = score_variant(v, test_haplotype, event_sequences, alignment_flags);
         scored_variant.info = "";
