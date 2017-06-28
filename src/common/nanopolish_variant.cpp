@@ -17,6 +17,29 @@
 
 //#define DEBUG_HAPLOTYPE_SELECTION 1
 
+std::string Variant::make_vcf_tag_string(const std::string& tag,
+                                         const std::string& id,
+                                         int count,
+                                         const std::string& type,
+                                         const std::string& description)
+{
+    std::stringstream ss;
+    ss << "##" << tag << "=<ID=" << id << ",Number=" << count << ",Type="
+       << type << ",Description=\"" << description << "\">";
+    return ss.str();
+}
+
+void Variant::write_vcf_header(FILE* fp,
+                               const std::vector<std::string>& tag_lines)
+{
+
+    fprintf(fp, "##fileformat=VCFv4.2\n");
+    for(const std::string& line : tag_lines) {
+        fprintf(fp, "%s\n", line.c_str());
+    }
+    fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample\n");
+}
+
 // return a new copy of the string with gap symbols removed
 std::string remove_gaps(const std::string& str)
 {

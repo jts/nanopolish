@@ -18,9 +18,14 @@ class VariantGroup;
 
 struct Variant
 {
-    static void write_vcf_header(FILE* fp) {
-        fprintf(fp, "#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample\n");
-    }
+    static void write_vcf_header(FILE* fp, 
+                                 const std::vector<std::string>& tag_lines = std::vector<std::string>());
+
+    static std::string make_vcf_tag_string(const std::string& tag,
+                                           const std::string& id,
+                                           int count,
+                                           const std::string& type,
+                                           const std::string& description);
 
     Variant() { }
     Variant(const std::string& line) { read_vcf(line); }

@@ -1042,7 +1042,34 @@ int call_variants_main(int argc, char** argv)
         out_fp = stdout;
     }
 
-    Variant::write_vcf_header(out_fp);
+    // Build the VCF header
+    std::vector<std::string> tag_fields;
+
+    //
+    tag_fields.push_back(
+        Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
+                                      "The number of event-space reads used to call the variant"));
+
+    tag_fields.push_back(
+        Variant::make_vcf_tag_string("INFO", "SupportFraction", 1, "Float",
+                                      "The fraction of event-space reads that support the variant"));
+
+    tag_fields.push_back(
+        Variant::make_vcf_tag_string("INFO", "BaseCalledReadsWithVariant", 1, "Integer",
+                                      "The number of base-space reads that support the variant"));
+
+    tag_fields.push_back(
+        Variant::make_vcf_tag_string("INFO", "BaseCalledFraction", 1, "Float",
+                                      "The fraction of base-space reads that support the variant"));
+
+    tag_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
+                "The inferred number of copies of the allele"));
+    tag_fields.push_back(
+            Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
+                "Genotype"));
+
+    Variant::write_vcf_header(out_fp, tag_fields);
 
     Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, out_fp);
 

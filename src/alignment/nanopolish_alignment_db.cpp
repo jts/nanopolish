@@ -338,7 +338,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
         double f = (double)count / d;
         if(f >= min_frequency && (int)d >= min_depth) {
             v.add_info("BaseCalledReadsWithVariant", count);
-            v.add_info("BaseCalledFrequency", f);
+            v.add_info("BaseCalledFraction", f);
             variants.push_back(v);
         }
     }
