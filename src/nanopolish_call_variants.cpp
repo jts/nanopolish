@@ -78,6 +78,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --snps                           only call SNPs\n"
 "      --consensus=FILE                 run in consensus calling mode and write polished sequence to FILE\n"
 "      --fix-homopolymers               run the experimental homopolymer caller\n"
+"      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
 "  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
@@ -125,7 +126,7 @@ namespace opt
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
-    static int max_reads_for_screening = 30;
+    static int screen_score_threshold = 100;
     static int debug_alignments = 0;
 }
 
@@ -142,6 +143,8 @@ enum { OPT_HELP = 1,
        OPT_GENOTYPE,
        OPT_MODELS_FOFN,
        OPT_MAX_ROUNDS,
+       OPT_EFFORT,
+       OPT_FASTER,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
@@ -162,6 +165,7 @@ static const struct option longopts[] = {
     { "candidates",                required_argument, NULL, 'c' },
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
+    { "effort",                    required_argument, NULL, OPT_EFFORT },
     { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
     { "models-fofn",               required_argument, NULL, OPT_MODELS_FOFN },
@@ -170,6 +174,7 @@ static const struct option longopts[] = {
     { "p-bad",                     required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",                required_argument, NULL, OPT_P_BAD_SELF },
     { "consensus",                 required_argument, NULL, OPT_CONSENSUS },
+    { "faster",                    no_argument,       NULL, OPT_FASTER },
     { "fix-homopolymers",          no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",     no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
     { "snps",                      no_argument,       NULL, OPT_SNPS_ONLY },
@@ -334,13 +339,7 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(contig, calling_start, calling_end);
 
-        // Downsample for more consistent run time
-        if(opt::max_reads_for_screening < event_sequences.size()) {
-            std::random_shuffle(event_sequences.begin(), event_sequences.end());
-            event_sequences.resize(opt::max_reads_for_screening);
-        }
-
-        Variant scored_variant = score_variant(v, test_haplotype, event_sequences, alignment_flags);
+        Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold);
         scored_variant.info = "";
         if(scored_variant.quality > 0) {
             out_variants.push_back(scored_variant);
@@ -955,6 +954,8 @@ void parse_call_variants_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
             case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
+            case OPT_EFFORT: arg >> opt::screen_score_threshold; break;
+            case OPT_FASTER: opt::screen_score_threshold = 25; break;
             case OPT_MAX_ROUNDS: arg >> opt::max_rounds; break;
             case OPT_GENOTYPE: opt::genotype_only = 1; arg >> opt::candidates_file; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;

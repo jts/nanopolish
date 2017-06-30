@@ -683,35 +683,31 @@ std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& cand
     return selected_variants;
 }
 
-Variant score_variant(const Variant& input_variant,
-                      Haplotype base_haplotype, 
-                      const std::vector<HMMInputData>& input,
-                      const uint32_t alignment_flags)
+Variant score_variant_thresholded(const Variant& input_variant,
+                                  Haplotype base_haplotype, 
+                                  const std::vector<HMMInputData>& input,
+                                  const uint32_t alignment_flags,
+                                  const uint32_t score_threshold)
 {
     Variant out_variant = input_variant;
 
-    double base_score = 0.0f;
+    Haplotype variant_haplotype = base_haplotype;
+    variant_haplotype.apply_variant(input_variant);
+
+    double total_score = 0.0f;
     #pragma omp parallel for
     for(size_t j = 0; j < input.size(); ++j) {
 
-        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
+        if(fabs(total_score) < score_threshold) {
+            double base_score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
+            double variant_score = profile_hmm_score(variant_haplotype.get_sequence(), input[j], alignment_flags);
 
-        #pragma omp atomic
-        base_score += score;
+            #pragma omp atomic
+            total_score += (variant_score - base_score);
+        }
     }
 
-    base_haplotype.apply_variant(input_variant);
-        
-    double haplotype_score = 0.0f;
-#pragma omp parallel for
-    for(size_t j = 0; j < input.size(); ++j) {
-        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
-
-#pragma omp atomic
-        haplotype_score += score;
-    }
-
-    out_variant.quality = haplotype_score - base_score;
+    out_variant.quality = total_score;
     return out_variant;
 }
 

@@ -153,10 +153,12 @@ std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& cand
                                                       const std::vector<HMMInputData>& input,
                                                       const uint32_t alignment_flags);
 
-// Score a single variant
-Variant score_variant(const Variant& input_variant,
-                      Haplotype base_haplotype, 
-                      const std::vector<HMMInputData>& input,
-                      const uint32_t alignment_flags);
+// Score a single variant, stopping when the absolute value of the score relative
+// to the reference meets a threshold
+Variant score_variant_thresholded(const Variant& input_variant,
+                                  Haplotype base_haplotype, 
+                                  const std::vector<HMMInputData>& input,
+                                  const uint32_t alignment_flags,
+                                  const uint32_t score_threshold);
 
 #endif
