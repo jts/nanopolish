@@ -258,9 +258,13 @@ void SquiggleRead::_load_R9(uint32_t si,
                 mt = config["basecall_1d/template_model"];
             }
 
+
             // remove prefix/suffix
             auto fields = split(mt, '_');
-            assert(fields.size() == 4);
+            if(fields.size() != 4) {
+                fprintf(stderr, "error: could not parse model string: %s\n", mt.c_str());
+                exit(EXIT_FAILURE);
+            }
             mt = fields[1] + "_" + fields[2];
         } else {
             mt = config["general/model_type"];
