@@ -880,6 +880,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         //
         // Calling strategy in consensus mode
         //
+        std::set<std::string> last_round_variant_keys;
+
         for(size_t round = 0; round < opt::max_rounds; round++) {
             if(opt::verbose > 3) {
                 fprintf(stderr, "Round %zu\n", round);
@@ -898,11 +900,31 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
             // Expand the called variant set by adding nearby variants
             std::vector<Variant> called_variants = called_haplotype.get_variants();
-            candidate_variants = expand_variants(alignments,
-                    called_variants,
-                    region_start,
-                    region_end,
-                    alignment_flags);
+
+            // If the variant set is unchanged in this round, terminate processing otherwise
+            // perform a round of extension.
+            bool variant_set_changed = called_variants.size() != last_round_variant_keys.size();
+
+            std::set<std::string> this_round_variant_keys;
+            for(const auto& v : called_variants) {
+                if(last_round_variant_keys.find(v.key()) == last_round_variant_keys.end()) {
+                    variant_set_changed = true;
+                }
+
+                this_round_variant_keys.insert(v.key());
+            }
+
+            last_round_variant_keys = this_round_variant_keys;
+            if(variant_set_changed) {
+                candidate_variants = expand_variants(alignments,
+                        called_variants,
+                        region_start,
+                        region_end,
+                        alignment_flags);
+
+            } else {
+                break;
+            }
         }
 
         // optionally fix homopolymers using duration information
