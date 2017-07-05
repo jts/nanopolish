@@ -127,6 +127,7 @@ namespace opt
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
     static int screen_score_threshold = 100;
+    static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
 }
 
@@ -319,14 +320,13 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
     if(opt::verbose > 3) {
         fprintf(stderr, "==== Starting variant screening =====\n");
     }
-
     std::vector<Variant> out_variants;
     std::string contig = alignments.get_region_contig();
     for(size_t vi = 0; vi < candidate_variants.size(); ++vi) {
         const Variant& v = candidate_variants[vi];
 
-        int calling_start = v.ref_position - opt::min_flanking_sequence;
-        int calling_end = v.ref_position + v.ref_seq.size() + opt::min_flanking_sequence;
+        int calling_start = v.ref_position - opt::screen_flanking_sequence;
+        int calling_end = v.ref_position + v.ref_seq.size() + opt::screen_flanking_sequence;
 
         if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
             continue;
@@ -377,7 +377,7 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
 
         // deletion
         Variant v = candidate_variants[vi];
-        
+
         if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size())) {
             v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
             assert(v.ref_seq != candidate_variants[vi].ref_seq);
@@ -871,61 +871,60 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
     // Step 2. Call variants
 
-    // in consensus mode we iterate until a maximum number of rounds is reached
-    // or the variant set converges
-    size_t round = 0;
     Haplotype called_haplotype(alignments.get_region_contig(),
                                alignments.get_region_start(),
                                alignments.get_reference());
 
-    // Calling strategy in consensus mode
-    while(opt::consensus_mode && round++ < opt::max_rounds) {
-        assert(opt::consensus_mode);
-        if(opt::verbose > 3) {
-            fprintf(stderr, "Round %zu\n", round);
-        }
 
-        // Filter the variant set down by only including those that individually contribute a positive score
-        std::vector<Variant> filtered_variants = screen_variants_by_score(alignments,
-                                                                          candidate_variants,
-                                                                          alignment_flags);
+    if(opt::consensus_mode) {
+        //
+        // Calling strategy in consensus mode
+        //
+        for(size_t round = 0; round < opt::max_rounds; round++) {
+            if(opt::verbose > 3) {
+                fprintf(stderr, "Round %zu\n", round);
+            }
 
-        // Combine variants into sets that maximize their haplotype score
-        called_haplotype = call_haplotype_from_candidates(alignments,
-                                                          filtered_variants,
-                                                          alignment_flags,
-                                                          out_fp);
+            // Filter the variant set down by only including those that individually contribute a positive score
+            std::vector<Variant> filtered_variants = screen_variants_by_score(alignments,
+                                                                              candidate_variants,
+                                                                              alignment_flags);
 
-        if(opt::consensus_mode) {
+            // Combine variants into sets that maximize their haplotype score
+            called_haplotype = call_haplotype_from_candidates(alignments,
+                                                              filtered_variants,
+                                                              alignment_flags,
+                                                              out_fp);
+
             // Expand the called variant set by adding nearby variants
             std::vector<Variant> called_variants = called_haplotype.get_variants();
             candidate_variants = expand_variants(alignments,
-                                                 called_variants,
-                                                 region_start,
-                                                 region_end,
-                                                 alignment_flags);
+                    called_variants,
+                    region_start,
+                    region_end,
+                    alignment_flags);
         }
-    }
 
-    // Calling strategy in reference-based variant calling mode
-    if(!opt::consensus_mode) {
-        called_haplotype = call_haplotype_from_candidates(alignments,
-                                                          candidate_variants,
-                                                          alignment_flags,
-                                                          out_fp);
-    }
+        // optionally fix homopolymers using duration information
+        if(opt::fix_homopolymers) {
+            called_haplotype = fix_homopolymers(called_haplotype, alignments);
+        }
 
-    if(opt::fix_homopolymers) {
-        called_haplotype = fix_homopolymers(called_haplotype, alignments);
-    }
-
-    if(opt::consensus_mode) {
+        // write consensus result
         FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
         fprintf(consensus_fp, ">%s:%d-%d\n%s\n", contig.c_str(),
                                   alignments.get_region_start(),
                                   alignments.get_region_end(),
                                   called_haplotype.get_sequence().c_str());
         fclose(consensus_fp);
+    } else {
+        //
+        // Calling strategy in reference-based variant calling mode
+        //
+        called_haplotype = call_haplotype_from_candidates(alignments,
+                                                          candidate_variants,
+                                                          alignment_flags,
+                                                          out_fp);
     }
 
     return called_haplotype;
