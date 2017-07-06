@@ -124,7 +124,7 @@ struct EventalignSummary
 {
     EventalignSummary() {
         num_events = 0;
-        num_matches = 0;
+        num_steps = 0;
         num_stays = 0;
         num_skips = 0;
         sum_z_score = 0;
@@ -134,7 +134,7 @@ struct EventalignSummary
     }
 
     int num_events;
-    int num_matches;
+    int num_steps;
     int num_stays;
     int num_skips;
 
@@ -468,17 +468,17 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
         // movement information
         size_t ref_move = ea.ref_position - prev_ref_pos;
         if(ref_move == 0) {
-            assert(ea.hmm_state == 'E');
             summary.num_stays += 1;
         } else if(i != 0 && ref_move > 1) {
             summary.num_skips += 1;
+        } else if(i != 0 && ref_move == 1) {
+            summary.num_steps += 1;
         }
 
         // event information
         summary.sum_duration += sr.get_duration(ea.event_idx, ea.strand_idx);
 
         if(ea.hmm_state == 'M') {
-            summary.num_matches += 1;
             
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
             GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
@@ -559,7 +559,7 @@ void realign_read(EventalignWriter writer,
                 PoreModel& pore_model = sr.pore_model[strand_idx];
                 fprintf(writer.summary_fp, "%zu\t%s\t%s\t", read_idx, read_name.c_str(), sr.fast5_path.c_str());
                 fprintf(writer.summary_fp, "%s\t%s\t", pore_model.name.c_str(), strand_idx == 0 ? "template" : "complement");
-                fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_matches, summary.num_skips, summary.num_stays);
+                fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_steps, summary.num_skips, summary.num_stays);
                 fprintf(writer.summary_fp, "%.2lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\n", summary.sum_duration, pore_model.shift, pore_model.scale, pore_model.drift, pore_model.var);
             }
         }
@@ -903,7 +903,7 @@ int eventalign_main(int argc, char** argv)
         writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
         // header
         fprintf(writer.summary_fp, "read_index\tread_name\tfast5_path\tmodel_name\tstrand\tnum_events\t");
-        fprintf(writer.summary_fp, "num_matches\tnum_skips\tnum_stays\ttotal_duration\tshift\tscale\tdrift\tvar\n");
+        fprintf(writer.summary_fp, "num_steps\tnum_skips\tnum_stays\ttotal_duration\tshift\tscale\tdrift\tvar\n");
     }
     
     // Initialize iteration
