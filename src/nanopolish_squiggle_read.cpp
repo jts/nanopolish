@@ -269,6 +269,11 @@ void SquiggleRead::_load_R9(uint32_t si,
             mt = config["general/model_type"];
         }
 
+        if(mt == "") {
+            fprintf(stderr, "Error: The basecalling model could not be detected from the fast5 file. Please re-run basecalling using albacore.\n");
+            exit(1);
+        }
+
         kit = "r9.4_450bps";
         // all 250bps data should use this model (according to ONT see
         // https://github.com/nanoporetech/kmer_models/issues/3)
