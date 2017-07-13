@@ -73,7 +73,7 @@ for record in csv_reader:
         update_call_stats(key, num_sites, is_methylated, sequence)
 
 # header
-print "\t".join(["chromosome", "start", "end", "num_cpgs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"])
+print("\t".join(["chromosome", "start", "end", "num_cpgs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"]))
 
 for key in sites:
     if sites[key].called_sites > 0:
