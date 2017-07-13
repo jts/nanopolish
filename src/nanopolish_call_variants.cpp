@@ -79,7 +79,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --consensus=FILE                 run in consensus calling mode and write polished sequence to FILE\n"
 "      --fix-homopolymers               run the experimental homopolymer caller\n"
 "      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
-"  -w, --window=STR                     find variants in window STR (format: ctg:start-end)\n"
+"  -w, --window=STR                     find variants in window STR (format: <chromsome_name>:<start>-<end>)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
 "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
