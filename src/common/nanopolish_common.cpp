@@ -32,7 +32,12 @@ std::vector<std::string> split(std::string in, char delimiter)
 void parse_region_string(const std::string& region, std::string& contig, int& start, int& end)
 {
     std::string region_copy = region;
+
     // Parse the window string
+
+    // Delete commas
+    region_copy.erase(std::remove(region_copy.begin(), region_copy.end(), ','), region_copy.end());
+    
     // Replace ":" and "-" with spaces to make it parseable with stringstream
     std::replace(region_copy.begin(), region_copy.end(), ':', ' ');
     std::replace(region_copy.begin(), region_copy.end(), '-', ' ');
