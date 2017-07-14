@@ -79,5 +79,5 @@ for key in sites:
     if sites[key].called_sites > 0:
         (c, s, e) = key.split(":")
         f = float(sites[key].called_sites_methylated) / sites[key].called_sites
-        print "\t".join([str(x) for x in [c, s, e, sites[key].group_size, sites[key].called_sites, sites[key].called_sites_methylated, f, sites[key].sequence]])
+        print("\t".join([str(x) for x in [c, s, e, sites[key].group_size, sites[key].called_sites, sites[key].called_sites_methylated, f, sites[key].sequence]]))
 
