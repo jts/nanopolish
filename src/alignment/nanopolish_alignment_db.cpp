@@ -422,8 +422,7 @@ BamHandles _initialize_bam_itr(const std::string& bam_filename,
     assert(handles.bam_fh != NULL);
 
     // load bam index file
-    std::string index_filename = bam_filename + ".bai";
-    hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
+    hts_idx_t* bam_idx = sam_index_load(handles.bam_fh, bam_filename.c_str());
     if(bam_idx == NULL) {
         fprintf(stderr, "Error: could not load the .bai index file for %s\n", bam_filename.c_str());
         fprintf(stderr, "Please run 'samtools index %s' before nanopolish\n", bam_filename.c_str());
