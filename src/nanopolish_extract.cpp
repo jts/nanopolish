@@ -70,9 +70,14 @@ get_preferred_basecall_groups(const fast5::File& f)
         const auto& gr_l = f.get_basecall_strand_group_list(2);
         for (const auto& gr : gr_l)
         {
+            auto bcd = f.get_basecall_group_description(gr);
+            // Never use minknow basecalls
+            if(bcd.name == "minknow") {
+                continue;
+            }
+
             if (not opt::basecaller_name.empty())
             {
-                auto bcd = f.get_basecall_group_description(gr);
                 if ((bcd.name != opt::basecaller_name) or
                     (not opt::basecaller_version.empty() and
                      bcd.version != opt::basecaller_version))
@@ -107,9 +112,14 @@ get_preferred_basecall_groups(const fast5::File& f)
             const auto& gr_l = f.get_basecall_strand_group_list(st);
             for (const auto& gr : gr_l)
             {
+                auto bcd = f.get_basecall_group_description(gr);
+                // Never use minknow basecalls
+                if(bcd.name == "minknow") {
+                    continue;
+                }
+
                 if (not opt::basecaller_name.empty())
                 {
-                    auto bcd = f.get_basecall_group_description(gr);
                     if ((bcd.name != opt::basecaller_name) or
                         (not opt::basecaller_version.empty() and
                          bcd.version != opt::basecaller_version))
