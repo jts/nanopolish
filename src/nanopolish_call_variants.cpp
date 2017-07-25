@@ -204,6 +204,10 @@ int get_contig_length(const std::string& contig)
 {
     faidx_t *fai = fai_load(opt::genome_file.c_str());
     int len = faidx_seq_len(fai, contig.c_str());
+    if(len == -1) {
+        fprintf(stderr, "error: faidx could not get contig length for contig %s\n", contig.c_str());
+        exit(EXIT_FAILURE);
+    }
     fai_destroy(fai);
     return len;
 }
