@@ -18,7 +18,7 @@ OVERLAP_LENGTH = args.overlap_length
 for name, length in recs:
     n_segments = (length / SEGMENT_LENGTH) + 1
 
-    for n in xrange(0, length, SEGMENT_LENGTH):
+    for n in range(0, length, SEGMENT_LENGTH):
         if ( n + SEGMENT_LENGTH) > length:
             print("%s:%d-%d" % (name, n, length - 1))
         else:
