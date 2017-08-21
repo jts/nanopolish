@@ -18,13 +18,26 @@ A compiler that supports C++11 is needed to build the sources. Development of th
 
 ## Installation instructions
 
-You will need to run ```git clone --recursive https://github.com/jts/nanopolish.git``` to get the source code and submodules. You can then compile nanopolish by running:
+### Installing the latest code from github (recommended)
+
+You can download and compile the latest code from github as follows:
 
 ```
+git clone --recursive https://github.com/jts/nanopolish.git
+cd nanopolish
 make
 ```
 
-This will automatically download and install libhdf5 and eigen.
+### Installing a particular release
+
+When major features have been added or bugs fixed, we will tag and release a new version of nanopolish. If you wish to use a particular version, you can checkout the tagged version before compiling:
+
+```
+git clone --recursive https://github.com/jts/nanopolish.git
+cd nanopolish
+git checkout v0.7.1
+make
+```
 
 ## Nanopolish modules
 
