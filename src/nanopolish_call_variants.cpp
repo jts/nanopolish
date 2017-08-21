@@ -1103,6 +1103,13 @@ int call_variants_main(int argc, char** argv)
     tag_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
                 "The inferred number of copies of the allele"));
+
+    if(opt::calculate_all_support) {
+        tag_fields.push_back(
+                Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
+                    "The number of reads supporting A,C,G,T at this position"));
+
+    }
     tag_fields.push_back(
             Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
                 "Genotype"));
