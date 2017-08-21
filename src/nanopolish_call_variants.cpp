@@ -809,6 +809,11 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
 
             std::vector<Variant> called_variants = simple_call(variant_db.get_group(gi), opt::ploidy, opt::genotype_only);
 
+            // annotate each SNP variant with support fractions for the alternative bases
+            if(opt::calculate_all_support) {
+                annotate_variants_with_all_support(called_variants, alignments, opt::min_flanking_sequence, alignment_flags);
+            }
+
             // Apply them to the final haplotype
             for(size_t vi = 0; vi < called_variants.size(); vi++) {
                 derived_haplotype.apply_variant(called_variants[vi]);

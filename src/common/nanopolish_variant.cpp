@@ -13,6 +13,7 @@
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 #include "nanopolish_model_names.h"
+#include "nanopolish_alignment_db.h"
 #include "nanopolish_variant_db.h"
 
 //#define DEBUG_HAPLOTYPE_SELECTION 1
@@ -711,3 +712,59 @@ Variant score_variant_thresholded(const Variant& input_variant,
     return out_variant;
 }
 
+void annotate_variants_with_all_support(std::vector<Variant>& input, const AlignmentDB& alignments, int min_flanking_sequence, const uint32_t alignment_flags)
+{
+    for(size_t vi = 0; vi < input.size(); vi++) {
+        Variant& v = input[vi];
+
+        std::string ref_name = v.ref_name;
+        int calling_start = v.ref_position - min_flanking_sequence;
+        int calling_end = v.ref_position + min_flanking_sequence;
+        
+        // Construct haplotype set for A,C,G,T at this position
+        std::vector<Haplotype> haplotypes;
+        Haplotype ref_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
+        Variant tmp_variant = v;
+        for(size_t bi = 0; bi < 4; bi++) {
+            Haplotype variant_haplotype = ref_haplotype;
+            tmp_variant.alt_seq = "ACGT"[bi];
+            variant_haplotype.apply_variant(tmp_variant);
+            haplotypes.push_back(variant_haplotype);
+        }
+
+        // Output
+        std::vector<double> support_fraction(4);
+
+        std::vector<HMMInputData> event_sequences =
+            alignments.get_event_subsequences(ref_name, calling_start, calling_end);
+
+        for(size_t ri = 0; ri < event_sequences.size(); ++ri) {
+            double sum_score = 0.0;
+            std::vector<double> scores;
+            for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+                double s = profile_hmm_score(haplotypes[hi].get_sequence(), event_sequences[ri], alignment_flags);
+                scores.push_back(s);
+                if(hi > 0) {
+                    sum_score = add_logs(s, sum_score);
+                } else { 
+                    sum_score = s;
+                }
+            }
+
+            for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+                support_fraction[hi] += exp(scores[hi] - sum_score);
+            }
+        }
+        
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(3);
+        for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
+            support_fraction[hi] /= event_sequences.size();
+            ss << support_fraction[hi];
+            if(hi != haplotypes.size() - 1) {
+                ss << ",";
+            }
+        }
+        v.add_info("SupportFractionByBase", ss.str());
+    }
+}

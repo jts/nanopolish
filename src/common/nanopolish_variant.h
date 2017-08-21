@@ -15,6 +15,7 @@
 // forward declare
 class Haplotype;
 class VariantGroup;
+class AlignmentDB;
 
 struct Variant
 {
@@ -160,5 +161,9 @@ Variant score_variant_thresholded(const Variant& input_variant,
                                   const std::vector<HMMInputData>& input,
                                   const uint32_t alignment_flags,
                                   const uint32_t score_threshold);
+
+// Annotate each SNP variant in the input set with the fraction of reads supporting every possible base at the position
+void annotate_variants_with_all_support(std::vector<Variant>& input, const AlignmentDB& alignments, int min_flanking_sequence, const uint32_t alignment_flags);
+
 
 #endif
