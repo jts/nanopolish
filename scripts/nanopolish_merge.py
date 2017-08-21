@@ -34,25 +34,25 @@ def merge_into_consensus(consensus, incoming, overlap_length):
         if b != '-':
             m_inc += 1
 
-    
+
     #merged = or_con[0:m_con] + or_inc[m_inc:]
     debug_segment_merge = False
     if debug_segment_merge:
-        print 'OR', or_con
-        print 'OR', or_inc
+        print('OR', or_con)
+        print('OR', or_inc)
 
-        print 'Before trim'
-        print aln_con
-        print aln_inc
+        print('Before trim')
+        print(aln_con)
+        print(aln_inc)
 
-        print 'After trim'
-        print aln_con[begin:end]
-        print aln_inc[begin:end]
-        print score, begin, end, m_con, m_inc
+        print('After trim')
+        print(aln_con[begin:end])
+        print(aln_inc[begin:end])
+        print(score, begin, end, m_con, m_inc)
 
-        print 'Merging:'
-        print or_con[0:m_con]
-        print or_inc[m_inc:]
+        print('Merging:')
+        print(or_con[0:m_con])
+        print(or_inc[m_inc:])
 
     m_con += len(consensus) - overlap_length
     merged = consensus[0:m_con] + incoming[m_inc:]
@@ -69,10 +69,10 @@ segments_by_name = dict()
 for fn in sys.argv[1:]:
     for rec in SeqIO.parse(open(fn), "fasta"):
         (contig, segment_range) = rec.name.split(":")
-        
+
         if contig not in segments_by_name:
             segments_by_name[contig] = dict()
-        
+
         segment_start, segment_end = segment_range.split("-")
 
         sys.stderr.write('Insert %s %s\n' % (contig, segment_start))
@@ -87,7 +87,7 @@ for contig_name in sorted(segments_by_name.keys()):
         sys.stderr.write('Merging %s %d\n' % (contig_name, segment_start))
         # Ensure the segments overlap
         assert(prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start)
-                
+
         sequence = segments_by_name[contig_name][segment_start]
 
         assembly = merge_into_consensus(assembly, sequence, OVERLAP_LENGTH)
