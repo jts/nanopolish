@@ -1107,7 +1107,7 @@ int call_variants_main(int argc, char** argv)
     if(opt::calculate_all_support) {
         tag_fields.push_back(
                 Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
-                    "The number of reads supporting A,C,G,T at this position"));
+                    "The fraction of reads supporting A,C,G,T at this position"));
 
     }
     tag_fields.push_back(
