@@ -12,6 +12,7 @@
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_extract.h"
+#include "nanopolish_progressive_align.h"
 #include <fast5.hpp>
 
 //#define DEBUG_MODEL_SELECTION 1
@@ -41,6 +42,9 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, con
 
     // perform drift correction and other scalings
     transform();
+    
+    // 
+    load_from_raw(flags);
 }
 
 SquiggleRead::~SquiggleRead()
@@ -203,6 +207,54 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
     delete f_p;
     f_p = nullptr;
 }
+
+//
+void SquiggleRead::load_from_raw(const uint32_t flags)
+{
+    f_p = new fast5::File(fast5_path);
+    assert(f_p->is_open());
+    
+    // TODO: replace these with taking the read sequence in externally
+    detect_pore_type();
+    detect_basecall_group();
+    assert(not basecall_group.empty());
+    read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
+
+    // Read sample rate
+    auto channel_params = f_p->get_channel_id_params();
+    sample_rate = channel_params.sampling_rate;
+
+    // Read samples
+    auto& sample_read_names = f_p->get_raw_samples_read_name_list();
+    if(sample_read_names.empty()) {
+        fprintf(stderr, "Error, no raw samples found\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // we assume the first raw sample read is the one we're after
+    std::string sample_read_name = sample_read_names.front();
+    samples = f_p->get_raw_samples(sample_read_name);
+    sample_start_time = f_p->get_raw_samples_params(sample_read_name).start_time;
+    
+    // align events to the basecalled read
+    progressive_align(*this, read_sequence);
+
+    // run event detection on the samples
+    // TODO: using direct read from fast5 for now
+    auto f5_events = f_p->get_basecall_events(0, basecall_group);
+
+    // Filter poor quality reads that have too many "stays"
+    if(!events[0].empty() && events_per_base[0] > 5.0) {
+        g_qc_fail_reads += 1;
+        events[0].clear();
+        events[1].clear();
+    }
+
+    delete f_p;
+    f_p = nullptr;
+}
+
+
 
 void SquiggleRead::_load_R7(uint32_t si)
 {

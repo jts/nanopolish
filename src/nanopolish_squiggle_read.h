@@ -195,7 +195,7 @@ class SquiggleRead
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
-        
+
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events
         std::vector<float> samples;
@@ -218,8 +218,11 @@ class SquiggleRead
 
         SquiggleRead(const SquiggleRead&) {}
 
-        // Load all the read data from a fast5 file
+        // Load all read data from a fast5 file
         void load_from_fast5(const uint32_t flags);
+
+        // Load all read data from raw samples
+        void load_from_raw(const uint32_t flags);
 
         // Version-specific intialization functions
         void _load_R7(uint32_t si);
@@ -231,13 +234,13 @@ class SquiggleRead
 
         // make a map from a base of the 1D read sequence to the range of events supporting that base
         std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
-                                                          uint32_t strand, 
+                                                          uint32_t strand,
                                                           std::vector<fast5::Basecall_Event>& f5_events);
-        
+
         std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
-                                                           uint32_t strand, 
+                                                           uint32_t strand,
                                                            std::vector<fast5::Basecall_Event>& f5_events);
-        
+
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,
                                    size_t& k_idx,
