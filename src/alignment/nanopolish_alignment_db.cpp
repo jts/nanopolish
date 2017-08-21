@@ -424,9 +424,7 @@ BamHandles _initialize_bam_itr(const std::string& bam_filename,
     // load bam index file
     hts_idx_t* bam_idx = sam_index_load(handles.bam_fh, bam_filename.c_str());
     if(bam_idx == NULL) {
-        fprintf(stderr, "Error: could not load the .bai index file for %s\n", bam_filename.c_str());
-        fprintf(stderr, "Please run 'samtools index %s' before nanopolish\n", bam_filename.c_str());
-        exit(EXIT_FAILURE);
+        bam_index_error_exit(bam_filename);
     }
 
     // read the bam header to get the contig ID

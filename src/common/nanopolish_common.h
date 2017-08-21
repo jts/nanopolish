@@ -143,4 +143,8 @@ std::string array2str(const T& array)
     }
     return s;
 }
+
+// Print an error message when failing to load a bam index and exit
+void bam_index_error_exit(const std::string& bam_filename);
+
 #endif

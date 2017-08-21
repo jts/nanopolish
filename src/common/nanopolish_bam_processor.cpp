@@ -8,6 +8,7 @@
 // on each aligned read in parallel
 //
 #include "nanopolish_bam_processor.h"
+#include "nanopolish_common.h"
 #include <assert.h>
 #include <omp.h>
 #include <vector>
@@ -28,7 +29,9 @@ BamProcessor::BamProcessor(const std::string& bam_file,
     // load bam index file
     std::string index_filename = m_bam_file + ".bai";
     m_bam_idx = bam_index_load(index_filename.c_str());
-    assert(m_bam_idx != NULL);
+    if(m_bam_idx == NULL) {
+        bam_index_error_exit(m_bam_file);
+    }
 
     // read the bam header
     m_hdr = sam_hdr_read(m_bam_fh);

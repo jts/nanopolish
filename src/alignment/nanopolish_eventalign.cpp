@@ -856,7 +856,9 @@ int eventalign_main(int argc, char** argv)
     // load bam index file
     std::string index_filename = opt::bam_file + ".bai";
     hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
-    assert(bam_idx != NULL);
+    if(bam_idx == NULL) {
+        bam_index_error_exit(opt::bam_file);
+    }
 
     // read the bam header
     bam_hdr_t* hdr = sam_hdr_read(bam_fh);

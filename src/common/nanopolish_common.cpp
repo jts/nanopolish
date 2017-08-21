@@ -88,3 +88,9 @@ size_t nChoosek(size_t n, size_t k)
     return result;
 }
 
+void bam_index_error_exit(const std::string& bam_filename)
+{
+    fprintf(stderr, "Error: could not load the .bai index file for %s\n", bam_filename.c_str());
+    fprintf(stderr, "Please run 'samtools index %s' before nanopolish\n", bam_filename.c_str());
+    exit(EXIT_FAILURE);
+}
