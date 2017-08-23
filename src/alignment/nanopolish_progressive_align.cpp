@@ -150,7 +150,7 @@ void progressive_align(SquiggleRead& read,
 
     while(curr_k_idx >= 0) {
         // emit alignment
-        fprintf(stderr, "k: %d e: %d d: %d\n", curr_k_idx, curr_event_idx, kmer_for_event[curr_event_idx]);
+        //fprintf(stderr, "k: %d e: %d d: %d\n", curr_k_idx, curr_event_idx, kmer_for_event[curr_event_idx]);
 
         // update debug stats
         int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
@@ -185,7 +185,6 @@ void progressive_align(SquiggleRead& read,
     free_matrix(viterbi_matrix);
     free_matrix(backtrack_matrix);
 
-    exit(EXIT_FAILURE);
 }
 
 void progressive_align2(SquiggleRead& read,

@@ -11,7 +11,7 @@ SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 LIBS=-lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp
-CFLAGS ?= -O3
+CFLAGS ?= -O3 -std=c99
 CXX ?= g++
 CC ?= gcc
 

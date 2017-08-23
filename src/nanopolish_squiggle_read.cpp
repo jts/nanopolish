@@ -13,6 +13,11 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_extract.h"
 #include "nanopolish_progressive_align.h"
+
+extern "C" {
+#include "event_detection.h"
+#include "scrappie_common.h"
+}
 #include <fast5.hpp>
 
 //#define DEBUG_MODEL_SELECTION 1
@@ -236,12 +241,69 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     samples = f_p->get_raw_samples(sample_read_name);
     sample_start_time = f_p->get_raw_samples_params(sample_read_name).start_time;
     
+    // convert events to scrappie's format (for event detection)
+    raw_table rt;
+
+    rt.n = samples.size();
+    rt.start = 0;
+    rt.end = samples.size() - 1;
+    rt.raw = (float*)malloc(sizeof(float) * samples.size());
+    for(size_t i = 0; i < samples.size(); ++i) {
+        rt.raw[i] = samples[i];
+    }
+
+    // trim using scrappie's internal method
+    // parameters taken directly from scrappie defaults
+    int trim_start = 200;
+    int trim_end = 10;
+    int varseg_chunk = 100;
+    float varseg_thresh = 0.0;
+    trim_and_segment_raw(rt, trim_start, trim_end, varseg_chunk, varseg_thresh);
+    event_table et = detect_events(rt, event_detection_defaults);
+
+    fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
+
+    // Use method-of-moments to generate initial shift/scale estimates
+    size_t strand_idx = 0;
+    size_t k = this->pore_model[strand_idx].k;
+    size_t n_kmers = this->read_sequence.size() - k + 1;
+    const Alphabet* alphabet = this->pore_model[strand_idx].pmalphabet;
+
+    // estimate shift
+    double event_level_sum = 0.0f;
+    for(size_t i = 0; i < et.n; ++i) {
+        event_level_sum += et.event[i].mean;
+    }
+
+    double kmer_level_sum = 0.0f;
+    double kmer_level_sq_sum = 0.0f;
+    for(size_t i = 0; i < n_kmers; ++i) {
+        size_t kmer_rank = alphabet->kmer_rank(this->read_sequence.substr(i, k).c_str(), k);
+        double l = this->pore_model[strand_idx].get_parameters(kmer_rank).level_mean;
+        kmer_level_sum += l;
+        kmer_level_sq_sum += pow(l, 2.0f);
+    }
+    double shift = event_level_sum / et.n - kmer_level_sum / n_kmers;
+
+    // estimate scale
+    double event_level_sq_sum = 0.0f;
+    for(size_t i = 0; i < et.n; ++i) {
+        event_level_sq_sum += pow(et.event[i].mean - shift, 2.0);
+    }
+    double scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
+
+    fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, shift);
+    fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, scale);
+    fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", this->pore_model[strand_idx].shift, this->pore_model[strand_idx].scale);
+
+    free(rt.raw);
+    free(et.event);
+    this->pore_model[strand_idx].shift = shift;
+    this->pore_model[strand_idx].scale = scale;
+    this->pore_model[strand_idx].bake_gaussian_parameters();
+
     // align events to the basecalled read
     progressive_align(*this, read_sequence);
-
-    // run event detection on the samples
-    // TODO: using direct read from fast5 for now
-    auto f5_events = f_p->get_basecall_events(0, basecall_group);
 
     // Filter poor quality reads that have too many "stays"
     if(!events[0].empty() && events_per_base[0] > 5.0) {
