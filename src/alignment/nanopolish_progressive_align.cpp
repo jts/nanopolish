@@ -10,6 +10,47 @@
 #include "nanopolish_progressive_align.h"
 #include "nanopolish_profile_hmm.h"
 
+//
+void estimate_scalings_using_mom(const std::string& sequence,
+                                 const PoreModel& pore_model,
+                                 const event_table& et,
+                                 double& out_shift,
+                                 double& out_scale)
+{
+    size_t k = pore_model.k;
+    size_t n_kmers = sequence.size() - k + 1;
+    const Alphabet* alphabet = pore_model.pmalphabet;
+
+    // Calculate summary statistics over the events and
+    // the model implied by the read
+    double event_level_sum = 0.0f;
+    for(size_t i = 0; i < et.n; ++i) {
+        event_level_sum += et.event[i].mean;
+    }
+
+    double kmer_level_sum = 0.0f;
+    double kmer_level_sq_sum = 0.0f;
+    for(size_t i = 0; i < n_kmers; ++i) {
+        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(i, k).c_str(), k);
+        double l = pore_model.get_parameters(kmer_rank).level_mean;
+        kmer_level_sum += l;
+        kmer_level_sq_sum += pow(l, 2.0f);
+    }
+    out_shift = event_level_sum / et.n - kmer_level_sum / n_kmers;
+
+    // estimate scale
+    double event_level_sq_sum = 0.0f;
+    for(size_t i = 0; i < et.n; ++i) {
+        event_level_sq_sum += pow(et.event[i].mean - out_shift, 2.0);
+    }
+
+    out_scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
+    
+    fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, out_shift);
+    fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, out_scale);
+    fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", pore_model.shift, pore_model.scale);
+}
+
 void progressive_align(SquiggleRead& read,
                        const std::string& sequence)
 {

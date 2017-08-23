@@ -219,6 +219,8 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
     
+    size_t strand_idx = 0;
+
     // TODO: replace these with taking the read sequence in externally
     detect_pore_type();
     detect_basecall_group();
@@ -262,39 +264,12 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, event_detection_defaults);
 
     fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
-
-    // Use method-of-moments to generate initial shift/scale estimates
-    size_t strand_idx = 0;
-    size_t k = this->pore_model[strand_idx].k;
-    size_t n_kmers = this->read_sequence.size() - k + 1;
-    const Alphabet* alphabet = this->pore_model[strand_idx].pmalphabet;
-
-    // estimate shift
-    double event_level_sum = 0.0f;
-    for(size_t i = 0; i < et.n; ++i) {
-        event_level_sum += et.event[i].mean;
-    }
-
-    double kmer_level_sum = 0.0f;
-    double kmer_level_sq_sum = 0.0f;
-    for(size_t i = 0; i < n_kmers; ++i) {
-        size_t kmer_rank = alphabet->kmer_rank(this->read_sequence.substr(i, k).c_str(), k);
-        double l = this->pore_model[strand_idx].get_parameters(kmer_rank).level_mean;
-        kmer_level_sum += l;
-        kmer_level_sq_sum += pow(l, 2.0f);
-    }
-    double shift = event_level_sum / et.n - kmer_level_sum / n_kmers;
-
-    // estimate scale
-    double event_level_sq_sum = 0.0f;
-    for(size_t i = 0; i < et.n; ++i) {
-        event_level_sq_sum += pow(et.event[i].mean - shift, 2.0);
-    }
-    double scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
-
-    fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, shift);
-    fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, scale);
-    fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", this->pore_model[strand_idx].shift, this->pore_model[strand_idx].scale);
+    double shift, scale;
+    estimate_scalings_using_mom(this->read_sequence,
+                                this->pore_model[strand_idx],
+                                et,
+                                shift,
+                                scale);
 
     free(rt.raw);
     free(et.event);
