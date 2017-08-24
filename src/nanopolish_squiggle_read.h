@@ -41,11 +41,11 @@ enum SquiggleReadFlags
 // The raw event data for a read
 struct SquiggleEvent
 {
-    float mean;       // current level mean in picoamps
-    float stdv;       // current level stdv
+    float mean;        // current level mean in picoamps
+    float stdv;        // current level stdv
     double start_time; // start time of the event in seconds
-    float duration;     // duration of the event in seconds
-    float log_stdv;   // precompute for efficiency
+    float duration;    // duration of the event in seconds
+    float log_stdv;    // precompute for efficiency
 };
 
 struct IndexPair

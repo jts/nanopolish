@@ -181,6 +181,9 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
     }
 
     // debug stats
+    double sum_emission = 0;
+    double n_aligned_events = 0;
+
     int sum_distance_from_debug = 0;
     int max_distance_from_debug = 0;
     int num_exact_matches = 0;
@@ -190,6 +193,7 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
     while(curr_k_idx >= 0) {
         // emit alignment
         //fprintf(stderr, "k: %d e: %d d: %d\n", curr_k_idx, curr_event_idx, kmer_for_event[curr_event_idx]);
+
 
         // update debug stats
         int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
@@ -201,7 +205,11 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
         int ed = curr_event_idx - expected_event;
         max_distance_from_expected = std::max(abs(ed), max_distance_from_expected);
         sum_distance_from_expected += ed;
-        
+
+        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
+        sum_emission += log_probability_match_r9(read, kmer_rank, curr_event_idx, strand_idx);
+        n_aligned_events += 1;
+           
         //fprintf(stderr, "k: %d ed: %d\n", curr_k_idx, ed);
 
         // update indices using backtrack pointers
@@ -221,6 +229,7 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
 
     fprintf(stderr, "truth stats -- avg: %.2lf max: %d exact: %d\n", (double)sum_distance_from_debug / n_kmers, max_distance_from_debug, num_exact_matches);
     fprintf(stderr, "event stats -- avg: %.2lf max: %d\n", (double)sum_distance_from_expected / n_events, max_distance_from_expected);
+    fprintf(stderr, "emission stats -- avg: %.2lf\n", sum_emission / n_aligned_events);
     free_matrix(viterbi_matrix);
     free_matrix(backtrack_matrix);
 }

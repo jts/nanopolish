@@ -18,6 +18,7 @@ extern "C" {
 #include "event_detection.h"
 #include "scrappie_common.h"
 }
+
 #include <fast5.hpp>
 
 //#define DEBUG_MODEL_SELECTION 1
@@ -225,11 +226,12 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     detect_pore_type();
     detect_basecall_group();
     assert(not basecall_group.empty());
-    read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
+    this->read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
+
 
     // Read sample rate
     auto channel_params = f_p->get_channel_id_params();
-    sample_rate = channel_params.sampling_rate;
+    this->sample_rate = channel_params.sampling_rate;
 
     // Read samples
     auto& sample_read_names = f_p->get_raw_samples_read_name_list();
@@ -240,10 +242,9 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
     // we assume the first raw sample read is the one we're after
     std::string sample_read_name = sample_read_names.front();
-    samples = f_p->get_raw_samples(sample_read_name);
-    sample_start_time = f_p->get_raw_samples_params(sample_read_name).start_time;
+    std::vector<float> samples = f_p->get_raw_samples(sample_read_name);
     
-    // convert events to scrappie's format (for event detection)
+    // convert samples to scrappie's format (for event detection)
     raw_table rt;
 
     rt.n = samples.size();
@@ -262,30 +263,75 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     float varseg_thresh = 0.0;
     trim_and_segment_raw(rt, trim_start, trim_end, varseg_chunk, varseg_thresh);
     event_table et = detect_events(rt, event_detection_defaults);
-
     fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
+    
+    /*
+    // Load pore model and scale to events using MoM
+    std::string kit = "r9.4_450bps";
+    std::string alphabet = "nucleotide";
+    std::string strand_str = "template";
+    size_t k = 6;
+    this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
+                                                           alphabet,
+                                                           strand_str,
+                                                           6);
     double shift, scale;
     estimate_scalings_using_mom(this->read_sequence,
                                 this->pore_model[strand_idx],
                                 et,
                                 shift,
                                 scale);
-
-    free(rt.raw);
-    free(et.event);
+    
     this->pore_model[strand_idx].shift = shift;
     this->pore_model[strand_idx].scale = scale;
     this->pore_model[strand_idx].bake_gaussian_parameters();
+    */
+    
+    // Copy events into nanopolish's format
+    std::vector<SquiggleEvent> old_events = this->events[strand_idx];
+    fprintf(stderr, "start: %d end: %d n: %d (old n: %zu)\n", et.start, et.end, et.n, old_events.size());
+    int event_trim_start = 195;
+    this->events[strand_idx].resize(et.n - event_trim_start);
+    double start_time = 14056.823500;
+    for(size_t i = event_trim_start; i < et.n; ++i) {
+        float length_in_seconds = et.event[i].length / this->sample_rate;
+        this->events[strand_idx][i - event_trim_start] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
+        start_time += length_in_seconds;
+    }
+
+    /*
+    fprintf(stderr, "events for %s\n", this->fast5_path.c_str());
+    for(size_t i = 0; i < 300; ++i) {
+        const SquiggleEvent& e = this->events[strand_idx][i];
+        const SquiggleEvent& oe = old_events[i];
+        fprintf(stderr, "et.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", i, e.mean, e.stdv, e.start_time, e.duration, e.log_stdv);
+        fprintf(stderr, "f5.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", i, oe.mean, oe.stdv, oe.start_time, oe.duration, oe.log_stdv);
+    }
+
+    for(size_t i = 1; i < 200; ++i) {
+        size_t nidx = this->events[strand_idx].size() - i;
+        size_t oidx = old_events.size() - i;
+        const SquiggleEvent& e = this->events[strand_idx][nidx];
+        const SquiggleEvent& oe = old_events[oidx];
+        fprintf(stderr, "et.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", nidx, e.mean, e.stdv, e.start_time, e.duration, e.log_stdv);
+        fprintf(stderr, "f5.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", oidx, oe.mean, oe.stdv, oe.start_time, oe.duration, oe.log_stdv);
+    }
+    */
+
+    free(rt.raw);
+    free(et.event);
 
     // align events to the basecalled read
     banded_simple_event_align(*this, read_sequence);
 
+/*
     // Filter poor quality reads that have too many "stays"
     if(!events[0].empty() && events_per_base[0] > 5.0) {
         g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
     }
+*/
 
     delete f_p;
     f_p = nullptr;
