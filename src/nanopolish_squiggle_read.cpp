@@ -12,7 +12,7 @@
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_extract.h"
-#include "nanopolish_progressive_align.h"
+#include "nanopolish_raw_loader.h"
 
 extern "C" {
 #include "event_detection.h"
@@ -278,7 +278,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->pore_model[strand_idx].bake_gaussian_parameters();
 
     // align events to the basecalled read
-    progressive_align(*this, read_sequence);
+    banded_simple_event_align(*this, read_sequence);
 
     // Filter poor quality reads that have too many "stays"
     if(!events[0].empty() && events_per_base[0] > 5.0) {
