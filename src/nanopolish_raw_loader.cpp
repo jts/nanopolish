@@ -75,8 +75,11 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
     const uint8_t FROM_U = 1;
     const uint8_t FROM_L = 2;
     
+    // qc
+    double min_average_log_emission = -5.0;
+
     // banding
-    int bandwidth = 1000;
+    int bandwidth = 500;
     int half_band = bandwidth / 2;
 
     // transitions
@@ -233,6 +236,16 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
     }
     std::reverse(out.begin(), out.end());
 
+    // QC results
+
+    // we make sure the
+    double avg_log_emission = sum_emission / n_aligned_events;
+    bool spanned = out.front().ref_pos == 0 &&  out.back().ref_pos == n_kmers - 1;
+    
+    if(avg_log_emission < min_average_log_emission || !spanned) {
+        out.clear();
+    }
+    
     fprintf(stderr, "truth stats -- avg: %.2lf max: %d exact: %d\n", (double)sum_distance_from_debug / n_kmers, max_distance_from_debug, num_exact_matches);
     fprintf(stderr, "event stats -- avg: %.2lf max: %d\n", (double)sum_distance_from_expected / n_events, max_distance_from_expected);
     fprintf(stderr, "emission stats -- avg: %.2lf\n", sum_emission / n_aligned_events);

@@ -31,6 +31,8 @@ int g_unparseable_reads = 0;
 int g_qc_fail_reads = 0;
 int g_failed_calibration_reads = 0;
 
+const double MIN_CALIBRATION_VAR = 2.5;
+
 //
 SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
     read_name(name),
@@ -262,6 +264,8 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     float varseg_thresh = 0.0;
     trim_and_segment_raw(rt, trim_start, trim_end, varseg_chunk, varseg_thresh);
     event_table et = detect_events(rt, event_detection_defaults);
+    assert(rt.n > 0);
+    assert(et.n > 0);
     fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
     
     // Load pore model and scale to events using MoM
@@ -299,25 +303,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         start_time += length_in_seconds;
     }
 
-    /*
-    fprintf(stderr, "events for %s\n", this->fast5_path.c_str());
-    for(size_t i = 0; i < 300; ++i) {
-        const SquiggleEvent& e = this->events[strand_idx][i];
-        const SquiggleEvent& oe = old_events[i];
-        fprintf(stderr, "et.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", i, e.mean, e.stdv, e.start_time, e.duration, e.log_stdv);
-        fprintf(stderr, "f5.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", i, oe.mean, oe.stdv, oe.start_time, oe.duration, oe.log_stdv);
-    }
-
-    for(size_t i = 1; i < 200; ++i) {
-        size_t nidx = this->events[strand_idx].size() - i;
-        size_t oidx = old_events.size() - i;
-        const SquiggleEvent& e = this->events[strand_idx][nidx];
-        const SquiggleEvent& oe = old_events[oidx];
-        fprintf(stderr, "et.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", nidx, e.mean, e.stdv, e.start_time, e.duration, e.log_stdv);
-        fprintf(stderr, "f5.event[%zu]: %.2f %.2f %.6f %.6f %.6f\n", oidx, oe.mean, oe.stdv, oe.start_time, oe.duration, oe.log_stdv);
-    }
-    */
-
     assert(rt.raw != NULL);
     assert(et.event != NULL);
 
@@ -326,45 +311,77 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
     // align events to the basecalled read
     std::vector<AlignedPair> event_alignment = banded_simple_event_align(*this, read_sequence);
-    
-    // create base-to-event map
-    size_t n_kmers = read_sequence.size() - k + 1;
-    this->base_to_event_map.clear();
-    this->base_to_event_map.resize(n_kmers);
+    if(event_alignment.size() > 0) {
 
-    size_t max_event = 0;
-    size_t min_event = std::numeric_limits<size_t>::max();
+        // create base-to-event map
+        size_t n_kmers = read_sequence.size() - k + 1;
+        this->base_to_event_map.clear();
+        this->base_to_event_map.resize(n_kmers);
 
-    size_t prev_event_idx = -1;
-    for(size_t i = 0; i < event_alignment.size(); ++i) {
-        if(i == 0 || i == event_alignment.size() - 1) {
-            fprintf(stderr, "alignment[%u]: %zu %zu\n", i, event_alignment[i].ref_pos, event_alignment[i].read_pos);
-        }
+        size_t max_event = 0;
+        size_t min_event = std::numeric_limits<size_t>::max();
 
-        size_t k_idx = event_alignment[i].ref_pos;
-        size_t event_idx = event_alignment[i].read_pos;
-        IndexPair& elem = this->base_to_event_map[k_idx].indices[strand_idx];
-        if(event_idx != prev_event_idx) {
-            if(elem.start == -1) {
-                elem.start = event_idx;
+        size_t prev_event_idx = -1;
+        for(size_t i = 0; i < event_alignment.size(); ++i) {
+            if(i == 0 || i == event_alignment.size() - 1) {
+                fprintf(stderr, "alignment[%u]: %zu %zu\n", i, event_alignment[i].ref_pos, event_alignment[i].read_pos);
             }
-            elem.stop = event_idx;
+
+            size_t k_idx = event_alignment[i].ref_pos;
+            size_t event_idx = event_alignment[i].read_pos;
+            IndexPair& elem = this->base_to_event_map[k_idx].indices[strand_idx];
+            if(event_idx != prev_event_idx) {
+                if(elem.start == -1) {
+                    elem.start = event_idx;
+                }
+                elem.stop = event_idx;
+            }
+
+            max_event = std::max(max_event, event_idx);
+            min_event = std::min(min_event, event_idx);
+            prev_event_idx = event_idx;
         }
 
-        max_event = std::max(max_event, event_idx);
-        min_event = std::min(min_event, event_idx);
-        prev_event_idx = event_idx;
+        events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
+        
+        // do final calibration
+        std::vector<EventAlignment> alignment =
+            get_eventalignment_for_1d_basecalls(read_sequence, this->base_to_event_map, k, strand_idx, 0);
+    
+        // reset default scaling parameters
+        this->pore_model[strand_idx].shift = 0.0;
+        this->pore_model[strand_idx].scale = 1.0;
+        this->pore_model[strand_idx].drift = 0.0;
+        this->pore_model[strand_idx].var = 1.0;
+        this->pore_model[strand_idx].scale_sd = 1.0;
+        this->pore_model[strand_idx].var_sd = 1.0;
+        this->pore_model[strand_idx].bake_gaussian_parameters();
+
+        // run recalibration to get the best set of scaling parameters and the residual
+        // between the (scaled) event levels and the model
+        bool calibrated = recalibrate_model(*this, strand_idx, alignment, this->pore_model[strand_idx].pmalphabet, true, false);
+
+        fprintf(stderr, "[calibration] read: %s"
+                         "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
+                                read_name.substr(0, 6).c_str(), pore_model[strand_idx].scale,
+                                pore_model[strand_idx].shift, pore_model[strand_idx].drift, pore_model[strand_idx].var);
+
+        // QC calibration
+        if(!calibrated || this->pore_model[strand_idx].var > MIN_CALIBRATION_VAR) {
+            events[strand_idx].clear();
+        }
+    } else {
+        // Could not infer alignent, fail this read
+        this->events[strand_idx].clear();
+        this->events_per_base[strand_idx] = 0.0f;
     }
 
-    events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
-/*
     // Filter poor quality reads that have too many "stays"
-    if(!events[0].empty() && events_per_base[0] > 5.0) {
+    if(!this->events[strand_idx].empty() && this->events_per_base[strand_idx] > 5.0) {
         g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
     }
-*/
 
     delete f_p;
     f_p = nullptr;
@@ -572,7 +589,7 @@ void SquiggleRead::_load_R9(uint32_t si,
 #endif
         }
 
-        if(best_model_var < 2.5) {
+        if(best_model_var < MIN_CALIBRATION_VAR) {
 #ifdef DEBUG_MODEL_SELECTION
             fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
