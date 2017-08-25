@@ -50,7 +50,7 @@ void estimate_scalings_using_mom(const std::string& sequence,
     fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", pore_model.shift, pore_model.scale);
 }
 
-void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
+std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
 {
     size_t strand_idx = 0;
     size_t k = read.pore_model[strand_idx].k;
@@ -64,8 +64,10 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
             continue;
         }
 
-        for(size_t j = elem.start; j <= elem.stop; ++j) {
-            kmer_for_event[j] = ki;
+        for(int j = elem.start; j <= elem.stop; ++j) {
+            if(j >= 0 && j < kmer_for_event.size()) {
+                kmer_for_event[j] = ki;
+            }
         }
     }
  
@@ -119,8 +121,9 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
         for(int row = 0; row < n_rows; ++row) {
             
             int event_idx = min_event_idx + row;
-            if(event_idx > n_events) {
+            if(event_idx >= n_events) {
                 set(viterbi_matrix, row, col, -INFINITY);
+                continue;
             }
 
             // dp update
@@ -190,10 +193,12 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
     int max_distance_from_expected = 0;
     int sum_distance_from_expected = 0;
 
+    std::vector<AlignedPair> out;
+
     while(curr_k_idx >= 0) {
         // emit alignment
         //fprintf(stderr, "k: %d e: %d d: %d\n", curr_k_idx, curr_event_idx, kmer_for_event[curr_event_idx]);
-
+        out.push_back({curr_k_idx, curr_event_idx});
 
         // update debug stats
         int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
@@ -226,10 +231,12 @@ void banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
             curr_k_idx -= 1;
         }   
     }
+    std::reverse(out.begin(), out.end());
 
     fprintf(stderr, "truth stats -- avg: %.2lf max: %d exact: %d\n", (double)sum_distance_from_debug / n_kmers, max_distance_from_debug, num_exact_matches);
     fprintf(stderr, "event stats -- avg: %.2lf max: %d\n", (double)sum_distance_from_expected / n_events, max_distance_from_expected);
     fprintf(stderr, "emission stats -- avg: %.2lf\n", sum_emission / n_aligned_events);
     free_matrix(viterbi_matrix);
     free_matrix(backtrack_matrix);
+    return out;
 }

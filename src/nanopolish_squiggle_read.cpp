@@ -43,14 +43,14 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, con
 
     #pragma omp critical(sr_load_fast5)
     {
-        load_from_fast5(flags);
+        //load_from_fast5(flags);
     }
-
-    // perform drift correction and other scalings
-    transform();
     
     // 
     load_from_raw(flags);
+    
+    // perform drift correction and other scalings
+    transform();
 }
 
 SquiggleRead::~SquiggleRead()
@@ -228,7 +228,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     assert(not basecall_group.empty());
     this->read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
 
-
     // Read sample rate
     auto channel_params = f_p->get_channel_id_params();
     this->sample_rate = channel_params.sampling_rate;
@@ -265,7 +264,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, event_detection_defaults);
     fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
     
-    /*
     // Load pore model and scale to events using MoM
     std::string kit = "r9.4_450bps";
     std::string alphabet = "nucleotide";
@@ -284,18 +282,20 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     
     this->pore_model[strand_idx].shift = shift;
     this->pore_model[strand_idx].scale = scale;
+    this->pore_model[strand_idx].drift = 0.0f;
+    this->pore_model[strand_idx].var = 1.0f;
+    transform();
+
     this->pore_model[strand_idx].bake_gaussian_parameters();
-    */
     
     // Copy events into nanopolish's format
     std::vector<SquiggleEvent> old_events = this->events[strand_idx];
     fprintf(stderr, "start: %d end: %d n: %d (old n: %zu)\n", et.start, et.end, et.n, old_events.size());
-    int event_trim_start = 195;
-    this->events[strand_idx].resize(et.n - event_trim_start);
-    double start_time = 14056.823500;
-    for(size_t i = event_trim_start; i < et.n; ++i) {
+    this->events[strand_idx].resize(et.n);
+    double start_time = 0;
+    for(size_t i = 0; i < et.n; ++i) {
         float length_in_seconds = et.event[i].length / this->sample_rate;
-        this->events[strand_idx][i - event_trim_start] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
+        this->events[strand_idx][i] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
         start_time += length_in_seconds;
     }
 
@@ -318,12 +318,45 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     }
     */
 
+    assert(rt.raw != NULL);
+    assert(et.event != NULL);
+
     free(rt.raw);
     free(et.event);
 
     // align events to the basecalled read
-    banded_simple_event_align(*this, read_sequence);
+    std::vector<AlignedPair> event_alignment = banded_simple_event_align(*this, read_sequence);
+    
+    // create base-to-event map
+    size_t n_kmers = read_sequence.size() - k + 1;
+    this->base_to_event_map.clear();
+    this->base_to_event_map.resize(n_kmers);
 
+    size_t max_event = 0;
+    size_t min_event = std::numeric_limits<size_t>::max();
+
+    size_t prev_event_idx = -1;
+    for(size_t i = 0; i < event_alignment.size(); ++i) {
+        if(i == 0 || i == event_alignment.size() - 1) {
+            fprintf(stderr, "alignment[%u]: %zu %zu\n", i, event_alignment[i].ref_pos, event_alignment[i].read_pos);
+        }
+
+        size_t k_idx = event_alignment[i].ref_pos;
+        size_t event_idx = event_alignment[i].read_pos;
+        IndexPair& elem = this->base_to_event_map[k_idx].indices[strand_idx];
+        if(event_idx != prev_event_idx) {
+            if(elem.start == -1) {
+                elem.start = event_idx;
+            }
+            elem.stop = event_idx;
+        }
+
+        max_event = std::max(max_event, event_idx);
+        min_event = std::min(min_event, event_idx);
+        prev_event_idx = event_idx;
+    }
+
+    events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
 /*
     // Filter poor quality reads that have too many "stays"
     if(!events[0].empty() && events_per_base[0] > 5.0) {

@@ -10,6 +10,7 @@
 #define NANOPOLISH_RAW_LOADER_H
 
 #include "nanopolish_squiggle_read.h"
+#include "nanopolish_anchor.h"
 #include "scrappie_structures.h"
 
 void estimate_scalings_using_mom(const std::string& sequence,
@@ -18,7 +19,7 @@ void estimate_scalings_using_mom(const std::string& sequence,
                                  double& out_shift,
                                  double& out_scale);
 
-void banded_simple_event_align(SquiggleRead& read,
-                               const std::string& sequence);
+std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read,
+                                                   const std::string& sequence);
 
 #endif
