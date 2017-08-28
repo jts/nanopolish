@@ -89,13 +89,13 @@ void parse_getmodel_options(int argc, char** argv)
         die = true;
     }
 
-    opt::input_file = argv[optind++];
-
     if (die) 
     {
         std::cout << "\n" << GETMODEL_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
+
+    opt::input_file = argv[optind++];
 }
 
 int getmodel_main(int argc, char** argv)
