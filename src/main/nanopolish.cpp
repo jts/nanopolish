@@ -9,6 +9,7 @@
 #include <map>
 #include <functional>
 #include "logsum.h"
+#include "nanopolish_index.h"
 #include "nanopolish_extract.h"
 #include "nanopolish_call_variants.h"
 #include "nanopolish_consensus.h"
@@ -27,6 +28,7 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"help",        print_usage},
     {"--help",      print_usage},
     {"--version",   print_version},
+    {"index",       index_main},
     {"extract",     extract_main},
     {"consensus",   consensus_main},
     {"eventalign",  eventalign_main},
