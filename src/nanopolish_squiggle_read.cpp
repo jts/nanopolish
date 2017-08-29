@@ -266,7 +266,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, event_detection_defaults);
     assert(rt.n > 0);
     assert(et.n > 0);
-    fprintf(stderr, "event detection found %zu events (from fast5: %zu)\n", et.n, this->events[0].size());
     
     // Load pore model and scale to events using MoM
     std::string kit = "r9.4_450bps";
@@ -293,8 +292,8 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->pore_model[strand_idx].bake_gaussian_parameters();
     
     // Copy events into nanopolish's format
-    std::vector<SquiggleEvent> old_events = this->events[strand_idx];
-    fprintf(stderr, "start: %d end: %d n: %d (old n: %zu)\n", et.start, et.end, et.n, old_events.size());
+    //fprintf(stderr, "start: %d end: %d n: %d\n", et.start, et.end, et.n);
+
     this->events[strand_idx].resize(et.n);
     double start_time = 0;
     for(size_t i = 0; i < et.n; ++i) {
@@ -323,9 +322,12 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
         size_t prev_event_idx = -1;
         for(size_t i = 0; i < event_alignment.size(); ++i) {
+
+            /*
             if(i == 0 || i == event_alignment.size() - 1) {
                 fprintf(stderr, "alignment[%u]: %zu %zu\n", i, event_alignment[i].ref_pos, event_alignment[i].read_pos);
             }
+            */
 
             size_t k_idx = event_alignment[i].ref_pos;
             size_t event_idx = event_alignment[i].read_pos;
@@ -361,10 +363,12 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         // between the (scaled) event levels and the model
         bool calibrated = recalibrate_model(*this, strand_idx, alignment, this->pore_model[strand_idx].pmalphabet, true, false);
 
+#ifdef DEBUG_MODEL_SELECTION
         fprintf(stderr, "[calibration] read: %s"
                          "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
                                 read_name.substr(0, 6).c_str(), pore_model[strand_idx].scale,
                                 pore_model[strand_idx].shift, pore_model[strand_idx].drift, pore_model[strand_idx].var);
+#endif
 
         // QC calibration
         if(!calibrated || this->pore_model[strand_idx].var > MIN_CALIBRATION_VAR) {

@@ -44,10 +44,12 @@ void estimate_scalings_using_mom(const std::string& sequence,
     }
 
     out_scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
-    
+
+#if DEBUG_PRINT_STATS
     fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, out_shift);
     fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, out_scale);
     fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", pore_model.shift, pore_model.scale);
+#endif
 }
 
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
@@ -55,7 +57,8 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
     size_t strand_idx = 0;
     size_t k = read.pore_model[strand_idx].k;
     const Alphabet* alphabet = read.pore_model[strand_idx].pmalphabet;
-    
+
+#if DEBUG_PRINT_STATS
     // Build a debug event->kmer map
     std::vector<size_t> kmer_for_event(read.events[strand_idx].size());
     for(size_t ki = 0; ki < read.base_to_event_map.size(); ++ki) {
@@ -70,7 +73,8 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
             }
         }
     }
- 
+#endif
+
     const uint8_t FROM_D = 0;
     const uint8_t FROM_U = 1;
     const uint8_t FROM_L = 2;
@@ -99,7 +103,6 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
         int expected_event_idx = (double)(ki * events_per_kmer);
         min_event_idx_by_kmer[ki] = std::max(expected_event_idx - half_band, 0);
     }
-    fprintf(stderr, "events per base: %.2lf\n", events_per_kmer);
     // Initialize DP matrices
     DoubleMatrix viterbi_matrix;
     UInt8Matrix backtrack_matrix;
@@ -157,16 +160,6 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
      
             set(viterbi_matrix, row, col, max_score);
             set(backtrack_matrix, row, col, from);
-            
-            /*
-            if(kmer_idx == 5000) {
-                fprintf(stderr, "event: %zu kmer: %zu row: %d col: %d\n", event_idx, kmer_idx, row, col);
-                fprintf(stderr, "\tmin_event: %d min_event_prev_col: %d\n", min_event_idx, min_event_idx_prev_col);
-                fprintf(stderr, "\tdiag event: %d row: %d\n", min_event_idx + row_diag, row_diag);
-                fprintf(stderr, "\tup event: %d row: %d\n", min_event_idx_prev_col + row_up, row_up);
-                fprintf(stderr, "\tleft event: %d row: %d\n", min_event_idx_prev_col + row_left, row_left);
-            }
-            */
         }
     }
 
@@ -189,21 +182,29 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
     // debug stats
     double sum_emission = 0;
     double n_aligned_events = 0;
+    std::vector<AlignedPair> out;
 
+#if DEBUG_PRINT_STATS
     int sum_distance_from_debug = 0;
     int max_distance_from_debug = 0;
     int num_exact_matches = 0;
     int max_distance_from_expected = 0;
     int sum_distance_from_expected = 0;
-
-    std::vector<AlignedPair> out;
+    std::vector<int> debug_event_for_kmer(n_kmers, -1);
+#endif
 
     while(curr_k_idx >= 0) {
         // emit alignment
-        //fprintf(stderr, "k: %d e: %d d: %d\n", curr_k_idx, curr_event_idx, kmer_for_event[curr_event_idx]);
         out.push_back({curr_k_idx, curr_event_idx});
+        
+        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
+        sum_emission += log_probability_match_r9(read, kmer_rank, curr_event_idx, strand_idx);
+        n_aligned_events += 1;
 
+#if DEBUG_PRINT_STATS
         // update debug stats
+        debug_event_for_kmer[curr_k_idx] = curr_event_idx;
+        
         int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
         sum_distance_from_debug += kd;
         max_distance_from_debug = std::max(kd, max_distance_from_debug);
@@ -213,12 +214,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
         int ed = curr_event_idx - expected_event;
         max_distance_from_expected = std::max(abs(ed), max_distance_from_expected);
         sum_distance_from_expected += ed;
-
-        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, kmer_rank, curr_event_idx, strand_idx);
-        n_aligned_events += 1;
-           
-        //fprintf(stderr, "k: %d ed: %d\n", curr_k_idx, ed);
+#endif
 
         // update indices using backtrack pointers
         int row = curr_event_idx - min_event_idx_by_kmer[curr_k_idx];
@@ -236,9 +232,37 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
     }
     std::reverse(out.begin(), out.end());
 
-    // QC results
+#if DEBUG_PRINT_MATRIX
+    // Columm-wise debugging
+    for(size_t ci = 1; ci < n_cols; ++ci) {
+        size_t curr_k_idx = ci - 1;
+        size_t expected_event = (double)(curr_k_idx * events_per_kmer);
 
-    // we make sure the
+        // Find the maximum value in this column
+        double max_row = -INFINITY;
+        size_t max_event_idx = 0;
+
+        std::stringstream debug_out;
+        for(size_t ri = 0; ri < n_rows; ++ri) {
+            size_t curr_event_idx = ri + min_event_idx_by_kmer[curr_k_idx];
+            double s = get(viterbi_matrix, ri, ci);
+            if(s > max_row) {
+                max_row = s;
+                max_event_idx = curr_event_idx;
+            }
+            debug_out << s << ",";
+        }
+
+        std::string debug_str = debug_out.str();
+        fprintf(stderr, "DEBUG_MATRIX\t%s\n", debug_str.substr(0, debug_str.size() - 1).c_str());
+
+        size_t aligned_event = debug_event_for_kmer[curr_k_idx];
+        fprintf(stderr, "DEBUG BAND: k: %zu ee: %zu me: %zu ae: %zu d: %d\n", 
+            curr_k_idx, expected_event, max_event_idx, aligned_event, (int)max_event_idx - (int)aligned_event); 
+    }
+#endif
+
+    // QC results
     double avg_log_emission = sum_emission / n_aligned_events;
     bool spanned = out.front().ref_pos == 0 &&  out.back().ref_pos == n_kmers - 1;
     
@@ -246,9 +270,12 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
         out.clear();
     }
     
+#if DEBUG_PRINT_STATS
+    fprintf(stderr, "events per base: %.2lf\n", events_per_kmer);
     fprintf(stderr, "truth stats -- avg: %.2lf max: %d exact: %d\n", (double)sum_distance_from_debug / n_kmers, max_distance_from_debug, num_exact_matches);
     fprintf(stderr, "event stats -- avg: %.2lf max: %d\n", (double)sum_distance_from_expected / n_events, max_distance_from_expected);
     fprintf(stderr, "emission stats -- avg: %.2lf\n", sum_emission / n_aligned_events);
+#endif
     free_matrix(viterbi_matrix);
     free_matrix(backtrack_matrix);
     return out;
