@@ -116,7 +116,7 @@ include .depend
 	$(CXX) -o $@ -c $(CXXFLAGS) $(CPPFLAGS) -fPIC $<
 
 .c.o:
-	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
+	$(CC) -o $@ -c $(CFLAGS) $(H5_INCLUDE) -fPIC $<
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)

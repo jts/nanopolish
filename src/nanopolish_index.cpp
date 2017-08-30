@@ -19,6 +19,7 @@
 
 #include "nanopolish_index.h"
 #include "nanopolish_common.h"
+#include "nanopolish_read_db.h"
 #include "fs_support.hpp"
 #include "logger.hpp"
 #include "fast5.hpp"
@@ -47,14 +48,20 @@ namespace opt
 }
 static std::ostream* os_p;
 
-void index_process_file(const std::string& fn)
+void index_file(ReadDB& read_db, const std::string& fn)
 {
-    fprintf(stdout, "Processing %s\n", fn.c_str());
+    fast5::File* fp = new fast5::File(fn);
+    if(fp->is_open()) {
+        fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
+        std::string read_id = params.read_id;
+        read_db.add_raw_signal_path(read_id, fn);
+    }
+    delete fp;
 } // process_file
 
-void index_process_path(const std::string& path)
+void index_path(ReadDB& read_db, const std::string& path)
 {
-    LOG(info) << path << "\n";
+    fprintf(stderr, "Indexing %s\n", path.c_str());
     if (is_directory(path)) {
         auto dir_list = list_directory(path);
         for (const auto& fn : dir_list) {
@@ -65,9 +72,9 @@ void index_process_path(const std::string& path)
             std::string full_fn = path + "/" + fn;
             if(is_directory(full_fn)) {
                 // recurse
-                index_process_path(full_fn);
-            } else {
-                index_process_file(full_fn);
+                index_path(read_db, full_fn);
+            } else if (full_fn.find(".fast5") != -1 && fast5::File::is_valid_file(full_fn)) {
+                index_file(read_db, full_fn);
             }
         }
     }
@@ -140,10 +147,18 @@ void parse_index_options(int argc, char** argv)
 int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
-    std::ofstream ofs;
     
-    // this will recurse into subdirectories as needed
-    index_process_path(opt::raw_file_directory);
+    // import read names, and possibly fast5 paths, from the fasta/fastq file
+    ReadDB read_db(opt::reads_file);
 
+    bool all_reads_have_paths = read_db.check_signal_paths();
+
+    // this will recurse into subdirectories as needed
+    if(!all_reads_have_paths) {
+        index_path(read_db, opt::raw_file_directory);
+    }
+
+    read_db.print_stats();
+    read_db.save();
     return 0;
 }
