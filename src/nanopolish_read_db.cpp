@@ -14,6 +14,8 @@
 #include "nanopolish_fast5_map.h"
 #include "nanopolish_common.h"
 #include "htslib/kseq.h"
+#include "htslib/faidx.h"
+#include "htslib/bgzf.h"
 #include "nanopolish_read_db.h"
 
 #define READ_DB_SUFFIX ".readdb"
@@ -21,30 +23,44 @@
 KSEQ_INIT(gzFile, gzread)
 
 //
-ReadDB::ReadDB(const std::string& reads_filename) : m_reads_filename(reads_filename)
+ReadDB::ReadDB(const std::string& input_reads_filename)
 {
-    import_fastx(m_reads_filename);
+    m_reads_filename = input_reads_filename + ".fa.gz";
+
+    // Populate database with read names and convert the fastq
+    // input into fasta for faidx
+    import_fastx(input_reads_filename, m_reads_filename);
+
+    // build faidx
+    int ret = fai_build(m_reads_filename.c_str());
+    if(ret != 0) {
+        fprintf(stderr, "Error running faidx_build on %s\n", m_reads_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
 }
 
 //
-void ReadDB::import_fastx(const std::string& filename)
+void ReadDB::import_fastx(const std::string& input_filename, const std::string& out_fasta_filename)
 {
-    gzFile gz_fp;
 
-    FILE* fp = fopen(filename.c_str(), "r");
-    if(fp == NULL) {
-        fprintf(stderr, "error: could not open %s for read\n", filename.c_str());
+    // Open readers
+    FILE* read_fp = fopen(input_filename.c_str(), "r");
+    if(read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s for read\n", input_filename.c_str());
         exit(EXIT_FAILURE);
     }
 
-    gz_fp = gzdopen(fileno(fp), "r");
-    if(gz_fp == NULL) {
-        fprintf(stderr, "error: could not open %s using gzdopen\n", filename.c_str());
+    gzFile gz_read_fp = gzdopen(fileno(read_fp), "r");
+    if(gz_read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s using gzdopen\n", input_filename.c_str());
         exit(EXIT_FAILURE);
     }
 
-    kseq_t* seq = kseq_init(gz_fp);
-    
+    // Open writers
+    FILE* write_fp = fopen(out_fasta_filename.c_str(), "w");
+    BGZF* bgzf_write_fp = bgzf_dopen(fileno(write_fp), "w");
+
+    kseq_t* seq = kseq_init(gz_read_fp);
     while(kseq_read(seq) >= 0) {
         // Check for a path to the fast5 file in the comment of the read
         std::string path = "";
@@ -62,19 +78,33 @@ void ReadDB::import_fastx(const std::string& filename)
             }
         }
         
-        // sanity check that the read does not exist
+        // sanity check that the read does not exist in the database
         auto iter = m_data.find(seq->name.s);
         if(iter != m_data.end()) {
             fprintf(stderr, "Error: duplicate read name %s found in fasta file\n", seq->name.s);
             exit(EXIT_FAILURE);
         }
-
+        
+        // add path
         add_raw_signal_path(seq->name.s, path);
+
+        // write sequence in gzipped fasta for fai indexing later
+        std::string out_record;
+        out_record += ">";
+        out_record += seq->name.s;
+        out_record += "\n";
+        out_record += seq->seq.s;
+        out_record += "\n";
+        bgzf_write(bgzf_write_fp, out_record.c_str(), out_record.length());
     }
 
     kseq_destroy(seq);
-    gzclose(gz_fp);
-    fclose(fp);
+    
+    gzclose(gz_read_fp);
+    fclose(read_fp);
+
+    bgzf_close(bgzf_write_fp);
+    fclose(write_fp);
 }
 
 //

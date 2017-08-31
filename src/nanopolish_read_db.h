@@ -20,7 +20,7 @@ struct ReadDBData
 class ReadDB
 {
     public:
-        ReadDB(const std::string& reads_filename);
+        ReadDB(const std::string& input_reads_filename);
         
         void save() const;
         void load(const std::string& reads_filename);
@@ -39,7 +39,7 @@ class ReadDB
     private:
         
         //
-        void import_fastx(const std::string& filename);
+        void import_fastx(const std::string& input_filename, const std::string& output_fasta_filename);
 
         //
         std::string m_reads_filename;

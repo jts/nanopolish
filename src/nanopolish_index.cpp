@@ -73,6 +73,7 @@ void index_path(ReadDB& read_db, const std::string& path)
             if(is_directory(full_fn)) {
                 // recurse
                 index_path(read_db, full_fn);
+                read_db.print_stats();
             } else if (full_fn.find(".fast5") != -1 && fast5::File::is_valid_file(full_fn)) {
                 index_file(read_db, full_fn);
             }
@@ -158,7 +159,6 @@ int index_main(int argc, char** argv)
         index_path(read_db, opt::raw_file_directory);
     }
 
-    read_db.print_stats();
     read_db.save();
     return 0;
 }
