@@ -28,11 +28,11 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
-#include "nanopolish_fast5_map.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_bam_processor.h"
 #include "nanopolish_alignment_db.h"
+#include "nanopolish_read_db.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -136,7 +136,7 @@ static const struct option longopts[] = {
 
 // Test CpG sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
-                                    const Fast5Map& name_map,
+                                    const ReadDB& read_db,
                                     const faidx_t* fai,
                                     const bam_hdr_t* hdr,
                                     const bam1_t* record,
@@ -146,8 +146,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
-    std::string fast5_path = name_map.get_path(read_name);
-    SquiggleRead sr(read_name, fast5_path);
+    SquiggleRead sr(read_name, read_db);
 
     // An output map from reference positions to scored CpG sites
     std::map<int, ScoredSite> site_score_map;
@@ -401,7 +400,8 @@ void parse_call_methylation_options(int argc, char** argv)
 int call_methylation_main(int argc, char** argv)
 {
     parse_call_methylation_options(argc, argv);
-    Fast5Map name_map(opt::reads_file);
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -426,7 +426,7 @@ int call_methylation_main(int argc, char** argv)
     // the BamProcessor framework calls the input function with the 
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), name_map, fai, _1, _2, _3, _4, _5);
+    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
 

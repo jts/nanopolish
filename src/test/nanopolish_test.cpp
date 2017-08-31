@@ -337,9 +337,14 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
 
 TEST_CASE( "hmm", "[hmm]") {
 
-    // read the FAST5
-    SquiggleRead sr("01234567-0123-0123-0123-0123456789ab:2D_000:2d", "test/data/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch8_file30_strand.fast5");
-    sr.transform();
+    // load the FAST5
+    std::string read_id = "01234567-0123-0123-0123-0123456789ab:2D_000:2d";
+    std::string fast5_path = "test/data/LomanLabz_PC_Ecoli_K12_R7.3_2549_1_ch8_file30_strand.fast5";
+
+    ReadDB read_db;
+    read_db.add_signal_path(read_id, fast5_path);
+
+    SquiggleRead sr(read_id, read_db);
 
     // The reference sequence to align to:
     std::string ref_subseq = "ATCAGTAAAATAACGTAGAGCGGTAACCTTGCCATAAAGGTCGAGTTTA"

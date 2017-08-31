@@ -54,7 +54,7 @@ void index_file(ReadDB& read_db, const std::string& fn)
     if(fp->is_open()) {
         fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
         std::string read_id = params.read_id;
-        read_db.add_raw_signal_path(read_id, fn);
+        read_db.add_signal_path(read_id, fn);
     }
     delete fp;
 } // process_file
@@ -150,7 +150,8 @@ int index_main(int argc, char** argv)
     parse_index_options(argc, argv);
     
     // import read names, and possibly fast5 paths, from the fasta/fastq file
-    ReadDB read_db(opt::reads_file);
+    ReadDB read_db;
+    read_db.build(opt::reads_file);
 
     bool all_reads_have_paths = read_db.check_signal_paths();
 

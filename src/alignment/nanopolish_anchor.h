@@ -14,7 +14,6 @@
 #include "htslib/sam.h"
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
-#include "nanopolish_fast5_map.h"
 
 struct AlignedPair
 {
@@ -80,24 +79,10 @@ struct HMMRealignmentInput
     std::string original_sequence;
 };
 
-// functions
-HMMRealignmentInput build_input_for_region(const std::string& bam_filename, 
-                                           const std::string& ref_filename, 
-                                           const Fast5Map& read_name_map, 
-                                           const std::string& contig_name,
-                                           int start, 
-                                           int end, 
-                                           int stride);
-
 // Return a vector specifying pairs of bases that have been aligned to each other
 // This function can handle an "event cigar" bam record, which requires the ability
 // for event indices to be in ascending or descending order. In the latter case
 // read_stride should be -1
 std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride = 1);
-
-std::vector<int> uniformally_sample_read_positions(const std::vector<AlignedPair>& aligned_pairs,
-                                                   int ref_start,
-                                                   int ref_end,
-                                                   int ref_stride);
 
 #endif

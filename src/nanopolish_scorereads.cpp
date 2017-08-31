@@ -32,7 +32,7 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
-#include "nanopolish_fast5_map.h"
+#include "nanopolish_read_db.h"
 #include "nanopolish_pore_model_set.h"
 #include "H5pubconf.h"
 
@@ -427,7 +427,8 @@ int scorereads_main(int argc, char** argv)
     parse_scorereads_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
 
     // Open the BAM and iterate over reads
 
@@ -515,8 +516,7 @@ int scorereads_main(int argc, char** argv)
 
                     //load read
                     std::string read_name = bam_get_qname(record);
-                    std::string fast5_path = name_map.get_path(read_name);
-                    SquiggleRead sr(read_name, fast5_path);
+                    SquiggleRead sr(read_name, read_db);
                     
                     // TODO: early exit when have processed all of the reads in readnames
                     if (!opt::readnames.empty() &&

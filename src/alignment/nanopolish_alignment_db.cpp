@@ -85,9 +85,9 @@ AlignmentDB::AlignmentDB(const std::string& reads_file,
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
                             m_event_bam(event_bam),
-                            m_fast5_name_map(reads_file),
                             m_calibrate_on_load(calibrate_reads)
 {
+    m_read_db.load(reads_file);
     _clear_region();
 }
 
@@ -603,8 +603,7 @@ void AlignmentDB::_load_squiggle_read(const std::string& read_name)
 {
     // Do we need to load this fast5 file?
     if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
-        std::string fast5_path = m_fast5_name_map.get_path(read_name);
-        SquiggleRead* sr = new SquiggleRead(read_name, fast5_path);
+        SquiggleRead* sr = new SquiggleRead(read_name, m_read_db);
         m_squiggle_read_map[read_name] = sr;
     }
 }

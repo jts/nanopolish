@@ -34,21 +34,22 @@ int g_failed_calibration_reads = 0;
 const double MIN_CALIBRATION_VAR = 2.5;
 
 //
-SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags) :
+SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags) :
     read_name(name),
     pore_type(PT_UNKNOWN),
-    fast5_path(path),
     drift_correction_performed(false),
     f_p(nullptr)
 {
-    events_per_base[0] = events_per_base[1] = 0.0f;
+    this->events_per_base[0] = events_per_base[1] = 0.0f;
+    this->fast5_path = read_db.get_signal_path(read_name);
 
     #pragma omp critical(sr_load_fast5)
     {
         //load_from_fast5(flags);
     }
     
-    // 
+    //
+    this->read_sequence = read_db.get_read_sequence(read_name);
     load_from_raw(flags);
     
     // perform drift correction and other scalings
@@ -57,6 +58,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const std::string& path, con
 
 SquiggleRead::~SquiggleRead()
 {
+
 }
 
 // helper for get_closest_event_to
@@ -219,16 +221,15 @@ void SquiggleRead::load_from_fast5(const uint32_t flags)
 //
 void SquiggleRead::load_from_raw(const uint32_t flags)
 {
-    f_p = new fast5::File(fast5_path);
+    // File not in db, can't load
+    if(this->fast5_path == "" || this->read_sequence == "") {
+        return;
+    }
+
+    this->f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
     
     size_t strand_idx = 0;
-
-    // TODO: replace these with taking the read sequence in externally
-    detect_pore_type();
-    detect_basecall_group();
-    assert(not basecall_group.empty());
-    this->read_sequence = f_p->get_basecall_seq(read_type, basecall_group);
 
     // Read sample rate
     auto channel_params = f_p->get_channel_id_params();

@@ -10,6 +10,7 @@
 #define NANOPOLISH_READ_DB
 
 #include <map>
+#include "htslib/faidx.h"
 
 struct ReadDBData
 {
@@ -20,18 +21,44 @@ struct ReadDBData
 class ReadDB
 {
     public:
-        ReadDB(const std::string& input_reads_filename);
-        
+        ReadDB();
+        ~ReadDB();
+
+        //
+        // I/O
+        //
+
+        //  construct the database from an input reads file
+        void build(const std::string& reads_filename);
+
+        // save the database to disk
         void save() const;
+
+        // restore the database from disk
         void load(const std::string& reads_filename);
 
-        void add_raw_signal_path(const std::string& read_id, const std::string& path);
+        //
+        // Data Access
+        // 
+
+        // set the signal path for the given read
+        void add_signal_path(const std::string& read_id, const std::string& path);
         
-        // returns true if all reads in the database have paths to their signal-level data
-        bool check_signal_paths() const;
-        
+        // returns the path to the signal data for the given read
+        std::string get_signal_path(const std::string& read_id) const;
+
+        // returns the basecalled sequence for the given read
+        std::string get_read_sequence(const std::string& read_id) const;
+
         // returns the number of reads in the database
         size_t get_num_reads() const { return m_data.size(); }
+ 
+        //
+        // Summaries and sanity checks
+        //
+
+        // returns true if all reads in the database have paths to their signal-level data
+        bool check_signal_paths() const;
 
         // print some summary stats about the database
         void print_stats() const;
@@ -39,13 +66,16 @@ class ReadDB
     private:
         
         //
-        void import_fastx(const std::string& input_filename, const std::string& output_fasta_filename);
+        void import_reads(const std::string& input_filename, const std::string& output_fasta_filename);
 
-        //
-        std::string m_reads_filename;
+        // the filename of the indexed data, after converting to fasta
+        std::string m_indexed_reads_filename;
 
         //
         std::map<std::string, ReadDBData> m_data;
+
+        //
+        faidx_t* m_fai;
 };
 
 #endif

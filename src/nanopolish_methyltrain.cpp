@@ -32,9 +32,9 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
-#include "nanopolish_fast5_map.h"
 #include "nanopolish_model_names.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_read_db.h"
 #include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -310,7 +310,7 @@ bool recalibrate_model(SquiggleRead &sr,
 }
 
 // Update the training data with aligned events from a read
-void add_aligned_events(const Fast5Map& name_map,
+void add_aligned_events(const ReadDB& read_db,
                         const faidx_t* fai,
                         const bam_hdr_t* hdr,
                         const bam1_t* record,
@@ -325,10 +325,9 @@ void add_aligned_events(const Fast5Map& name_map,
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
-    std::string fast5_path = name_map.get_path(read_name);
 
     // load read
-    SquiggleRead sr(read_name, fast5_path);
+    SquiggleRead sr(read_name, read_db);
 
     // replace the models that are built into the read with the model we are training
     sr.replace_models(training_kit, training_alphabet, training_k);
@@ -698,7 +697,7 @@ TrainingResult retrain_model_from_events(const PoreModel& current_model,
     return result;
 }
 
-void train_one_round(const Fast5Map& name_map,
+void train_one_round(const ReadDB& read_db,
                      const std::string& kit_name,
                      const std::string& alphabet,
                      size_t k,
@@ -781,7 +780,7 @@ void train_one_round(const Fast5Map& name_map,
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    add_aligned_events(name_map, fai, hdr, record, read_idx,
+                    add_aligned_events(read_db, fai, hdr, record, read_idx,
                                        clip_start, clip_end,
                                        kit_name, alphabet, k,
                                        round, model_training_data);
@@ -873,7 +872,8 @@ int methyltrain_main(int argc, char** argv)
     parse_methyltrain_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
 
     // Import the models to train into the pore model set
     assert(!opt::models_fofn.empty());
@@ -890,7 +890,7 @@ int methyltrain_main(int argc, char** argv)
 
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
-        train_one_round(name_map, training_kit, mtrain_alphabet->get_name(), training_k, round);
+        train_one_round(read_db, training_kit, mtrain_alphabet->get_name(), training_k, round);
         /*
         if(opt::write_models) {
             write_models(training_kit, mtrain_alphabet->get_name(), training_k, round);

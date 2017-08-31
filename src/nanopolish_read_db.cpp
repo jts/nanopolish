@@ -11,38 +11,85 @@
 #include <ostream>
 #include <iostream>
 #include <sys/stat.h>
-#include "nanopolish_fast5_map.h"
 #include "nanopolish_common.h"
 #include "htslib/kseq.h"
-#include "htslib/faidx.h"
 #include "htslib/bgzf.h"
 #include "nanopolish_read_db.h"
 
 #define READ_DB_SUFFIX ".readdb"
+#define GZIPPED_READS_SUFFIX ".fa.gz"
 
+// Tell KSEQ what functions to use to open/read files
 KSEQ_INIT(gzFile, gzread)
 
 //
-ReadDB::ReadDB(const std::string& input_reads_filename)
+ReadDB::ReadDB() : m_fai(NULL)
 {
-    m_reads_filename = input_reads_filename + ".fa.gz";
+
+}
+
+//
+void ReadDB::build(const std::string& input_reads_filename)
+{
+    // generate output filename
+    m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
 
     // Populate database with read names and convert the fastq
     // input into fasta for faidx
-    import_fastx(input_reads_filename, m_reads_filename);
+    import_reads(input_reads_filename, m_indexed_reads_filename);
 
     // build faidx
-    int ret = fai_build(m_reads_filename.c_str());
+    int ret = fai_build(m_indexed_reads_filename.c_str());
     if(ret != 0) {
-        fprintf(stderr, "Error running faidx_build on %s\n", m_reads_filename.c_str());
+        fprintf(stderr, "Error running faidx_build on %s\n", m_indexed_reads_filename.c_str());
         exit(EXIT_FAILURE);
+    }
+
+    m_fai = NULL;
+}
+
+//
+void ReadDB::load(const std::string& input_reads_filename)
+{
+    // generate input filenames
+    m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
+    std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
+    
+    //
+    std::ifstream in_file(in_filename.c_str());
+    if(in_file.bad()) {
+        fprintf(stderr, "error: could not read db %s\n", in_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    // read the database
+    std::string line;
+    while(getline(in_file, line)) {
+        std::vector<std::string> fields = split(line, '\t');
+
+        std::string name = "";
+        std::string path = "";
+        if(fields.size() == 2) {
+            name = fields[0];
+            path = fields[1];
+            m_data[name].signal_data_path = path;
+        }
+    }
+
+    // load faidx
+    m_fai = fai_load(m_indexed_reads_filename.c_str());
+}
+
+ReadDB::~ReadDB()
+{
+    if(m_fai != NULL) {
+        fai_destroy(m_fai);
     }
 }
 
 //
-void ReadDB::import_fastx(const std::string& input_filename, const std::string& out_fasta_filename)
+void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename)
 {
-
     // Open readers
     FILE* read_fp = fopen(input_filename.c_str(), "r");
     if(read_fp == NULL) {
@@ -60,6 +107,7 @@ void ReadDB::import_fastx(const std::string& input_filename, const std::string& 
     FILE* write_fp = fopen(out_fasta_filename.c_str(), "w");
     BGZF* bgzf_write_fp = bgzf_dopen(fileno(write_fp), "w");
 
+    // read input sequences, add to DB and convert to fasta
     kseq_t* seq = kseq_init(gz_read_fp);
     while(kseq_read(seq) >= 0) {
         // Check for a path to the fast5 file in the comment of the read
@@ -86,7 +134,7 @@ void ReadDB::import_fastx(const std::string& input_filename, const std::string& 
         }
         
         // add path
-        add_raw_signal_path(seq->name.s, path);
+        add_signal_path(seq->name.s, path);
 
         // write sequence in gzipped fasta for fai indexing later
         std::string out_record;
@@ -98,6 +146,7 @@ void ReadDB::import_fastx(const std::string& input_filename, const std::string& 
         bgzf_write(bgzf_write_fp, out_record.c_str(), out_record.length());
     }
 
+    // cleanup
     kseq_destroy(seq);
     
     gzclose(gz_read_fp);
@@ -108,14 +157,47 @@ void ReadDB::import_fastx(const std::string& input_filename, const std::string& 
 }
 
 //
-void ReadDB::add_raw_signal_path(const std::string& read_id, const std::string& path)
+void ReadDB::add_signal_path(const std::string& read_id, const std::string& path)
 {
     m_data[read_id].signal_data_path = path;
 }
 
+//
+std::string ReadDB::get_signal_path(const std::string& read_id) const
+{
+    const auto& iter = m_data.find(read_id);
+    if(iter == m_data.end()) {
+        return "";
+    } else {
+        return iter->second.signal_data_path;
+    }
+}
+
+//
+std::string ReadDB::get_read_sequence(const std::string& read_id) const
+{
+    assert(m_fai != NULL);
+    
+    int length;
+    char* seq;
+
+    // this call is not threadsafe
+    #pragma omp critical
+    seq = fai_fetch(m_fai, read_id.c_str(), &length);
+
+    if(seq == NULL) {
+        return "";
+    }
+
+    std::string out(seq);
+    free(seq);
+    return out;   
+}
+
+//
 void ReadDB::save() const
 {
-    std::string out_filename = m_reads_filename + READ_DB_SUFFIX;
+    std::string out_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
 
     std::ofstream out_file(out_filename.c_str());
 
@@ -125,23 +207,6 @@ void ReadDB::save() const
     }
 }
 
-//
-void ReadDB::load(const std::string& reads_filename)
-{
-    std::string in_filename = reads_filename + READ_DB_SUFFIX;
-    std::ifstream in_file(in_filename.c_str());
-
-    if(in_file.bad()) {
-        fprintf(stderr, "error: could not read fofn %s\n", in_filename.c_str());
-        exit(EXIT_FAILURE);
-    }
-
-    std::string name;
-    std::string path;
-    while(in_file >> name >> path) {
-        m_data[name].signal_data_path = path;
-    }
-}
 
 
 //
@@ -155,6 +220,7 @@ bool ReadDB::check_signal_paths() const
     return true;
 }
 
+//
 void ReadDB::print_stats() const
 {
     size_t num_reads_with_path = 0;

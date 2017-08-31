@@ -147,7 +147,7 @@ class AlignmentDB
         int m_region_end;
 
         // cached alignments for a region
-        Fast5Map m_fast5_name_map;
+        ReadDB m_read_db;
         std::vector<SequenceAlignmentRecord> m_sequence_records;
         std::vector<EventAlignmentRecord> m_event_records;
         SquiggleReadMap m_squiggle_read_map;

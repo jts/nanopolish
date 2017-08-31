@@ -28,7 +28,7 @@
 #include "nanopolish_matrix.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_anchor.h"
-#include "nanopolish_fast5_map.h"
+#include "nanopolish_read_db.h"
 #include "nanopolish_hmm_input_sequence.h"
 #include "nanopolish_pore_model_set.h"
 #include "H5pubconf.h"
@@ -500,7 +500,7 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 
 // Realign the read in event space
 void realign_read(EventalignWriter writer,
-                  const Fast5Map& name_map, 
+                  const ReadDB& read_db, 
                   const faidx_t* fai, 
                   const bam_hdr_t* hdr, 
                   const bam1_t* record, 
@@ -510,10 +510,9 @@ void realign_read(EventalignWriter writer,
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
-    std::string fast5_path = name_map.get_path(read_name);
 
     // load read
-    SquiggleRead sr(read_name, fast5_path, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
+    SquiggleRead sr(read_name, read_db, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
 
     if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n", 
@@ -845,7 +844,8 @@ int eventalign_main(int argc, char** argv)
     parse_eventalign_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
     
     // Open the BAM and iterate over reads
 
@@ -931,7 +931,7 @@ int eventalign_main(int argc, char** argv)
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(writer, name_map, fai, hdr, record, read_idx, clip_start, clip_end);
+                    realign_read(writer, read_db, fai, hdr, record, read_idx, clip_start, clip_end);
                 }
             }
 

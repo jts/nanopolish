@@ -13,6 +13,7 @@
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_eventalign.h"
+#include "nanopolish_read_db.h"
 #include <string>
 
 enum PoreType
@@ -68,7 +69,7 @@ class SquiggleRead
     public:
 
         SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
-        SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags = 0);
+        SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
