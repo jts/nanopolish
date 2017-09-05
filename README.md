@@ -53,16 +53,29 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 ## Analysis workflow examples
 
+### Data preprocessing
+
+Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run `nanopolish index` on your input reads:
+
+```
+# Only run this if you used Albacore 2.0 or later
+nanopolish index -d /path/to/raw_fast5s/ albacore_output.fastq
+```
+
+If you basecalled your reads with Albacore 1.2 or earlier, you should run `nanopolish extract` on your input reads instead:
+
+```
+# Only run this if you used Albacore 1.2 or later
+nanopolish extract --type template directory/pass/ > reads.fa
+```
+
+Note these two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named `reads.fa`.
+
 ### Computing a new consensus sequence for a draft assembly
 
 The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like [canu](https://github.com/marbl/canu). This section describes how to do this, starting with your draft assembly which should have megabase-sized contigs.
 
-First we prepare the data by extracting the reads from the FAST5 files, and aligning the basecalls to our draft assembly (`draft.fa`).
-
 ```
-# Extract the QC-passed reads from a directory of FAST5 files
-nanopolish extract --type [2d|template] directory/pass/ > reads.fa
-
 # Index the draft genome
 bwa index draft.fa
 
@@ -91,9 +104,6 @@ python nanopolish_merge.py polished.*.fa > polished_genome.fa
 nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). Here's how you run it:
 
 ```
-# Extract all reads from a directory of FAST5 files
-nanopolish extract -r --type template directory/ > reads.fa
-
 # Align the basecalled reads to a reference genome
 bwa mem -x ont2d -t 8 reference.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
 samtools index reads.sorted.bam
@@ -124,4 +134,4 @@ docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish event
 
 ## Credits and Thanks
 
-The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/).
+The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/). Nanopolish also includes code from Oxford Nanopore's [scrappie](https://github.com/nanoporetech/scrappie) basecaller. This code is licensed under the MPL.

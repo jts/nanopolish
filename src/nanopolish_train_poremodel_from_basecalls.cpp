@@ -216,7 +216,7 @@ void alignment_to_training_data(const SquiggleRead* read,
 int train_poremodel_from_basecalls_main(int argc, char** argv)
 {
     parse_train_poremodel_from_basecalls_options(argc, argv);
-
+#if 0
     std::ifstream fofn_reader(opt::fofn_file);
     std::string fast5_name;
     
@@ -397,6 +397,6 @@ int train_poremodel_from_basecalls_main(int argc, char** argv)
     for(auto* read : reads) {
         delete read;
     }
-
+#endif
     return 0;
 }

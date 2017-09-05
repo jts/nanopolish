@@ -30,7 +30,6 @@
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_anchor.h"
-#include "nanopolish_fast5_map.h"
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 #include "nanopolish_pore_model_set.h"

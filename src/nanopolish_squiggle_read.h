@@ -13,6 +13,7 @@
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_eventalign.h"
+#include "nanopolish_read_db.h"
 #include <string>
 
 enum PoreType
@@ -41,11 +42,11 @@ enum SquiggleReadFlags
 // The raw event data for a read
 struct SquiggleEvent
 {
-    float mean;       // current level mean in picoamps
-    float stdv;       // current level stdv
+    float mean;        // current level mean in picoamps
+    float stdv;        // current level stdv
     double start_time; // start time of the event in seconds
-    float duration;     // duration of the event in seconds
-    float log_stdv;   // precompute for efficiency
+    float duration;    // duration of the event in seconds
+    float log_stdv;    // precompute for efficiency
 };
 
 struct IndexPair
@@ -68,7 +69,7 @@ class SquiggleRead
     public:
 
         SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
-        SquiggleRead(const std::string& name, const std::string& path, const uint32_t flags = 0);
+        SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
@@ -195,7 +196,7 @@ class SquiggleRead
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
-        
+
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events
         std::vector<float> samples;
@@ -218,8 +219,11 @@ class SquiggleRead
 
         SquiggleRead(const SquiggleRead&) {}
 
-        // Load all the read data from a fast5 file
-        void load_from_fast5(const uint32_t flags);
+        // Load all read data from events in a fast5 file
+        void load_from_events(const uint32_t flags);
+
+        // Load all read data from raw samples
+        void load_from_raw(const uint32_t flags);
 
         // Version-specific intialization functions
         void _load_R7(uint32_t si);
@@ -231,13 +235,13 @@ class SquiggleRead
 
         // make a map from a base of the 1D read sequence to the range of events supporting that base
         std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
-                                                          uint32_t strand, 
+                                                          uint32_t strand,
                                                           std::vector<fast5::Basecall_Event>& f5_events);
-        
+
         std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
-                                                           uint32_t strand, 
+                                                           uint32_t strand,
                                                            std::vector<fast5::Basecall_Event>& f5_events);
-        
+
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,
                                    size_t& k_idx,
@@ -249,10 +253,16 @@ class SquiggleRead
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;
+
         // detect pore_type
         void detect_pore_type();
+        
+        // check whether the input read name conforms to nanopolish extract's signature       
+        bool is_extract_read_name(std::string& name) const;
+
         // detect basecall_group and read_type
         void detect_basecall_group();
+        
         // check basecall_group and read_type
         bool check_basecall_group() const;
 };

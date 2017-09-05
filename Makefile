@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment
 
 #
 # Set libraries, paths, flags and options
@@ -11,7 +11,7 @@ SUBDIRS := src src/hmm src/thirdparty src/common src/alignment
 LIBS=-lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp
-CFLAGS ?= -O3
+CFLAGS ?= -O3 -std=c99
 CXX ?= g++
 CC ?= gcc
 
@@ -116,7 +116,7 @@ include .depend
 	$(CXX) -o $@ -c $(CXXFLAGS) $(CPPFLAGS) -fPIC $<
 
 .c.o:
-	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
+	$(CC) -o $@ -c $(CFLAGS) $(H5_INCLUDE) -fPIC $<
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)

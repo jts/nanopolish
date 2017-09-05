@@ -28,13 +28,13 @@
 #include "nanopolish_poremodel.h"
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_profile_hmm.h"
-#include "nanopolish_fast5_map.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_variant.h"
 #include "nanopolish_haplotype.h"
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_bam_processor.h"
 #include "nanopolish_bam_utils.h"
+#include "nanopolish_index.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -173,7 +173,7 @@ void parse_phase_reads_options(int argc, char** argv)
     }
 }
 
-void phase_single_read(const Fast5Map& name_map,
+void phase_single_read(const ReadDB& read_db,
                        const faidx_t* fai,
                        const std::vector<Variant>& variants,
                        samFile* sam_fp,
@@ -190,10 +190,9 @@ void phase_single_read(const Fast5Map& name_map,
     
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
-    std::string fast5_path = name_map.get_path(read_name);
 
     // load read
-    SquiggleRead sr(read_name, fast5_path);
+    SquiggleRead sr(read_name, read_db);
     
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
@@ -341,7 +340,8 @@ int phase_reads_main(int argc, char** argv)
     parse_phase_reads_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
-    Fast5Map name_map(opt::reads_file);
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
     
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -371,7 +371,7 @@ int phase_reads_main(int argc, char** argv)
     // the BamProcessor framework calls the input function with the 
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(phase_single_read, name_map, fai, std::ref(variants), sam_out, _1, _2, _3, _4, _5);
+    auto f = std::bind(phase_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), sam_out, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     
     // Copy the bam header to std
