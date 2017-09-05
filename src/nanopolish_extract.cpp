@@ -14,6 +14,7 @@
 #include <sstream>
 #include <getopt.h>
 
+#include "nanopolish_read_db.h"
 #include "nanopolish_extract.h"
 #include "nanopolish_common.h"
 #include "fs_support.hpp"
@@ -361,20 +362,31 @@ void parse_extract_options(int argc, char** argv)
 int extract_main(int argc, char** argv)
 {
     parse_extract_options(argc, argv);
-    std::ofstream ofs;
-    if (not opt::output_file.empty())
+
+    // Iterate over fast5 collection extracting the sequence reads
+    // We do this in a block so the file is automatically closed
+    // when ofs goes out of scope.
     {
-        ofs.open(opt::output_file);
-        os_p = &ofs;
+        std::ofstream ofs;
+        if (not opt::output_file.empty())
+        {
+            ofs.open(opt::output_file);
+            os_p = &ofs;
+        }
+        else
+        {
+            os_p = &std::cout;
+        }
+        for (unsigned i = 0; i < opt::paths.size(); ++i)
+        {
+            process_path(opt::paths[i]);
+        }
     }
-    else
-    {
-        os_p = &std::cout;
-    }
-    for (unsigned i = 0; i < opt::paths.size(); ++i)
-    {
-        process_path(opt::paths[i]);
-    }
+
+    // Build the ReadDB from the output file
+    ReadDB read_db;
+    read_db.build(opt::output_file);
+
     std::clog << "[extract] found " << opt::total_files_count
               << " files, extracted " << opt::total_files_used_count
               << " reads\n";
