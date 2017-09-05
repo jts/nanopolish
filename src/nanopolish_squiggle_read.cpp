@@ -41,19 +41,21 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     f_p(nullptr)
 {
     this->events_per_base[0] = events_per_base[1] = 0.0f;
-    this->fast5_path = read_db.get_signal_path(read_name);
+    this->fast5_path = read_db.get_signal_path(this->read_name);
 
     #pragma omp critical(sr_load_fast5)
     {
-        //load_from_fast5(flags);
+        bool is_event_read = is_extract_read_name(this->read_name);
+        if(is_event_read) {
+            load_from_events(flags);
+        } else {
+            this->read_sequence = read_db.get_read_sequence(read_name);
+            load_from_raw(flags);
+        }
+        
+        // perform drift correction and other scalings
+        transform();
     }
-    
-    //
-    this->read_sequence = read_db.get_read_sequence(read_name);
-    load_from_raw(flags);
-    
-    // perform drift correction and other scalings
-    transform();
 }
 
 SquiggleRead::~SquiggleRead()
@@ -109,7 +111,7 @@ void SquiggleRead::transform()
 }
 
 //
-void SquiggleRead::load_from_fast5(const uint32_t flags)
+void SquiggleRead::load_from_events(const uint32_t flags)
 {
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
@@ -1167,6 +1169,15 @@ bool SquiggleRead::check_basecall_group() const
     if ((read_type == SRT_2D or read_type == SRT_COMPLEMENT)
         and not f_p->have_basecall_events(1, basecall_group)) return false;
     return true;
+}
+
+//
+bool SquiggleRead::is_extract_read_name(std::string& name) const
+{
+    // albacore read names are uuids with hex characters separated
+    // by underscores. If the read name contains three colon-delimited fields
+    // we infer it is output by nanopolish extract. 
+    return std::count(name.begin(), name.end(), ':') == 2;
 }
 
 void SquiggleRead::detect_basecall_group()

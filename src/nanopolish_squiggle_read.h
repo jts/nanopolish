@@ -219,8 +219,8 @@ class SquiggleRead
 
         SquiggleRead(const SquiggleRead&) {}
 
-        // Load all read data from a fast5 file
-        void load_from_fast5(const uint32_t flags);
+        // Load all read data from events in a fast5 file
+        void load_from_events(const uint32_t flags);
 
         // Load all read data from raw samples
         void load_from_raw(const uint32_t flags);
@@ -253,10 +253,16 @@ class SquiggleRead
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;
+
         // detect pore_type
         void detect_pore_type();
+        
+        // check whether the input read name conforms to nanopolish extract's signature       
+        bool is_extract_read_name(std::string& name) const;
+
         // detect basecall_group and read_type
         void detect_basecall_group();
+        
         // check basecall_group and read_type
         bool check_basecall_group() const;
 };
