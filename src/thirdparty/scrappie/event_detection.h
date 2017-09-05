@@ -1,7 +1,7 @@
 #ifndef EVENT_DETECTION_H
-#define EVENT_DETECTION_H
+#    define EVENT_DETECTION_H
 
-#include "scrappie_structures.h"
+#    include "scrappie_structures.h"
 
 typedef struct {
     size_t window_length1;

@@ -171,8 +171,6 @@ static inline __m128 __attribute__ ((__always_inline__)) fast_elufv(__m128 x) {
     return _mm_or_ps(_mm_and_ps(mask, x),  _mm_andnot_ps(mask, y));
 }
 
-char *strip_filename_extension(char *filename);
-
 int argmaxf(const float *x, int n);
 int argminf(const float *x, int n);
 float valmaxf(const float *x, int n);
