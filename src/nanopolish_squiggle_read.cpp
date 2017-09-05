@@ -374,12 +374,15 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         // QC calibration
         if(!calibrated || this->pore_model[strand_idx].var > MIN_CALIBRATION_VAR) {
             events[strand_idx].clear();
+            g_failed_calibration_reads += 1;
         }
     } else {
         // Could not infer alignent, fail this read
         this->events[strand_idx].clear();
         this->events_per_base[strand_idx] = 0.0f;
+        g_failed_calibration_reads += 1;
     }
+    g_total_reads += 1;
 
     // Filter poor quality reads that have too many "stays"
     if(!this->events[strand_idx].empty() && this->events_per_base[strand_idx] > 5.0) {
