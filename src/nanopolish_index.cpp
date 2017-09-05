@@ -23,6 +23,7 @@
 #include "fs_support.hpp"
 #include "logger.hpp"
 #include "fast5.hpp"
+#include "profiler.h"
 
 static const char *INDEX_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
@@ -38,18 +39,21 @@ static const char *INDEX_USAGE_MESSAGE =
 "      --version                        display version\n"
 "  -v, --verbose                        display verbose output\n"
 "  -d, --directory                      path to the directory containing the raw ONT signal files\n"
+"  -f, --fast5-fofn                     file containing the paths to each fast5 file for the run\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
     static unsigned int verbose = 0;
     static std::string raw_file_directory;
+    static std::string fast5_fofn;
     static std::string reads_file;
 }
 static std::ostream* os_p;
 
 void index_file(ReadDB& read_db, const std::string& fn)
 {
+    PROFILE_FUNC("index_file")
     fast5::File* fp = new fast5::File(fn);
     if(fp->is_open()) {
         fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
@@ -81,7 +85,27 @@ void index_path(ReadDB& read_db, const std::string& path)
     }
 } // process_path
 
-static const char* shortopts = "vd:";
+void process_fast5_fofn(ReadDB& read_db, const std::string& fast5_fofn)
+{
+    //
+    std::ifstream in_file(fast5_fofn.c_str());
+    if(in_file.bad()) {
+        fprintf(stderr, "error: could not file %s\n", fast5_fofn.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    // read
+    size_t count = 0;
+    std::string filename;
+    while(getline(in_file, filename)) {
+        if(count++ % 1000 == 0) {
+            fprintf(stderr, "Loaded %zu from fofn\n", count);
+        }
+        index_file(read_db, filename);
+    }
+}
+
+static const char* shortopts = "vd:f:";
 
 enum {
     OPT_HELP = 1,
@@ -95,6 +119,7 @@ static const struct option longopts[] = {
     { "log-level",          required_argument, NULL, OPT_LOG_LEVEL },
     { "verbose",            no_argument,       NULL, 'v' },
     { "directory",          required_argument, NULL, 'd' },
+    { "fast5-fofn",         required_argument, NULL, 'f' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -116,6 +141,7 @@ void parse_index_options(int argc, char** argv)
                 break;
             case 'v': opt::verbose++; break;
             case 'd': arg >> opt::raw_file_directory; break;
+            case 'f': arg >> opt::fast5_fofn; break;
         }
     }
 
@@ -155,11 +181,19 @@ int index_main(int argc, char** argv)
 
     bool all_reads_have_paths = read_db.check_signal_paths();
 
-    // this will recurse into subdirectories as needed
+    // if the input fastq did not contain a complete set of paths
+    // use the fofn/directory provided to augment the index
     if(!all_reads_have_paths) {
-        index_path(read_db, opt::raw_file_directory);
+        if(!opt::raw_file_directory.empty()) {
+            index_path(read_db, opt::raw_file_directory);
+        }
+
+        if(!opt::fast5_fofn.empty()) {
+            process_fast5_fofn(read_db, opt::fast5_fofn);
+        }
     }
 
+    read_db.print_stats();
     read_db.save();
     return 0;
 }
