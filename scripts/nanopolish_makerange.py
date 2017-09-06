@@ -14,12 +14,19 @@ recs = [ (rec.name, len(rec.seq)) for rec in SeqIO.parse(open(filename), "fasta"
 
 SEGMENT_LENGTH = args.segment_length
 OVERLAP_LENGTH = args.overlap_length
+MIN_SEGMENT_LENGTH = 5 * OVERLAP_LENGTH
 
 for name, length in recs:
     n_segments = (length / SEGMENT_LENGTH) + 1
 
-    for n in range(0, length, SEGMENT_LENGTH):
-        if ( n + SEGMENT_LENGTH) > length:
-            print("%s:%d-%d" % (name, n, length - 1))
+    start = 0
+    while start < length:
+        end = start + SEGMENT_LENGTH
+
+        # If this segment will end near the end of the contig, extend it to end
+        if length - end < MIN_SEGMENT_LENGTH:
+            print("%s:%d-%d" % (name, start, length - 1))
+            start = length
         else:
-            print("%s:%d-%d" % (name, n, n + SEGMENT_LENGTH + OVERLAP_LENGTH))
+            print("%s:%d-%d" % (name, start, end + OVERLAP_LENGTH))
+            start = end
