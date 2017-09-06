@@ -357,7 +357,13 @@ void AlignmentDB::load_region(const std::string& contig,
     // Adjust end position to make sure we don't go out-of-range
     m_region_contig = contig;
     m_region_start = start_position;
-    m_region_end = std::min(stop_position, faidx_seq_len(fai, contig.c_str()));
+    int contig_length = faidx_seq_len(fai, contig.c_str());
+    if(contig_length == -1) {
+        fprintf(stderr, "Error: could not retrieve length of contig %s from the faidx.\n", contig.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    m_region_end = std::min(stop_position, contig_length);
     
     assert(!m_region_contig.empty());
     assert(m_region_start >= 0);
