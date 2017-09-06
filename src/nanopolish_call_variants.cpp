@@ -418,7 +418,7 @@ void print_debug_stats(const std::string& contig,
         const HMMInputData& data = event_sequences[i];
 
         // summarize score
-        double num_events = abs(data.event_start_idx - data.event_stop_idx) + 1;
+        double num_events = abs((int)data.event_start_idx - (int)data.event_stop_idx) + 1;
         double base_score = profile_hmm_score(base_haplotype.get_sequence(), data, alignment_flags);
         double called_score = profile_hmm_score(called_haplotype.get_sequence(), data, alignment_flags);
         double base_avg = base_score / num_events;
@@ -577,7 +577,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
             size_t strand = event_sequences[j].strand;
 
             // skip small event regions
-            if( abs(event_sequences[j].event_start_idx - event_sequences[j].event_stop_idx) < 10) {
+            if( abs((int)event_sequences[j].event_start_idx - (int)event_sequences[j].event_stop_idx) < 10) {
                 continue;
             }
 

@@ -673,7 +673,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         // over very large deletions wrt to the reference. The effect of this
         // is that we can get segments that have very few alignable events. We
         // just stop processing them for now
-        if(abs(input.event_start_idx - input.event_stop_idx) < 2)
+        if(abs((int)input.event_start_idx - (int)input.event_stop_idx) < 2)
             break;
 
         input.strand = params.strand_idx;

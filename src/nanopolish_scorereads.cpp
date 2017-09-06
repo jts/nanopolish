@@ -166,7 +166,7 @@ double model_score(SquiggleRead &sr,
 
         // Run HMM using current model
         double segment_score = profile_hmm_score(sequence, data, 0);
-        int events_in_segment = abs(data.event_start_idx - data.event_stop_idx) + 1;
+        int events_in_segment = abs((int)data.event_start_idx - (int)data.event_stop_idx) + 1;
         
         // Calculate scaling parameters for this local segment
         std::vector<EventAlignment> event_alignment_sub(alignment_output.begin() + align_start_idx,
