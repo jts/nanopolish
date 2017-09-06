@@ -714,19 +714,22 @@ Variant score_variant_thresholded(const Variant& input_variant,
 
 void annotate_variants_with_all_support(std::vector<Variant>& input, const AlignmentDB& alignments, int min_flanking_sequence, const uint32_t alignment_flags)
 {
+    Haplotype ref_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
+
     for(size_t vi = 0; vi < input.size(); vi++) {
         Variant& v = input[vi];
 
         std::string ref_name = v.ref_name;
         int calling_start = v.ref_position - min_flanking_sequence;
         int calling_end = v.ref_position + min_flanking_sequence;
-        
+
         // Construct haplotype set for A,C,G,T at this position
         std::vector<Haplotype> haplotypes;
-        Haplotype ref_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
+        Haplotype calling_haplotype = ref_haplotype.substr_by_reference(calling_start, calling_end);
+
         Variant tmp_variant = v;
         for(size_t bi = 0; bi < 4; bi++) {
-            Haplotype variant_haplotype = ref_haplotype;
+            Haplotype variant_haplotype = calling_haplotype;
             tmp_variant.alt_seq = "ACGT"[bi];
             variant_haplotype.apply_variant(tmp_variant);
             haplotypes.push_back(variant_haplotype);
@@ -746,7 +749,7 @@ void annotate_variants_with_all_support(std::vector<Variant>& input, const Align
                 scores.push_back(s);
                 if(hi > 0) {
                     sum_score = add_logs(s, sum_score);
-                } else { 
+                } else {
                     sum_score = s;
                 }
             }
@@ -755,7 +758,7 @@ void annotate_variants_with_all_support(std::vector<Variant>& input, const Align
                 support_fraction[hi] += exp(scores[hi] - sum_score);
             }
         }
-        
+
         std::stringstream ss;
         ss << std::fixed << std::setprecision(3);
         for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
