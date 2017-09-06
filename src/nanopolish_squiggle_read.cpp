@@ -228,16 +228,22 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         return;
     }
 
+    // Hardcoded parameters, for now we can only do template with the main R9.4 model
+    size_t strand_idx = 0;
+    std::string kit = "r9.4_450bps";
+    std::string alphabet = "nucleotide";
+    std::string strand_str = "template";
+    size_t k = 6;
+
+    // Open file for read
     this->f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
-    
-    size_t strand_idx = 0;
 
-    // Read sample rate
+    // Read the sample rate
     auto channel_params = f_p->get_channel_id_params();
     this->sample_rate = channel_params.sampling_rate;
 
-    // Read samples
+    // Read the actual samples
     auto& sample_read_names = f_p->get_raw_samples_read_name_list();
     if(sample_read_names.empty()) {
         fprintf(stderr, "Error, no raw samples found\n");
@@ -250,7 +256,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     
     // convert samples to scrappie's format (for event detection)
     raw_table rt;
-
     rt.n = samples.size();
     rt.start = 0;
     rt.end = samples.size() - 1;
@@ -270,11 +275,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     assert(rt.n > 0);
     assert(et.n > 0);
     
-    // Load pore model and scale to events using MoM
-    std::string kit = "r9.4_450bps";
-    std::string alphabet = "nucleotide";
-    std::string strand_str = "template";
-    size_t k = 6;
+    // Load pore model and scale to events using method-of-moments
     this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
                                                            alphabet,
                                                            strand_str,
@@ -286,17 +287,15 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
                                 shift,
                                 scale);
     
+    // apply parameters to pore model
     this->pore_model[strand_idx].shift = shift;
     this->pore_model[strand_idx].scale = scale;
     this->pore_model[strand_idx].drift = 0.0f;
     this->pore_model[strand_idx].var = 1.0f;
     transform();
-
     this->pore_model[strand_idx].bake_gaussian_parameters();
     
-    // Copy events into nanopolish's format
-    //fprintf(stderr, "start: %d end: %d n: %d\n", et.start, et.end, et.n);
-
+    // copy events into nanopolish's format
     this->events[strand_idx].resize(et.n);
     double start_time = 0;
     for(size_t i = 0; i < et.n; ++i) {
@@ -305,14 +304,16 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         start_time += length_in_seconds;
     }
 
+    // clean up scrappie raw and event tables
     assert(rt.raw != NULL);
     assert(et.event != NULL);
-
     free(rt.raw);
     free(et.event);
 
     // align events to the basecalled read
     std::vector<AlignedPair> event_alignment = banded_simple_event_align(*this, read_sequence);
+
+    // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {
 
         // create base-to-event map
@@ -325,12 +326,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
         size_t prev_event_idx = -1;
         for(size_t i = 0; i < event_alignment.size(); ++i) {
-
-            /*
-            if(i == 0 || i == event_alignment.size() - 1) {
-                fprintf(stderr, "alignment[%u]: %zu %zu\n", i, event_alignment[i].ref_pos, event_alignment[i].read_pos);
-            }
-            */
 
             size_t k_idx = event_alignment[i].ref_pos;
             size_t event_idx = event_alignment[i].read_pos;
@@ -349,7 +344,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
         events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
         
-        // do final calibration
+        // prepare data structures for the final calibration
         std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequence, this->base_to_event_map, k, strand_idx, 0);
     
@@ -363,7 +358,8 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         this->pore_model[strand_idx].bake_gaussian_parameters();
 
         // run recalibration to get the best set of scaling parameters and the residual
-        // between the (scaled) event levels and the model
+        // between the (scaled) event levels and the model.
+        // internally this function will set shift/scale/etc of the pore model
         bool calibrated = recalibrate_model(*this, strand_idx, alignment, this->pore_model[strand_idx].pmalphabet, true, false);
 
 #ifdef DEBUG_MODEL_SELECTION
@@ -379,7 +375,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
             g_failed_calibration_reads += 1;
         }
     } else {
-        // Could not infer alignent, fail this read
+        // Could not align, fail this read
         this->events[strand_idx].clear();
         this->events_per_base[strand_idx] = 0.0f;
         g_failed_calibration_reads += 1;
