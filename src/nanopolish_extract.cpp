@@ -40,7 +40,7 @@ static const char *EXTRACT_USAGE_MESSAGE =
 "                                         (default: 2d-or-template)\n"
 "  -b, --basecaller=NAME[:VERSION]      consider only data produced by basecaller NAME,\n"
 "                                         optionally with given exact VERSION\n"
-"  -o, --output=FILE                    write output to FILE (default: stdout)\n"
+"  -o, --output=FILE                    write output to FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -321,6 +321,12 @@ void parse_extract_options(int argc, char** argv)
     auto default_level = (int)logger::warning + opt::verbose;
     logger::Logger::set_default_level(default_level);
     logger::Logger::set_levels_from_options(log_level, &std::clog);
+
+    if(opt::output_file.empty()) {
+        std::cerr << SUBPROGRAM ": an output file (-o) is required\n";
+        die = true;
+    }
+
     // parse paths to process
     while (optind < argc)
     {
@@ -331,11 +337,13 @@ void parse_extract_options(int argc, char** argv)
         }
         opt::paths.push_back(path);
     }
+
     if (opt::paths.empty())
     {
         std::cerr << SUBPROGRAM ": no paths to process\n";
         die = true;
     }
+
     // check read type
     if (not (opt::read_type == "template"
              or opt::read_type == "complement"
@@ -346,12 +354,14 @@ void parse_extract_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": invalid read type: " << opt::read_type << "\n";
         die = true;
     }
+
     // die if errors
     if (die)
     {
         std::cerr << "\n" << EXTRACT_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
     }
+
     LOG(info) << "paths: " << alg::os_join(opt::paths, " ") << "\n";
     LOG(info) << "recurse: " << (opt::recurse? "yes" : "no") << "\n";
     LOG(info) << "read_type: " << opt::read_type << "\n";
@@ -368,15 +378,9 @@ int extract_main(int argc, char** argv)
     // when ofs goes out of scope.
     {
         std::ofstream ofs;
-        if (not opt::output_file.empty())
-        {
-            ofs.open(opt::output_file);
-            os_p = &ofs;
-        }
-        else
-        {
-            os_p = &std::cout;
-        }
+        ofs.open(opt::output_file);
+        os_p = &ofs;
+
         for (unsigned i = 0; i < opt::paths.size(); ++i)
         {
             process_path(opt::paths[i]);
@@ -386,6 +390,7 @@ int extract_main(int argc, char** argv)
     // Build the ReadDB from the output file
     ReadDB read_db;
     read_db.build(opt::output_file);
+    read_db.save();
 
     std::clog << "[extract] found " << opt::total_files_count
               << " files, extracted " << opt::total_files_used_count
