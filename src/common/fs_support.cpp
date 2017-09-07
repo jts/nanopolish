@@ -4,6 +4,8 @@
 //---------------------------------------------------------
 //
 #include "fs_support.hpp"
+#include <sys/stat.h>
+#include <dirent.h>
 
 //
 bool is_directory(const std::string& file_name)

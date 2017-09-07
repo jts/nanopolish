@@ -9,11 +9,6 @@
 #include <string>
 #include <vector>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <dirent.h>
-
-
 // ref: http://stackoverflow.com/a/612176/717706
 // return true if the given name is a directory
 bool is_directory(const std::string& file_name);
