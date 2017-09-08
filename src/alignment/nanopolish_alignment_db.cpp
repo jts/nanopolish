@@ -250,6 +250,8 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
 {
     std::vector<Variant> variants;
     std::map<std::string, std::pair<Variant, int>> map;
+    assert(stop_position >= start_position);
+
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
     for(size_t i = 0; i < m_sequence_records.size(); ++i) {

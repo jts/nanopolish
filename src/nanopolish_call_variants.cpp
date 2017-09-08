@@ -1059,17 +1059,27 @@ int call_variants_main(int argc, char** argv)
     std::string contig;
     int start_base;
     int end_base;
+    int contig_length = -1;
 
     // If a window has been specified, only call variants/polish in that range
     if(!opt::window.empty()) {
         // Parse the window string
         parse_region_string(opt::window, contig, start_base, end_base);
-        end_base = std::min(end_base, get_contig_length(contig) - 1);
+        contig_length = get_contig_length(contig);
+        end_base = std::min(end_base, contig_length - 1);
     } else {
         // otherwise, run on the whole genome
         contig = get_single_contig_or_fail();
+        contig_length = get_contig_length(contig);
         start_base = 0;
-        end_base = get_contig_length(contig) - 1;
+        end_base = contig_length - 1;
+    }
+
+    int MIN_DISTANCE_TO_END = 40;
+    if(contig_length - start_base < MIN_DISTANCE_TO_END) {
+        fprintf(stderr, "Invalid polishing window: [%d %d] - please adjust -w parameter.\n", start_base, end_base);
+        fprintf(stderr, "The starting coordinate of the polishing window must be at least %dbp from the contig end\n", MIN_DISTANCE_TO_END);
+        exit(EXIT_FAILURE);
     }
 
     FILE* out_fp;
