@@ -24,6 +24,10 @@ Haplotype::Haplotype(const std::string& ref_name,
         m_coordinate_map[i] = m_ref_position + i;
     }
 }
+
+Haplotype::~Haplotype()
+{
+}
  
 //       
 bool Haplotype::apply_variant(const Variant& v)
@@ -100,6 +104,12 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end) const
     }
 
     assert(derived_base_start != m_coordinate_map.size());
+
+    // JTS: temporary debug dump for #199
+    if(derived_base_end == m_coordinate_map.size()) {
+        print_debug_info();
+    }
+
     assert(derived_base_end != m_coordinate_map.size());
     assert(m_coordinate_map[derived_base_start] <= start);
     assert(m_coordinate_map[derived_base_end] >= end);
@@ -157,3 +167,13 @@ size_t Haplotype::_find_derived_index_by_ref_lower_bound(size_t ref_index) const
     return m_coordinate_map.size();
 }
 
+void Haplotype::print_debug_info() const
+{
+    fprintf(stderr, "[haplotype-debug] ctg: %s, position: %d\n", m_ref_name.c_str(), m_ref_position);
+    fprintf(stderr, "[haplotype-debug] r-sequence: %s\n", m_reference.c_str());
+    fprintf(stderr, "[haplotype-debug] h-sequence: %s\n", m_sequence.c_str());
+    for(size_t i = 0; i < m_variants.size(); ++i) {
+        fprintf(stderr, "[haplotype-debug] variant[%zu]: ", i); 
+        m_variants[i].write_vcf(stderr);
+    }
+}

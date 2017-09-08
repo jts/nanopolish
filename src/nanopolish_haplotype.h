@@ -19,6 +19,9 @@ class Haplotype
         Haplotype(const std::string& ref_name,
                   const size_t ref_position,
                   const std::string& ref_sequence);
+
+        //
+        ~Haplotype();
         
         // get the sequence of the haplotype
         const std::string& get_sequence() const { return m_sequence; } 
@@ -69,6 +72,8 @@ class Haplotype
         // reference position which is not less than ref_index.
         // This mimics std::lower_bound
         size_t _find_derived_index_by_ref_lower_bound(size_t ref_index) const;
+
+        void print_debug_info() const;
 
         //
         // data
