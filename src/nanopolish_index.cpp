@@ -150,8 +150,6 @@ void parse_index_options(int argc, char** argv)
     logger::Logger::set_default_level(default_level);
     logger::Logger::set_levels_from_options(log_level, &std::clog);
 
-    opt::reads_file = argv[optind];
-    
     if (argc - optind < 1) {
         std::cerr << SUBPROGRAM ": not enough arguments\n";
         die = true;
