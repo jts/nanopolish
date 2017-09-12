@@ -251,6 +251,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
     std::vector<Variant> variants;
     std::map<std::string, std::pair<Variant, int>> map;
     assert(stop_position >= start_position);
+    const int MIN_DISTANCE_TO_REGION_END = 1;
 
     std::vector<int> depth(stop_position - start_position + 1, 0);
 
@@ -311,7 +312,9 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
                 }
             }
 
-            if(next_iter != stop_iter && (is_mismatch || is_gap)) {
+            // Make sure this is a variant, that it did not go off the end of the reference and that
+            // it is not too close to the end of the region
+            if(next_iter != stop_iter && (is_mismatch || is_gap) && next_iter->ref_pos < stop_position - MIN_DISTANCE_TO_REGION_END) {
                 Variant v;
                 v.ref_name = contig;
                 v.ref_position = start_iter->ref_pos;
