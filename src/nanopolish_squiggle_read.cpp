@@ -461,7 +461,8 @@ void SquiggleRead::_load_R9(uint32_t si,
         }
 
         if(mt == "") {
-            fprintf(stderr, "Error: The basecalling model could not be detected from the fast5 file. Please re-run basecalling using albacore.\n");
+            fprintf(stderr, "Error: The basecalling model could not be detected from the fast5 file: %s\n", this->fast5_path.c_str());
+            fprintf(stderr, "Error: Please re-run basecalling using albacore.\n");
             exit(1);
         }
 
