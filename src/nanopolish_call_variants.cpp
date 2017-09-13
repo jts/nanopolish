@@ -84,6 +84,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -p, --ploidy=NUM                     the ploidy level of the sequenced genome\n"
+"      --genotype=FILE                  call genotypes for the variants in the vcf FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
