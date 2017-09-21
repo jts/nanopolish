@@ -72,6 +72,7 @@
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
+#include <functional>
 
 namespace logger
 {

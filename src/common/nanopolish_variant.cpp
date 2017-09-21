@@ -175,7 +175,7 @@ void score_variant_group(VariantGroup& variant_group,
     max_r -= 1;
 
     if(max_r != num_variants) {
-        fprintf(stderr, "Number of variants in span (%d) would exceed max-haplotypes. Variants may be missed. Consider running with a higher value of max-haplotypes!\n", num_variants);
+        fprintf(stderr, "Number of variants in span (%lu) would exceed max-haplotypes. Variants may be missed. Consider running with a higher value of max-haplotypes!\n", num_variants);
     }
 
     // Construct haplotypes (including the base haplotype with no variants)

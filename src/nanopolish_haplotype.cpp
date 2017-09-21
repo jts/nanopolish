@@ -169,7 +169,7 @@ size_t Haplotype::_find_derived_index_by_ref_lower_bound(size_t ref_index) const
 
 void Haplotype::print_debug_info() const
 {
-    fprintf(stderr, "[haplotype-debug] ctg: %s, position: %d\n", m_ref_name.c_str(), m_ref_position);
+    fprintf(stderr, "[haplotype-debug] ctg: %s, position: %lu\n", m_ref_name.c_str(), m_ref_position);
     fprintf(stderr, "[haplotype-debug] r-sequence: %s\n", m_reference.c_str());
     fprintf(stderr, "[haplotype-debug] h-sequence: %s\n", m_sequence.c_str());
     for(size_t i = 0; i < m_variants.size(); ++i) {
