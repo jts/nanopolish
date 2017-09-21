@@ -52,7 +52,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             this->read_sequence = read_db.get_read_sequence(read_name);
             load_from_raw(flags);
         }
-        
+
         // perform drift correction and other scalings
         transform();
     }
@@ -152,7 +152,6 @@ void SquiggleRead::load_from_events(const uint32_t flags)
             p_model_states.push_back(f5_event.p_model_state);
         }
 
-
         // we need the 1D event map and sequence to calculate calibration parameters
         // these will be copied into the member fields later if this is a 1D read,
         // or discarded if this is a 2D read
@@ -234,6 +233,9 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     std::string alphabet = "nucleotide";
     std::string strand_str = "template";
     size_t k = 6;
+
+    this->read_type = SRT_TEMPLATE;
+    this->pore_type = PT_R9;
 
     // Open file for read
     this->f_p = new fast5::File(fast5_path);
@@ -969,7 +971,7 @@ hack:
         {
             read_kidx += 1;
         }
-        
+ 
         // In the most recent version of metrichor occasionally
         // a kmer will be present in the alignment table
         // that is not in the 2D read. This awful hack
