@@ -19,6 +19,9 @@ void estimate_scalings_using_mom(const std::string& sequence,
                                  double& out_shift,
                                  double& out_scale);
 
+std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read,
+                                                            const std::string& sequence);
+
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read,
                                                    const std::string& sequence);
 

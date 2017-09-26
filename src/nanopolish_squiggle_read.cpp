@@ -30,6 +30,7 @@ int g_total_reads = 0;
 int g_unparseable_reads = 0;
 int g_qc_fail_reads = 0;
 int g_failed_calibration_reads = 0;
+int g_failed_alignment_reads = 0;
 
 const double MIN_CALIBRATION_VAR = 2.5;
 
@@ -46,7 +47,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     #pragma omp critical(sr_load_fast5)
     {
         bool is_event_read = is_extract_read_name(this->read_name);
-        if(is_event_read) {
+        if(is_event_read && false) {
             load_from_events(flags);
         } else {
             this->read_sequence = read_db.get_read_sequence(read_name);
@@ -255,7 +256,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     // we assume the first raw sample read is the one we're after
     std::string sample_read_name = sample_read_names.front();
     std::vector<float> samples = f_p->get_raw_samples(sample_read_name);
-    
+
     // convert samples to scrappie's format (for event detection)
     raw_table rt;
     rt.n = samples.size();
@@ -276,7 +277,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, event_detection_defaults);
     assert(rt.n > 0);
     assert(et.n > 0);
-    
+
     // Load pore model and scale to events using method-of-moments
     this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
                                                            alphabet,
@@ -288,7 +289,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
                                 et,
                                 shift,
                                 scale);
-    
+
     // apply parameters to pore model
     this->pore_model[strand_idx].shift = shift;
     this->pore_model[strand_idx].scale = scale;
@@ -296,7 +297,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->pore_model[strand_idx].var = 1.0f;
     transform();
     this->pore_model[strand_idx].bake_gaussian_parameters();
-    
+
     // copy events into nanopolish's format
     this->events[strand_idx].resize(et.n);
     double start_time = 0;
@@ -313,7 +314,9 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     free(et.event);
 
     // align events to the basecalled read
-    std::vector<AlignedPair> event_alignment = banded_simple_event_align(*this, read_sequence);
+    std::vector<AlignedPair> event_alignment;
+    //event_alignment = banded_simple_event_align(*this, read_sequence);
+    event_alignment = adaptive_banded_simple_event_align(*this, read_sequence);
 
     // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {
@@ -345,11 +348,11 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         }
 
         events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
-        
+
         // prepare data structures for the final calibration
         std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequence, this->base_to_event_map, k, strand_idx, 0);
-    
+
         // reset default scaling parameters
         this->pore_model[strand_idx].shift = 0.0;
         this->pore_model[strand_idx].scale = 1.0;
@@ -380,7 +383,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         // Could not align, fail this read
         this->events[strand_idx].clear();
         this->events_per_base[strand_idx] = 0.0f;
-        g_failed_calibration_reads += 1;
+        g_failed_alignment_reads += 1;
     }
     g_total_reads += 1;
 
