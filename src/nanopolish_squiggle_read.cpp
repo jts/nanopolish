@@ -314,9 +314,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     free(et.event);
 
     // align events to the basecalled read
-    std::vector<AlignedPair> event_alignment;
-    //event_alignment = banded_simple_event_align(*this, read_sequence);
-    event_alignment = adaptive_banded_simple_event_align(*this, read_sequence);
+    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, read_sequence);
 
     // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {
