@@ -162,14 +162,6 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     // fill in remaining bands
     for(int band_idx = 2; band_idx < n_bands; ++band_idx) {
         // Determine placement of this band according to Suzuki's rule
-
-        /*
-        if(band_idx % 2 == 1) {
-            band_lower_left[band_idx] = move_down(band_lower_left[band_idx - 1]);
-        } else {
-            band_lower_left[band_idx] = move_right(band_lower_left[band_idx - 1]);
-        }
-        */
     
         // Adaptive policy
         // When both ll and ur are out-of-band (ob) we alternate movements
