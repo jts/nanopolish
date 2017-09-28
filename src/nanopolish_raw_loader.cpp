@@ -310,7 +310,6 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         assert(band_idx < bands.size());
         int offset = band_event_to_offset(band_idx, event_idx);
         if(is_offset_valid(offset)) {
-            //fprintf(stdout, "ei: %d ki: %d s: %.2f\n", event_idx, curr_kmer_idx, bands[band_idx][offset]);
             float s = bands[band_idx][offset] + (n_events - event_idx) * lp_trim;
             if(s > max_score) {
                 max_score = s;
@@ -323,7 +322,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     fprintf(stderr, "[adaback] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, max_score);
 #endif
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
-        //fprintf(stdout, "ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
+        
         // emit alignment
         out.push_back({curr_kmer_idx, curr_event_idx});
 #ifdef DEBUG_ADAPTIVE
