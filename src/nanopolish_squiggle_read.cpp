@@ -47,7 +47,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     #pragma omp critical(sr_load_fast5)
     {
         bool is_event_read = is_extract_read_name(this->read_name);
-        if(is_event_read && false) {
+        if(is_event_read) {
             load_from_events(flags);
         } else {
             this->read_sequence = read_db.get_read_sequence(read_name);
