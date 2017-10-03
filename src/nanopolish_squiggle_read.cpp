@@ -21,7 +21,7 @@ extern "C" {
 
 #include <fast5.hpp>
 
-//#define DEBUG_MODEL_SELECTION 1
+#define DEBUG_MODEL_SELECTION 1
 //#define DEBUG_RECONSTRUCTION 1
 
 // Track the number of skipped reads to warn the use at the end of the run
@@ -240,6 +240,14 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     std::string alphabet = "nucleotide";
     std::string strand_str = "template";
     size_t k = 6;
+    const detector_param* ed_params = &event_detection_defaults;
+
+    if(this->nucleotide_type == SRNT_RNA) {
+        kit = "r9.4_70bps";
+        alphabet = "u_to_t_rna";
+        k = 5;
+        ed_params = &event_detection_rna;
+    }
 
     this->read_type = SRT_TEMPLATE;
     this->pore_type = PT_R9;
@@ -280,7 +288,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     int varseg_chunk = 100;
     float varseg_thresh = 0.0;
     trim_and_segment_raw(rt, trim_start, trim_end, varseg_chunk, varseg_thresh);
-    event_table et = detect_events(rt, event_detection_defaults);
+    event_table et = detect_events(rt, *ed_params);
     assert(rt.n > 0);
     assert(et.n > 0);
 
@@ -288,7 +296,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
                                                            alphabet,
                                                            strand_str,
-                                                           6);
+                                                           k);
     double shift, scale;
     estimate_scalings_using_mom(this->read_sequence,
                                 this->pore_model[strand_idx],
@@ -311,6 +319,11 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         float length_in_seconds = et.event[i].length / this->sample_rate;
         this->events[strand_idx][i] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
         start_time += length_in_seconds;
+    }
+
+    // If sequencing RNA, reverse the events to be 3'->5'
+    if(this->nucleotide_type == SRNT_RNA) {
+        std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
     }
 
     // clean up scrappie raw and event tables
