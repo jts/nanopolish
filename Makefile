@@ -50,7 +50,7 @@ HTS_LIB=./htslib/libhts.a
 HTS_INCLUDE=-I./htslib
 
 # Include the header-only fast5 library
-FAST5_INCLUDE=-I./fast5/src
+FAST5_INCLUDE=-I./fast5/include
 
 # Include the header-only eigen library
 EIGEN_INCLUDE=-I./eigen/

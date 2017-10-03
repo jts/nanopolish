@@ -17,12 +17,12 @@
 #include <sstream>
 #include <getopt.h>
 
+#include <fast5.hpp>
 #include "nanopolish_index.h"
 #include "nanopolish_common.h"
 #include "nanopolish_read_db.h"
 #include "fs_support.hpp"
 #include "logger.hpp"
-#include "fast5.hpp"
 #include "profiler.h"
 
 static const char *INDEX_VERSION_MESSAGE =
