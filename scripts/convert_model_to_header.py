@@ -87,17 +87,11 @@ print "\t\ttmp.states[i].update_sd_lambda();"
 print "\t\ttmp.states[i].update_logs();"
 print "\t}"
 
-#print "\ttmp.states = {"
-#for ki, t in enumerate(model):
-#
-#    is_last = ki == len(model) - 1
-#    sep = ',' if not is_last else ''
-#
-#    print "\t\tPoreModelStateParams(%.5f, %.5f, %.5f, %.5f)%s // %s" % (float(t[1]), float(t[2]), float(t[3]), float(t[4]), sep, t[0])
-#print "};"
+if "alphabet" in header_kv:
+    print "\ttmp.pmalphabet = get_alphabet_by_name(%s);" % (quote(header_kv["alphabet"]))
+else:
+    print "\ttmp.pmalphabet = best_alphabet(%s);" % (quote("".join(bases)))
 
-#print "\ttmp.pmalphabet = get_alphabet_by_name(%s);" % (quote(header_kv["alphabet"]))
-print "\ttmp.pmalphabet = best_alphabet(%s);" % (quote("".join(bases)))
 print "\ttmp.set_metadata(%s, %s);" % (quote(header_kv["kit"]), quote(header_kv["strand"]))
 print "\treturn tmp;\n}"
 print "#endif"

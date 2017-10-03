@@ -19,6 +19,7 @@ enum KitVersion
     KV_SQK006,
     KV_R9_250BPS,
     KV_R9_4_450BPS,
+    KV_R9_4_70BPS,
     NUM_KITS
 };
 

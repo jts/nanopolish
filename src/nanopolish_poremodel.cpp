@@ -285,6 +285,8 @@ void PoreModel::set_metadata(const std::string& kit, const std::string& strand)
         this->metadata.kit = KV_R9_250BPS;
     } else if(kit == "r9.4_450bps") {
         this->metadata.kit = KV_R9_4_450BPS;
+    } else if(kit == "r9.4_70bps") {
+        this->metadata.kit = KV_R9_4_70BPS;
     } else {
         fprintf(stderr, "Error, unrecognized model kit %s\n", kit.c_str());
         exit(EXIT_FAILURE);

@@ -61,7 +61,8 @@ PoreModel& PoreModelSet::register_model(const PoreModel& p)
     if(iter != model_map.end()) {
         fprintf(stderr, "Warning: overwriting model %s\n", key.c_str());
     }
-    
+    fprintf(stderr, "registered model with key %s\n", key.c_str());
+
     #pragma omp critical
     model_map[key] = p;
 

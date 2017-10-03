@@ -32,6 +32,13 @@ enum SquiggleReadType
     SRT_2D
 };
 
+// the type of nucleotides that passed through the pore
+enum SquiggleReadNucleotideType
+{
+    SRNT_DNA,
+    SRNT_RNA
+};
+
 // Flags to control the behaviour of the read
 enum SquiggleReadFlags
 {
@@ -185,6 +192,7 @@ class SquiggleRead
         // unique identifier of the read
         std::string read_name;
         SquiggleReadType read_type;
+        SquiggleReadNucleotideType nucleotide_type;
         PoreType pore_type;
         std::string fast5_path;
         uint32_t read_id;

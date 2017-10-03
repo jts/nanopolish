@@ -37,6 +37,7 @@ const double MIN_CALIBRATION_VAR = 2.5;
 //
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags) :
     read_name(name),
+    nucleotide_type(SRNT_DNA),
     pore_type(PT_UNKNOWN),
     drift_correction_performed(false),
     f_p(nullptr)
@@ -44,10 +45,13 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->fast5_path = read_db.get_signal_path(this->read_name);
 
+    // JTS Hack, hardcode to RNA for now
+    this->nucleotide_type = SRNT_RNA;
+
     #pragma omp critical(sr_load_fast5)
     {
         bool is_event_read = is_extract_read_name(this->read_name);
-        if(is_event_read) {
+        if(this->nucleotide_type == SRNT_DNA && is_event_read) {
             load_from_events(flags);
         } else {
             this->read_sequence = read_db.get_read_sequence(read_name);
@@ -114,6 +118,8 @@ void SquiggleRead::transform()
 //
 void SquiggleRead::load_from_events(const uint32_t flags)
 {
+    assert(this->nucleotide_type != SRNT_RNA);
+
     f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
     detect_pore_type();

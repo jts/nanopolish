@@ -279,6 +279,34 @@ struct DNAAlphabet : public Alphabet
     }
 };
 
+// An RNA alphabet where the Us have been converted to Ts
+// This is used for direct RNA sequencing as most reference sequences
+// contain Ts into of U
+struct UtoTRNAAlphabet : public Alphabet
+{
+    // members
+    BASIC_MEMBER_BOILERPLATE
+
+    // functions
+    BASIC_ACCESSOR_BOILERPLATE
+
+    // no methylation in this alphabet
+    virtual size_t num_recognition_sites() const { return 0; }
+    virtual size_t recognition_length() const { return 0; }
+    virtual const char* get_recognition_site(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated(size_t) const { return NULL; }
+    virtual const char* get_recognition_site_methylated_complement(size_t) const { 
+        return NULL;
+    }
+
+    // does this alphabet contain all of the nucleotides in bases?
+    virtual inline bool contains_all(const char *bases) const
+    {
+        return strspn(bases, _base) == strlen(bases);
+    }
+};
+
+
 #define METHYLATION_MEMBER_BOILERPLATE \
     static const uint32_t _num_recognition_sites; \
     static const uint32_t _recognition_length; \
