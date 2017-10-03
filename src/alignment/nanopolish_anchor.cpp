@@ -46,7 +46,7 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride
         // based on the cigar operation
         int read_inc = 0;
         int ref_inc = 0;
-        
+ 
         // Process match between the read and the reference
         bool is_aligned = false;
         if(cigar_op == BAM_CMATCH || cigar_op == BAM_CEQUAL || cigar_op == BAM_CDIFF) {
