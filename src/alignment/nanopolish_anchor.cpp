@@ -17,9 +17,11 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_squiggle_read.h"
 
-std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride)
+std::vector<AlignedSegment> get_aligned_segments(const bam1_t* record, int read_stride)
 {
-    std::vector<AlignedPair> out;
+    std::vector<AlignedSegment> out;
+    // Initialize first segment
+    out.push_back(AlignedSegment());
 
     // This code is derived from bam_fillmd1_core
     //uint8_t *ref = NULL;
@@ -53,8 +55,12 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride
             is_aligned = true;
             read_inc = read_stride;
             ref_inc = 1;
-        } else if(cigar_op == BAM_CDEL || cigar_op == BAM_CREF_SKIP) {
+        } else if(cigar_op == BAM_CDEL) {
             ref_inc = 1;   
+        } else if(cigar_op == BAM_CREF_SKIP) {
+            // end the current segment and start a new one
+            out.push_back(AlignedSegment());
+            ref_inc = 1;
         } else if(cigar_op == BAM_CINS) {
             read_inc = read_stride;
         } else if(cigar_op == BAM_CSOFT_CLIP) {
@@ -69,7 +75,7 @@ std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride
         // Iterate over the pairs of aligned bases
         for(int j = 0; j < cigar_len; ++j) {
             if(is_aligned) {
-                out.push_back({ref_pos, read_pos});
+                out.back().push_back({ref_pos, read_pos});
             }
 
             // increment

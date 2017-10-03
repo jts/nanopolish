@@ -39,7 +39,14 @@ SequenceAlignmentRecord::SequenceAlignmentRecord(const bam1_t* record)
     }
     
     // copy read base-to-reference alignment
-    this->aligned_bases = get_aligned_pairs(record);
+    std::vector<AlignedSegment> alignments = get_aligned_segments(record);
+    if(alignments.size() > 1) {
+        fprintf(stderr, "Error: spliced alignments detected when loading read %s\n", this->read_name.c_str());
+        fprintf(stderr, "Please align the reads to the genome using a non-spliced aligner\n");
+        exit(EXIT_FAILURE);
+    }
+    assert(!alignments.empty());
+    this->aligned_bases = alignments[0];
 }
 
 //
@@ -511,7 +518,9 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(c
         int event_stride = bam_aux2i(bam_aux_get(handles.bam_record, "ES"));
 
         // copy event alignments
-        event_record.aligned_events = get_aligned_pairs(handles.bam_record, event_stride);
+        std::vector<AlignedSegment> alignments = get_aligned_segments(handles.bam_record, event_stride);
+        assert(alignments.size() > 0);
+        event_record.aligned_events = alignments[0];
 
         event_record.rc = bam_is_rev(handles.bam_record);
         event_record.stride = event_stride;

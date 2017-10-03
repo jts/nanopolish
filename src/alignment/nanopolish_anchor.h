@@ -35,10 +35,14 @@ struct AlignedPairRefUBComp
 typedef std::vector<AlignedPair>::iterator AlignedPairIter;
 typedef std::vector<AlignedPair>::const_iterator AlignedPairConstIter;
 
-// Return a vector specifying pairs of bases that have been aligned to each other
+// Return a vector specifying read-to-reference alignment segments
+// Each segment contains a vector pairs of bases that have been aligned to each other.
+// Each segment is defined a sequence of cigar match/ins/deletion options, followed by
+// a reference skip (N) operation.
 // This function can handle an "event cigar" bam record, which requires the ability
 // for event indices to be in ascending or descending order. In the latter case
 // read_stride should be -1
-std::vector<AlignedPair> get_aligned_pairs(const bam1_t* record, int read_stride = 1);
+typedef std::vector<AlignedPair> AlignedSegment;
+std::vector<AlignedSegment> get_aligned_segments(const bam1_t* record, int read_stride = 1);
 
 #endif
