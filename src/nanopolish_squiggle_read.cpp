@@ -257,6 +257,8 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         alphabet = "u_to_t_rna";
         k = 5;
         ed_params = &event_detection_rna;
+
+        std::replace(this->read_sequence.begin(), this->read_sequence.end(), 'U', 'T');
     }
 
     this->read_type = SRT_TEMPLATE;
