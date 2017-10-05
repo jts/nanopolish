@@ -21,7 +21,7 @@ extern "C" {
 
 #include <fast5.hpp>
 
-#define DEBUG_MODEL_SELECTION 1
+//#define DEBUG_MODEL_SELECTION 1
 //#define DEBUG_RECONSTRUCTION 1
 
 // Track the number of skipped reads to warn the use at the end of the run
@@ -50,6 +50,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
     #pragma omp critical(sr_load_fast5)
     {
+        this->f_p = new fast5::File(fast5_path);
+
         bool is_event_read = is_extract_read_name(this->read_name);
         if(this->nucleotide_type == SRNT_DNA && is_event_read) {
             load_from_events(flags);
@@ -60,6 +62,9 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
         // perform drift correction and other scalings
         transform();
+
+        delete this->f_p;
+        this->f_p = nullptr;
     }
 }
 
@@ -120,7 +125,6 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 {
     assert(this->nucleotide_type != SRNT_RNA);
 
-    f_p = new fast5::File(fast5_path);
     assert(f_p->is_open());
     detect_pore_type();
     detect_basecall_group();
@@ -221,9 +225,6 @@ void SquiggleRead::load_from_events(const uint32_t flags)
         events[0].clear();
         events[1].clear();
     }
-
-    delete f_p;
-    f_p = nullptr;
 }
 
 //
@@ -252,8 +253,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->read_type = SRT_TEMPLATE;
     this->pore_type = PT_R9;
 
-    // Open file for read
-    this->f_p = new fast5::File(fast5_path);
+    // Ensure signal file is available for read
     assert(f_p->is_open());
 
     // Read the sample rate
@@ -410,12 +410,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         events[0].clear();
         events[1].clear();
     }
-
-    delete f_p;
-    f_p = nullptr;
 }
-
-
 
 void SquiggleRead::_load_R7(uint32_t si)
 {
