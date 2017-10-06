@@ -17,7 +17,7 @@
 #include "nanopolish_read_db.h"
 
 #define READ_DB_SUFFIX ".readdb"
-#define GZIPPED_READS_SUFFIX ".fa.gz"
+#define GZIPPED_READS_SUFFIX ".index"
 
 // Tell KSEQ what functions to use to open/read files
 KSEQ_INIT(gzFile, gzread)
@@ -57,27 +57,34 @@ void ReadDB::load(const std::string& input_reads_filename)
     
     //
     std::ifstream in_file(in_filename.c_str());
-    if(in_file.bad()) {
-        fprintf(stderr, "error: could not read db %s\n", in_filename.c_str());
+    bool success = false;
+    if(in_file.good()) {
+        // read the database
+        std::string line;
+        while(getline(in_file, line)) {
+            std::vector<std::string> fields = split(line, '\t');
+
+            std::string name = "";
+            std::string path = "";
+            if(fields.size() == 2) {
+                name = fields[0];
+                path = fields[1];
+                m_data[name].signal_data_path = path;
+            }
+        }
+
+        // load faidx
+        m_fai = fai_load3(m_indexed_reads_filename.c_str(), NULL, NULL, 0);
+        if(m_fai != NULL) {
+            success = true;
+        }
+    } 
+
+    if(!success) {
+        fprintf(stderr, "error: could not load the index files for input file %s\n", input_reads_filename.c_str());
+        fprintf(stderr, "Please run nanopolish index on your reads (see documentation)\n");
         exit(EXIT_FAILURE);
     }
-
-    // read the database
-    std::string line;
-    while(getline(in_file, line)) {
-        std::vector<std::string> fields = split(line, '\t');
-
-        std::string name = "";
-        std::string path = "";
-        if(fields.size() == 2) {
-            name = fields[0];
-            path = fields[1];
-            m_data[name].signal_data_path = path;
-        }
-    }
-
-    // load faidx
-    m_fai = fai_load(m_indexed_reads_filename.c_str());
 }
 
 ReadDB::~ReadDB()
@@ -143,7 +150,11 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
         out_record += "\n";
         out_record += seq->seq.s;
         out_record += "\n";
-        bgzf_write(bgzf_write_fp, out_record.c_str(), out_record.length());
+        size_t write_length = bgzf_write(bgzf_write_fp, out_record.c_str(), out_record.length());
+        if(write_length != out_record.length()) {
+            fprintf(stderr, "error in bgzf_write, aborting\n");
+            exit(EXIT_FAILURE);
+        }
     }
 
     // cleanup
