@@ -38,14 +38,14 @@ static const char *INDEX_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "      --version                        display version\n"
 "  -v, --verbose                        display verbose output\n"
-"  -d, --directory                      path to the directory containing the raw ONT signal files\n"
+"  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
 "  -f, --fast5-fofn                     file containing the paths to each fast5 file for the run\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
     static unsigned int verbose = 0;
-    static std::string raw_file_directory;
+    static std::vector<std::string> raw_file_directories;
     static std::string fast5_fofn;
     static std::string reads_file;
 }
@@ -140,7 +140,7 @@ void parse_index_options(int argc, char** argv)
                 log_level.push_back(arg.str());
                 break;
             case 'v': opt::verbose++; break;
-            case 'd': arg >> opt::raw_file_directory; break;
+            case 'd': opt::raw_file_directories.push_back(arg.str()); break;
             case 'f': arg >> opt::fast5_fofn; break;
         }
     }
@@ -182,8 +182,9 @@ int index_main(int argc, char** argv)
     // if the input fastq did not contain a complete set of paths
     // use the fofn/directory provided to augment the index
     if(!all_reads_have_paths) {
-        if(!opt::raw_file_directory.empty()) {
-            index_path(read_db, opt::raw_file_directory);
+
+        for(const auto& dir_name : opt::raw_file_directories) {
+            index_path(read_db, dir_name);
         }
 
         if(!opt::fast5_fofn.empty()) {
