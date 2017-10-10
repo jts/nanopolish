@@ -39,7 +39,7 @@ void SquiggleScalings::set4(double _shift,
                             double _drift,
                             double _var)
 {
-    set6(shift, scale, drift, var, 1.0, 1.0);
+    set6(_shift, _scale, _drift, _var, 1.0, 1.0);
 }
 
 void SquiggleScalings::set6(double _shift,

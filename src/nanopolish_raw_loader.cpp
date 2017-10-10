@@ -11,6 +11,7 @@
 
 //#define DEBUG_BANDED 1
 //#define DEBUG_ADAPTIVE 1
+//#define DEBUG_PRINT_STATS 1
 
 //
 SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
