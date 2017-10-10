@@ -34,12 +34,38 @@ int g_failed_alignment_reads = 0;
 
 const double MIN_CALIBRATION_VAR = 2.5;
 
+void SquiggleScalings::set4(double _shift,
+                            double _scale,
+                            double _drift,
+                            double _var)
+{
+    set6(shift, scale, drift, var, 1.0, 1.0);
+}
+
+void SquiggleScalings::set6(double _shift,
+                            double _scale,
+                            double _drift,
+                            double _var,
+                            double _scale_sd,
+                            double _var_sd)
+{
+    shift = _shift;
+    scale = _scale;
+    drift = _drift;
+    var = _var;
+    scale_sd = _scale_sd;
+    var_sd = _var_sd;
+
+    log_var = log(var);
+}
+
 //
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags) :
     read_name(name),
     nucleotide_type(SRNT_DNA),
     pore_type(PT_UNKNOWN),
     drift_correction_performed(false),
+    are_events_scaled(false),
     f_p(nullptr)
 {
     this->events_per_base[0] = events_per_base[1] = 0.0f;
@@ -116,17 +142,58 @@ int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 void SquiggleRead::transform()
 {
     for (size_t si = 0; si < 2; ++si) {
+        for(size_t ei = 0; ei < this->events[si].size(); ++ei) {
+
+            SquiggleEvent& event = this->events[si][ei];
+
+            // correct level by drift
+            double time = event.start_time - this->events[si][0].start_time;
+            event.mean -= (time * this->pore_model[si].drift);
+        }
+    }
+
+    this->drift_correction_performed = true;
+}
+
+//
+void SquiggleRead::scale_events()
+{
+    assert(!this->are_events_scaled);
+
+    for (size_t si = 0; si < NUM_STRANDS; ++si) {
         for(size_t ei = 0; ei < events[si].size(); ++ei) {
 
             SquiggleEvent& event = events[si][ei];
 
-            // correct level by drift
+            // get drift correction factor
             double time = event.start_time - events[si][0].start_time;
-            event.mean -= (time * pore_model[si].drift);
+            double drift = time * scalings[si].drift;
+
+            event.mean = (event.mean - scalings[si].shift - drift) / scalings[si].scale;
         }
     }
 
-    drift_correction_performed = true;
+    this->are_events_scaled = true;
+}
+
+void SquiggleRead::unscale_events()
+{
+    assert(this->are_events_scaled);
+
+    for (size_t si = 0; si < NUM_STRANDS; ++si) {
+        for(size_t ei = 0; ei < events[si].size(); ++ei) {
+
+            SquiggleEvent& event = events[si][ei];
+
+            // get drift correction factor
+            double time = event.start_time - events[si][0].start_time;
+            double drift = time * scalings[si].drift;
+
+            event.mean = event.mean * scalings[si].scale + scalings[si].shift + drift;
+        }
+    }
+
+    this->are_events_scaled = false;
 }
 
 //
@@ -308,16 +375,17 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
                                                            alphabet,
                                                            strand_str,
                                                            k);
-    double shift, scale;
-    estimate_scalings_using_mom(this->read_sequence,
-                                this->pore_model[strand_idx],
-                                et,
-                                shift,
-                                scale);
+
+    //
+    SquiggleScalings mom_scalings = estimate_scalings_using_mom(this->read_sequence,
+                                                                this->pore_model[strand_idx],
+                                                                et);
+
+    this->scalings[strand_idx] = mom_scalings;
 
     // apply parameters to pore model
-    this->pore_model[strand_idx].shift = shift;
-    this->pore_model[strand_idx].scale = scale;
+    this->pore_model[strand_idx].shift = mom_scalings.shift;
+    this->pore_model[strand_idx].scale = mom_scalings.scale;
     this->pore_model[strand_idx].drift = 0.0f;
     this->pore_model[strand_idx].var = 1.0f;
     transform();
@@ -336,6 +404,9 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
     }
+
+    // Apply initial scalings to the read
+    this->scale_events();
 
     // clean up scrappie raw and event tables
     assert(rt.raw != NULL);

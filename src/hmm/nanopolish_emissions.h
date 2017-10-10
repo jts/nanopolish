@@ -41,12 +41,18 @@ inline float z_score(const SquiggleRead& read,
 }
 
 static const float log_inv_sqrt_2pi = log(0.3989422804014327);
+
 inline float log_normal_pdf(float x, const PoreModelStateParams& s)
 {
     float a = (x - s.level_mean) / s.level_stdv;
     return log_inv_sqrt_2pi - s.level_log_stdv + (-0.5f * a * a);
 }
 
+inline float log_normal_pdf_from_scaled_event(float x, float var, float log_var, const PoreModelStateParams& s)
+{
+    float a = (x - s.level_mean) / (s.level_stdv * var);
+    return log_inv_sqrt_2pi - s.level_log_stdv - log_var + (-0.5f * a * a);
+}
 
 inline float log_normal_pdf(float x, const GaussianParameters& g)
 {
@@ -71,6 +77,34 @@ inline float log_probability_match_r9(const SquiggleRead& read,
                                       uint32_t kmer_rank,
                                       uint32_t event_idx,
                                       uint8_t strand)
+{
+    const PoreModel& pm = read.pore_model[strand];
+    const SquiggleScalings& scalings = read.scalings[strand];
+
+    // event level mean
+    float level = read.get_fully_scaled_level(event_idx, strand);
+    PoreModelStateParams state = pm.get_parameters(kmer_rank);
+
+    float lp = log_normal_pdf_from_scaled_event(level, scalings.var, scalings.log_var, state);
+
+/*
+    if(model_stdv())
+    {
+        float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
+        lp += lp_stdv;
+    }
+*/
+#if DEBUG_HMM_EMISSION
+    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
+#endif
+
+    return lp;
+}
+
+inline float log_probability_match_r9_old(const SquiggleRead& read,
+                                          uint32_t kmer_rank,
+                                          uint32_t event_idx,
+                                          uint8_t strand)
 {
     const PoreModel& pm = read.pore_model[strand];
 

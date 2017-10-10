@@ -13,12 +13,11 @@
 //#define DEBUG_ADAPTIVE 1
 
 //
-void estimate_scalings_using_mom(const std::string& sequence,
-                                 const PoreModel& pore_model,
-                                 const event_table& et,
-                                 double& out_shift,
-                                 double& out_scale)
+SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
+                                             const PoreModel& pore_model,
+                                             const event_table& et)
 {
+    SquiggleScalings out;
     size_t k = pore_model.k;
     size_t n_kmers = sequence.size() - k + 1;
     const Alphabet* alphabet = pore_model.pmalphabet;
@@ -38,21 +37,25 @@ void estimate_scalings_using_mom(const std::string& sequence,
         kmer_level_sum += l;
         kmer_level_sq_sum += pow(l, 2.0f);
     }
-    out_shift = event_level_sum / et.n - kmer_level_sum / n_kmers;
+
+    double shift = event_level_sum / et.n - kmer_level_sum / n_kmers;
 
     // estimate scale
     double event_level_sq_sum = 0.0f;
     for(size_t i = 0; i < et.n; ++i) {
-        event_level_sq_sum += pow(et.event[i].mean - out_shift, 2.0);
+        event_level_sq_sum += pow(et.event[i].mean - shift, 2.0);
     }
 
-    out_scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
+    double scale = (event_level_sq_sum / et.n) / (kmer_level_sq_sum / n_kmers);
+
+    out.set4(shift, scale, 0.0, 1.0);
 
 #if DEBUG_PRINT_STATS
-    fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, out_shift);
-    fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, out_scale);
+    fprintf(stderr, "event mean: %.2lf kmer mean: %.2lf shift: %.2lf\n", event_level_sum / et.n, kmer_level_sum / n_kmers, out.shift);
+    fprintf(stderr, "event sq-mean: %.2lf kmer sq-mean: %.2lf scale: %.2lf\n", event_level_sq_sum / et.n, kmer_level_sq_sum / n_kmers, out.scale);
     fprintf(stderr, "truth shift: %.2lf scale: %.2lf\n", pore_model.shift, pore_model.scale);
 #endif
+    return out;
 }
 
 #define event_kmer_to_band(ei, ki) (ei + 1) + (ki + 1)

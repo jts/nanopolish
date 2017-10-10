@@ -56,6 +56,37 @@ struct SquiggleEvent
     float log_stdv;    // precompute for efficiency
 };
 
+// Scaling parameters to account for per-read variations from the model
+struct SquiggleScalings
+{
+    SquiggleScalings() : scale(1.0), shift(0.0), drift(0.0), var(1.0), scale_sd(1.0), var_sd(1.0) {}
+
+    // Set scaling parameteters. Theses function should be used rather than
+    // setting values directly so the cached values are updated.
+    void set4(double _shift,
+              double _scale,
+              double _drift,
+              double _var);
+
+    void set6(double _shift,
+              double _scale,
+              double _drift,
+              double _var,
+              double _scale_sd,
+              double _var_sd);
+
+    // direct parameters that must be set
+    double scale;
+    double shift;
+    double drift;
+    double var;
+    double scale_sd;
+    double var_sd;
+
+    // derived parameters that are cached for efficiency
+    double log_var;
+};
+
 struct IndexPair
 {
     IndexPair() : start(-1), stop(-1) {}
@@ -64,7 +95,7 @@ struct IndexPair
 };
 
 // This struct maps from base-space k-mers to the range of template/complement
-// events used to call it. 
+// events used to call it.
 struct EventRangeForBase
 {
     IndexPair indices[2]; // one per strand
@@ -81,7 +112,7 @@ class SquiggleRead
 
         //
         // I/O
-        // 
+        //
 
         //
         // Access to data
@@ -116,9 +147,8 @@ class SquiggleRead
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            assert(drift_correction_performed);
-            float level = get_drift_corrected_level(event_idx, strand);
-            return (level - pore_model[strand].shift) / pore_model[strand].scale;
+            assert(this->are_events_scaled);
+            return(events[strand][event_idx].mean);
         }
 
         // Return the observed current level stdv, after correcting for scale
@@ -142,7 +172,7 @@ class SquiggleRead
                 return events[strand][event_idx].mean + (time * pore_model[strand].drift);
             }
         }
-        
+
         // Calculate the index of this k-mer on the other strand
         inline int32_t flip_k_strand(int32_t k_idx) const
         {
@@ -153,7 +183,13 @@ class SquiggleRead
         // Transform each event by correcting for current drift
         void transform();
 
-        // get the index of the event that is nearest to the given kmer 
+        // Transform each event by the per-read scaling parameters
+        void scale_events();
+
+        // Transform each event back to the measured value by undoing the scaling
+        void unscale_events();
+
+        // get the index of the event that is nearest to the given kmer
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
         // replace the pore models with the models specified in the map or by a string
@@ -198,12 +234,16 @@ class SquiggleRead
         uint32_t read_id;
         std::string read_sequence;
         bool drift_correction_performed;
+        bool are_events_scaled;
 
         // one model for each strand
         PoreModel pore_model[2];
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
+
+        // scaling parameters for each strand
+        SquiggleScalings scalings[2];
 
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events
@@ -264,13 +304,13 @@ class SquiggleRead
 
         // detect pore_type
         void detect_pore_type();
-        
-        // check whether the input read name conforms to nanopolish extract's signature       
+
+        // check whether the input read name conforms to nanopolish extract's signature
         bool is_extract_read_name(std::string& name) const;
 
         // detect basecall_group and read_type
         void detect_basecall_group();
-        
+
         // check basecall_group and read_type
         bool check_basecall_group() const;
 };

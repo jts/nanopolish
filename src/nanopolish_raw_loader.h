@@ -13,11 +13,9 @@
 #include "nanopolish_anchor.h"
 #include "scrappie_structures.h"
 
-void estimate_scalings_using_mom(const std::string& sequence,
-                                 const PoreModel& pore_model,
-                                 const event_table& et,
-                                 double& out_shift,
-                                 double& out_scale);
+SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
+                                             const PoreModel& pore_model,
+                                             const event_table& et);
 
 // Align events to k-mers of a sequence using Suzuki's adaptive banded algorithm
 // see: https://www.biorxiv.org/content/early/2017/09/07/130633
