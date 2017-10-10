@@ -163,13 +163,15 @@ class SquiggleRead
         }
 
         // Return the observed current level after correcting for drift
-        inline float get_uncorrected_level(uint32_t event_idx, uint32_t strand) const
+        inline float get_unscaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            if (!drift_correction_performed)
+            if(!this->are_events_scaled) {
                 return events[strand][event_idx].mean;
-            else {
+            } else {
+                const SquiggleEvent& event = this->events[strand][event_idx];
                 double time = get_time(event_idx, strand);
-                return events[strand][event_idx].mean + (time * pore_model[strand].drift);
+                double drift = time * scalings[strand].drift;
+                return event.mean * this->scalings[strand].scale + this->scalings[strand].shift + drift;
             }
         }
 
@@ -183,11 +185,14 @@ class SquiggleRead
         // Transform each event by correcting for current drift
         void transform();
 
+        // Update the scaling parameters and re-scale events if necessary
+        void update_scalings(size_t strand_idx, const SquiggleScalings& new_scalings);
+
         // Transform each event by the per-read scaling parameters
-        void scale_events();
+        void scale_events(size_t strand_idx);
 
         // Transform each event back to the measured value by undoing the scaling
-        void unscale_events();
+        void unscale_events(size_t strand_idx);
 
         // get the index of the event that is nearest to the given kmer
         int get_closest_event_to(int k_idx, uint32_t strand) const;
@@ -234,7 +239,7 @@ class SquiggleRead
         uint32_t read_id;
         std::string read_sequence;
         bool drift_correction_performed;
-        bool are_events_scaled;
+        bool are_events_scaled[2];
 
         // one model for each strand
         PoreModel pore_model[2];

@@ -65,9 +65,9 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     nucleotide_type(SRNT_DNA),
     pore_type(PT_UNKNOWN),
     drift_correction_performed(false),
-    are_events_scaled(false),
     f_p(nullptr)
 {
+    this->are_events_scaled[0] = this->are_events_scaled[1] = false;
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->fast5_path = read_db.get_signal_path(this->read_name);
 
@@ -155,45 +155,45 @@ void SquiggleRead::transform()
     this->drift_correction_performed = true;
 }
 
-//
-void SquiggleRead::scale_events()
+void SquiggleRead::update_scalings(size_t strand_idx, const SquiggleScalings& new_scalings)
 {
-    assert(!this->are_events_scaled);
-
-    for (size_t si = 0; si < NUM_STRANDS; ++si) {
-        for(size_t ei = 0; ei < events[si].size(); ++ei) {
-
-            SquiggleEvent& event = events[si][ei];
-
-            // get drift correction factor
-            double time = event.start_time - events[si][0].start_time;
-            double drift = time * scalings[si].drift;
-
-            event.mean = (event.mean - scalings[si].shift - drift) / scalings[si].scale;
-        }
+    if(this->are_events_scaled[strand_idx]) {
+        this->unscale_events(strand_idx);
+        this->scalings[strand_idx] = new_scalings;
+        this->scale_events(strand_idx);
+    } else {
+        this->scalings[strand_idx] = new_scalings;
     }
-
-    this->are_events_scaled = true;
 }
 
-void SquiggleRead::unscale_events()
+//
+void SquiggleRead::scale_events(size_t strand_idx)
 {
-    assert(this->are_events_scaled);
+    assert(!this->are_events_scaled[strand_idx]);
 
-    for (size_t si = 0; si < NUM_STRANDS; ++si) {
-        for(size_t ei = 0; ei < events[si].size(); ++ei) {
+    for(size_t ei = 0; ei < events[strand_idx].size(); ++ei) {
 
-            SquiggleEvent& event = events[si][ei];
+        SquiggleEvent& event = events[strand_idx][ei];
 
-            // get drift correction factor
-            double time = event.start_time - events[si][0].start_time;
-            double drift = time * scalings[si].drift;
+        // get drift correction factor
+        double time = event.start_time - events[strand_idx][0].start_time;
+        double drift = time * scalings[strand_idx].drift;
 
-            event.mean = event.mean * scalings[si].scale + scalings[si].shift + drift;
-        }
+        event.mean = (event.mean - scalings[strand_idx].shift - drift) / scalings[strand_idx].scale;
     }
 
-    this->are_events_scaled = false;
+    this->are_events_scaled[strand_idx] = true;
+}
+
+void SquiggleRead::unscale_events(size_t strand_idx)
+{
+    assert(this->are_events_scaled[strand_idx]);
+
+    for(size_t ei = 0; ei < events[strand_idx].size(); ++ei) {
+        events[strand_idx][ei].mean = get_unscaled_level(ei, strand_idx);
+    }
+
+    this->are_events_scaled[strand_idx] = false;
 }
 
 //
@@ -406,7 +406,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     }
 
     // Apply initial scalings to the read
-    this->scale_events();
+    this->scale_events(strand_idx);
 
     // clean up scrappie raw and event tables
     assert(rt.raw != NULL);

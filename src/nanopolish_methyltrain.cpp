@@ -217,7 +217,7 @@ bool recalibrate_model(SquiggleRead &sr,
             std::string model_kmer = ea.rc ? alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
             uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
 
-            raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
+            raw_events.push_back ( sr.get_unscaled_level(ea.event_idx, strand_idx) );
             level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
             level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
             if (scale_drift)
@@ -278,13 +278,10 @@ bool recalibrate_model(SquiggleRead &sr,
         double shift = x(0);
         double scale = x(1);
         double drift = scale_drift ? x(2) : 0.;
-
-        sr.pore_model[strand_idx].shift = shift;
-        sr.pore_model[strand_idx].scale = scale;
-        sr.pore_model[strand_idx].drift = drift;
+        double var = 1.0;
 
         if (scale_var) {
-            double var = 0.;
+            var = 0.;
             for (size_t i=0; i<raw_events.size(); i++) {
                 double yi = (raw_events[i] - shift - scale*level_means[i]);
                 if (scale_drift)
@@ -292,18 +289,14 @@ bool recalibrate_model(SquiggleRead &sr,
                 var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
             }
             var /= raw_events.size();
-
-            sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+            var = sqrt(var);
         }
 
-        if (sr.pore_model[strand_idx].is_scaled)
-            sr.pore_model[strand_idx].bake_gaussian_parameters();
+        SquiggleScalings new_scalings;
+        new_scalings.set4(shift, scale, drift, var);
+        sr.update_scalings(strand_idx, new_scalings);
 
         recalibrated = true;
-        //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", "
-        //                                                << sr.pore_model[strand_idx].scale << ", "
-        //                                                << sr.pore_model[strand_idx].drift << ", "
-        //                                                << sr.pore_model[strand_idx].var   << std::endl;
     }
 
     return recalibrated;
