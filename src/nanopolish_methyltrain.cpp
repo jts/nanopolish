@@ -292,10 +292,7 @@ bool recalibrate_model(SquiggleRead &sr,
             var = sqrt(var);
         }
 
-        SquiggleScalings new_scalings;
-        new_scalings.set4(shift, scale, drift, var);
-        sr.update_scalings(strand_idx, new_scalings);
-
+        sr.scalings[strand_idx].set4(shift, scale, drift, var);
         recalibrated = true;
     }
 
@@ -464,7 +461,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
-            case OPT_STDV: model_stdv() = true; break;
+            case OPT_STDV: /*model_stdv() = true;*/ break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_NUM_ROUNDS: arg >> opt::num_training_rounds; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
@@ -646,7 +643,8 @@ TrainingResult retrain_model_from_events(const PoreModel& current_model,
             #pragma omp critical
             result.trained_model.states[ki] = trained_mixture.params[0];
 
-            if (model_stdv()) {
+#if 0
+            if (false && model_stdv()) {
                 ParamMixture ig_mixture;
                 // weights
                 ig_mixture.log_weights = trained_mixture.log_weights;
@@ -673,7 +671,7 @@ TrainingResult retrain_model_from_events(const PoreModel& current_model,
                     result.trained_model.states[ki] = trained_ig_mixture.params[0];
                 }
             }
-
+#endif 
             #pragma omp atomic
             result.num_kmers_trained += 1;
         }

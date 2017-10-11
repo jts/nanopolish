@@ -17,8 +17,8 @@ inline float calculate_skip_probability_r7(const HMMInputSequence& sequence,
     uint32_t rank_i = sequence.get_kmer_rank(ki, pm.k, data.rc);
     uint32_t rank_j = sequence.get_kmer_rank(kj, pm.k, data.rc);
 
-    GaussianParameters level_i = pm.get_scaled_parameters(rank_i);
-    GaussianParameters level_j = pm.get_scaled_parameters(rank_j);
+    GaussianParameters level_i = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_i);
+    GaussianParameters level_j = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_j);
 
     return parameters.get_skip_probability(level_i.mean, level_j.mean);
 }

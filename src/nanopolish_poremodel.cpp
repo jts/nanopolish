@@ -13,31 +13,6 @@
 #include <bits/stl_algo.h>
 #include <fast5.hpp>
 
-void PoreModel::bake_gaussian_parameters()
-{
-    scaled_params.resize(states.size());
-    scaled_states.resize(states.size());
-
-    for(unsigned i = 0; i < states.size(); ++i) {
-
-        // as per ONT documents
-        scaled_states[i].level_mean = states[i].level_mean * scale + shift;
-        scaled_states[i].level_stdv = states[i].level_stdv * var;
-        scaled_states[i].sd_mean = states[i].sd_mean * scale_sd;
-        scaled_states[i].sd_lambda = states[i].sd_lambda * var_sd;
-        scaled_states[i].update_sd_stdv();
-
-        // for efficiency
-        scaled_states[i].update_logs();
-
-        // for compatibility
-        scaled_params[i].mean = scaled_states[i].level_mean;
-        scaled_params[i].stdv = scaled_states[i].level_stdv;
-        scaled_params[i].log_stdv = scaled_states[i].level_log_stdv;
-    }
-    is_scaled = true;
-}
-
 void add_found_bases(char *known, const char *kmer) {
     char newbase[2];
     unsigned posn;
@@ -50,7 +25,7 @@ void add_found_bases(char *known, const char *kmer) {
     return;
 }
 
-PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_scaled(false), pmalphabet(alphabet)
+PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pmalphabet(alphabet)
 {
     model_filename = filename;
     std::ifstream model_reader(filename);
@@ -62,15 +37,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
     std::string in_strand;
 
     unsigned ninserted = 0;
-
-    this->shift = 0.0;
-    this->scale = 1.0;
-    this->drift = 0.0;
-    this->var = 1.0;
-    this->scale_sd = 1.0;
-    this->var_sd = 1.0;
-    this->shift_offset = 0.0f;
-    this->scale_offset = 0.0f;
 
     const size_t maxNucleotides = 50;
     char bases[maxNucleotides+1] = "";
@@ -101,19 +67,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         if (model_line.find("#type") != std::string::npos) {
             std::string dummy;
             parser >> dummy >> this->type;
-        }
-
-        // Extract shift/scale offset from the header
-        // This will be applied to the per-read shift values
-        // to allow switching between models with different averages
-        if (model_line.find("#shift_offset") != std::string::npos) {
-            std::string dummy;
-            parser >> dummy >> this->shift_offset;
-        }
-        
-        if (model_line.find("#scale_offset") != std::string::npos) {
-            std::string dummy;
-            parser >> dummy >> this->scale_offset;
         }
 
         // Use the alphabet defined in the header if available
@@ -166,8 +119,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : is_
         states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
     }
     assert( ninserted == states.size() );
-
-    is_scaled = false;
 }
 
 PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& bc_gr, const Alphabet *alphabet) : pmalphabet(alphabet)
@@ -202,21 +153,6 @@ PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& b
         states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
     }
 
-    // Load the scaling parameters for the pore model
-    auto params = f_p->get_basecall_model_params(strand, bc_gr);
-    drift = params.drift;
-    scale = params.scale;
-    scale_sd = params.scale_sd;
-    shift = params.shift;
-    var = params.var;
-    var_sd = params.var_sd;
-
-    // no offset needed when loading directly from the fast5
-    shift_offset = 0.0f;
-
-    // apply shift/scale transformation to the pore model states
-    bake_gaussian_parameters();
-
     // Read and shorten the model name
     std::string temp_name = f_p->get_basecall_model_file(strand, bc_gr);
     std::string leader = "/opt/chimaera/model/";
@@ -245,8 +181,6 @@ void PoreModel::write(const std::string filename, const std::string modelname) c
     writer << "#type\t" << this->type << std::endl;
     writer << "#kit\t" << this->metadata.get_kit_name() << std::endl;
     writer << "#strand\t" << this->metadata.get_strand_model_name() << std::endl;
-    writer << "#shift_offset\t" << this->shift_offset << std::endl;
-    writer << "#scale_offset\t" << this->scale_offset << std::endl;
 
     std::string curr_kmer(k, this->pmalphabet->base(0));
     for(size_t ki = 0; ki < this->states.size(); ++ki) {
@@ -261,17 +195,12 @@ void PoreModel::update_states( const PoreModel &other )
 {
     k = other.k;
     pmalphabet = other.pmalphabet;
-    shift += other.shift_offset;
-    scale += other.scale_offset;
     update_states( other.states );
 }
 
 void PoreModel::update_states( const std::vector<PoreModelStateParams> &otherstates )
 {
     states = otherstates;
-    if (is_scaled) {
-        bake_gaussian_parameters();
-    }
 }
 
 void PoreModel::set_metadata(const std::string& kit, const std::string& strand)

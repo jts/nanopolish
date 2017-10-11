@@ -425,10 +425,11 @@ void print_debug_stats(const std::string& contig,
         double called_score = profile_hmm_score(called_haplotype.get_sequence(), data, alignment_flags);
         double base_avg = base_score / num_events;
         double called_avg = called_score / num_events;
+        const SquiggleScalings& scalings = data.read->scalings[data.strand];
         const PoreModel& pm = data.read->pore_model[data.strand];
         fprintf(stats_out, "%s\t%d\t%d\t", data.read->read_name.c_str(), data.strand, data.rc);
         fprintf(stats_out, "%.2lf\t%.2lf\t\t%.2lf\t%.2lf\t%.2lf\t", base_score, called_score, base_avg, called_avg, called_score - base_score);
-        fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", pm.shift, pm.scale, pm.drift, pm.var);
+        fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", scalings.shift, scalings.scale, scalings.drift, scalings.var);
 
         // print paired alignment
         std::vector<HMMAlignmentState> base_align = profile_hmm_align(base_haplotype.get_sequence(), data, alignment_flags);
@@ -464,8 +465,8 @@ void print_debug_stats(const std::string& contig,
             PoreModelStateParams base_model = pm.states[pm.pmalphabet->kmer_rank(base_kmer.c_str(), k)];
             PoreModelStateParams called_model = pm.states[pm.pmalphabet->kmer_rank(called_kmer.c_str(), k)];
 
-            float base_standard_level = (event_mean - base_model.level_mean) / (sqrt(pm.var) * base_model.level_stdv);
-            float called_standard_level = (event_mean - called_model.level_mean) / (sqrt(pm.var) * called_model.level_stdv);
+            float base_standard_level = (event_mean - base_model.level_mean) / (sqrt(scalings.var) * base_model.level_stdv);
+            float called_standard_level = (event_mean - called_model.level_mean) / (sqrt(scalings.var) * called_model.level_stdv);
             base_standard_level = base_align[bi].state == 'M' ? base_standard_level : INFINITY;
             called_standard_level = called_align[ci].state == 'M' ? called_standard_level : INFINITY;
 

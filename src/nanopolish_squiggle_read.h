@@ -85,6 +85,8 @@ struct SquiggleScalings
 
     // derived parameters that are cached for efficiency
     double log_var;
+    double scaled_var;
+    double log_scaled_var;
 };
 
 struct IndexPair
@@ -106,7 +108,7 @@ class SquiggleRead
 {
     public:
 
-        SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
+        SquiggleRead() {} // legacy TODO remove
         SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags = 0);
         ~SquiggleRead();
 
@@ -125,13 +127,6 @@ class SquiggleRead
             return events[strand][event_idx].duration;
         }
 
-        // Return the observed current level after correcting for drift
-        inline float get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
-        {
-            assert(drift_correction_performed);
-            return events[strand][event_idx].mean;
-        }
-
         // Return the current stdv for the given event
         inline float get_stdv(uint32_t event_idx, uint32_t strand) const
         {
@@ -144,17 +139,24 @@ class SquiggleRead
             return events[strand][event_idx].log_stdv;
         }
 
+        // Return the observed current level corrected for drift
+        inline float get_drift_scaled_level(uint32_t event_idx, uint32_t strand) const
+        {
+            float level = get_unscaled_level(event_idx, strand);
+            float time = get_time(event_idx, strand);
+            return level - time * this->scalings[strand].drift;
+        }
+
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            assert(this->are_events_scaled);
-            return(events[strand][event_idx].mean);
+            return (get_drift_scaled_level(event_idx, strand) - scalings[strand].shift) / scalings[strand].scale;
         }
 
         // Return the observed current level stdv, after correcting for scale
         inline float get_scaled_stdv(uint32_t event_idx, uint32_t strand) const
         {
-            return events[strand][event_idx].stdv / pore_model[strand].scale_sd;
+            return events[strand][event_idx].stdv / scalings[strand].scale_sd;
         }
 
         inline float get_time(uint32_t event_idx, uint32_t strand) const
@@ -165,14 +167,19 @@ class SquiggleRead
         // Return the observed current level after correcting for drift
         inline float get_unscaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            if(!this->are_events_scaled) {
-                return events[strand][event_idx].mean;
-            } else {
-                const SquiggleEvent& event = this->events[strand][event_idx];
-                double time = get_time(event_idx, strand);
-                double drift = time * scalings[strand].drift;
-                return event.mean * this->scalings[strand].scale + this->scalings[strand].shift + drift;
-            }
+            return events[strand][event_idx].mean;
+        }
+
+        // Get the parameters to the gaussian PDF scaled to this read
+        inline GaussianParameters get_scaled_gaussian_from_pore_model_state(size_t strand_idx, size_t rank) const
+        {
+            const SquiggleScalings& scalings = this->scalings[strand_idx];
+            const PoreModelStateParams& params = this->pore_model[strand_idx].states[rank];
+            GaussianParameters gp;
+            gp.mean = scalings.scale * params.level_mean + scalings.shift;
+            gp.stdv = params.level_stdv * scalings.var;
+            gp.log_stdv = params.level_log_stdv + scalings.log_var;
+            return gp;
         }
 
         // Calculate the index of this k-mer on the other strand
@@ -181,18 +188,6 @@ class SquiggleRead
             assert(!read_sequence.empty());
             return read_sequence.size() - k_idx - pore_model[T_IDX].k;
         }
-
-        // Transform each event by correcting for current drift
-        void transform();
-
-        // Update the scaling parameters and re-scale events if necessary
-        void update_scalings(size_t strand_idx, const SquiggleScalings& new_scalings);
-
-        // Transform each event by the per-read scaling parameters
-        void scale_events(size_t strand_idx);
-
-        // Transform each event back to the measured value by undoing the scaling
-        void unscale_events(size_t strand_idx);
 
         // get the index of the event that is nearest to the given kmer
         int get_closest_event_to(int k_idx, uint32_t strand) const;
@@ -220,10 +215,10 @@ class SquiggleRead
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const
         {
-            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->pore_model[strand_idx].shift,
-                                                                               this->pore_model[strand_idx].scale,
-                                                                               this->pore_model[strand_idx].drift,
-                                                                               this->pore_model[strand_idx].var);
+            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->scalings[strand_idx].shift,
+                                                                               this->scalings[strand_idx].scale,
+                                                                               this->scalings[strand_idx].drift,
+                                                                               this->scalings[strand_idx].var);
         }
 
         //
@@ -238,8 +233,6 @@ class SquiggleRead
         std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
-        bool drift_correction_performed;
-        bool are_events_scaled[2];
 
         // one model for each strand
         PoreModel pore_model[2];

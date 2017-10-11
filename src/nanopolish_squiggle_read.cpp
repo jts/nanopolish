@@ -49,6 +49,7 @@ void SquiggleScalings::set6(double _shift,
                             double _scale_sd,
                             double _var_sd)
 {
+    // direct
     shift = _shift;
     scale = _scale;
     drift = _drift;
@@ -56,7 +57,10 @@ void SquiggleScalings::set6(double _shift,
     scale_sd = _scale_sd;
     var_sd = _var_sd;
 
+    // derived
     log_var = log(var);
+    scaled_var = var / scale;
+    log_scaled_var = log(scaled_var);
 }
 
 //
@@ -64,10 +68,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     read_name(name),
     nucleotide_type(SRNT_DNA),
     pore_type(PT_UNKNOWN),
-    drift_correction_performed(false),
     f_p(nullptr)
 {
-    this->are_events_scaled[0] = this->are_events_scaled[1] = false;
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->fast5_path = read_db.get_signal_path(this->read_name);
 
@@ -94,9 +96,6 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             this->read_sequence = read_db.get_read_sequence(read_name);
             load_from_raw(flags);
         }
-
-        // perform drift correction and other scalings
-        transform();
 
         delete this->f_p;
         this->f_p = nullptr;
@@ -136,64 +135,6 @@ int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
     if(event_before == -1)
         return event_after;
     return event_before;
-}
-
-//
-void SquiggleRead::transform()
-{
-    for (size_t si = 0; si < 2; ++si) {
-        for(size_t ei = 0; ei < this->events[si].size(); ++ei) {
-
-            SquiggleEvent& event = this->events[si][ei];
-
-            // correct level by drift
-            double time = event.start_time - this->events[si][0].start_time;
-            event.mean -= (time * this->pore_model[si].drift);
-        }
-    }
-
-    this->drift_correction_performed = true;
-}
-
-void SquiggleRead::update_scalings(size_t strand_idx, const SquiggleScalings& new_scalings)
-{
-    if(this->are_events_scaled[strand_idx]) {
-        this->unscale_events(strand_idx);
-        this->scalings[strand_idx] = new_scalings;
-        this->scale_events(strand_idx);
-    } else {
-        this->scalings[strand_idx] = new_scalings;
-    }
-}
-
-//
-void SquiggleRead::scale_events(size_t strand_idx)
-{
-    assert(!this->are_events_scaled[strand_idx]);
-
-    for(size_t ei = 0; ei < events[strand_idx].size(); ++ei) {
-
-        SquiggleEvent& event = events[strand_idx][ei];
-
-        // get drift correction factor
-        double time = event.start_time - events[strand_idx][0].start_time;
-        double drift = time * scalings[strand_idx].drift;
-
-        event.mean = (event.mean - scalings[strand_idx].shift - drift) / scalings[strand_idx].scale;
-    }
-
-    this->are_events_scaled[strand_idx] = true;
-}
-
-void SquiggleRead::unscale_events(size_t strand_idx)
-{
-    assert(this->are_events_scaled[strand_idx]);
-
-    for(size_t ei = 0; ei < events[strand_idx].size(); ++ei) {
-        events[strand_idx][ei].mean = get_unscaled_level(ei, strand_idx);
-    }
-
-    this->are_events_scaled[strand_idx] = false;
 }
 
 //
@@ -376,20 +317,10 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
                                                            strand_str,
                                                            k);
 
-    //
-    SquiggleScalings mom_scalings = estimate_scalings_using_mom(this->read_sequence,
-                                                                this->pore_model[strand_idx],
-                                                                et);
-
-    this->scalings[strand_idx] = mom_scalings;
-
-    // apply parameters to pore model
-    this->pore_model[strand_idx].shift = mom_scalings.shift;
-    this->pore_model[strand_idx].scale = mom_scalings.scale;
-    this->pore_model[strand_idx].drift = 0.0f;
-    this->pore_model[strand_idx].var = 1.0f;
-    transform();
-    this->pore_model[strand_idx].bake_gaussian_parameters();
+    // 
+    this->scalings[strand_idx] = estimate_scalings_using_mom(this->read_sequence,
+                                                             this->pore_model[strand_idx],
+                                                             et);
 
     // copy events into nanopolish's format
     this->events[strand_idx].resize(et.n);
@@ -404,9 +335,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
     }
-
-    // Apply initial scalings to the read
-    this->scale_events(strand_idx);
 
     // clean up scrappie raw and event tables
     assert(rt.raw != NULL);
@@ -452,15 +380,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         std::vector<EventAlignment> alignment =
             get_eventalignment_for_1d_basecalls(read_sequence, this->base_to_event_map, k, strand_idx, 0);
 
-        // reset default scaling parameters
-        this->pore_model[strand_idx].shift = 0.0;
-        this->pore_model[strand_idx].scale = 1.0;
-        this->pore_model[strand_idx].drift = 0.0;
-        this->pore_model[strand_idx].var = 1.0;
-        this->pore_model[strand_idx].scale_sd = 1.0;
-        this->pore_model[strand_idx].var_sd = 1.0;
-        this->pore_model[strand_idx].bake_gaussian_parameters();
-
         // run recalibration to get the best set of scaling parameters and the residual
         // between the (scaled) event levels and the model.
         // internally this function will set shift/scale/etc of the pore model
@@ -474,7 +393,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 #endif
 
         // QC calibration
-        if(!calibrated || this->pore_model[strand_idx].var > MIN_CALIBRATION_VAR) {
+        if(!calibrated || this->scalings[strand_idx].var > MIN_CALIBRATION_VAR) {
             events[strand_idx].clear();
             g_failed_calibration_reads += 1;
         }
@@ -498,8 +417,13 @@ void SquiggleRead::_load_R7(uint32_t si)
 {
     assert(f_p and f_p->is_open());
     assert(not basecall_group.empty());
+
     // Load the pore model for this strand
     pore_model[si] = PoreModel( f_p, si, basecall_group );
+
+    // Read scaling parameters
+    auto params = f_p->get_basecall_model_params(si, basecall_group);
+    this->scalings[si].set6(params.shift, params.scale, params.drift, params.var, params.scale_sd, params.var_sd);
 
     // initialize transition parameters
     parameters[si].initialize(get_model_metadata_from_name(pore_model[si].name));
@@ -661,37 +585,29 @@ void SquiggleRead::_load_R9(uint32_t si,
         }
 
         PoreModel best_model;
+        SquiggleScalings best_scalings;
         double best_model_var = INFINITY;
 
         for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
 
             pore_model[si] = *candidate_models[model_idx];
 
-            // Initialize to default scaling parameters
-            pore_model[si].shift = 0.0;
-            pore_model[si].scale = 1.0;
-            pore_model[si].drift = 0.0;
-            pore_model[si].var = 1.0;
-            pore_model[si].scale_sd = 1.0;
-            pore_model[si].var_sd = 1.0;
-
-            pore_model[si].bake_gaussian_parameters();
-
             // run recalibration to get the best set of scaling parameters and the residual
             // between the (scaled) event levels and the model
             bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
             if(calibrated) {
-                if(pore_model[si].var < best_model_var) {
-                    best_model_var = pore_model[si].var;
+                if(this->scalings[si].var < best_model_var) {
+                    best_model_var = this->scalings[si].var;
                     best_model = pore_model[si];
+                    best_scalings = this->scalings[si];
                 }
             }
 
 #ifdef DEBUG_MODEL_SELECTION
             fprintf(stderr, "[calibration] read: %s strand: %zu model_idx: %zu "
                              "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
-                                    read_name.substr(0, 6).c_str(), si, model_idx, pore_model[si].scale,
-                                    pore_model[si].shift, pore_model[si].drift, pore_model[si].var);
+                                    read_name.substr(0, 6).c_str(), si, model_idx, scalings[si].scale,
+                                    scalings[si].shift, scalings[si].drift, scalings[si].var);
 #endif
         }
 
@@ -699,33 +615,13 @@ void SquiggleRead::_load_R9(uint32_t si,
 #ifdef DEBUG_MODEL_SELECTION
             fprintf(stderr, "[calibration] selected model with var %.4lf\n", best_model_var);
 #endif
-            pore_model[si] = best_model;
-
-            // Save calibration parameters
-            double shift = pore_model[si].shift;
-            double scale = pore_model[si].scale;
-            double drift =  pore_model[si].drift;
-            double var = pore_model[si].var;
-            double scale_sd = pore_model[si].scale_sd;
-            double var_sd = pore_model[si].var_sd;
-
             // Replace model
             PoreModel final_model = PoreModelSet::get_model(kit,
                                                             alphabet,
                                                             best_model.metadata.get_strand_model_name(),
                                                             final_model_k);
-            pore_model[si] = final_model;
-
-            // Copy calibration params
-            pore_model[si].shift = shift;
-            pore_model[si].scale = scale;
-            pore_model[si].drift = drift;
-            pore_model[si].var = var;
-            pore_model[si].scale_sd = scale_sd;
-            pore_model[si].var_sd = var_sd;
-
-            // Initialize gaussian params
-            pore_model[si].bake_gaussian_parameters();
+            this->pore_model[si] = final_model;
+            this->scalings[si] = best_scalings;
 
             // initialize transition parameters
             parameters[si].initialize(pore_model[si].metadata);
@@ -1233,10 +1129,10 @@ std::vector<float> SquiggleRead::get_scaled_samples_for_event(size_t strand_idx,
         //fprintf(stderr, "event_start: %.5lf sample start: %.5lf curr: %.5lf rate: %.2lf\n", event_start_time, this->sample_start_time / this->sample_rate, curr_sample_time, this->sample_rate);
         double s = this->samples[i];
         // apply scaling corrections
-        double scaled_s = s - this->pore_model[strand_idx].shift;
+        double scaled_s = s - this->scalings[strand_idx].shift;
         assert(curr_sample_time >= (this->sample_start_time / this->sample_rate));
-        scaled_s -= (curr_sample_time - (this->sample_start_time / this->sample_rate)) * this->pore_model[strand_idx].drift;
-        scaled_s /= this->pore_model[strand_idx].scale;
+        scaled_s -= (curr_sample_time - (this->sample_start_time / this->sample_rate)) * this->scalings[strand_idx].drift;
+        scaled_s /= this->scalings[strand_idx].scale;
         out.push_back(scaled_s);
     }
     return out;

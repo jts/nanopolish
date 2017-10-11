@@ -34,10 +34,9 @@ inline float z_score(const SquiggleRead& read,
                      uint32_t event_idx,
                      uint8_t strand)
 {
-    const PoreModel& pm = read.pore_model[strand];
-    float level = read.get_drift_corrected_level(event_idx, strand);
-    GaussianParameters model = pm.get_scaled_parameters(kmer_rank);
-    return (level - model.mean) / model.stdv;
+    float level = read.get_drift_scaled_level(event_idx, strand);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    return (level - gp.mean) / gp.stdv;
 }
 
 static const float log_inv_sqrt_2pi = log(0.3989422804014327);
@@ -48,29 +47,10 @@ inline float log_normal_pdf(float x, const PoreModelStateParams& s)
     return log_inv_sqrt_2pi - s.level_log_stdv + (-0.5f * a * a);
 }
 
-inline float log_normal_pdf_from_scaled_event(float x, float var, float log_var, const PoreModelStateParams& s)
-{
-    float a = (x - s.level_mean) / (s.level_stdv * var);
-    return log_inv_sqrt_2pi - s.level_log_stdv - log_var + (-0.5f * a * a);
-}
-
 inline float log_normal_pdf(float x, const GaussianParameters& g)
 {
     float a = (x - g.mean) / g.stdv;
     return log_inv_sqrt_2pi - g.log_stdv + (-0.5f * a * a);
-}
-
-inline float log_invgauss_pdf(float x, float log_x, const PoreModelStateParams& s)
-{
-    static const float log_2pi = log(2 * M_PI);
-    float a = (x - s.sd_mean) / s.sd_mean;
-    return (s.sd_log_lambda - log_2pi - 3 * log_x - s.sd_lambda * a * a / x) / 2;
-}
-
-inline bool& model_stdv()
-{
-    static bool _model_stdv = false;
-    return _model_stdv;
 }
 
 inline float log_probability_match_r9(const SquiggleRead& read,
@@ -78,54 +58,10 @@ inline float log_probability_match_r9(const SquiggleRead& read,
                                       uint32_t event_idx,
                                       uint8_t strand)
 {
-    const PoreModel& pm = read.pore_model[strand];
-    const SquiggleScalings& scalings = read.scalings[strand];
-
-    // event level mean
-    float level = read.get_fully_scaled_level(event_idx, strand);
-    PoreModelStateParams state = pm.get_parameters(kmer_rank);
-
-    float lp = log_normal_pdf_from_scaled_event(level, scalings.var, scalings.log_var, state);
-
-/*
-    if(model_stdv())
-    {
-        float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
-        lp += lp_stdv;
-    }
-*/
-#if DEBUG_HMM_EMISSION
-    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
-#endif
-
-    return lp;
-}
-
-inline float log_probability_match_r9_old(const SquiggleRead& read,
-                                          uint32_t kmer_rank,
-                                          uint32_t event_idx,
-                                          uint8_t strand)
-{
-    const PoreModel& pm = read.pore_model[strand];
-
-    // event level mean
-    float level = read.get_drift_corrected_level(event_idx, strand);
-    float stdv = read.get_stdv(event_idx, strand);
-    float log_stdv = read.get_log_stdv(event_idx, strand);
-    PoreModelStateParams state = pm.get_scaled_state(kmer_rank);
-
-    float lp = log_normal_pdf(level, state);
-
-    if(model_stdv())
-    {
-        float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
-        lp += lp_stdv;
-    }
-
-#if DEBUG_HMM_EMISSION
-    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
-#endif
-
+    // event level mean, scaled with the drift value
+    float level = read.get_drift_scaled_level(event_idx, strand);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    float lp = log_normal_pdf(level, gp);
     return lp;
 }
 
@@ -136,32 +72,11 @@ inline float log_probability_match_r7(const SquiggleRead& read,
                                       float state_scale = 1.0f,
                                       float log_state_scale = 0.0f)
 {
-    const PoreModel& pm = read.pore_model[strand];
-
-    // event level mean
-    float level = read.get_drift_corrected_level(event_idx, strand);
-
-    PoreModelStateParams state = pm.get_scaled_state(kmer_rank);
-
-    // we go to great lengths to avoid calling log() in the inner loop of the HMM
-    // for this reason we duplicate data here and require the caller to pass
-    // in the scale and log(scale), presumably these are cached
-    state.level_stdv *= state_scale;
-    state.level_log_stdv += log_state_scale;
-    float lp = log_normal_pdf(level, state);
-
-    if(model_stdv())
-    {
-        float stdv = read.get_stdv(event_idx, strand);
-        float log_stdv = read.get_log_stdv(event_idx, strand);
-        float lp_stdv = log_invgauss_pdf(stdv, log_stdv, state);
-        lp += log_invgauss_pdf(stdv, log_stdv, state);
-    }
-
-#if DEBUG_HMM_EMISSION
-    printf("Event[%d] Kmer: %d -- L:%.1lf m: %.1lf s: %.1lf p: %.3lf p_old: %.3lf\n", event_idx, kmer_rank, level, state.level_mean, state.level_stdv, exp(lp), normal_pdf(level, state));
-#endif
-
+    float level = read.get_drift_scaled_level(event_idx, strand);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    gp.stdv *= state_scale;
+    gp.log_stdv += log_state_scale;
+    float lp = log_normal_pdf(level, gp);
     return lp;
 }
 

@@ -133,16 +133,6 @@ PoreModel initialize_pore_model(const std::vector<KmerTrainingData>& read_traini
     // Set the initial pore model
     PoreModel pore_model(k);
     pore_model.states.resize(num_kmers_in_alphabet);
-    pore_model.scaled_states.resize(num_kmers_in_alphabet);
-    pore_model.scaled_params.resize(num_kmers_in_alphabet);
-
-    pore_model.shift = 0.0;
-    pore_model.scale = 1.0;
-    pore_model.drift = 0.0;
-    pore_model.var = 1.0;
-    pore_model.scale_sd = 1.0;
-    pore_model.var_sd = 1.0;
-    pore_model.shift_offset = 0.0;
 
     auto& kmer_training_data_for_selected = read_training_data[max_events_index];
 
@@ -178,7 +168,6 @@ PoreModel initialize_pore_model(const std::vector<KmerTrainingData>& read_traini
             printf("k: %zu median: %.2lf values: %s\n", ki, median, ss.str().c_str());
         }
     }
-    pore_model.bake_gaussian_parameters();
 
     return pore_model;
 }
@@ -202,7 +191,7 @@ void alignment_to_training_data(const SquiggleRead* read,
         // If the scale/shift values are off, or the events are erroneous, the scaled events can have negative values
         // causing the training to implode. Filter these here.
         if(level >= 1.0) {
-            StateTrainingData std(level, stdv, read->pore_model[a.strand_idx].var, read->pore_model[a.strand_idx].scale);
+            StateTrainingData std(level, stdv, read->scalings[a.strand_idx].var, read->scalings[a.strand_idx].scale);
             out_data->at(kmer_rank).push_back(std);
         }
 

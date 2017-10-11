@@ -73,7 +73,7 @@ struct HMMAlignmentState
 // The parameters of a gaussian distribution
 struct GaussianParameters
 {
-    GaussianParameters() : mean(0.0f), stdv(1.0f) { log_stdv = log(stdv); }
+    GaussianParameters() : mean(0.0f), stdv(1.0f), log_stdv(0.0) { }
     GaussianParameters(float m, float s) : mean(m), stdv(s) { log_stdv = log(stdv); }
 
     float mean;

@@ -344,8 +344,8 @@ void TransitionParameters::add_training_from_alignment(const HMMInputSequence& s
                 uint32_t rank_1 = sequence.get_kmer_rank(transition_kmer_from, k, data.rc);
                 uint32_t rank_2 = sequence.get_kmer_rank(transition_kmer_to, k, data.rc);
             
-                GaussianParameters level_1 = pm.get_scaled_parameters(rank_1);
-                GaussianParameters level_2 = pm.get_scaled_parameters(rank_2);
+                GaussianParameters level_1 = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_1);
+                GaussianParameters level_2 = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_2);
             
 #ifdef PRINT_TRAINING_MESSAGES
                 printf("TRAIN_SKIP\t%d\t%.3lf\t%.3lf\t%c\n", strand_idx, level_1.mean, level_2.mean, s);

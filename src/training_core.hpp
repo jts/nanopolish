@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "nanopolish_emissions.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_squiggle_read.h"
 
@@ -29,12 +30,12 @@ struct MinimalStateTrainingData
     {
         initialize(sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx),
                    sr.get_scaled_stdv(ea.event_idx, ea.strand_idx),
-                   sr.pore_model[ea.strand_idx].var,
-                   sr.pore_model[ea.strand_idx].scale);
+                   sr.scalings[ea.strand_idx].var,
+                   sr.scalings[ea.strand_idx].scale);
 
-        this->read_scale_sd = sr.pore_model[ea.strand_idx].scale_sd;
+        this->read_scale_sd = sr.scalings[ea.strand_idx].scale_sd;
         this->log_read_scale_sd = std::log(this->read_scale_sd);
-        this->read_var_sd = sr.pore_model[ea.strand_idx].var_sd;
+        this->read_var_sd = sr.scalings[ea.strand_idx].var_sd;
         this->log_read_var_sd = std::log(this->read_var_sd);
     }
 
@@ -129,8 +130,7 @@ struct FullStateTrainingData
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
-        GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-        this->z = (sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx) -  model.mean ) / model.stdv;
+        this->z = z_score(sr, rank, ea.event_idx, ea.strand_idx);
         this->prev_kmer = prev_kmer;
         this->next_kmer = next_kmer;
     }
