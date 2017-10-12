@@ -617,8 +617,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         int read_kidx_end = aligned_pairs.back().read_pos;
         
         if(do_base_rc) {
-            read_kidx_start = params.sr->flip_k_strand(read_kidx_start);
-            read_kidx_end = params.sr->flip_k_strand(read_kidx_end);
+            read_kidx_start = params.sr->flip_k_strand(read_kidx_start, k);
+            read_kidx_end = params.sr->flip_k_strand(read_kidx_end, k);
         }
         
         assert(read_kidx_start >= 0);
@@ -642,7 +642,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
 
             if(do_base_rc) {
-                curr_end_read = params.sr->flip_k_strand(curr_end_read);
+                curr_end_read = params.sr->flip_k_strand(curr_end_read, k);
             }
             assert(curr_end_read >= 0);
 

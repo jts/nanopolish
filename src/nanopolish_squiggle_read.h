@@ -183,10 +183,10 @@ class SquiggleRead
         }
 
         // Calculate the index of this k-mer on the other strand
-        inline int32_t flip_k_strand(int32_t k_idx) const
+        inline int32_t flip_k_strand(int32_t k_idx, uint32_t k) const
         {
             assert(!read_sequence.empty());
-            return read_sequence.size() - k_idx - pore_model[T_IDX].k;
+            return read_sequence.size() - k_idx - k;
         }
 
         // get the index of the event that is nearest to the given kmer

@@ -43,7 +43,9 @@ const uint8_t NUM_STRANDS = 2;
 // Data structures
 //
 
+// Forward declare
 class SquiggleRead;
+class PoreModel;
 
 // This struct is used as input into the HMM
 // It tracks where the event stream starts/stops
@@ -51,6 +53,7 @@ class SquiggleRead;
 struct HMMInputData
 {
     SquiggleRead* read;
+    PoreModel* pore_model;
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;
