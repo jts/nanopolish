@@ -267,7 +267,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             // Set up event data
             HMMInputData data;
             data.read = &sr;
-            data.anchor_index = -1; // unused
             data.strand = strand_idx;
             data.rc = event_align_record.rc;
             data.event_start_idx = e1;

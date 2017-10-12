@@ -182,7 +182,6 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
 
         HMMInputData data;
         data.read = record.sr;
-        data.anchor_index = -1; // unused
         data.strand = record.strand;
         data.rc = record.rc;
         data.event_stride = record.stride;
@@ -232,7 +231,6 @@ std::vector<HMMInputData> AlignmentDB::get_events_aligned_to(const std::string& 
 
         HMMInputData data;
         data.read = record.sr;
-        data.anchor_index = -1; // unused
         data.strand = record.strand;
         data.rc = record.rc;
         data.event_stride = record.stride;

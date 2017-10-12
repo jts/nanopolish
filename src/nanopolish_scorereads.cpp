@@ -135,7 +135,6 @@ double model_score(SquiggleRead &sr,
         // Set up event data
         HMMInputData data;
         data.read = &sr;
-        data.anchor_index = -1; // unused
         data.strand = strand_idx;
         data.rc = alignment_output.front().rc;
         data.event_start_idx = align_start.event_idx;

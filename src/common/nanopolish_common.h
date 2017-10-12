@@ -51,7 +51,6 @@ class SquiggleRead;
 struct HMMInputData
 {
     SquiggleRead* read;
-    uint32_t anchor_index;
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;

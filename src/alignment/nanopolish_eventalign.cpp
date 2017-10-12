@@ -662,7 +662,6 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             // Set up HMM input
             HMMInputData input;
             input.read = params.sr;
-            input.anchor_index = 0; // not used here
             input.event_start_idx = curr_start_event;
             input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
             //printf("[SEGMENT_START] read: %s event start: %zu event end: %zu\n", params.sr->read_name.c_str(), input.event_start_idx, input.event_stop_idx);
