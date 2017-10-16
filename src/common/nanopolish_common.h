@@ -48,12 +48,12 @@ class SquiggleRead;
 class PoreModel;
 
 // This struct is used as input into the HMM
-// It tracks where the event stream starts/stops
-// for the partial consensus sequence under consideration
+// It tracks where the event stream starts/stops for the candidate sequence
+// that is being evaluated.
 struct HMMInputData
 {
     SquiggleRead* read;
-    PoreModel* pore_model;
+    const PoreModel* pore_model;
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;

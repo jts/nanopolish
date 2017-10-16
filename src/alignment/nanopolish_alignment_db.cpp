@@ -57,7 +57,7 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
                                            const SequenceAlignmentRecord& seq_record)
 {
     this->sr = sr;
-    size_t k = this->sr->pore_model[strand_idx].k;
+    size_t k = this->sr->model_k[strand_idx];
     size_t read_length = this->sr->read_sequence.length();
     
     for(size_t i = 0; i < seq_record.aligned_bases.size(); ++i) {
@@ -87,12 +87,10 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
 AlignmentDB::AlignmentDB(const std::string& reads_file,
                          const std::string& reference_file,
                          const std::string& sequence_bam,
-                         const std::string& event_bam,
-                         bool calibrate_reads) :
+                         const std::string& event_bam) :
                             m_reference_file(reference_file),
                             m_sequence_bam(sequence_bam),
-                            m_event_bam(event_bam),
-                            m_calibrate_on_load(calibrate_reads)
+                            m_event_bam(event_bam)
 {
     m_read_db.load(reads_file);
     _clear_region();
@@ -182,6 +180,7 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
 
         HMMInputData data;
         data.read = record.sr;
+        data.pore_model = &record.sr->get_model(record.strand, "nucleotide");
         data.strand = record.strand;
         data.rc = record.rc;
         data.event_stride = record.stride;
@@ -524,15 +523,6 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(c
         event_record.stride = event_stride;
         event_record.strand = is_template ? T_IDX : C_IDX;
         records.push_back(event_record);
-        
-        if(m_calibrate_on_load) {
-            std::vector<EventAlignment> event_alignment = _build_event_alignment(event_record);
-            fprintf(stderr, "Rescale for %s strand: %d rc: %d\n", event_record.sr->read_name.c_str(), event_record.strand, event_record.rc);
-            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
-            fprintf(stderr, "recal events: %zu\n", event_alignment.size());
-            recalibrate_model(*event_record.sr, event_record.strand, event_alignment, &gDNAAlphabet, true, false);
-            event_record.sr->print_scaling_parameters(stderr, event_record.strand);
-        }
 
         /*
         printf("event_record[%zu] name: %s stride: %d align bounds [%d %d] [%d %d]\n", 
@@ -628,8 +618,7 @@ std::vector<EventAlignment> AlignmentDB::_build_event_alignment(const EventAlign
 {
     std::vector<EventAlignment> alignment;
     const SquiggleRead* sr = event_record.sr;
-    const Alphabet* alphabet = sr->pore_model[event_record.strand].pmalphabet;
-    size_t k = sr->pore_model[event_record.strand].k;
+    size_t k = sr->model_k[event_record.strand];
 
     for(const auto& ap : event_record.aligned_events) { 
 

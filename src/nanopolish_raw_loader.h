@@ -20,11 +20,13 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 // Align events to k-mers of a sequence using Suzuki's adaptive banded algorithm
 // see: https://www.biorxiv.org/content/early/2017/09/07/130633
 std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read,
+                                                            const PoreModel& pore_model,
                                                             const std::string& sequence);
 
 // Simple banded alignmend algorithm
 // Deprecated, use the above
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read,
+                                                   const PoreModel& pore_model,
                                                    const std::string& sequence);
 
 #endif

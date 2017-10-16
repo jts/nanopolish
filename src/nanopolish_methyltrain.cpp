@@ -195,14 +195,14 @@ static const struct option longopts[] = {
 // returns true if the recalibration was performed
 // in either case, sets residual to the L1 norm of the residual
 bool recalibrate_model(SquiggleRead &sr,
+                       const PoreModel& pore_model,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
-                       const Alphabet* alphabet,
                        const bool scale_var,
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
-    uint32_t k = sr.pore_model[strand_idx].k;
+    uint32_t k = sr.model_k[strand_idx];
     const uint32_t num_equations = scale_drift ? 3 : 2;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
@@ -214,12 +214,12 @@ bool recalibrate_model(SquiggleRead &sr,
     for(size_t ei = 0; ei < alignment_output.size(); ++ei) {
         const auto& ea = alignment_output[ei];
         if(ea.hmm_state == 'M') {
-            std::string model_kmer = ea.rc ? alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-            uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
+            std::string model_kmer = ea.rc ? pore_model.pmalphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            uint32_t rank = pore_model.pmalphabet->kmer_rank(model_kmer.c_str(), k);
 
             raw_events.push_back ( sr.get_unscaled_level(ea.event_idx, strand_idx) );
-            level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
-            level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
+            level_means.push_back( pore_model.states[rank].level_mean );
+            level_stdvs.push_back( pore_model.states[rank].level_stdv );
             if (scale_drift)
                 times.push_back  ( sr.get_time(ea.event_idx, strand_idx) );
 
@@ -319,10 +319,9 @@ void add_aligned_events(const ReadDB& read_db,
     // load read
     SquiggleRead sr(read_name, read_db);
 
-    // replace the models that are built into the read with the model we are training
-    sr.replace_models(training_kit, training_alphabet, training_k);
-
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
+        assert(training_kit == sr.pore_model_metadata[strand_idx].get_kit_name());
+        assert(training_k == sr.model_k[strand_idx]);
 
         // skip if 1D reads and this is the wrong strand
         if(!sr.has_events_for_strand(strand_idx)) {
@@ -330,7 +329,7 @@ void add_aligned_events(const ReadDB& read_db,
         }
 
         // set k
-        uint32_t k = sr.pore_model[strand_idx].k;
+        uint32_t k = sr.model_k[strand_idx];
 
         // Align to the new model
         EventAlignmentParameters params;
@@ -350,7 +349,7 @@ void add_aligned_events(const ReadDB& read_db,
             return;
 
         // Update pore model based on alignment
-        std::string model_key = PoreModelSet::get_model_key(sr.pore_model[strand_idx]);
+        std::string model_key = PoreModelSet::get_model_key(sr.get_model(strand_idx, mtrain_alphabet->get_name()));
 
         //
         // Optional recalibration of shift/scale/drift and output of sequence likelihood
@@ -365,7 +364,7 @@ void add_aligned_events(const ReadDB& read_db,
 
         if ( opt::calibrate ) {
             double resid = 0.;
-            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, resid, true);
+            recalibrate_model(sr, sr.get_model(strand_idx, mtrain_alphabet->get_name()), strand_idx, alignment_output, resid, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);

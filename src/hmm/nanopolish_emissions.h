@@ -30,12 +30,13 @@ inline float normal_pdf(float x, const PoreModelStateParams& s)
 }
 
 inline float z_score(const SquiggleRead& read,
+                     const PoreModel& pore_model,
                      uint32_t kmer_rank,
                      uint32_t event_idx,
                      uint8_t strand)
 {
     float level = read.get_drift_scaled_level(event_idx, strand);
-    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(pore_model, strand, kmer_rank);
     return (level - gp.mean) / gp.stdv;
 }
 
@@ -54,18 +55,20 @@ inline float log_normal_pdf(float x, const GaussianParameters& g)
 }
 
 inline float log_probability_match_r9(const SquiggleRead& read,
+                                      const PoreModel& pore_model,
                                       uint32_t kmer_rank,
                                       uint32_t event_idx,
                                       uint8_t strand)
 {
     // event level mean, scaled with the drift value
     float level = read.get_drift_scaled_level(event_idx, strand);
-    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(pore_model, strand, kmer_rank);
     float lp = log_normal_pdf(level, gp);
     return lp;
 }
 
 inline float log_probability_match_r7(const SquiggleRead& read,
+                                      const PoreModel& pore_model,
                                       uint32_t kmer_rank,
                                       uint32_t event_idx,
                                       uint8_t strand,
@@ -73,7 +76,7 @@ inline float log_probability_match_r7(const SquiggleRead& read,
                                       float log_state_scale = 0.0f)
 {
     float level = read.get_drift_scaled_level(event_idx, strand);
-    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(strand, kmer_rank);
+    GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(pore_model, strand, kmer_rank);
     gp.stdv *= state_scale;
     gp.log_stdv += log_state_scale;
     float lp = log_normal_pdf(level, gp);
@@ -81,6 +84,7 @@ inline float log_probability_match_r7(const SquiggleRead& read,
 }
 
 inline float log_probability_event_insert_r7(const SquiggleRead& read,
+                                             const PoreModel& pore_model,
                                              uint32_t kmer_rank,
                                              uint32_t event_idx,
                                              uint8_t strand)
@@ -88,7 +92,7 @@ inline float log_probability_event_insert_r7(const SquiggleRead& read,
     static const float scale = 1.75f;
     static const float log_scale = log(scale);
 
-    return log_probability_match_r7(read, kmer_rank, event_idx, strand, scale, log_scale);
+    return log_probability_match_r7(read, pore_model, kmer_rank, event_idx, strand, scale, log_scale);
 }
 
 inline float log_probability_background(const SquiggleRead&,

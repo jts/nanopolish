@@ -75,6 +75,14 @@ void PoreModelSet::add_model(const PoreModel& p)
     model_set.register_model(p);
 }
 
+bool PoreModelSet::has_model(const PoreModel& p)
+{
+    PoreModelSet& model_set = getInstance();
+    std::string model_key = model_set.get_model_key(p);
+    auto iter = model_set.model_map.find(model_key);
+    return iter != model_set.model_map.end();
+}
+
 //
 bool PoreModelSet::has_model(const std::string& kit_name,
                              const std::string& alphabet,

@@ -76,7 +76,6 @@ namespace opt
     static std::string models_fofn;
     static std::string region;
     static std::vector<std::string> readnames;
-    static std::string alternative_model_type = "ONT";
     static int train_transitions = 0;
     static int num_threads = 1;
     static int batch_size = 128;
@@ -135,6 +134,7 @@ double model_score(SquiggleRead &sr,
         // Set up event data
         HMMInputData data;
         data.read = &sr;
+        data.pore_model = &sr.get_model(strand_idx, "nucleotide");
         data.strand = strand_idx;
         data.rc = alignment_output.front().rc;
         data.event_start_idx = align_start.event_idx;
@@ -152,10 +152,10 @@ double model_score(SquiggleRead &sr,
         std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
                                                       ref_end_pos, &fetched_len);
 
-        if (fetched_len <= (int)sr.pore_model[strand_idx].k)
+        if (fetched_len <= (int)sr.model_k[strand_idx])
             continue;
 
-        const Alphabet *alphabet = sr.pore_model[strand_idx].pmalphabet;
+        const Alphabet *alphabet = data.pore_model->pmalphabet;
     
         ref_seq = alphabet->disambiguate(ref_seq);
         HMMInputSequence sequence(ref_seq, alphabet->reverse_complement(ref_seq), alphabet);
@@ -169,7 +169,7 @@ double model_score(SquiggleRead &sr,
                                                         alignment_output.begin() + align_start_idx + events_per_segment);
 
         SquiggleScalings curr_scalings = sr.scalings[strand_idx];
-        recalibrate_model(sr, strand_idx, event_alignment_sub, &gDNAAlphabet, true, opt::scale_drift);
+        recalibrate_model(sr, *data.pore_model, strand_idx, event_alignment_sub, true, opt::scale_drift);
 
         fprintf(stdout, "SEGMENT\t%s\t%zu\t%.3lf\t%d\t%.2lf\t%.2lf\t%.2lf\t%.2lf\n", 
                     sr.read_name.c_str(), 
@@ -205,17 +205,12 @@ double model_score(SquiggleRead &sr,
 std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
                                                 const size_t strand_idx,
                                                 const size_t read_idx,
-                                                const std::string& alternative_model_type,
                                                 const faidx_t* fai,
                                                 const bam_hdr_t* hdr,
                                                 const bam1_t* record,
                                                 int region_start,
                                                 int region_end)
 {
-    if(!alternative_model_type.empty()) {
-        sr.replace_model(strand_idx, alternative_model_type);
-    }
-
     // Align to the new model
     EventAlignmentParameters params;
     params.sr = &sr;
@@ -224,7 +219,6 @@ std::vector<EventAlignment> alignment_from_read(SquiggleRead& sr,
     params.record = record;
     params.strand_idx = strand_idx;
 
-    params.alphabet = sr.pore_model[strand_idx].pmalphabet;
     params.read_idx = read_idx;
     params.region_start = region_start;
     params.region_end = region_end;
@@ -315,6 +309,7 @@ int scorereads_main(int argc, char** argv)
     parse_scorereads_options(argc, argv);
     omp_set_num_threads(opt::num_threads);
 
+    std::string alphabet_name = "nucleotide";
     ReadDB read_db;
     read_db.load(opt::reads_file);
 
@@ -411,17 +406,15 @@ int scorereads_main(int argc, char** argv)
                             continue;
                         }
 
-                        std::string model_type_for_alignment = opt::alternative_model_type;
-
                         std::vector<EventAlignment> ao = alignment_from_read(sr, strand_idx, read_idx,
-                                                                             model_type_for_alignment, fai, hdr,
+                                                                             fai, hdr,
                                                                              record, clip_start, clip_end);
                         if (ao.size() == 0)
                             continue;
 
                         // Update pore model based on alignment
                         if( opt::calibrate ) {
-                            recalibrate_model(sr, strand_idx, ao, &gDNAAlphabet, true, opt::scale_drift);
+                            recalibrate_model(sr, sr.get_model(strand_idx, alphabet_name), strand_idx, ao, true, opt::scale_drift);
                         }
 
                         double score = model_score(sr, strand_idx, fai, ao, 500, transition_training[strand_idx]);
@@ -430,7 +423,7 @@ int scorereads_main(int argc, char** argv)
 
                         #pragma omp critical(print)
                         std::cout << read_name << " " << ( strand_idx ? "complement" : "template" )
-                                  << " " << sr.pore_model[strand_idx].name << " " << score << 
+                                  << " " << sr.get_model(strand_idx, alphabet_name).name << " " << score << 
                                   " shift " << sr.scalings[strand_idx].shift << " scale " << sr.scalings[strand_idx].scale <<
                                   " drift " << sr.scalings[strand_idx].drift << " var " << sr.scalings[strand_idx].var << std::endl;
                     }

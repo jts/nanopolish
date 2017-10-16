@@ -69,11 +69,11 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 #define move_down(curr_band) { curr_band.event_idx + 1, curr_band.kmer_idx }
 #define move_right(curr_band) { curr_band.event_idx, curr_band.kmer_idx + 1 }
 
-std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
+std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
 {
     size_t strand_idx = 0;
-    size_t k = read.pore_model[strand_idx].k;
-    const Alphabet* alphabet = read.pore_model[strand_idx].pmalphabet;
+    size_t k = read.model_k[strand_idx];
+    const Alphabet* alphabet = pore_model.pmalphabet;
     size_t n_events = read.events[strand_idx].size();
     size_t n_kmers = sequence.size() - k + 1;
 
@@ -248,7 +248,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             float left = is_offset_valid(offset_left) ? bands[band_idx - 1][offset_left] : -INFINITY;
             float diag = is_offset_valid(offset_diag) ? bands[band_idx - 2][offset_diag] : -INFINITY;
  
-            float lp_emission = log_probability_match_r9(read, kmer_rank, event_idx, strand_idx);
+            float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
             float score_u = up + lp_stay + lp_emission;
             float score_l = left + lp_skip;
@@ -324,7 +324,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 #endif       
         // qc stats
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_kmer_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, kmer_rank, curr_event_idx, strand_idx);
+        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
 
         int band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
@@ -357,11 +357,11 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     return out;
 }
 
-std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std::string& sequence)
+std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
 {
     size_t strand_idx = 0;
-    size_t k = read.pore_model[strand_idx].k;
-    const Alphabet* alphabet = read.pore_model[strand_idx].pmalphabet;
+    size_t k = read.model_k[strand_idx];
+    const Alphabet* alphabet = pore_model.pmalphabet;
 
 #if DEBUG_PRINT_STATS
     // Build a debug event->kmer map
@@ -454,7 +454,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
             double diag = row_diag >= 0 && row_diag < n_rows ?  get(viterbi_matrix, row_diag, col - 1) : -INFINITY;
             double left = row_left >= 0 && row_left < n_rows ?  get(viterbi_matrix, row_left, col - 1) : -INFINITY;
             
-            float lp_emission = log_probability_match_r9(read, kmer_rank, event_idx, strand_idx);
+            float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
      
             double score_d = diag + lp_step + lp_emission;
             double score_u = up + lp_stay + lp_emission;
@@ -520,7 +520,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const std
 #endif
         
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, kmer_rank, curr_event_idx, strand_idx);
+        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
 
 #if DEBUG_PRINT_STATS

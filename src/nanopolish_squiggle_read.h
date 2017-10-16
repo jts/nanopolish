@@ -170,11 +170,14 @@ class SquiggleRead
             return events[strand][event_idx].mean;
         }
 
+        // Get the pore model that should be used for this read, for a given alphabet
+        const PoreModel& get_model(uint32_t strand, const std::string& alphabet) const;
+
         // Get the parameters to the gaussian PDF scaled to this read
-        inline GaussianParameters get_scaled_gaussian_from_pore_model_state(size_t strand_idx, size_t rank) const
+        inline GaussianParameters get_scaled_gaussian_from_pore_model_state(const PoreModel& pore_model, size_t strand_idx, size_t rank) const
         {
             const SquiggleScalings& scalings = this->scalings[strand_idx];
-            const PoreModelStateParams& params = this->pore_model[strand_idx].states[rank];
+            const PoreModelStateParams& params = pore_model.states[rank];
             GaussianParameters gp;
             gp.mean = scalings.scale * params.level_mean + scalings.shift;
             gp.stdv = params.level_stdv * scalings.var;
@@ -192,18 +195,13 @@ class SquiggleRead
         // get the index of the event that is nearest to the given kmer
         int get_closest_event_to(int k_idx, uint32_t strand) const;
 
-        // replace the pore models with the models specified in the map or by a string
-        void replace_strand_model(size_t strand_idx, const std::string& kit_name, const std::string& alphabet, size_t k);
-        void replace_models(const std::string& kit_name, const std::string& alphabet, size_t k);
-        void replace_model(size_t strand_idx, const std::string& model_type);
-        void replace_model(size_t strand_idx, const PoreModel& model);
-
         // returns true if this read has events for this strand
         bool has_events_for_strand(size_t strand_idx) const { return !this->events[strand_idx].empty(); }
 
         // Create an eventalignment between the events of this read and its 1D basecalled sequence
         std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
-                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d, 
+                                                                        const std::string& alphabet_name,
+                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d,
                                                                         const size_t k,
                                                                         const size_t strand_idx,
                                                                         const int label_shift) const;
@@ -234,14 +232,15 @@ class SquiggleRead
         uint32_t read_id;
         std::string read_sequence;
 
-        // one model for each strand
-        PoreModel pore_model[2];
-
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
 
         // scaling parameters for each strand
         SquiggleScalings scalings[2];
+
+        // pore model metadata used during sequencing
+        ModelMetadata pore_model_metadata[2];
+        uint8_t model_k[2];
 
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events

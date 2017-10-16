@@ -28,6 +28,11 @@ class PoreModelSet
         static std::vector<std::string> initialize(const std::string& fofn_filename);
 
         //
+        // check if a model with the same key already exists
+        //
+        static bool has_model(const PoreModel& model);
+
+        //
         // check if a model with the specification exists
         //
         static bool has_model(const std::string& kit_name, 

@@ -11,14 +11,14 @@ inline float calculate_skip_probability_r7(const HMMInputSequence& sequence,
                                            uint32_t ki,
                                            uint32_t kj)
 {
-    const PoreModel& pm = data.read->pore_model[data.strand];
+    const PoreModel& pm = *data.pore_model;
     const TransitionParameters& parameters = data.read->parameters[data.strand];
 
     uint32_t rank_i = sequence.get_kmer_rank(ki, pm.k, data.rc);
     uint32_t rank_j = sequence.get_kmer_rank(kj, pm.k, data.rc);
 
-    GaussianParameters level_i = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_i);
-    GaussianParameters level_j = data.read->get_scaled_gaussian_from_pore_model_state(data.strand, rank_j);
+    GaussianParameters level_i = data.read->get_scaled_gaussian_from_pore_model_state(*data.pore_model, data.strand, rank_i);
+    GaussianParameters level_j = data.read->get_scaled_gaussian_from_pore_model_state(*data.pore_model, data.strand, rank_j);
 
     return parameters.get_skip_probability(level_i.mean, level_j.mean);
 }
@@ -300,10 +300,10 @@ inline float profile_hmm_fill_generic_r7(const HMMInputSequence& _sequence,
     std::vector<BlockTransitionsR7> transitions = calculate_transitions_r7(num_kmers, sequence, data);
  
     // Precompute kmer ranks
-    uint32_t k = data.read->pore_model[data.strand].k;
+    const uint32_t k = data.pore_model->k;
 
     // Make sure the HMMInputSequence's alphabet matches the state space of the read
-    assert( data.read->pore_model[data.strand].states.size() == sequence.get_num_kmer_ranks(k) );
+    assert( data.pore_model->states.size() == sequence.get_num_kmer_ranks(k) );
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki)
@@ -339,8 +339,8 @@ inline float profile_hmm_fill_generic_r7(const HMMInputSequence& _sequence,
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
-            float lp_emission_m = log_probability_match_r7(*data.read, rank, event_idx, data.strand);
-            float lp_emission_e = log_probability_event_insert_r7(*data.read, rank, event_idx, data.strand);
+            float lp_emission_m = log_probability_match_r7(*data.read, *data.pore_model, rank, event_idx, data.strand);
+            float lp_emission_e = log_probability_event_insert_r7(*data.read, *data.pore_model, rank, event_idx, data.strand);
             
             // state PSR7_MATCH
             float m_m = bt.lp_mm + output.get(row - 1, prev_block_offset + PSR7_MATCH);

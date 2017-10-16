@@ -368,7 +368,8 @@ void emit_event_alignment_tsv(FILE* fp,
                               const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
-    uint32_t k = sr.pore_model[strand_idx].k;
+    const PoreModel* pore_model = &sr.get_model(params.strand_idx, params.alphabet->get_name());
+    uint32_t k = pore_model->k;
     for(size_t i = 0; i < alignments.size(); ++i) {
 
         const EventAlignment& ea = alignments[i];
@@ -408,7 +409,7 @@ void emit_event_alignment_tsv(FILE* fp,
 
             // unscaled model parameters
             if(ea.hmm_state != 'B') {
-                PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
+                PoreModelStateParams model = pore_model->get_parameters(rank);
                 model_mean = model.level_mean;
                 model_stdv = model.level_stdv;
             }
@@ -416,7 +417,7 @@ void emit_event_alignment_tsv(FILE* fp,
 
             // scale model to the reads
             if(ea.hmm_state != 'B') {
-                GaussianParameters model = sr.get_scaled_gaussian_from_pore_model_state(ea.strand_idx, rank);
+                GaussianParameters model = sr.get_scaled_gaussian_from_pore_model_state(*pore_model, ea.strand_idx, rank);
                 model_mean = model.mean;
                 model_stdv = model.stdv;
             }
@@ -450,7 +451,8 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 {
     EventalignSummary summary;
 
-    uint32_t k = sr.pore_model[strand_idx].k;
+    const PoreModel* pore_model = &sr.get_model(params.strand_idx, params.alphabet->get_name());
+    uint32_t k = pore_model->k;
 
     size_t prev_ref_pos = std::string::npos;
 
@@ -478,7 +480,7 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 
         if(ea.hmm_state == 'M') {
             uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
-            double z = z_score(sr, rank, ea.event_idx, ea.strand_idx);
+            double z = z_score(sr, *pore_model, rank, ea.event_idx, ea.strand_idx);
             summary.sum_z_score += z;
         }
 
@@ -549,7 +551,7 @@ void realign_read(EventalignWriter writer,
             }
 
             if(writer.summary_fp != NULL && summary.num_events > 0) {
-                PoreModel& pore_model = sr.pore_model[strand_idx];
+                const PoreModel& pore_model = sr.get_model(strand_idx, params.alphabet->get_name());
                 SquiggleScalings& scalings = sr.scalings[strand_idx];
                 fprintf(writer.summary_fp, "%zu\t%s\t%s\t", read_idx, read_name.c_str(), sr.fast5_path.c_str());
                 fprintf(writer.summary_fp, "%s\t%s\t", pore_model.name.c_str(), strand_idx == 0 ? "template" : "complement");
@@ -580,7 +582,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                                                   bam_endpos(params.record), &fetched_len);
 
     // k from read pore model
-    const uint32_t k = params.sr->pore_model[params.strand_idx].k;
+    const uint32_t k = params.sr->model_k[params.strand_idx];
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
@@ -662,6 +664,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             // Set up HMM input
             HMMInputData input;
             input.read = params.sr;
+            input.pore_model = &params.sr->get_model(params.strand_idx, params.alphabet->get_name());
             input.event_start_idx = curr_start_event;
             input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
             //printf("[SEGMENT_START] read: %s event start: %zu event end: %zu\n", params.sr->read_name.c_str(), input.event_start_idx, input.event_stop_idx);

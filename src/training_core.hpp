@@ -121,6 +121,7 @@ struct FullStateTrainingData
     //
     FullStateTrainingData() = default;
     FullStateTrainingData(const SquiggleRead& sr,
+                          const PoreModel& pore_model,
                           const EventAlignment& ea,
                           uint32_t rank,
                           const std::string& prev_kmer,
@@ -130,7 +131,7 @@ struct FullStateTrainingData
         this->duration = sr.events[ea.strand_idx][ea.event_idx].duration;
         this->ref_position = ea.ref_position;
         this->ref_strand = ea.rc;
-        this->z = z_score(sr, rank, ea.event_idx, ea.strand_idx);
+        this->z = z_score(sr, pore_model, rank, ea.event_idx, ea.strand_idx);
         this->prev_kmer = prev_kmer;
         this->next_kmer = next_kmer;
     }

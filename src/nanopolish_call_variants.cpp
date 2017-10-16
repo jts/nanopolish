@@ -118,7 +118,6 @@ namespace opt
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
-    static int calibrate = 0;
     static int consensus_mode = 0;
     static int fix_homopolymers = 0;
     static int genotype_only = 0;
@@ -426,7 +425,7 @@ void print_debug_stats(const std::string& contig,
         double base_avg = base_score / num_events;
         double called_avg = called_score / num_events;
         const SquiggleScalings& scalings = data.read->scalings[data.strand];
-        const PoreModel& pm = data.read->pore_model[data.strand];
+        const PoreModel& pm = *data.pore_model;
         fprintf(stats_out, "%s\t%d\t%d\t", data.read->read_name.c_str(), data.strand, data.rc);
         fprintf(stats_out, "%.2lf\t%.2lf\t\t%.2lf\t%.2lf\t%.2lf\t", base_score, called_score, base_avg, called_avg, called_score - base_score);
         fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", scalings.shift, scalings.scale, scalings.drift, scalings.var);
@@ -573,7 +572,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         std::vector<double> event_likelihoods(MAX_HP_LENGTH + 1, 0.0f);
 
         for(size_t j = 0; j < event_sequences.size(); ++j) {
-            assert(kmer_size == event_sequences[j].read->pore_model[0].k);
+            assert(kmer_size == event_sequences[j].read->model_k[0]);
             assert(kmer_size == 6);
 
             const SquiggleRead* read = event_sequences[j].read;
@@ -624,7 +623,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
                 double num_kmers = variant_offset_end - variant_offset_start;
                 double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
-                if(read->pore_model[strand].metadata.is_r9()) {
+                if(read->pore_model_metadata[strand].is_r9()) {
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {
@@ -835,7 +834,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // load the region, accounting for the buffering
     if(region_start < BUFFER)
         region_start = BUFFER;
-    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
+    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
 
     if(!opt::alternative_basecalls_bam.empty()) {
         alignments.set_alternative_basecalls_bam(opt::alternative_basecalls_bam);

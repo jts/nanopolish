@@ -278,8 +278,9 @@ TEST_CASE( "scalings", "[scalings]") {
 
     SquiggleRead test_read;
     size_t strand = 0;
+    test_read.model_k[strand] = 6;
     test_read.scalings[strand].set4(10.0f, 1.2, 0.5, 1.3);
-    test_read.pore_model[strand] = PoreModelSet::get_model("r9.4_450bps", "nucleotide", "template", 6);
+    const PoreModel& pore_model = PoreModelSet::get_model("r9.4_450bps", "nucleotide", "template", 6);
 
     // Generate events from the pore model
     const SquiggleScalings& scalings = test_read.scalings[strand];
@@ -293,7 +294,7 @@ TEST_CASE( "scalings", "[scalings]") {
 
     for(size_t i = 0; i < n_events; ++i) {
 
-        PoreModelStateParams params = test_read.pore_model[strand].states[rank];
+        PoreModelStateParams params = pore_model.states[rank];
         SquiggleEvent event;
         event.stdv = 1.0f; //unused
         event.start_time = (i * duration);
@@ -314,8 +315,8 @@ TEST_CASE( "scalings", "[scalings]") {
 
     // Calculate log-probability of observing an event by scaling the event
     for(size_t i = 0; i < n_events; ++i) {
-        float lp = log_probability_match_r9(test_read, rank, i, strand);
-        float z = z_score(test_read, rank, i, strand);
+        float lp = log_probability_match_r9(test_read, pore_model, rank, i, strand);
+        float z = z_score(test_read, pore_model, rank, i, strand);
         REQUIRE( lp == Approx(lp_truth[i]) );
         REQUIRE( z == Approx(z_truth[i]) );
     }
@@ -409,7 +410,8 @@ TEST_CASE( "hmm", "[hmm]") {
     input[0].event_stride = 1;
     input[0].rc = false;
     input[0].strand = 0;
-    
+    input[0].pore_model = &sr.get_model(0, "nucleotide");
+
     // complement strand
     input[1].read = &sr;
     input[1].event_start_idx = 6788;
@@ -417,7 +419,8 @@ TEST_CASE( "hmm", "[hmm]") {
     input[1].event_stride = -1;
     input[1].rc = true;
     input[1].strand = 1;
-
+    input[1].pore_model = &sr.get_model(1, "nucleotide");
+    
     // expected output
     std::string expected_alignment[2];
     expected_alignment[0] = 

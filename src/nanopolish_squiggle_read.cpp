@@ -152,6 +152,10 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 
     for (size_t si = 0; si < 2; ++si) {
 
+        // ONT events models are always 5bp
+        // Later, we'll replace with a 6-mer model
+        this->model_k[si] = 5;
+
         // Do we want to load this strand?
         if(! (read_type == SRT_2D || read_type == si) ) {
             continue;
@@ -251,16 +255,18 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
     // Hardcoded parameters, for now we can only do template with the main R9.4 model
     size_t strand_idx = 0;
-    std::string kit = "r9.4_450bps";
     std::string alphabet = "nucleotide";
-    std::string strand_str = "template";
-    size_t k = 6;
+    this->pore_model_metadata[strand_idx].kit = KV_R9_4_450BPS;
+    this->pore_model_metadata[strand_idx].strand_idx = strand_idx;
+    this->pore_model_metadata[strand_idx].model_idx = strand_idx;
+    this->model_k[strand_idx] = 6;
+
     const detector_param* ed_params = &event_detection_defaults;
 
     if(this->nucleotide_type == SRNT_RNA) {
-        kit = "r9.4_70bps";
+        this->pore_model_metadata[strand_idx].kit = KV_R9_4_70BPS;
         alphabet = "u_to_t_rna";
-        k = 5;
+        this->model_k[strand_idx] = 5;
         ed_params = &event_detection_rna;
 
         std::replace(this->read_sequence.begin(), this->read_sequence.end(), 'U', 'T');
@@ -309,14 +315,11 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     assert(et.n > 0);
 
     // Load pore model and scale to events using method-of-moments
-    this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
-                                                           alphabet,
-                                                           strand_str,
-                                                           k);
+    const PoreModel& pore_model = this->get_model(strand_idx, alphabet);
 
     // 
     this->scalings[strand_idx] = estimate_scalings_using_mom(this->read_sequence,
-                                                             this->pore_model[strand_idx],
+                                                             pore_model,
                                                              et);
 
     // copy events into nanopolish's format
@@ -340,13 +343,13 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     free(et.event);
 
     // align events to the basecalled read
-    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, read_sequence);
+    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, pore_model, read_sequence);
 
     // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {
 
         // create base-to-event map
-        size_t n_kmers = read_sequence.size() - k + 1;
+        size_t n_kmers = read_sequence.size() - this->model_k[strand_idx] + 1;
         this->base_to_event_map.clear();
         this->base_to_event_map.resize(n_kmers);
 
@@ -375,18 +378,18 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
 
         // prepare data structures for the final calibration
         std::vector<EventAlignment> alignment =
-            get_eventalignment_for_1d_basecalls(read_sequence, this->base_to_event_map, k, strand_idx, 0);
+            get_eventalignment_for_1d_basecalls(read_sequence, alphabet, this->base_to_event_map, this->model_k[strand_idx], strand_idx, 0);
 
         // run recalibration to get the best set of scaling parameters and the residual
         // between the (scaled) event levels and the model.
         // internally this function will set shift/scale/etc of the pore model
-        bool calibrated = recalibrate_model(*this, strand_idx, alignment, this->pore_model[strand_idx].pmalphabet, true, false);
+        bool calibrated = recalibrate_model(*this, pore_model, strand_idx, alignment, true, false);
 
 #ifdef DEBUG_MODEL_SELECTION
         fprintf(stderr, "[calibration] read: %s"
                          "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
-                                read_name.substr(0, 6).c_str(), pore_model[strand_idx].scale,
-                                pore_model[strand_idx].shift, pore_model[strand_idx].drift, pore_model[strand_idx].var);
+                                read_name.substr(0, 6).c_str(), scalings.scale,
+                                scalings.shift, scaling.drift, scalings.var);
 #endif
 
         // QC calibration
@@ -416,14 +419,20 @@ void SquiggleRead::_load_R7(uint32_t si)
     assert(not basecall_group.empty());
 
     // Load the pore model for this strand
-    pore_model[si] = PoreModel( f_p, si, basecall_group );
+    PoreModel tmp_pm = PoreModel( f_p, si, basecall_group );
+    if(!PoreModelSet::has_model(tmp_pm)) {
+        PoreModelSet::add_model(tmp_pm);
+    }
+
+    this->pore_model_metadata[si] = tmp_pm.metadata;
+    this->model_k[si] = tmp_pm.k;
 
     // Read scaling parameters
     auto params = f_p->get_basecall_model_params(si, basecall_group);
     this->scalings[si].set6(params.shift, params.scale, params.drift, params.var, params.scale_sd, params.var_sd);
 
     // initialize transition parameters
-    parameters[si].initialize(get_model_metadata_from_name(pore_model[si].name));
+    parameters[si].initialize(this->pore_model_metadata[si]);
 }
 
 void SquiggleRead::_load_R9(uint32_t si,
@@ -502,7 +511,7 @@ void SquiggleRead::_load_R9(uint32_t si,
     }
 
     std::vector<EventAlignment> alignment =
-        get_eventalignment_for_1d_basecalls(read_sequence_1d, event_map_1d, calibration_k, si, label_shift);
+        get_eventalignment_for_1d_basecalls(read_sequence_1d, "nucleotide", event_map_1d, calibration_k, si, label_shift);
 
     // JTS Hack: blacklist bad k-mer and filter out events with low p_model_state
     double keep_fraction = 0.75;
@@ -581,21 +590,21 @@ void SquiggleRead::_load_R9(uint32_t si,
             }
         }
 
-        PoreModel best_model;
+        const PoreModel* best_model;
         SquiggleScalings best_scalings;
         double best_model_var = INFINITY;
 
         for(size_t model_idx = 0; model_idx < candidate_models.size(); model_idx++) {
 
-            pore_model[si] = *candidate_models[model_idx];
+            const PoreModel* curr_model = candidate_models[model_idx];
 
             // run recalibration to get the best set of scaling parameters and the residual
             // between the (scaled) event levels and the model
-            bool calibrated = recalibrate_model(*this, si, filtered, pore_model[si].pmalphabet, true, false);
+            bool calibrated = recalibrate_model(*this, *curr_model, si, filtered, true, false);
             if(calibrated) {
                 if(this->scalings[si].var < best_model_var) {
                     best_model_var = this->scalings[si].var;
-                    best_model = pore_model[si];
+                    best_model = curr_model;
                     best_scalings = this->scalings[si];
                 }
             }
@@ -615,19 +624,29 @@ void SquiggleRead::_load_R9(uint32_t si,
             // Replace model
             PoreModel final_model = PoreModelSet::get_model(kit,
                                                             alphabet,
-                                                            best_model.metadata.get_strand_model_name(),
+                                                            best_model->metadata.get_strand_model_name(),
                                                             final_model_k);
-            this->pore_model[si] = final_model;
+ 
+            this->pore_model_metadata[si] = final_model.metadata;
+            this->model_k[si] = final_model_k;
             this->scalings[si] = best_scalings;
 
             // initialize transition parameters
-            parameters[si].initialize(pore_model[si].metadata);
+            parameters[si].initialize(this->pore_model_metadata[si]);
         } else {
             g_failed_calibration_reads += 1;
             // could not find a model for this strand, discard it
             events[si].clear();
         }
     }
+}
+
+const PoreModel& SquiggleRead::get_model(uint32_t strand, const std::string& alphabet) const
+{
+    return PoreModelSet::get_model(this->pore_model_metadata[strand].get_kit_name(),
+                                   alphabet,
+                                   this->pore_model_metadata[strand].get_strand_model_name(),
+                                   this->model_k[strand]);
 }
 
 inline size_t search_for_event_kmer(const std::string sequence,
@@ -749,7 +768,7 @@ std::vector<EventRangeForBase> SquiggleRead::read_reconstruction(const std::stri
     // reconstruct sequence from event table
     assert(f_p and f_p->is_open());
     std::vector<EventRangeForBase> out_event_map;
-    const uint32_t k = pore_model[strand].k;
+    const uint32_t k = this->model_k[strand];
 
     // initialize - one entry per read kmer
     uint32_t n_read_kmers = read_sequence_1d.size() - k + 1;
@@ -932,8 +951,8 @@ void SquiggleRead::build_event_map_2d_r7()
     auto event_alignments = f_p->get_basecall_alignment(basecall_group);
     assert(!read_sequence.empty());
 
-    const uint32_t k = pore_model[T_IDX].k;
-    assert(pore_model[C_IDX].k == k);
+    const uint32_t k = this->model_k[T_IDX];
+    assert(this->model_k[C_IDX] == k);
 
     uint32_t n_read_kmers = read_sequence.size() - k + 1;
     base_to_event_map.resize(n_read_kmers);
@@ -1010,51 +1029,9 @@ hack:
     }
 }
 
-void SquiggleRead::replace_strand_model(size_t strand_idx, const std::string& kit_name, const std::string& alphabet, size_t k)
-{
-    // only replace this model if the strand was loaded
-    if( !(read_type == SRT_2D || read_type == strand_idx) || !has_events_for_strand(strand_idx)) {
-        return;
-    }
-
-    PoreModel incoming_model =
-        PoreModelSet::get_model(kit_name,
-                                alphabet,
-                                this->pore_model[strand_idx].metadata.get_strand_model_name(),
-                                k);
-
-    replace_model(strand_idx, incoming_model);
-}
-
-void SquiggleRead::replace_models(const std::string& kit_name, const std::string& alphabet, size_t k)
-{
-    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        replace_strand_model(strand_idx, kit_name, alphabet, k);
-    }
-}
-
-void SquiggleRead::replace_model(size_t strand_idx, const PoreModel& model)
-{
-    this->pore_model[strand_idx].metadata = model.metadata;
-    this->pore_model[strand_idx].name = model.name;
-    this->pore_model[strand_idx].type = model.type;
-    this->pore_model[strand_idx].k = model.k;
-    this->pore_model[strand_idx].pmalphabet = model.pmalphabet;
-    this->pore_model[strand_idx].update_states( model );
-}
-
-void SquiggleRead::replace_model(size_t strand_idx, const std::string& model_type)
-{
-    assert(false);
-#if 0
-    PoreModel incoming_model =
-        PoreModelSet::get_model(model_type, this->pore_model[strand_idx].metadata.get_short_name());
-    replace_model(strand_idx, incoming_model);
-#endif
-}
-
 // Return a vector of eventalignments for the events that made up the basecalls in the read
 std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
+                                                                              const std::string& alphabet_name,
                                                                               const std::vector<EventRangeForBase>& base_to_event_map_1d,
                                                                               const size_t k,
                                                                               const size_t strand_idx,
@@ -1062,7 +1039,7 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
 {
     std::vector<EventAlignment> alignment;
 
-    const Alphabet* alphabet = this->pore_model[strand_idx].pmalphabet;
+    const Alphabet* alphabet = get_alphabet_by_name(alphabet_name);
     size_t n_kmers = read_sequence_1d.size() - k + 1;
     size_t prev_kmer_rank = -1;
 
