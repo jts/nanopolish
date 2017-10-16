@@ -73,7 +73,6 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->fast5_path = read_db.get_signal_path(this->read_name);
 
-
     #pragma omp critical(sr_load_fast5)
     {
         this->f_p = new fast5::File(fast5_path);
@@ -123,10 +122,8 @@ int SquiggleRead::get_next_event(int start, int stop, int stride, uint32_t stran
 //
 int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 {
-    uint32_t k = pore_model[strand].k;
-
     int stop_before = std::max(0, k_idx - 1000);
-    int stop_after = std::min(k_idx + 1000, (int32_t)read_sequence.size() - (int32_t)k + 1);
+    int stop_after = std::min(k_idx + 1000, (int)base_to_event_map.size() - 1);
 
     int event_before = get_next_event(k_idx, stop_before, -1, strand);
     int event_after = get_next_event(k_idx, stop_after, 1, strand);
@@ -205,10 +202,10 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 
     // Build the map from k-mers of the read sequence to events
     if(read_type == SRT_2D) {
-        if(pore_model[0].metadata.is_r9()) {
+        if(pore_type == PT_R9) {
             build_event_map_2d_r9();
         } else {
-            assert(pore_model[0].metadata.is_r7());
+            assert(pore_type == PT_R7);
             build_event_map_2d_r7();
         }
     } else {
