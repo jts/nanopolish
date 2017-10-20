@@ -202,7 +202,7 @@ bool recalibrate_model(SquiggleRead &sr,
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
-    uint32_t k = sr.model_k[strand_idx];
+    uint32_t k = pore_model.k;
     const uint32_t num_equations = scale_drift ? 3 : 2;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
@@ -320,8 +320,8 @@ void add_aligned_events(const ReadDB& read_db,
     SquiggleRead sr(read_name, read_db);
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        assert(training_kit == sr.pore_model_metadata[strand_idx].get_kit_name());
-        assert(training_k == sr.model_k[strand_idx]);
+        assert(training_kit == sr.get_model_kit_name(strand_idx));
+        assert(training_k == sr.get_model_k(strand_idx));
 
         // skip if 1D reads and this is the wrong strand
         if(!sr.has_events_for_strand(strand_idx)) {
@@ -329,7 +329,7 @@ void add_aligned_events(const ReadDB& read_db,
         }
 
         // set k
-        uint32_t k = sr.model_k[strand_idx];
+        uint32_t k = sr.get_model_k(strand_idx);
 
         // Align to the new model
         EventAlignmentParameters params;
@@ -339,7 +339,7 @@ void add_aligned_events(const ReadDB& read_db,
         params.record = record;
         params.strand_idx = strand_idx;
 
-        params.alphabet = mtrain_alphabet;
+        params.alphabet = mtrain_alphabet->get_name();
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -349,7 +349,7 @@ void add_aligned_events(const ReadDB& read_db,
             return;
 
         // Update pore model based on alignment
-        std::string model_key = PoreModelSet::get_model_key(sr.get_model(strand_idx, mtrain_alphabet->get_name()));
+        std::string model_key = PoreModelSet::get_model_key(*sr.get_model(strand_idx, mtrain_alphabet->get_name()));
 
         //
         // Optional recalibration of shift/scale/drift and output of sequence likelihood
@@ -364,7 +364,7 @@ void add_aligned_events(const ReadDB& read_db,
 
         if ( opt::calibrate ) {
             double resid = 0.;
-            recalibrate_model(sr, sr.get_model(strand_idx, mtrain_alphabet->get_name()), strand_idx, alignment_output, resid, true);
+            recalibrate_model(sr, *sr.get_model(strand_idx, mtrain_alphabet->get_name()), strand_idx, alignment_output, resid, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
@@ -695,7 +695,7 @@ void train_one_round(const ReadDB& read_db,
 {
 
     // Get a copy of the models for each strand for this datatype
-    const PoreModelMap current_models = PoreModelSet::copy_strand_models(kit_name, alphabet, k);
+    const std::map<std::string, PoreModel> current_models = PoreModelSet::copy_strand_models(kit_name, alphabet, k);
 
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
@@ -840,7 +840,7 @@ void train_one_round(const ReadDB& read_db,
     fclose(summary_fp);
 }
 
-void write_models(const PoreModelMap& models, int round)
+void write_models(const std::map<std::string, PoreModel>& models, int round)
 {
     // Write the model
     for(auto model_iter = models.begin();
@@ -867,16 +867,16 @@ int methyltrain_main(int argc, char** argv)
 
     // Import the models to train into the pore model set
     assert(!opt::models_fofn.empty());
-    std::vector<std::string> imported_model_keys = PoreModelSet::initialize(opt::models_fofn);
-    assert(!imported_model_keys.empty());
+    std::vector<const PoreModel*> imported_models = PoreModelSet::initialize(opt::models_fofn);
+    assert(!imported_models.empty());
 
     // Grab one of the pore models to extract the kit name from (they should all have the same one)
-    const PoreModel& tmp_model = PoreModelSet::get_model_by_key(imported_model_keys.front());
+    const PoreModel& tmp_model = *imported_models.front();
 
     std::string training_kit = tmp_model.metadata.get_kit_name();
     mtrain_alphabet = tmp_model.pmalphabet;
     size_t training_k = tmp_model.k;
-    fprintf(stderr, "Training %s for alphabet %s for %zu-mers\n", training_kit.c_str(), mtrain_alphabet->get_name().c_str(), training_k);
+    fprintf(stderr, "Training %s for alphabet %s for %zu-mers\n", training_kit.c_str(), mtrain_alphabet->get_name(), training_k);
 
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);

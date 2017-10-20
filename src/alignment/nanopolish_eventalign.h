@@ -27,11 +27,14 @@ struct EventAlignmentParameters
         record = NULL;
         strand_idx = NUM_STRANDS;
         
-        alphabet = &gDNAAlphabet;
+        alphabet = "";
         read_idx = -1;
         region_start = -1;
         region_end = -1;
     }
+
+    // returns the pore model that should be used, based on the alphabet
+    const PoreModel* get_model() const;
 
     // Mandatory
     SquiggleRead* sr;
@@ -41,7 +44,7 @@ struct EventAlignmentParameters
     size_t strand_idx;
     
     // optional
-    const Alphabet* alphabet;
+    std::string alphabet;
     int read_idx;
     int region_start;
     int region_end;

@@ -14,6 +14,7 @@
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_read_db.h"
+#include "nanopolish_pore_model_set.h"
 #include <string>
 
 enum PoreType
@@ -170,8 +171,42 @@ class SquiggleRead
             return events[strand][event_idx].mean;
         }
 
+        // Return k-mer sized used by the pore model for this read strand
+        size_t get_model_k(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->k;
+        }
+
+        // Return name of the pore model kit for this read strand
+        std::string get_model_kit_name(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->metadata.get_kit_name();
+        }
+
+        // Return name of the strand model for this read strand
+        std::string get_model_strand_name(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->metadata.get_strand_model_name();
+        }
+
+        // Get the cached pointer to the nucleotide model for this read
+        const PoreModel* get_base_model(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand];
+        }
+
         // Get the pore model that should be used for this read, for a given alphabet
-        const PoreModel& get_model(uint32_t strand, const std::string& alphabet) const;
+        const PoreModel* get_model(uint32_t strand, const std::string& alphabet) const
+        {
+            return PoreModelSet::get_model(this->get_model_kit_name(strand),
+                                           alphabet,
+                                           this->get_model_strand_name(strand),
+                                           this->get_model_k(strand));
+        }
 
         // Get the parameters to the gaussian PDF scaled to this read
         inline GaussianParameters get_scaled_gaussian_from_pore_model_state(const PoreModel& pore_model, size_t strand_idx, size_t rank) const
@@ -238,9 +273,8 @@ class SquiggleRead
         // scaling parameters for each strand
         SquiggleScalings scalings[2];
 
-        // pore model metadata used during sequencing
-        ModelMetadata pore_model_metadata[2];
-        uint8_t model_k[2];
+        // pointers to the base model (DNA or RNA) for this read
+        const PoreModel* base_model[2];
 
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events
@@ -281,11 +315,13 @@ class SquiggleRead
         // make a map from a base of the 1D read sequence to the range of events supporting that base
         std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
                                                           uint32_t strand,
-                                                          std::vector<fast5::Basecall_Event>& f5_events);
+                                                          std::vector<fast5::Basecall_Event>& f5_events,
+                                                          size_t k);
 
         std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
                                                            uint32_t strand,
-                                                           std::vector<fast5::Basecall_Event>& f5_events);
+                                                           std::vector<fast5::Basecall_Event>& f5_events,
+                                                           size_t k);
 
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,

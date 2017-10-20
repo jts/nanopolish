@@ -64,7 +64,7 @@ class Alphabet
         virtual char base(uint8_t r) const = 0;
         virtual char complement(char b) const = 0;
         virtual uint32_t size() const = 0;
-        virtual std::string get_name() const = 0;
+        virtual const char* get_name() const = 0;
 
         // support for methylated bases with recognition sequences
         virtual size_t num_recognition_sites() const = 0;
@@ -249,7 +249,7 @@ class Alphabet
     static const uint32_t _size; 
 
 #define BASIC_ACCESSOR_BOILERPLATE \
-    virtual std::string get_name() const { return _name; } \
+    virtual const char* get_name() const { return _name; } \
     virtual uint8_t rank(char b) const { return _rank[(int)b]; }        \
     virtual char base(uint8_t r) const { return _base[r]; } \
     virtual char complement(char b) const { return _complement[_rank[(int)b]]; } \
@@ -388,7 +388,9 @@ extern DNAAlphabet gDNAAlphabet;
 extern MethylCpGAlphabet gMCpGAlphabet;
 extern MethylDamAlphabet gMethylDamAlphabet;
 extern MethylDcmAlphabet gMethylDcmAlphabet;
+extern UtoTRNAAlphabet gUtoTRNAAlphabet;
 
+std::vector<const Alphabet*> get_alphabet_list();
 const Alphabet* best_alphabet(const char *bases);
 const Alphabet* get_alphabet_by_name(const std::string& name);
 

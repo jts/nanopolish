@@ -72,7 +72,7 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
 {
     size_t strand_idx = 0;
-    size_t k = read.model_k[strand_idx];
+    size_t k = pore_model.k;
     const Alphabet* alphabet = pore_model.pmalphabet;
     size_t n_events = read.events[strand_idx].size();
     size_t n_kmers = sequence.size() - k + 1;
@@ -360,7 +360,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
 {
     size_t strand_idx = 0;
-    size_t k = read.model_k[strand_idx];
+    size_t k = pore_model.k;
     const Alphabet* alphabet = pore_model.pmalphabet;
 
 #if DEBUG_PRINT_STATS

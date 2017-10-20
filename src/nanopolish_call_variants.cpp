@@ -572,7 +572,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         std::vector<double> event_likelihoods(MAX_HP_LENGTH + 1, 0.0f);
 
         for(size_t j = 0; j < event_sequences.size(); ++j) {
-            assert(kmer_size == event_sequences[j].read->model_k[0]);
+            assert(kmer_size == event_sequences[j].read->get_model_k(0));
             assert(kmer_size == 6);
 
             const SquiggleRead* read = event_sequences[j].read;
@@ -623,7 +623,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
                 double num_kmers = variant_offset_end - variant_offset_start;
                 double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
-                if(read->pore_model_metadata[strand].is_r9()) {
+                if(read->pore_type == PT_R9) {
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {

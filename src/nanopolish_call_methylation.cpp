@@ -156,12 +156,12 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             continue;
         }
 
-        size_t k = sr.model_k[strand_idx];
+        size_t k = sr.get_model_k(strand_idx);
 
         // check if there is a cpg model for this strand
-        if(!PoreModelSet::has_model(sr.pore_model_metadata[strand_idx].get_kit_name(),
+        if(!PoreModelSet::has_model(sr.get_model_kit_name(strand_idx),
                                     "cpg",
-                                    sr.pore_model_metadata[strand_idx].get_strand_model_name(),
+                                    sr.get_model_strand_name(strand_idx),
                                     k))
         {
             continue;
@@ -259,7 +259,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             // Set up event data
             HMMInputData data;
             data.read = &sr;
-            data.pore_model = &sr.get_model(strand_idx, "cpg");
+            data.pore_model = sr.get_model(strand_idx, "cpg");
             data.strand = strand_idx;
             data.rc = event_align_record.rc;
             data.event_start_idx = e1;

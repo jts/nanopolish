@@ -57,7 +57,7 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
                                            const SequenceAlignmentRecord& seq_record)
 {
     this->sr = sr;
-    size_t k = this->sr->model_k[strand_idx];
+    size_t k = this->sr->get_model_k(strand_idx);
     size_t read_length = this->sr->read_sequence.length();
     
     for(size_t i = 0; i < seq_record.aligned_bases.size(); ++i) {
@@ -180,7 +180,7 @@ std::vector<HMMInputData> AlignmentDB::get_event_subsequences(const std::string&
 
         HMMInputData data;
         data.read = record.sr;
-        data.pore_model = &record.sr->get_model(record.strand, "nucleotide");
+        data.pore_model = record.sr->get_base_model(record.strand);
         data.strand = record.strand;
         data.rc = record.rc;
         data.event_stride = record.stride;
@@ -618,7 +618,7 @@ std::vector<EventAlignment> AlignmentDB::_build_event_alignment(const EventAlign
 {
     std::vector<EventAlignment> alignment;
     const SquiggleRead* sr = event_record.sr;
-    size_t k = sr->model_k[event_record.strand];
+    size_t k = sr->get_model_k(event_record.strand);
 
     for(const auto& ap : event_record.aligned_events) { 
 

@@ -134,7 +134,7 @@ double model_score(SquiggleRead &sr,
         // Set up event data
         HMMInputData data;
         data.read = &sr;
-        data.pore_model = &sr.get_model(strand_idx, "nucleotide");
+        data.pore_model = sr.get_model(strand_idx, "nucleotide");
         data.strand = strand_idx;
         data.rc = alignment_output.front().rc;
         data.event_start_idx = align_start.event_idx;
@@ -152,7 +152,7 @@ double model_score(SquiggleRead &sr,
         std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos, 
                                                       ref_end_pos, &fetched_len);
 
-        if (fetched_len <= (int)sr.model_k[strand_idx])
+        if (fetched_len <= (int)sr.get_model_k(strand_idx))
             continue;
 
         const Alphabet *alphabet = data.pore_model->pmalphabet;
@@ -414,7 +414,7 @@ int scorereads_main(int argc, char** argv)
 
                         // Update pore model based on alignment
                         if( opt::calibrate ) {
-                            recalibrate_model(sr, sr.get_model(strand_idx, alphabet_name), strand_idx, ao, true, opt::scale_drift);
+                            recalibrate_model(sr, *sr.get_model(strand_idx, alphabet_name), strand_idx, ao, true, opt::scale_drift);
                         }
 
                         double score = model_score(sr, strand_idx, fai, ao, 500, transition_training[strand_idx]);
@@ -423,7 +423,7 @@ int scorereads_main(int argc, char** argv)
 
                         #pragma omp critical(print)
                         std::cout << read_name << " " << ( strand_idx ? "complement" : "template" )
-                                  << " " << sr.get_model(strand_idx, alphabet_name).name << " " << score << 
+                                  << " " << sr.get_model(strand_idx, alphabet_name)->name << " " << score << 
                                   " shift " << sr.scalings[strand_idx].shift << " scale " << sr.scalings[strand_idx].scale <<
                                   " drift " << sr.scalings[strand_idx].drift << " var " << sr.scalings[strand_idx].var << std::endl;
                     }
