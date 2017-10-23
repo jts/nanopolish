@@ -320,13 +320,13 @@ void add_aligned_events(const ReadDB& read_db,
     SquiggleRead sr(read_name, read_db);
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        assert(training_kit == sr.get_model_kit_name(strand_idx));
-        assert(training_k == sr.get_model_k(strand_idx));
-
         // skip if 1D reads and this is the wrong strand
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
+
+        assert(training_kit == sr.get_model_kit_name(strand_idx));
+        assert(training_k == sr.get_model_k(strand_idx));
 
         // set k
         uint32_t k = sr.get_model_k(strand_idx);
