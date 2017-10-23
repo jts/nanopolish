@@ -387,10 +387,10 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         bool calibrated = recalibrate_model(*this, *this->base_model[strand_idx], strand_idx, alignment, true, false);
 
 #ifdef DEBUG_MODEL_SELECTION
-        fprintf(stderr, "[calibration] read: %s"
-                         "scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
-                                read_name.substr(0, 6).c_str(), scalings.scale,
-                                scalings.shift, scaling.drift, scalings.var);
+        fprintf(stderr, "[calibration] read: %s events: %zu"
+                         " scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
+                                read_name.substr(0, 6).c_str(), this->events[strand_idx].size(), this->scalings[strand_idx].scale,
+                                this->scalings[strand_idx].shift, this->scalings[strand_idx].drift, this->scalings[strand_idx].var);
 #endif
 
         // QC calibration
