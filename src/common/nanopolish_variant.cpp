@@ -162,7 +162,6 @@ std::vector<HMMInputSequence> generate_methylated_alternatives(const HMMInputSeq
 
         // Is there a methylated version?
         if(methylated != sequence.get_sequence()) {
-            fprintf(stderr, "%s methylation site detected\n", methylation_types[i].c_str());
             out.emplace_back(methylated, alphabet);
         }
     }
