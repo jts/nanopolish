@@ -129,6 +129,7 @@ namespace opt
     static int screen_score_threshold = 100;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
+    static std::vector<std::string> methylation_types = { "dam", "dcm" };
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:v";
@@ -343,7 +344,8 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(contig, calling_start, calling_end);
 
-        Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold);
+        Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold, opt::methylation_types);
+
         scored_variant.info = "";
         if(scored_variant.quality > 0) {
             out_variants.push_back(scored_variant);
@@ -779,7 +781,8 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                 opt::max_haplotypes,
                                 opt::ploidy,
                                 opt::genotype_only,
-                                alignment_flags);
+                                alignment_flags,
+                                opt::methylation_types);
 
             if(opt::debug_alignments) {
                 print_debug_stats(alignments.get_region_contig(),

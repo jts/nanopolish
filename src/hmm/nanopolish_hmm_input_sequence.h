@@ -28,6 +28,14 @@ class HMMInputSequence
         {
             m_rc_seq = m_alphabet->reverse_complement(seq);
         }
+        
+        HMMInputSequence(const std::string& fwd,
+                         const Alphabet* alphabet) : 
+                             m_seq(fwd),
+                             m_alphabet(alphabet)
+        {
+            m_rc_seq = m_alphabet->reverse_complement(m_seq);
+        }
 
         HMMInputSequence(const std::string& fwd,
                          const std::string& rc,
@@ -39,6 +47,11 @@ class HMMInputSequence
 
         }
 
+        //
+        const std::string& get_sequence() const { return m_seq; }
+
+        //
+        const Alphabet* get_alphabet() const { return m_alphabet; }
 
         //
         size_t length() const { return m_seq.length(); }

@@ -29,6 +29,32 @@ float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& da
     }
 }
 
+float profile_hmm_score_set(const std::vector<HMMInputSequence>& sequences, const HMMInputData& data, const uint32_t flags)
+{
+    assert(!sequences.empty());
+    assert(sequences[0].get_alphabet()->get_name() == "nucleotide");
+    assert(data.pore_model->pmalphabet->get_name() == "nucleotide");
+    
+    HMMInputData alt_data = data;
+    size_t num_models = sequences.size();
+    double num_model_penalty = log(num_models);
+
+    // Score the first sequence using the nucleotide alphabet
+    double score = profile_hmm_score(sequences[0], data, flags) - num_model_penalty;
+
+    // Score the remainder using the alternative alphabets/pore models
+    for(size_t seq_idx = 1; seq_idx < sequences.size(); ++seq_idx) {
+        alt_data.pore_model = alt_data.read->get_model(alt_data.strand, sequences[seq_idx].get_alphabet()->get_name());
+        assert(alt_data.pore_model != NULL);
+
+        // Score the methylated sequence
+        double alt_score = profile_hmm_score(sequences[seq_idx], alt_data, flags) - num_model_penalty;
+        score = add_logs(score, alt_score);
+    }
+
+    return score;
+}
+
 std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
     if(data.read->pore_type == PT_R9) {

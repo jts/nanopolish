@@ -148,13 +148,37 @@ std::string make_genotype(size_t alt_alleles, size_t ploidy)
     return out;
 }
 
+//
+std::vector<HMMInputSequence> generate_methylated_alternatives(const HMMInputSequence& sequence, 
+                                                               const std::vector<std::string>& methylation_types)
+{
+    // Make methylated versions of each input sequence
+    std::vector<HMMInputSequence> out;
+    out.push_back(sequence);
+
+    for(size_t i = 0; i < methylation_types.size(); ++i) {
+        const Alphabet* alphabet = get_alphabet_by_name(methylation_types[i]);
+        std::string methylated = alphabet->methylate(sequence.get_sequence());
+
+        // Is there a methylated version?
+        if(methylated != sequence.get_sequence()) {
+            fprintf(stderr, "%s methylation site detected\n", methylation_types[i].c_str());
+            out.emplace_back(methylated, alphabet);
+        }
+    }
+    return out;
+}
+
+
+//
 void score_variant_group(VariantGroup& variant_group,
                          Haplotype base_haplotype, 
                          const std::vector<HMMInputData>& input,
                          const int max_haplotypes,
                          const int ploidy,
                          const bool genotype_all_input_variants,
-                         const uint32_t alignment_flags)
+                         const uint32_t alignment_flags,
+                         const std::vector<std::string>& methylation_types)
 {
     size_t num_variants = variant_group.get_num_variants();
 
@@ -205,21 +229,15 @@ void score_variant_group(VariantGroup& variant_group,
         ss << input[i].read->read_name << ":" << input[i].strand;
         read_ids.push_back(ss.str());
     }
-
-/*
-    // Score each haplotype
-    DoubleMatrix read_haplotype_scores;
-    allocate_matrix(read_haplotype_scores, input.size(), haplotypes.size());
-
-    // Score all reads against all haplotypes
-    std::vector<double> read_sum(input.size(), -INFINITY);
-*/
   
     #pragma omp parallel for
     for(size_t ri = 0; ri < input.size(); ++ri) {
         for(size_t hi = 0; hi < haplotypes.size(); ++hi) {
             const auto& current = haplotypes[hi];
-            double score = profile_hmm_score(current.first.get_sequence(), input[ri], alignment_flags);
+
+            // Expand the haplotype to contain all representations of this sequence by adding methylation
+            std::vector<HMMInputSequence> sequences = generate_methylated_alternatives(current.first.get_sequence(), methylation_types);
+            double score = profile_hmm_score_set(sequences, input[ri], alignment_flags);
             
             #pragma omp critical
             {
@@ -644,64 +662,33 @@ std::vector<Variant> multi_call(VariantGroup& variant_group,
     return output_variants;
 }
 
-
-std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
-                                                      Haplotype base_haplotype, 
-                                                      const std::vector<HMMInputData>& input,
-                                                      const uint32_t alignment_flags)
-{
-    std::vector<Variant> selected_variants;
-    double base_score = 0.0f;
-    #pragma omp parallel for
-    for(size_t j = 0; j < input.size(); ++j) {
-
-        double score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
-
-        #pragma omp atomic
-        base_score += score;
-    }
-
-    for(size_t vi = 0; vi < candidate_variants.size(); ++vi) {
-
-        Haplotype current_haplotype = base_haplotype;
-        current_haplotype.apply_variant(candidate_variants[vi]);
-        
-        double haplotype_score = 0.0f;
-        #pragma omp parallel for
-        for(size_t j = 0; j < input.size(); ++j) {
-            double score = profile_hmm_score(current_haplotype.get_sequence(), input[j], alignment_flags);
-
-            #pragma omp atomic
-            haplotype_score += score;
-        }
-
-        if(haplotype_score > base_score) {
-            candidate_variants[vi].quality = haplotype_score - base_score;
-            selected_variants.push_back(candidate_variants[vi]);
-        }
-    }
-
-    return selected_variants;
-}
-
+//
 Variant score_variant_thresholded(const Variant& input_variant,
                                   Haplotype base_haplotype, 
                                   const std::vector<HMMInputData>& input,
                                   const uint32_t alignment_flags,
-                                  const uint32_t score_threshold)
+                                  const uint32_t score_threshold,
+                                  const std::vector<std::string>& methylation_types)
 {
+
     Variant out_variant = input_variant;
 
     Haplotype variant_haplotype = base_haplotype;
     variant_haplotype.apply_variant(input_variant);
 
+    // Make methylated versions of each input sequence
+    std::vector<HMMInputSequence> base_sequences = generate_methylated_alternatives(base_haplotype.get_sequence(), methylation_types);
+    std::vector<HMMInputSequence> variant_sequences = generate_methylated_alternatives(variant_haplotype.get_sequence(), methylation_types);
+    
     double total_score = 0.0f;
     #pragma omp parallel for
     for(size_t j = 0; j < input.size(); ++j) {
 
         if(fabs(total_score) < score_threshold) {
-            double base_score = profile_hmm_score(base_haplotype.get_sequence(), input[j], alignment_flags);
-            double variant_score = profile_hmm_score(variant_haplotype.get_sequence(), input[j], alignment_flags);
+
+            // Calculate scores using the base nucleotide model
+            double base_score = profile_hmm_score_set(base_sequences, input[j], alignment_flags);
+            double variant_score = profile_hmm_score_set(variant_sequences, input[j], alignment_flags);
 
             #pragma omp atomic
             total_score += (variant_score - base_score);

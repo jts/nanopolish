@@ -180,6 +180,7 @@ void PoreModel::write(const std::string filename, const std::string modelname) c
     writer << "#model_name\t" << outmodelname << std::endl;
     writer << "#kit\t" << this->metadata.get_kit_name() << std::endl;
     writer << "#strand\t" << this->metadata.get_strand_model_name() << std::endl;
+    writer << "#alphabet\t" << this->pmalphabet->get_name() << std::endl;
 
     std::string curr_kmer(k, this->pmalphabet->base(0));
     for(size_t ki = 0; ki < this->states.size(); ++ki) {

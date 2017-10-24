@@ -24,6 +24,9 @@
 float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
 float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMInputData>& data, const uint32_t flags = 0);
 
+// Calculate the probability of the nanopore events given a set of possible sequences (usually methylated alternatives)
+float profile_hmm_score_set(const std::vector<HMMInputSequence>& sequence, const HMMInputData& data, const uint32_t flags = 0);
+
 // Run viterbi to align events to kmers
 std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags = 0);
 

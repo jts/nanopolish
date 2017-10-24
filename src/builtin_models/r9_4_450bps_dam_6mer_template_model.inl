@@ -15642,7 +15642,7 @@ PoreModel initialize_r9_4_450bps_dam_6mer_template_model_builtin()
 		tmp.states[i].update_sd_lambda();
 		tmp.states[i].update_logs();
 	}
-	tmp.pmalphabet = best_alphabet("ACMTG");
+	tmp.pmalphabet = get_alphabet_by_name("dam");
 	tmp.set_metadata("r9.4_450bps", "template");
 	return tmp;
 }

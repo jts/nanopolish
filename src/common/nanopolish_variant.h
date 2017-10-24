@@ -128,6 +128,12 @@ void filter_variants_by_count(std::vector<Variant>& variants, int min_count);
 // Remove snps or indels 
 void filter_out_non_snp_variants(std::vector<Variant>& variants);
 
+// Expand the HMMInputSequence to contain alternatives representing
+// methylated versions with the same basic sequence. The output includes
+// the unmethylated version of the sequence over the nucleotide alphabet
+std::vector<HMMInputSequence> generate_methylated_alternatives(const HMMInputSequence& sequence, 
+                                                               const std::vector<std::string>& methylation_types);
+
 // Score the variants contained within the input group using the nanopolish HMM
 void score_variant_group(VariantGroup& variant_group,
                          Haplotype base_haplotype, 
@@ -135,7 +141,8 @@ void score_variant_group(VariantGroup& variant_group,
                          const int max_haplotypes,
                          const int ploidy,
                          const bool genotype_all_input_variants,
-                         const uint32_t alignment_flags);
+                         const uint32_t alignment_flags,
+                         const std::vector<std::string>& methylation_types);
 
 // Call genotypes for the variants in this group using a simple model
 std::vector<Variant> simple_call(VariantGroup& variant_group,
@@ -148,19 +155,14 @@ std::vector<Variant> multi_call(VariantGroup& variant_group,
                                 const int ploidy,
                                 const bool genotype_all_input_variants);
 
-// Select variants that have a positive score wrt the base haplotype
-std::vector<Variant> select_positive_scoring_variants(std::vector<Variant>& candidate_variants,
-                                                      Haplotype base_haplotype, 
-                                                      const std::vector<HMMInputData>& input,
-                                                      const uint32_t alignment_flags);
-
 // Score a single variant, stopping when the absolute value of the score relative
 // to the reference meets a threshold
 Variant score_variant_thresholded(const Variant& input_variant,
                                   Haplotype base_haplotype, 
                                   const std::vector<HMMInputData>& input,
                                   const uint32_t alignment_flags,
-                                  const uint32_t score_threshold);
+                                  const uint32_t score_threshold,
+                                  const std::vector<std::string>& methylation_types);
 
 // Annotate each SNP variant in the input set with the fraction of reads supporting every possible base at the position
 void annotate_variants_with_all_support(std::vector<Variant>& input, const AlignmentDB& alignments, int min_flanking_sequence, const uint32_t alignment_flags);
