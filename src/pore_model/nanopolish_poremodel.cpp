@@ -178,7 +178,6 @@ void PoreModel::write(const std::string filename, const std::string modelname) c
 
     std::ofstream writer(filename);
     writer << "#model_name\t" << outmodelname << std::endl;
-    writer << "#type\t" << this->type << std::endl;
     writer << "#kit\t" << this->metadata.get_kit_name() << std::endl;
     writer << "#strand\t" << this->metadata.get_strand_model_name() << std::endl;
 
