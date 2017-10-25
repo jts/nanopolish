@@ -302,6 +302,10 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, *ed_params);
     assert(rt.n > 0);
     assert(et.n > 0);
+    
+    if(flags & SRF_LOAD_RAW_SAMPLES) {
+        this->samples.swap(samples);
+    }
 
     // Load pore model and scale to events using method-of-moments
     this->pore_model[strand_idx] = PoreModelSet::get_model(kit,
