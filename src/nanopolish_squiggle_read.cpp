@@ -329,6 +329,10 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     event_table et = detect_events(rt, *ed_params);
     assert(rt.n > 0);
     assert(et.n > 0);
+    
+    if(flags & SRF_LOAD_RAW_SAMPLES) {
+        this->samples.swap(samples);
+    }
 
     // 
     this->scalings[strand_idx] = estimate_scalings_using_mom(this->read_sequence,
