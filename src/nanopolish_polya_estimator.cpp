@@ -317,7 +317,10 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
             } else {
                 tag = "POSTTAIL";
             }
-            fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%s\n", read_name.substr(0,6).c_str(), i, samples[i], tag.c_str());
+
+            double s = samples[i];
+            double scaled_s = (s - sr.pore_model[0].shift) / sr.pore_model[0].scale;
+            fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%f\t%s\n", read_name.substr(0,6).c_str(), i, s, scaled_s, tag.c_str());
         }
     }
 }
