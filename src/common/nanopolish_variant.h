@@ -11,6 +11,7 @@
 #include <sstream>
 #include "stdaln.h"
 #include "nanopolish_common.h"
+#include "nanopolish_hmm_input_sequence.h"
 
 // forward declare
 class Haplotype;
