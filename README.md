@@ -55,7 +55,7 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 ### Data preprocessing
 
-Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run `nanopolish index` on your input reads:
+Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run `nanopolish index` on your input reads (-d can be specified more than once if using multiple runs):
 
 ```
 # Only run this if you used Albacore 2.0 or later
