@@ -283,7 +283,15 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
     // Add all positively-scoring single-base changes into the candidate set
     for(size_t i = region_start; i < region_end; ++i) {
+        
+        int calling_start = i - opt::screen_flanking_sequence;
+        int calling_end = i + 1 + opt::screen_flanking_sequence;
 
+        if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
+            continue;
+        }
+        
+        std::vector<Variant> tmp_variants;
         for(size_t j = 0; j < 4; ++j) {
             // Substitutions
             Variant v;
@@ -293,14 +301,14 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             v.alt_seq = "ACGT"[j];
 
             if(v.ref_seq != v.alt_seq) {
-                out_variants.push_back(v);
+                tmp_variants.push_back(v);
             }
 
             // Insertions
             v.alt_seq = v.ref_seq + "ACGT"[j];
             // ignore insertions of the type "A" -> "AA" as these are redundant
             if(v.alt_seq[1] != v.ref_seq[0]) {
-                out_variants.push_back(v);
+                tmp_variants.push_back(v);
             }
         }
 
@@ -313,8 +321,28 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
         // ignore deletions of the type "AA" -> "A" as these are redundant
         if(del.alt_seq[0] != del.ref_seq[1]) {
-            out_variants.push_back(del);
+            tmp_variants.push_back(del);
         }
+
+        // Screen variants by score
+        // We do this internally here as it is much faster to get the event sequences
+        // for the entire window for all variants at this position once, rather than
+        // for each variant individually
+        std::vector<HMMInputData> event_sequences =
+            alignments.get_event_subsequences(contig, calling_start, calling_end);
+
+        Haplotype test_haplotype(contig,
+                                 calling_start,
+                                 alignments.get_reference_substring(contig, calling_start, calling_end));
+
+        for(const Variant& v : tmp_variants) {
+            Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold, opt::methylation_types);
+            scored_variant.info = "";
+            if(scored_variant.quality > 0) {
+                out_variants.push_back(scored_variant);
+            }
+        }
+
     }
     return out_variants;
 }
