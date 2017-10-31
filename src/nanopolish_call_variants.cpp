@@ -84,6 +84,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -p, --ploidy=NUM                     the ploidy level of the sequenced genome\n"
+"  -q  --methylation-aware=STR          turn on methylation aware polishing and test motifs given in STR (example: -m dcm,dam)\n"
 "      --genotype=FILE                  call genotypes for the variants in the vcf FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
@@ -129,10 +130,10 @@ namespace opt
     static int screen_score_threshold = 100;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
-    static std::vector<std::string> methylation_types = { "dam", "dcm" };
+    static std::vector<std::string> methylation_types;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -167,6 +168,7 @@ static const struct option longopts[] = {
     { "candidates",                required_argument, NULL, 'c' },
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
+    { "methylation-aware",         required_argument, NULL, 'q' },
     { "effort",                    required_argument, NULL, OPT_EFFORT },
     { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
@@ -967,6 +969,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
 void parse_call_variants_options(int argc, char** argv)
 {
+    std::string methylation_motifs_str;
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
@@ -982,6 +985,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'x': arg >> opt::max_haplotypes; break;
             case 'c': arg >> opt::candidates_file; break;
             case 'p': arg >> opt::ploidy; break;
+            case 'q': arg >> methylation_motifs_str; break;
             case 'a': arg >> opt::alternative_basecalls_bam; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
@@ -1047,6 +1051,15 @@ void parse_call_variants_options(int argc, char** argv)
     if(!opt::models_fofn.empty()) {
         // initialize the model set from the fofn
         PoreModelSet::initialize(opt::models_fofn);
+    }
+
+    if(!methylation_motifs_str.empty()) {
+        opt::methylation_types = split(methylation_motifs_str, ',');
+        for(const std::string& mtype : opt::methylation_types) {
+            // this call will abort if the alphabet does not exist
+            const Alphabet* alphabet = get_alphabet_by_name(mtype);
+            assert(alphabet != NULL);
+        }
     }
 
     if (die)
