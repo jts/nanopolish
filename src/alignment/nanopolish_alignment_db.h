@@ -51,8 +51,7 @@ class AlignmentDB
         AlignmentDB(const std::string& reads_file,
                     const std::string& reference_file,
                     const std::string& sequence_bam,
-                    const std::string& event_bam,
-                    const bool calibrate_reads = false);
+                    const std::string& event_bam);
 
         ~AlignmentDB();
 
@@ -138,7 +137,6 @@ class AlignmentDB
         std::string m_alternative_basecalls_bam;
 
         // parameters
-        bool m_calibrate_on_load;
 
         // loaded region
         std::string m_region_ref_sequence;

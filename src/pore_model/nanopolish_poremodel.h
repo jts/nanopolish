@@ -56,6 +56,7 @@ struct PoreModelStateParams
         level_stdv = e.level_stdv;
         sd_mean = e.sd_mean;
         sd_stdv = e.sd_stdv;
+        update_logs();
         update_sd_lambda();
         return *this;
     }
@@ -81,7 +82,7 @@ struct PoreModelStateParams
 class PoreModel
 {
     public:
-        PoreModel(uint32_t _k=5) : k(_k), is_scaled(false), pmalphabet(&gDNAAlphabet) {}
+        PoreModel(uint32_t _k=5) : k(_k), pmalphabet(&gDNAAlphabet) {}
 
         // These constructors and the output routine take an alphabet 
         // so that kmers are inserted/written in order
@@ -94,28 +95,12 @@ class PoreModel
 
         void write(const std::string filename, const std::string modelname="") const;
 
-        inline GaussianParameters get_scaled_parameters(const uint32_t kmer_rank) const
-        {
-            assert(is_scaled);
-            return scaled_params[kmer_rank];
-        }
-
-        inline PoreModelStateParams get_scaled_state(const uint32_t kmer_rank) const
-        {
-            assert(is_scaled);
-            return scaled_states[kmer_rank];
-        }
-
         inline PoreModelStateParams get_parameters(const uint32_t kmer_rank) const
         {
             return states[kmer_rank];
         }
         
         inline size_t get_num_states() const { return states.size(); }
-
-        // Pre-compute the GaussianParameters to avoid
-        // taking numerous logs in the emission calculations
-        void bake_gaussian_parameters();
 
         // update states with those given, or from another model
         void update_states( const PoreModel &other );
@@ -134,28 +119,10 @@ class PoreModel
         std::string type;
         ModelMetadata metadata;
         uint32_t k;
-
-        // per-read scaling parameters
-        double scale;
-        double shift;
-        double drift;
-        double var;
-        double scale_sd;
-        double var_sd;
-
-        // to support swapping models, a .model file might contain a shift_offset/scale_offset
-        // field which describes how to change the per-read shift values to match the incoming
-        // model.
-        double shift_offset;
-        double scale_offset;
-
-        bool is_scaled;
-
         const Alphabet *pmalphabet; 
 
+        // model parameters, one per k-mer
         std::vector<PoreModelStateParams> states;
-        std::vector<PoreModelStateParams> scaled_states;
-        std::vector<GaussianParameters> scaled_params;
 };
 
 #endif

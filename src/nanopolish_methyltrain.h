@@ -19,9 +19,9 @@
 // returns true if the recalibration was performed
 // in either case, sets residual to the L1 norm of the residual
 bool recalibrate_model(SquiggleRead &sr,
+                       const PoreModel& pore_model,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
-                       const Alphabet* alphabet,
                        bool scale_var=true,
                        bool scale_drift=true);
 

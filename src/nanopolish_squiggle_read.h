@@ -14,6 +14,7 @@
 #include "nanopolish_transition_parameters.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_read_db.h"
+#include "nanopolish_pore_model_set.h"
 #include <string>
 
 enum PoreType
@@ -56,6 +57,39 @@ struct SquiggleEvent
     float log_stdv;    // precompute for efficiency
 };
 
+// Scaling parameters to account for per-read variations from the model
+struct SquiggleScalings
+{
+    SquiggleScalings() : scale(1.0), shift(0.0), drift(0.0), var(1.0), scale_sd(1.0), var_sd(1.0) {}
+
+    // Set scaling parameteters. Theses function should be used rather than
+    // setting values directly so the cached values are updated.
+    void set4(double _shift,
+              double _scale,
+              double _drift,
+              double _var);
+
+    void set6(double _shift,
+              double _scale,
+              double _drift,
+              double _var,
+              double _scale_sd,
+              double _var_sd);
+
+    // direct parameters that must be set
+    double scale;
+    double shift;
+    double drift;
+    double var;
+    double scale_sd;
+    double var_sd;
+
+    // derived parameters that are cached for efficiency
+    double log_var;
+    double scaled_var;
+    double log_scaled_var;
+};
+
 struct IndexPair
 {
     IndexPair() : start(-1), stop(-1) {}
@@ -64,7 +98,7 @@ struct IndexPair
 };
 
 // This struct maps from base-space k-mers to the range of template/complement
-// events used to call it. 
+// events used to call it.
 struct EventRangeForBase
 {
     IndexPair indices[2]; // one per strand
@@ -75,13 +109,13 @@ class SquiggleRead
 {
     public:
 
-        SquiggleRead() : drift_correction_performed(false) {} // legacy TODO remove
+        SquiggleRead() {} // legacy TODO remove
         SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
         // I/O
-        // 
+        //
 
         //
         // Access to data
@@ -92,13 +126,6 @@ class SquiggleRead
         {
             assert(event_idx < events[strand].size());
             return events[strand][event_idx].duration;
-        }
-
-        // Return the observed current level after correcting for drift
-        inline float get_drift_corrected_level(uint32_t event_idx, uint32_t strand) const
-        {
-            assert(drift_correction_performed);
-            return events[strand][event_idx].mean;
         }
 
         // Return the current stdv for the given event
@@ -113,18 +140,24 @@ class SquiggleRead
             return events[strand][event_idx].log_stdv;
         }
 
+        // Return the observed current level corrected for drift
+        inline float get_drift_scaled_level(uint32_t event_idx, uint32_t strand) const
+        {
+            float level = get_unscaled_level(event_idx, strand);
+            float time = get_time(event_idx, strand);
+            return level - time * this->scalings[strand].drift;
+        }
+
         // Return the observed current level after correcting for drift, shift and scale
         inline float get_fully_scaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            assert(drift_correction_performed);
-            float level = get_drift_corrected_level(event_idx, strand);
-            return (level - pore_model[strand].shift) / pore_model[strand].scale;
+            return (get_drift_scaled_level(event_idx, strand) - scalings[strand].shift) / scalings[strand].scale;
         }
 
         // Return the observed current level stdv, after correcting for scale
         inline float get_scaled_stdv(uint32_t event_idx, uint32_t strand) const
         {
-            return events[strand][event_idx].stdv / pore_model[strand].scale_sd;
+            return events[strand][event_idx].stdv / scalings[strand].scale_sd;
         }
 
         inline float get_time(uint32_t event_idx, uint32_t strand) const
@@ -133,41 +166,77 @@ class SquiggleRead
         }
 
         // Return the observed current level after correcting for drift
-        inline float get_uncorrected_level(uint32_t event_idx, uint32_t strand) const
+        inline float get_unscaled_level(uint32_t event_idx, uint32_t strand) const
         {
-            if (!drift_correction_performed)
-                return events[strand][event_idx].mean;
-            else {
-                double time = get_time(event_idx, strand);
-                return events[strand][event_idx].mean + (time * pore_model[strand].drift);
-            }
+            return events[strand][event_idx].mean;
         }
-        
+
+        // Return k-mer sized used by the pore model for this read strand
+        size_t get_model_k(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->k;
+        }
+
+        // Return name of the pore model kit for this read strand
+        std::string get_model_kit_name(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->metadata.get_kit_name();
+        }
+
+        // Return name of the strand model for this read strand
+        std::string get_model_strand_name(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand]->metadata.get_strand_model_name();
+        }
+
+        // Get the cached pointer to the nucleotide model for this read
+        const PoreModel* get_base_model(uint32_t strand) const
+        {
+            assert(this->base_model[strand] != NULL);
+            return this->base_model[strand];
+        }
+
+        // Get the pore model that should be used for this read, for a given alphabet
+        const PoreModel* get_model(uint32_t strand, const std::string& alphabet) const
+        {
+            return PoreModelSet::get_model(this->get_model_kit_name(strand),
+                                           alphabet,
+                                           this->get_model_strand_name(strand),
+                                           this->get_model_k(strand));
+        }
+
+        // Get the parameters to the gaussian PDF scaled to this read
+        inline GaussianParameters get_scaled_gaussian_from_pore_model_state(const PoreModel& pore_model, size_t strand_idx, size_t rank) const
+        {
+            const SquiggleScalings& scalings = this->scalings[strand_idx];
+            const PoreModelStateParams& params = pore_model.states[rank];
+            GaussianParameters gp;
+            gp.mean = scalings.scale * params.level_mean + scalings.shift;
+            gp.stdv = params.level_stdv * scalings.var;
+            gp.log_stdv = params.level_log_stdv + scalings.log_var;
+            return gp;
+        }
+
         // Calculate the index of this k-mer on the other strand
-        inline int32_t flip_k_strand(int32_t k_idx) const
+        inline int32_t flip_k_strand(int32_t k_idx, uint32_t k) const
         {
             assert(!read_sequence.empty());
-            return read_sequence.size() - k_idx - pore_model[T_IDX].k;
+            return read_sequence.size() - k_idx - k;
         }
 
-        // Transform each event by correcting for current drift
-        void transform();
-
-        // get the index of the event that is nearest to the given kmer 
+        // get the index of the event that is nearest to the given kmer
         int get_closest_event_to(int k_idx, uint32_t strand) const;
-
-        // replace the pore models with the models specified in the map or by a string
-        void replace_strand_model(size_t strand_idx, const std::string& kit_name, const std::string& alphabet, size_t k);
-        void replace_models(const std::string& kit_name, const std::string& alphabet, size_t k);
-        void replace_model(size_t strand_idx, const std::string& model_type);
-        void replace_model(size_t strand_idx, const PoreModel& model);
 
         // returns true if this read has events for this strand
         bool has_events_for_strand(size_t strand_idx) const { return !this->events[strand_idx].empty(); }
 
         // Create an eventalignment between the events of this read and its 1D basecalled sequence
         std::vector<EventAlignment> get_eventalignment_for_1d_basecalls(const std::string& read_sequence_1d,
-                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d, 
+                                                                        const std::string& alphabet_name,
+                                                                        const std::vector<EventRangeForBase>& base_to_event_map_1d,
                                                                         const size_t k,
                                                                         const size_t strand_idx,
                                                                         const int label_shift) const;
@@ -179,10 +248,10 @@ class SquiggleRead
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const
         {
-            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->pore_model[strand_idx].shift,
-                                                                               this->pore_model[strand_idx].scale,
-                                                                               this->pore_model[strand_idx].drift,
-                                                                               this->pore_model[strand_idx].var);
+            fprintf(fp, "shift: %.2lf scale: %.2lf drift: %.2lf var: %.2lf\n", this->scalings[strand_idx].shift,
+                                                                               this->scalings[strand_idx].scale,
+                                                                               this->scalings[strand_idx].drift,
+                                                                               this->scalings[strand_idx].var);
         }
 
         //
@@ -197,13 +266,15 @@ class SquiggleRead
         std::string fast5_path;
         uint32_t read_id;
         std::string read_sequence;
-        bool drift_correction_performed;
-
-        // one model for each strand
-        PoreModel pore_model[2];
 
         // one event sequence for each strand
         std::vector<SquiggleEvent> events[2];
+
+        // scaling parameters for each strand
+        SquiggleScalings scalings[2];
+
+        // pointers to the base model (DNA or RNA) for this read
+        const PoreModel* base_model[2];
 
         // optional fields holding the raw data
         // this is not split into strands so there is only one vector, unlike events
@@ -244,11 +315,13 @@ class SquiggleRead
         // make a map from a base of the 1D read sequence to the range of events supporting that base
         std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
                                                           uint32_t strand,
-                                                          std::vector<fast5::Basecall_Event>& f5_events);
+                                                          std::vector<fast5::Basecall_Event>& f5_events,
+                                                          size_t k);
 
         std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
                                                            uint32_t strand,
-                                                           std::vector<fast5::Basecall_Event>& f5_events);
+                                                           std::vector<fast5::Basecall_Event>& f5_events,
+                                                           size_t k);
 
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,
@@ -264,13 +337,13 @@ class SquiggleRead
 
         // detect pore_type
         void detect_pore_type();
-        
-        // check whether the input read name conforms to nanopolish extract's signature       
+
+        // check whether the input read name conforms to nanopolish extract's signature
         bool is_extract_read_name(std::string& name) const;
 
         // detect basecall_group and read_type
         void detect_basecall_group();
-        
+
         // check basecall_group and read_type
         bool check_basecall_group() const;
 };

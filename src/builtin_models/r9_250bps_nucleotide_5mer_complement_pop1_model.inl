@@ -1032,15 +1032,6 @@ PoreModel initialize_r9_250bps_nucleotide_5mer_complement_pop1_model_builtin()
 	PoreModel tmp;
 	tmp.model_filename = "etc/r9-models/r9_250bps.nucleotide.5mer.complement.pop1.model";
 	tmp.k = 5;
-	tmp.shift = 0.0;
-	tmp.scale = 1.0;
-	tmp.drift = 0.0;
-	tmp.var = 1.0;
-	tmp.scale_sd = 1.0;
-	tmp.var_sd = 1.0;
-	tmp.shift_offset = 0.0;
-	tmp.scale_offset = 0.0;
-	tmp.is_scaled = false;
 	tmp.states.resize(1024);
 	for(size_t i = 0; i < 1024; ++i) {
 		tmp.states[i].level_mean = initialize_r9_250bps_nucleotide_5mer_complement_pop1_model_builtin_data[4*i + 0];

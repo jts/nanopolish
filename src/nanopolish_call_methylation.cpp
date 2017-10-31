@@ -156,22 +156,16 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             continue;
         }
 
-        // replace the baked-in pore model with the methylation model
-        const PoreModel& curr_model = sr.pore_model[strand_idx];
+        size_t k = sr.get_model_k(strand_idx);
 
         // check if there is a cpg model for this strand
-        if(!PoreModelSet::has_model(curr_model.metadata.get_kit_name(),
+        if(!PoreModelSet::has_model(sr.get_model_kit_name(strand_idx),
                                     "cpg",
-                                    curr_model.metadata.get_strand_model_name(),
-                                    curr_model.k))
+                                    sr.get_model_strand_name(strand_idx),
+                                    k))
         {
             continue;
         }
-
-        sr.replace_strand_model(strand_idx,
-                                curr_model.metadata.get_kit_name(),
-                                "cpg",
-                                curr_model.k);
 
         // Build the event-to-reference map for this read from the bam record
         SequenceAlignmentRecord seq_align_record(record);
@@ -182,8 +176,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         std::vector<int> site_ends;
         std::vector<int> site_count;
 
-
-        size_t k = sr.pore_model[strand_idx].k;
 
         std::string contig = hdr->target_name[record->core.tid];
         int ref_start_pos = record->core.pos;
@@ -267,7 +259,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             // Set up event data
             HMMInputData data;
             data.read = &sr;
-            data.anchor_index = -1; // unused
+            data.pore_model = sr.get_model(strand_idx, "cpg");
             data.strand = strand_idx;
             data.rc = event_align_record.rc;
             data.event_start_idx = e1;

@@ -64,17 +64,6 @@ print "\tPoreModel tmp;"
 assign("model_filename", quote(args.input))
 assign("k", K)
 
-# Output default values for scaling parameters
-assign("shift", 0.0)
-assign("scale", 1.0)
-assign("drift", 0.0)
-assign("var", 1.0)
-assign("scale_sd", 1.0)
-assign("var_sd", 1.0)
-assign("shift_offset", 0.0)
-assign("scale_offset", 0.0)
-assign("is_scaled", "false")
-
 num_states = len(model)
 
 print "\ttmp.states.resize(%d);" % (num_states)

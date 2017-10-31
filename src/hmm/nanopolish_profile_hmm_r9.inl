@@ -295,10 +295,10 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     std::vector<BlockTransitions> transitions = calculate_transitions(num_kmers, sequence, data);
  
     // Precompute kmer ranks
-    uint32_t k = data.read->pore_model[data.strand].k;
+    const uint32_t k = data.pore_model->k;
 
     // Make sure the HMMInputSequence's alphabet matches the state space of the read
-    assert( data.read->pore_model[data.strand].states.size() == sequence.get_num_kmer_ranks(k) );
+    assert( data.pore_model->states.size() == sequence.get_num_kmer_ranks(k) );
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki)
@@ -337,7 +337,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
-            float lp_emission_m = log_probability_match_r9(*data.read, rank, event_idx, data.strand);
+            float lp_emission_m = log_probability_match_r9(*data.read, *data.pore_model, rank, event_idx, data.strand);
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;

@@ -142,7 +142,8 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
     assert(in_mixture.log_weights.size() == n_components);
     size_t n_data = data.size();
     auto crt_mixture = in_mixture;
-
+    assert(false && "deprecated");
+#if 0
     for (size_t j = 0; j < n_components; ++j) {
         LOG("training_core", debug)
             << "in_mixture " << j << " "
@@ -260,6 +261,6 @@ ParamMixture train_invgaussian_mixture(const vector< StateTrainingData >& data, 
         }
         std::swap(crt_mixture, new_mixture);
     } // for iteration
-
+#endif
     return crt_mixture;
 } // train_ig_mixture

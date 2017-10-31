@@ -195,14 +195,14 @@ static const struct option longopts[] = {
 // returns true if the recalibration was performed
 // in either case, sets residual to the L1 norm of the residual
 bool recalibrate_model(SquiggleRead &sr,
+                       const PoreModel& pore_model,
                        const int strand_idx,
                        const std::vector<EventAlignment> &alignment_output,
-                       const Alphabet* alphabet,
                        const bool scale_var,
                        const bool scale_drift)
 {
     std::vector<double> raw_events, times, level_means, level_stdvs;
-    uint32_t k = sr.pore_model[strand_idx].k;
+    uint32_t k = pore_model.k;
     const uint32_t num_equations = scale_drift ? 3 : 2;
 
     //std::cout << "Previous pore model parameters: " << sr.pore_model[strand_idx].shift << ", "
@@ -214,12 +214,12 @@ bool recalibrate_model(SquiggleRead &sr,
     for(size_t ei = 0; ei < alignment_output.size(); ++ei) {
         const auto& ea = alignment_output[ei];
         if(ea.hmm_state == 'M') {
-            std::string model_kmer = ea.rc ? alphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
-            uint32_t rank = alphabet->kmer_rank(model_kmer.c_str(), k);
+            std::string model_kmer = ea.rc ? pore_model.pmalphabet->reverse_complement(ea.ref_kmer) : ea.ref_kmer;
+            uint32_t rank = pore_model.pmalphabet->kmer_rank(model_kmer.c_str(), k);
 
-            raw_events.push_back ( sr.get_uncorrected_level(ea.event_idx, strand_idx) );
-            level_means.push_back( sr.pore_model[strand_idx].states[rank].level_mean );
-            level_stdvs.push_back( sr.pore_model[strand_idx].states[rank].level_stdv );
+            raw_events.push_back ( sr.get_unscaled_level(ea.event_idx, strand_idx) );
+            level_means.push_back( pore_model.states[rank].level_mean );
+            level_stdvs.push_back( pore_model.states[rank].level_stdv );
             if (scale_drift)
                 times.push_back  ( sr.get_time(ea.event_idx, strand_idx) );
 
@@ -278,13 +278,10 @@ bool recalibrate_model(SquiggleRead &sr,
         double shift = x(0);
         double scale = x(1);
         double drift = scale_drift ? x(2) : 0.;
-
-        sr.pore_model[strand_idx].shift = shift;
-        sr.pore_model[strand_idx].scale = scale;
-        sr.pore_model[strand_idx].drift = drift;
+        double var = 1.0;
 
         if (scale_var) {
-            double var = 0.;
+            var = 0.;
             for (size_t i=0; i<raw_events.size(); i++) {
                 double yi = (raw_events[i] - shift - scale*level_means[i]);
                 if (scale_drift)
@@ -292,18 +289,11 @@ bool recalibrate_model(SquiggleRead &sr,
                 var+= yi*yi/(level_stdvs[i]*level_stdvs[i]);
             }
             var /= raw_events.size();
-
-            sr.pore_model[strand_idx].var   = sqrt(var); // 'var' is really the scaling for std dev.
+            var = sqrt(var);
         }
 
-        if (sr.pore_model[strand_idx].is_scaled)
-            sr.pore_model[strand_idx].bake_gaussian_parameters();
-
+        sr.scalings[strand_idx].set4(shift, scale, drift, var);
         recalibrated = true;
-        //std::cout << "Updated pore model parameters:  " << sr.pore_model[strand_idx].shift << ", "
-        //                                                << sr.pore_model[strand_idx].scale << ", "
-        //                                                << sr.pore_model[strand_idx].drift << ", "
-        //                                                << sr.pore_model[strand_idx].var   << std::endl;
     }
 
     return recalibrated;
@@ -329,18 +319,17 @@ void add_aligned_events(const ReadDB& read_db,
     // load read
     SquiggleRead sr(read_name, read_db);
 
-    // replace the models that are built into the read with the model we are training
-    sr.replace_models(training_kit, training_alphabet, training_k);
-
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-
         // skip if 1D reads and this is the wrong strand
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
         }
 
+        assert(training_kit == sr.get_model_kit_name(strand_idx));
+        assert(training_k == sr.get_model_k(strand_idx));
+
         // set k
-        uint32_t k = sr.pore_model[strand_idx].k;
+        uint32_t k = sr.get_model_k(strand_idx);
 
         // Align to the new model
         EventAlignmentParameters params;
@@ -350,7 +339,7 @@ void add_aligned_events(const ReadDB& read_db,
         params.record = record;
         params.strand_idx = strand_idx;
 
-        params.alphabet = mtrain_alphabet;
+        params.alphabet = mtrain_alphabet->get_name();
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -360,7 +349,7 @@ void add_aligned_events(const ReadDB& read_db,
             return;
 
         // Update pore model based on alignment
-        std::string model_key = PoreModelSet::get_model_key(sr.pore_model[strand_idx]);
+        std::string model_key = PoreModelSet::get_model_key(*sr.get_model(strand_idx, mtrain_alphabet->get_name()));
 
         //
         // Optional recalibration of shift/scale/drift and output of sequence likelihood
@@ -375,7 +364,7 @@ void add_aligned_events(const ReadDB& read_db,
 
         if ( opt::calibrate ) {
             double resid = 0.;
-            recalibrate_model(sr, strand_idx, alignment_output, mtrain_alphabet, resid, true);
+            recalibrate_model(sr, *sr.get_model(strand_idx, mtrain_alphabet->get_name()), strand_idx, alignment_output, resid, true);
 
             if (opt::output_scores) {
                 double rescaled_score = model_score(sr, strand_idx, fai, alignment_output, 500, NULL);
@@ -471,7 +460,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case 's': arg >> opt::out_suffix; break;
             case 'v': opt::verbose++; break;
             case 'c': opt::calibrate = 1; break;
-            case OPT_STDV: model_stdv() = true; break;
+            case OPT_STDV: /*model_stdv() = true;*/ break;
             case OPT_OUT_FOFN: arg >> opt::out_fofn; break;
             case OPT_NUM_ROUNDS: arg >> opt::num_training_rounds; break;
             case OPT_OUTPUT_SCORES: opt::output_scores = true; break;
@@ -653,7 +642,8 @@ TrainingResult retrain_model_from_events(const PoreModel& current_model,
             #pragma omp critical
             result.trained_model.states[ki] = trained_mixture.params[0];
 
-            if (model_stdv()) {
+#if 0
+            if (false && model_stdv()) {
                 ParamMixture ig_mixture;
                 // weights
                 ig_mixture.log_weights = trained_mixture.log_weights;
@@ -680,7 +670,7 @@ TrainingResult retrain_model_from_events(const PoreModel& current_model,
                     result.trained_model.states[ki] = trained_ig_mixture.params[0];
                 }
             }
-
+#endif 
             #pragma omp atomic
             result.num_kmers_trained += 1;
         }
@@ -705,7 +695,7 @@ void train_one_round(const ReadDB& read_db,
 {
 
     // Get a copy of the models for each strand for this datatype
-    const PoreModelMap current_models = PoreModelSet::copy_strand_models(kit_name, alphabet, k);
+    const std::map<std::string, PoreModel> current_models = PoreModelSet::copy_strand_models(kit_name, alphabet, k);
 
     // Initialize the training summary stats for each kmer for each model
     ModelTrainingMap model_training_data;
@@ -850,7 +840,7 @@ void train_one_round(const ReadDB& read_db,
     fclose(summary_fp);
 }
 
-void write_models(const PoreModelMap& models, int round)
+void write_models(const std::map<std::string, PoreModel>& models, int round)
 {
     // Write the model
     for(auto model_iter = models.begin();
@@ -877,16 +867,16 @@ int methyltrain_main(int argc, char** argv)
 
     // Import the models to train into the pore model set
     assert(!opt::models_fofn.empty());
-    std::vector<std::string> imported_model_keys = PoreModelSet::initialize(opt::models_fofn);
-    assert(!imported_model_keys.empty());
+    std::vector<const PoreModel*> imported_models = PoreModelSet::initialize(opt::models_fofn);
+    assert(!imported_models.empty());
 
     // Grab one of the pore models to extract the kit name from (they should all have the same one)
-    const PoreModel& tmp_model = PoreModelSet::get_model_by_key(imported_model_keys.front());
+    const PoreModel& tmp_model = *imported_models.front();
 
     std::string training_kit = tmp_model.metadata.get_kit_name();
     mtrain_alphabet = tmp_model.pmalphabet;
     size_t training_k = tmp_model.k;
-    fprintf(stderr, "Training %s for alphabet %s for %zu-mers\n", training_kit.c_str(), mtrain_alphabet->get_name().c_str(), training_k);
+    fprintf(stderr, "Training %s for alphabet %s for %zu-mers\n", training_kit.c_str(), mtrain_alphabet->get_name(), training_k);
 
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
         fprintf(stderr, "Starting round %zu\n", round);
