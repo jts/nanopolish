@@ -159,14 +159,14 @@ void parse_polya_options(int argc, char** argv)
 struct PolyAHMM {
     // state transition probabilities:
     float state_transitions[4][4] = { {0.99f, 0.01f, 0.00f, 0.00f},
-				      {0.00f, 0.99f, 0.01f, 0.00f},
-				      {0.00f, 0.00f, 0.99f, 0.01f},
-				      {0.00f, 0.00f, 0.00f, 1.00f} };
+                                      {0.00f, 0.99f, 0.01f, 0.00f},
+                                      {0.00f, 0.00f, 0.99f, 0.01f},
+                                      {0.00f, 0.00f, 0.00f, 1.00f} };
     // log-prob transitions:
     float log_state_transitions[4][4] = { {-0.0101f, -4.6052f, -INFINITY, -INFINITY},
-					  {-INFINITY, -0.0101f, -4.6052f, -INFINITY},
-					  {-INFINITY, -INFINITY, -0.0101f, -4.6052f},
-					  {-INFINITY, -INFINITY, -INFINITY,  0.0000f} };
+                                          {-INFINITY, -0.0101f, -4.6052f, -INFINITY},
+                                          {-INFINITY, -INFINITY, -0.0101f, -4.6052f},
+                                          {-INFINITY, -INFINITY, -INFINITY,  0.0000f} };
     // default emission parameters, from eyeballing a bunch of plots:
     GaussianParameters l_emission = {100.0f, 2.5f};  // leader;
     GaussianParameters a_emission = {75.0f, 3.0f};   // adapter;
@@ -226,8 +226,8 @@ ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
     // weight initially on L:
     viterbi_scores[0][0] = emit_log_proba(sr.events[0][num_events-1].mean, hmm, 0, scale, shift, var);
     for (size_t i=1; i < num_events; ++i) {
-	// `t` moves from 3'->5' on the vector of events, in opposite direction of `i`:
-	size_t t = (num_events-1-i);
+        // `t` moves from 3'->5' on the vector of events, in opposite direction of `i`:
+        size_t t = (num_events-1-i);
         // get scores and update timestep:
         float l_to_l = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][0];
         float l_to_a = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][1];
@@ -263,7 +263,7 @@ ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
     // loop backwards and keep appending best states:
     for (size_t j=(num_events-2); j > 0; --j) {
         regions[j] = viterbi_bptrs.at(j)[regions.at(j+1)];
-	scores[j] = viterbi_scores.at(j)[regions.at(j+1)];
+        scores[j] = viterbi_scores.at(j)[regions.at(j+1)];
     }
 
     // put into struct and return:
@@ -291,29 +291,29 @@ RegionIxs get_region_indices(const std::vector<uint8_t> regions)
 
     // loop through sequence and collect values:
     for (std::vector<uint8_t>::size_type i = 0; i < regions.size(); ++i) {
-	// call end of leader:
-	if (regions[i] == 0 && regions[i+1] == 1) {
-	    ixs.leader = static_cast<size_t>(i);
-	}
-	// call end of adapter:
-	if (regions[i] == 1 && regions[i+1] == 2) {
-	    ixs.adapter = static_cast<size_t>(i);
-	}
-	// call end of polya:
-	if (regions[i] == 2 && regions[i+1] == 3) {
-	    ixs.polya = static_cast<size_t>(i);
-	}
+        // call end of leader:
+        if (regions[i] == 0 && regions[i+1] == 1) {
+            ixs.leader = static_cast<size_t>(i);
+        }
+        // call end of adapter:
+        if (regions[i] == 1 && regions[i+1] == 2) {
+            ixs.adapter = static_cast<size_t>(i);
+        }
+        // call end of polya:
+        if (regions[i] == 2 && regions[i+1] == 3) {
+            ixs.polya = static_cast<size_t>(i);
+        }
     }
 
     // set sensible default values (1 event past previous region) if not all three detected:
     // L-end is always detected (min value == 0)
     if (ixs.adapter == 0) {
-	// A-end undetected if all events after L are all A's; set final 3 events as A,P,T:
-	ixs.adapter = regions.size() - 3;
-	ixs.polya = regions.size() - 2;
+        // A-end undetected if all events after L are all A's; set final 3 events as A,P,T:
+        ixs.adapter = regions.size() - 3;
+        ixs.polya = regions.size() - 2;
     } else if (ixs.polya == 0) {
-	// P-end undetected if all events after A are all P's; set final events to P,T:
-	ixs.polya = regions.size() - 2;
+        // P-end undetected if all events after A are all P's; set final events to P,T:
+        ixs.polya = regions.size() - 2;
     }
     
     return ixs;
@@ -356,7 +356,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
 
     //----- QC: skip if no events:
     if (sr.events[0].empty()) {
-	return;
+        return;
     }
 
     //----- perform HMM-based regional segmentation and get regions:
@@ -375,7 +375,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     double adapter_sample_start = sr.events[STRAND][num_events - region_indices.leader].start_time * sr.sample_rate;
     // calculate duration of poly(A) region (in seconds)
     double duration = sr.events[STRAND][num_events - region_indices.polya].start_time
-	- sr.events[STRAND][num_events - region_indices.adapter - 1].start_time;
+        - sr.events[STRAND][num_events - region_indices.adapter - 1].start_time;
     // calculate read duration (length of transcript, in seconds) and read rate:
     double read_duration = (total_num_samples - polya_sample_end) / sr.sample_rate;
     double read_rate = (sequenced_transcript.length() - suffix_clip) / read_duration;
@@ -391,15 +391,15 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     //----- if `verbose >= 1`, print the samples (picoAmps) of the read,
     // up to the first 1000 samples of transcript region:
     if (opt::verbose >= 1) {
-	// copy 5'->3'-oriented samples from squiggleread and reverse back to 3'->5':
+        // copy 5'->3'-oriented samples from squiggleread and reverse back to 3'->5':
         std::vector<float> samples(sr.samples);
-	std::reverse(samples.begin(), samples.end());
-	const PolyAHMM hmm;
+        std::reverse(samples.begin(), samples.end());
+        const PolyAHMM hmm;
         for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
-	    std::string tag;
-	    if (i < adapter_sample_start) {
-		tag = "LEADER";
-	    } else if (i < polya_sample_start) {
+            std::string tag;
+            if (i < adapter_sample_start) {
+                tag = "LEADER";
+            } else if (i < polya_sample_start) {
                 tag =  "ADAPTER";
             } else if (i < polya_sample_end) {
                 tag = "POLYA";
@@ -409,19 +409,19 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
 
             double s = samples[i];
             double scaled_s = (s - sr.pore_model[0].shift) / sr.pore_model[0].scale;
-	    double s_proba_0 = emit_log_proba(s, hmm, 0, sr.pore_model[0].scale,
-					      sr.pore_model[0].shift, sr.pore_model[0].var);
-	    double s_proba_1 = emit_log_proba(s, hmm, 1, sr.pore_model[0].scale,
-					      sr.pore_model[0].shift, sr.pore_model[0].var);
-	    double s_proba_2 = emit_log_proba(s, hmm, 2, sr.pore_model[0].scale,
-					      sr.pore_model[0].shift, sr.pore_model[0].var);
-	    double s_proba_3 = emit_log_proba(s, hmm, 3, sr.pore_model[0].scale,
-					      sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_0 = emit_log_proba(s, hmm, 0, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_1 = emit_log_proba(s, hmm, 1, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_2 = emit_log_proba(s, hmm, 2, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_3 = emit_log_proba(s, hmm, 3, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
             fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
-		    read_name.substr(0,6).c_str(), i, s, scaled_s,
-		    s_proba_0, s_proba_1, s_proba_2, s_proba_3,
-		    tag.c_str());
-	}
+                    read_name.substr(0,6).c_str(), i, s, scaled_s,
+                    s_proba_0, s_proba_1, s_proba_2, s_proba_3,
+                    tag.c_str());
+        }
     }
 
 }

@@ -339,7 +339,7 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     // If sequencing RNA, reverse the events to be 5'->3'
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
-	std::reverse(this->samples.begin(), this->samples.end());
+        std::reverse(this->samples.begin(), this->samples.end());
     }
 
     // clean up scrappie raw and event tables
