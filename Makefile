@@ -15,9 +15,10 @@ CFLAGS ?= -O3 -std=c99
 CXX ?= g++
 CC ?= gcc
 
-# Change the value of HDF5 or EIGEN below to any value to disable compilation of bundled HDF5 code
-HDF5=install
-EIGEN=install
+# Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
+HDF5?=install
+EIGEN?=install
+HTS?=install
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -45,9 +46,14 @@ else
     EIGEN_CHECK=
 endif
 
-# Build and link the libhts submodule
-HTS_LIB=./htslib/libhts.a
-HTS_INCLUDE=-I./htslib
+# Default to build and link the libhts submodule
+ifeq ($(HTS), install)
+    HTS_LIB=./htslib/libhts.a
+    HTS_INCLUDE=-I./htslib
+else
+    # Use system-wide htslib
+    HTS_LIB=-lhts
+endif
 
 # Include the header-only fast5 library
 FAST5_INCLUDE=-I./fast5/include
