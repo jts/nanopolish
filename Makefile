@@ -15,9 +15,10 @@ CFLAGS ?= -O3 -std=c99
 CXX ?= g++
 CC ?= gcc
 
-# Change the value of HDF5 or EIGEN below to any value to disable compilation of bundled HDF5 code
-HDF5=install
-EIGEN=install
+# Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
+HDF5?=install
+EIGEN?=install
+HTS?=install
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -45,9 +46,14 @@ else
     EIGEN_CHECK=
 endif
 
-# Build and link the libhts submodule
-HTS_LIB=./htslib/libhts.a
-HTS_INCLUDE=-I./htslib
+# Default to build and link the libhts submodule
+ifeq ($(HTS), install)
+    HTS_LIB=./htslib/libhts.a
+    HTS_INCLUDE=-I./htslib
+else
+    # Use system-wide htslib
+    HTS_LIB=-lhts
+endif
 
 # Include the header-only fast5 library
 FAST5_INCLUDE=-I./fast5/include
@@ -116,15 +122,15 @@ include .depend
 	$(CXX) -o $@ -c $(CXXFLAGS) $(CPPFLAGS) -fPIC $<
 
 .c.o:
-	$(CC) -o $@ -c $(CFLAGS) $(H5_INCLUDE) -fPIC $<
+	$(CC) -o $@ -c $(CFLAGS) $(CPPFLAGS) $(H5_INCLUDE) -fPIC $<
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 # Link test executable
 $(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
