@@ -12,29 +12,29 @@ Modules available: ::
     nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 extract
-====================
+--------------------
 
 Overview
---------------------
+^^^^^^^^^^^^^^^^^^
 
 Input
---------------------
+^^^^^^^^^^^^^^^^^^
 
 Output
---------------------
+^^^^^^^^^^^^^^^^^^
 
 Usage example
+^^^^^^^^^^^^^^^^^^
+
+call-methylation
 --------------------
 
 
-call-methylation
-====================
-
 variants
-====================
+--------------------
 
 variants --consensus
-====================
+--------------------
 
 eventalign
-====================
+--------------------
