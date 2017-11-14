@@ -185,15 +185,77 @@
 <h2>extract<a class="headerlink" href="#extract" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="overview">
 <h3>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h3>
+<p>This module is used to extract reads in FASTA or FASTQ format from a directory of FAST5 files.</p>
 </div>
 <div class="section" id="input">
 <h3>Input<a class="headerlink" href="#input" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>path to a directory of FAST5 files modified to contain basecall information</li>
+</ul>
+</div></blockquote>
 </div>
 <div class="section" id="output">
 <h3>Output<a class="headerlink" href="#output" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>sequences of reads in FASTA or FASTQ format</li>
+</ul>
+</div></blockquote>
 </div>
 <div class="section" id="usage-example">
 <h3>Usage example<a class="headerlink" href="#usage-example" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<table border="1" class="colwidths-given docutils" id="id2">
+<caption><span class="caption-text">Command-line arguments</span><a class="headerlink" href="#id2" title="Permalink to this table">¶</a></caption>
+<colgroup>
+<col width="20%" />
+<col width="10%" />
+<col width="20%" />
+<col width="50%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Argument name(s)</th>
+<th class="head">Required</th>
+<th class="head">Default value</th>
+<th class="head">Description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>&lt;fast5|dir&gt;</td>
+<td>Y</td>
+<td>NA</td>
+<td>FAST5 or path to directory of FAST5 files.</td>
+</tr>
+<tr class="row-odd"><td>-r, –recurse</td>
+<td>N</td>
+<td>NA</td>
+<td>Recurse into subdirectories</td>
+</tr>
+<tr class="row-even"><td>-q, –fastq</td>
+<td>N</td>
+<td>fasta format</td>
+<td>Use when you want to extract to FASTQ format</td>
+</tr>
+<tr class="row-odd"><td>-t, –type=TYPE</td>
+<td>N</td>
+<td>2d-or-template</td>
+<td>The type of read either: {template, complement, 2d, 2d-or-template, any}</td>
+</tr>
+<tr class="row-even"><td>-b, –basecaller=NAME[:VERSION]</td>
+<td>N</td>
+<td>NA</td>
+<td>consider only data produced by basecaller NAME, optionally with given exact VERSION</td>
+</tr>
+<tr class="row-odd"><td>-o, –output=FILE</td>
+<td>N</td>
+<td>stdout</td>
+<td>Write output to FILE</td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 <div class="section" id="call-methylation">
