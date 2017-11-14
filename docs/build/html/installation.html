@@ -1,0 +1,133 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Installation &#8212; Nanopolish 0.8.4 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.8.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Quickstart" href="quickstart.html" />
+    <link rel="prev" title="Nanopolish" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <p>clang: warning: treating ‘c’ input as ‘c++’ when in C++ mode, this behavior is deprecated [-Wdeprecated]</p>
+<div class="section" id="installation">
+<span id="id1"></span><h1>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="dependencies">
+<h2>Dependencies<a class="headerlink" href="#dependencies" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><a class="reference external" href="https://support.hdfgroup.org/HDF5/release/obtain5.html">libhdf5</a> is automatically downloaded and compiled when running make but this can be disabled with: HDF5=nofetch make. The nanopolish binary will link libhdf5.a statically.</li>
+<li><a class="reference external" href="http://eigen.tuxfamily.org/index.php?title=Main_Page">eigen</a> is also automatically downloaded and included when compiling with make.</li>
+<li><a class="reference external" href="http://biopython.org/">biopython</a> is required to run the helpers in scripts/.</li>
+<li><a class="reference external" href="https://github.com/samtools/htslib">htslib</a> is included as a submodule and compiled automatically.</li>
+<li>A compiler that supports C++11 is needed to build the sources. Development of the code is performed using gcc-4.8.</li>
+</ul>
+</div>
+<div class="section" id="installing-the-latest-code-from-github-recommended">
+<h2>Installing the latest code from github (recommended)<a class="headerlink" href="#installing-the-latest-code-from-github-recommended" title="Permalink to this headline">¶</a></h2>
+<p>You can download and compile the latest code from github as follows</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="o">--</span><span class="n">recursive</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">jts</span><span class="o">/</span><span class="n">nanopolish</span><span class="o">.</span><span class="n">git</span>
+<span class="n">cd</span> <span class="n">nanopolish</span>
+<span class="n">make</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="installing-a-particular-release">
+<h2>Installing a particular release<a class="headerlink" href="#installing-a-particular-release" title="Permalink to this headline">¶</a></h2>
+<p>When major features have been added or bugs fixed, we will tag and release a new version of nanopolish. If you wish to use a particular version, you can checkout the tagged version before compiling</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="o">--</span><span class="n">recursive</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">jts</span><span class="o">/</span><span class="n">nanopolish</span><span class="o">.</span><span class="n">git</span>
+<span class="n">cd</span> <span class="n">nanopolish</span>
+<span class="n">git</span> <span class="n">checkout</span> <span class="n">v0</span><span class="o">.</span><span class="mf">7.1</span>
+<span class="n">make</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="to-run-using-docker">
+<h2>To run using docker<a class="headerlink" href="#to-run-using-docker" title="Permalink to this headline">¶</a></h2>
+<p>First build the image from the dockerfile:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">build</span> <span class="o">.</span>
+</pre></div>
+</div>
+<p>Note the uuid given upon successful build. Then you can run nanopolish from the image:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span>   <span class="n">docker</span> <span class="n">run</span> <span class="o">-</span><span class="n">v</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="p">:</span><span class="o">/</span><span class="n">data</span><span class="o">/</span> <span class="o">-</span><span class="n">it</span> <span class="p">:</span><span class="n">image_id</span>  <span class="o">./</span><span class="n">nanopolish</span> <span class="n">eventalign</span> <span class="o">-</span><span class="n">r</span>
+<span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">b</span> <span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">alignments</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">g</span> <span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">ref</span><span class="o">.</span><span class="n">fa</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Nanopolish</a></li>
+      <li>Next: <a href="quickstart.html" title="next chapter">Quickstart</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Simpson Lab.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.5</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/installation.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

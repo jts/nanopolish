@@ -1,0 +1,163 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Quickstart &#8212; Nanopolish 0.8.4 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.8.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Installation" href="installation.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="quickstart">
+<span id="id1"></span><h1>Quickstart<a class="headerlink" href="#quickstart" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="modules-available">
+<h2>Modules available<a class="headerlink" href="#modules-available" title="Permalink to this headline">¶</a></h2>
+<p>The main subprograms of nanopolish are:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span><span class="p">:</span> <span class="n">extract</span> <span class="n">reads</span> <span class="ow">in</span> <span class="n">FASTA</span> <span class="ow">or</span> <span class="n">FASTQ</span> <span class="nb">format</span> <span class="kn">from</span> <span class="nn">a</span> <span class="n">directory</span> <span class="n">of</span> <span class="n">FAST5</span> <span class="n">fil</span>
+</pre></div>
+</div>
+<dl class="docutils">
+<dt>es</dt>
+<dd>nanopolish call-methylation: predict genomic bases that may be methylated
+nanopolish variants: detect SNPs and indels with respect to a reference genome
+nanopolish variants –consensus: calculate an improved consensus sequence for a draft ge</dd>
+<dt>nome assembly</dt>
+<dd>nanopolish eventalign: align signal-level events to k-mers of a reference genome</dd>
+</dl>
+</div>
+<div class="section" id="data-preprocessing">
+<h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
+<p>Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run nanopolish index on your input reads (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Only run this if you used Albacore 2.0 or later</span>
+<span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">raw_fast5s</span><span class="o">/</span> <span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span>
+</pre></div>
+</div>
+<p>If you basecalled your reads with Albacore 1.2 or earlier, you should run nanopolish extract on your input reads instead:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Only run this if you used Albacore 1.2 or later</span>
+<span class="n">nanopolish</span> <span class="n">extract</span> <span class="o">--</span><span class="nb">type</span> <span class="n">template</span> <span class="n">directory</span><span class="o">/</span><span class="k">pass</span><span class="o">/</span> <span class="o">&gt;</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span>
+</pre></div>
+</div>
+<p>Note these two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named <code class="docutils literal"><span class="pre">reads.fa</span></code>.</p>
+</div>
+<div class="section" id="computing-a-new-consensus-sequence-for-a-draft-assembly">
+<h2>Computing a new consensus sequence for a draft assembly<a class="headerlink" href="#computing-a-new-consensus-sequence-for-a-draft-assembly" title="Permalink to this headline">¶</a></h2>
+<p>The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu. This section describes how to do this, starting with your draft assembly which should have megabase-sized contigs.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Index the draft genome</span>
+<span class="n">bwa</span> <span class="n">index</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span>
+
+<span class="c1"># Align the basecalled reads to the draft sequence</span>
+<span class="n">bwa</span> <span class="n">mem</span> <span class="o">-</span><span class="n">x</span> <span class="n">ont2d</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">samtools</span> <span class="n">sort</span> <span class="o">-</span><span class="n">o</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">T</span> <span class="n">reads</span><span class="o">.</span><span class="n">tmp</span> <span class="o">-</span>
+<span class="n">samtools</span> <span class="n">index</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span>
+</pre></div>
+</div>
+<p>Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We’ll run this in parallel:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_makerange</span><span class="o">.</span><span class="n">py</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">parallel</span> <span class="o">--</span><span class="n">results</span> <span class="n">nanopolish</span><span class="o">.</span><span class="n">results</span> <span class="o">-</span><span class="n">P</span> <span class="mi">8</span> \
+<span class="n">nanopolish</span> <span class="n">variants</span> <span class="o">--</span><span class="n">consensus</span> <span class="n">polished</span><span class="o">.</span><span class="p">{</span><span class="mi">1</span><span class="p">}</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">w</span> <span class="p">{</span><span class="mi">1</span><span class="p">}</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">g</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">t</span> <span class="mi">4</span> <span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">candidate</span><span class="o">-</span><span class="n">frequency</span> <span class="mf">0.1</span>
+</pre></div>
+</div>
+<p>This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the <code class="docutils literal"><span class="pre">-P</span></code> and <code class="docutils literal"><span class="pre">--threads</span></code> options as appropriate for the machines you have available.</p>
+<p>After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_merge</span><span class="o">.</span><span class="n">py</span> <span class="n">polished</span><span class="o">.*.</span><span class="n">fa</span> <span class="o">&gt;</span> <span class="n">polished_genome</span><span class="o">.</span><span class="n">fa</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="calling-methylation">
+<h2>Calling Methylation<a class="headerlink" href="#calling-methylation" title="Permalink to this headline">¶</a></h2>
+<p>nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described here. Here’s how you run it:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Align the basecalled reads to a reference genome</span>
+<span class="n">bwa</span> <span class="n">mem</span> <span class="o">-</span><span class="n">x</span> <span class="n">ont2d</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="n">reference</span><span class="o">.</span><span class="n">fa</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">samtools</span> <span class="n">sort</span> <span class="o">-</span><span class="n">o</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">T</span> <span class="n">reads</span><span class="o">.</span><span class="n">tmp</span> <span class="o">-</span>
+<span class="n">samtools</span> <span class="n">index</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span>
+
+<span class="c1"># Run the methylation caller</span>
+<span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="n">methylation</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">g</span> <span class="n">reference</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">&gt;</span> <span class="n">methylation</span><span class="o">.</span><span class="n">tsv</span>
+</pre></div>
+</div>
+<p>The output of call-methylation is a tab-separated file containing per-read log-likelihood ratios (positive values indicate more evidence for 5-mC, negative values indicate more evidence for C). Each line contains the name of the read that covered the CpG site, which allows methylation calls to be phased. We have provided a script to calculate per-site methylation frequencies using call-methylation’s output:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">nanopolish</span><span class="o">/</span><span class="n">scripts</span><span class="o">/</span><span class="n">calculate_methylation_frequency</span> <span class="o">-</span><span class="n">c</span> <span class="mf">2.5</span> <span class="o">-</span><span class="n">i</span> <span class="n">methylation</span><span class="o">.</span><span class="n">tsv</span> <span class="o">&gt;</span> <span class="n">frequencies</span><span class="o">.</span><span class="n">tsv</span>
+</pre></div>
+</div>
+<p>The output of this script is a tab-seperated file containing the genomic position of the CpG site, the number of reads that covered the site, and the percentage of those reads that were predicted to be methylated. The <code class="docutils literal"><span class="pre">-c</span> <span class="pre">2.5</span></code> option requires the absolute value of the log-likelihood ratio to be at least 2.5 to make a call, otherwise the read will be ignored. This helps reduce calling errors as only sites with sufficient evidence will be included in the calculation.</p>
+</div>
+<div class="section" id="event-align">
+<h2>Event Align<a class="headerlink" href="#event-align" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="variant-calling">
+<h2>Variant Calling<a class="headerlink" href="#variant-calling" title="Permalink to this headline">¶</a></h2>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="installation.html" title="previous chapter">Installation</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Simpson Lab.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.5</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+      |
+      <a href="_sources/quickstart.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
