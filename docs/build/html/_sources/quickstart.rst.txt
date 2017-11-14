@@ -8,12 +8,10 @@ Modules available
 
 The main subprograms of nanopolish are: ::
 
-    nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 fil
-es
+    nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
     nanopolish call-methylation: predict genomic bases that may be methylated
     nanopolish variants: detect SNPs and indels with respect to a reference genome
-    nanopolish variants --consensus: calculate an improved consensus sequence for a draft ge
-nome assembly
+    nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
     nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 Data preprocessing

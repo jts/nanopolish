@@ -1,6 +1,3 @@
-clang: warning: treating 'c' input as 'c++' when in C++ mode, this behavior is deprecated [-Wdeprecated]
-
-
 .. _installation:
 
 Installation
@@ -8,6 +5,7 @@ Installation
 
 Dependencies
 -----------------------
+
 * `libhdf5 <https://support.hdfgroup.org/HDF5/release/obtain5.html>`_ is automatically downloaded and compiled when running make but this can be disabled with: HDF5=nofetch make. The nanopolish binary will link libhdf5.a statically.
 * `eigen <http://eigen.tuxfamily.org/index.php?title=Main_Page>`_ is also automatically downloaded and included when compiling with make.
 * `biopython <http://biopython.org/>`_ is required to run the helpers in scripts/.
