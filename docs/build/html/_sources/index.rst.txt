@@ -13,6 +13,7 @@ Nanopolish
 
    installation
    quickstart
+   manual
    faq
 
 Publication
