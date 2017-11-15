@@ -11,26 +11,28 @@ Modules available: ::
     nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
     nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
+|
+
 extract
 --------------------
 
 Overview
-^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""
 
 This module is used to extract reads in FASTA or FASTQ format from a directory of FAST5 files.  
 
 Input
-^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""
 
     * path to a directory of FAST5 files modified to contain basecall information
 
 Output
-^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""
 
     * sequences of reads in FASTA or FASTQ format
 
 Usage example
-^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""
 
 ::
 

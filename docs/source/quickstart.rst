@@ -3,16 +3,9 @@
 Quickstart
 ===================
 
-Modules available
----------------------
+Download example dataset
+------------------------------------
 
-The main subprograms of nanopolish are: ::
-
-    nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
-    nanopolish call-methylation: predict genomic bases that may be methylated
-    nanopolish variants: detect SNPs and indels with respect to a reference genome
-    nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
-    nanopolish eventalign: align signal-level events to k-mers of a reference genome
 
 Data preprocessing
 ------------------------------------
@@ -71,8 +64,3 @@ The output of call-methylation is a tab-separated file containing per-read log-l
 
 The output of this script is a tab-seperated file containing the genomic position of the CpG site, the number of reads that covered the site, and the percentage of those reads that were predicted to be methylated. The ``-c 2.5`` option requires the absolute value of the log-likelihood ratio to be at least 2.5 to make a call, otherwise the read will be ignored. This helps reduce calling errors as only sites with sufficient evidence will be included in the calculation.
 
-Event Align
-----------------
-
-Variant Calling
-------------------
