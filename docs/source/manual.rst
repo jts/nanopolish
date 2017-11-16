@@ -13,7 +13,7 @@ Modules available: ::
 
 |
 
-extract
+Extract
 --------------------
 
 Overview
@@ -38,7 +38,7 @@ Usage example
 
    nanopolish extract [OPTIONS] <fast5|dir>
 
-.. list-table:: Command-line arguments
+.. list-table:: Command line arguments
    :widths: 20 10 20 50
    :header-rows: 1
 
@@ -79,6 +79,29 @@ Usage example
 
 call-methylation
 --------------------
+
+Overview
+"""""""""""""""""""""""
+
+Classify nucleotides as methylated or not.
+
+Input
+"""""""""""""""""""""""
+
+    * Basecalled ONT reads in FASTA format
+
+Output
+"""""""""""""""""""""""
+
+    * tab-separated file containing per-read log-likelihood ratios
+
+Usage example
+"""""""""""""""""""""""
+
+::
+
+   nanopolish call-[OPTIONS] <fast5|dir>
+
 
 
 variants

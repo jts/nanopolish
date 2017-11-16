@@ -6,6 +6,10 @@ Quickstart
 Download example dataset
 ------------------------------------
 
+Sample: 	E. coli str. K-12 substr. MG1655
+Instrument: MinION sequencing R9.4 chemistry
+Basecaller: Albacore v2.0.1
+
 
 Data preprocessing
 ------------------------------------
@@ -15,12 +19,24 @@ Nanopolish needs access to the signal-level data measured by the nanopore sequen
     # Only run this if you used Albacore 2.0 or later
     nanopolish index -d /path/to/raw_fast5s/ albacore_output.fastq
 
+This will create: ::
+
+	albacore_output.fastq.fa.gz
+	albacore_output.fastq.fa.gz.fai
+	albacore_output.fastq.fa.gz.gzi
+	albacore_output.fastq.fa.gz.readdb
+
+Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FAST5 file: ::
+
+	read_id_1	/path/to/fast5/containing/reads_id_1/signals
+	read_id_2	/path/to/fast5/containing/read_id_2/signals
+
 If you basecalled your reads with Albacore 1.2 or earlier, you should run nanopolish extract on your input reads instead: ::
 
    # Only run this if you used Albacore 1.2 or later
    nanopolish extract --type template directory/pass/ > reads.fa
 
-Note these two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named ``reads.fa``.
+.. note:: These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named ``reads.fa``.
 
 Computing a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
@@ -44,6 +60,10 @@ This command will run the consensus algorithm on eight 50kbp segments of the gen
 After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly: ::
 
     python nanopolish_merge.py polished.*.fa > polished_genome.fa
+
+
+Evaluate the assembly
+---------------------------------
 
 
 Calling Methylation

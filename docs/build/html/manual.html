@@ -94,14 +94,20 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Manual</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#extract">extract</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#extract">Extract</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#overview">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#input">Input</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#output">Output</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#usage-example">Usage example</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#call-methylation">call-methylation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#call-methylation">call-methylation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">Output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">Usage example</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#variants">variants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#variants-consensus">variants –consensus</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#eventalign">eventalign</a></li>
@@ -185,7 +191,7 @@
 <div class="line"><br /></div>
 </div>
 <div class="section" id="extract">
-<h2>extract<a class="headerlink" href="#extract" title="Permalink to this headline">¶</a></h2>
+<h2>Extract<a class="headerlink" href="#extract" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="overview">
 <h3>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h3>
 <p>This module is used to extract reads in FASTA or FASTQ format from a directory of FAST5 files.</p>
@@ -211,8 +217,8 @@
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
 </pre></div>
 </div>
-<table border="1" class="colwidths-given docutils" id="id2">
-<caption><span class="caption-text">Command-line arguments</span><a class="headerlink" href="#id2" title="Permalink to this table">¶</a></caption>
+<table border="1" class="colwidths-given docutils" id="id6">
+<caption><span class="caption-text">Command line arguments</span><a class="headerlink" href="#id6" title="Permalink to this table">¶</a></caption>
 <colgroup>
 <col width="20%" />
 <col width="10%" />
@@ -263,6 +269,32 @@
 </div>
 <div class="section" id="call-methylation">
 <h2>call-methylation<a class="headerlink" href="#call-methylation" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id2">
+<h3>Overview<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h3>
+<p>Classify nucleotides as methylated or not.</p>
+</div>
+<div class="section" id="id3">
+<h3>Input<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>Basecalled ONT reads in FASTA format</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="id4">
+<h3>Output<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>tab-separated file containing per-read log-likelihood ratios</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="id5">
+<h3>Usage example<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</div>
 </div>
 <div class="section" id="variants">
 <h2>variants<a class="headerlink" href="#variants" title="Permalink to this headline">¶</a></h2>

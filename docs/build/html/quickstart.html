@@ -96,6 +96,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#download-example-dataset">Download example dataset</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#data-preprocessing">Data preprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#computing-a-new-consensus-sequence-for-a-draft-assembly">Computing a new consensus sequence for a draft assembly</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#evaluate-the-assembly">Evaluate the assembly</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#calling-methylation">Calling Methylation</a></li>
 </ul>
 </li>
@@ -168,6 +169,9 @@
 <span id="id1"></span><h1>Quickstart<a class="headerlink" href="#quickstart" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="download-example-dataset">
 <h2>Download example dataset<a class="headerlink" href="#download-example-dataset" title="Permalink to this headline">¶</a></h2>
+<p>Sample:         E. coli str. K-12 substr. MG1655
+Instrument: MinION sequencing R9.4 chemistry
+Basecaller: Albacore v2.0.1</p>
 </div>
 <div class="section" id="data-preprocessing">
 <h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
@@ -176,12 +180,27 @@
 <span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">raw_fast5s</span><span class="o">/</span> <span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span>
 </pre></div>
 </div>
+<p>This will create:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">fai</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">gzi</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">readdb</span>
+</pre></div>
+</div>
+<p>Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FAST5 file:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">read_id_1</span>       <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">reads_id_1</span><span class="o">/</span><span class="n">signals</span>
+<span class="n">read_id_2</span>       <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">read_id_2</span><span class="o">/</span><span class="n">signals</span>
+</pre></div>
+</div>
 <p>If you basecalled your reads with Albacore 1.2 or earlier, you should run nanopolish extract on your input reads instead:</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Only run this if you used Albacore 1.2 or later</span>
 <span class="n">nanopolish</span> <span class="n">extract</span> <span class="o">--</span><span class="nb">type</span> <span class="n">template</span> <span class="n">directory</span><span class="o">/</span><span class="k">pass</span><span class="o">/</span> <span class="o">&gt;</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span>
 </pre></div>
 </div>
-<p>Note these two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named <code class="docutils literal"><span class="pre">reads.fa</span></code>.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named <code class="docutils literal"><span class="pre">reads.fa</span></code>.</p>
+</div>
 </div>
 <div class="section" id="computing-a-new-consensus-sequence-for-a-draft-assembly">
 <h2>Computing a new consensus sequence for a draft assembly<a class="headerlink" href="#computing-a-new-consensus-sequence-for-a-draft-assembly" title="Permalink to this headline">¶</a></h2>
@@ -204,6 +223,9 @@
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_merge</span><span class="o">.</span><span class="n">py</span> <span class="n">polished</span><span class="o">.*.</span><span class="n">fa</span> <span class="o">&gt;</span> <span class="n">polished_genome</span><span class="o">.</span><span class="n">fa</span>
 </pre></div>
 </div>
+</div>
+<div class="section" id="evaluate-the-assembly">
+<h2>Evaluate the assembly<a class="headerlink" href="#evaluate-the-assembly" title="Permalink to this headline">¶</a></h2>
 </div>
 <div class="section" id="calling-methylation">
 <h2>Calling Methylation<a class="headerlink" href="#calling-methylation" title="Permalink to this headline">¶</a></h2>
