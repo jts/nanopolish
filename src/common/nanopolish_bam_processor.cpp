@@ -27,8 +27,7 @@ BamProcessor::BamProcessor(const std::string& bam_file,
     assert(m_bam_fh != NULL);
 
     // load bam index file
-    std::string index_filename = m_bam_file + ".bai";
-    m_bam_idx = bam_index_load(index_filename.c_str());
+    m_bam_idx = sam_index_load(m_bam_fh, bam_file.c_str());
     if(m_bam_idx == NULL) {
         bam_index_error_exit(m_bam_file);
     }
