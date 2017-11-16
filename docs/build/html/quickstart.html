@@ -174,45 +174,30 @@
 <li>Instrument : MinION sequencing R9.4 chemistry</li>
 <li>Basecaller : Albacore v2.0.1</li>
 </ul>
-<p>Files:</p>
-<blockquote>
-<div><p>..code-block :: bash</p>
-<dl class="docutils">
-<dt>example_data/</dt>
-<dd>region.bam
-region.bam.bai
-region.fasta
-region.fasta.fa.gz
-region.fasta.fa.gz.fai
-region.fasta.fa.gz.gzi
-region.fasta.fa.gz.readdb
-ecoli.log
-draft.fa
-draft.fa.fai
-fast5_files/
-original/</dd>
-</dl>
-</div></blockquote>
 </div>
 <div class="section" id="data-preprocessing">
 <h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
 <ol class="arabic">
 <li><dl class="first docutils">
 <dt>Create index files that link reads with their signal-level data</dt>
-<dd><ul class="first simple">
+<dd><blockquote class="first">
+<div><ul class="simple">
 <li>Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</li>
-<li>If you ran Albacore 2.0, run nanopolish index: (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</li>
+<li>If you ran Albacore 2.0, run nanopolish index (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</li>
 </ul>
+</div></blockquote>
 <div class="highlight-bash"><div class="highlight"><pre><span></span>
 </pre></div>
 </div>
 <p>nanopolish index -d fast5_files/ region.fasta</p>
-<ul class="simple">
+<blockquote class="last">
+<div><ul class="simple">
 <li>If you ran Albacore 1.2 or earlier:</li>
 </ul>
-<div class="last highlight-bash"><div class="highlight"><pre><span></span>nanopolish extract --type template /path/to/fast5/directory/pass/ &gt; reads.fa
+<div class="highlight-bash"><div class="highlight"><pre><span></span>nanopolish extract --type template /path/to/fast5/directory/pass/ &gt; reads.fa
 </pre></div>
 </div>
+</div></blockquote>
 </dd>
 </dl>
 </li>
