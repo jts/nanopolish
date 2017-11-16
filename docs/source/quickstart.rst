@@ -13,7 +13,8 @@ Download example dataset
 Data preprocessing
 ------------------------------------
 
-Create index files that link reads with their signal-level data
+Using the basecalled files from the example dataset (``region.fasta``), we need to create index files that links reads with their signal-level data in the FAST5 files.
+
 * Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
 * If you ran Albacore 2.0, run nanopolish index (``-d`` can be specified more than once if using multiple runs): ::
 
@@ -28,8 +29,12 @@ Create index files that link reads with their signal-level data
 Computing a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu. This section describes how to do this, starting with your draft assembly which should have megabase-sized contigs. ::
-
+The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu.
+In the example data set we have included ``draft.fa`` which is an assembly of a subset of reads from an E. coli sample. 
+In order to improve the assembly, we first align the original non-assembled reads (``region.fasta``) to the draft assembly (``draft.fa``). 
+We need samtools (1.2) and BWA (0.7.12).
+::
+	
     # Index the draft genome
     bwa index draft.fa
 

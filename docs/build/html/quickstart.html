@@ -177,13 +177,15 @@
 </div>
 <div class="section" id="data-preprocessing">
 <h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
-<p>Create index files that link reads with their signal-level data
-* Nanopolish needs access to the signal-level data measured by the nanopore sequencer.
-* If you ran Albacore 2.0, run nanopolish index (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
+<p>Using the basecalled files from the example dataset (<code class="docutils literal"><span class="pre">region.fasta</span></code>), we need to create index files that links reads with their signal-level data in the FAST5 files.</p>
+<ul>
+<li><p class="first">Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</p>
+</li>
+<li><p class="first">If you ran Albacore 2.0, run nanopolish index (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="n">fast5_files</span><span class="o">/</span> <span class="n">region</span><span class="o">.</span><span class="n">fasta</span>
 </pre></div>
 </div>
-<ul>
+</li>
 <li><p class="first">If you ran Albacore 1.2 or earlier:</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="o">--</span><span class="nb">type</span> <span class="n">template</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">directory</span><span class="o">/</span><span class="k">pass</span><span class="o">/</span> <span class="o">&gt;</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span>
 </pre></div>
@@ -197,7 +199,10 @@
 </div>
 <div class="section" id="computing-a-new-consensus-sequence-for-a-draft-assembly">
 <h2>Computing a new consensus sequence for a draft assembly<a class="headerlink" href="#computing-a-new-consensus-sequence-for-a-draft-assembly" title="Permalink to this headline">¶</a></h2>
-<p>The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu. This section describes how to do this, starting with your draft assembly which should have megabase-sized contigs.</p>
+<p>The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu.
+In the example data set we have included <code class="docutils literal"><span class="pre">draft.fa</span></code> which is an assembly of a subset of reads from an E. coli sample.
+In order to improve the assembly, we first align the original non-assembled reads (<code class="docutils literal"><span class="pre">region.fasta</span></code>) to the draft assembly (<code class="docutils literal"><span class="pre">draft.fa</span></code>).
+We need samtools (1.2) and BWA (0.7.12).</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Index the draft genome</span>
 <span class="n">bwa</span> <span class="n">index</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span>
 
