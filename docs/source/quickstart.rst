@@ -3,40 +3,64 @@
 Quickstart
 ===================
 
+The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help users get started.
+
+Requirements:
+
+* `Nanopolish <installation.html>`_
+* `samtool v1.2 <http://samtools.sourceforge.net/>`_
+* `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
+
 Download example dataset
 ------------------------------------
 
+You can download an example data set here: ::
+
+	a way to downlaod the example data set
+
+Details:
 * Sample :	E. coli str. K-12 substr. MG1655
 * Instrument : MinION sequencing R9.4 chemistry
 * Basecaller : Albacore v2.0.1
 
+You should find the following files:
+
+* ``reads.fasta`` - subset of basecalled reads
+* ``draft.fasta`` - draft genome assembly
+* ``draft.fasta.fai`` - draft genome assembly index
+* ``fast5_files/`` - a directory containing FAST5 files
+
 Data preprocessing
 ------------------------------------
 
-Using the basecalled files from the example dataset (``region.fasta``), we need to create index files that links reads with their signal-level data in the FAST5 files.
+Nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index ``readdb`` file that links read ids with their signal-level data in the FAST5 files. ::
 
-* Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
-* If you ran Albacore 2.0, run nanopolish index (``-d`` can be specified more than once if using multiple runs): ::
+    nanopolish index -d fast5_files/ reads.fasta
 
-    nanopolish index -d fast5_files/ region.fasta
+* We get the following files: ``reads.fasta.fa.gz``, ``reads.fasta.fa.gz.fai``, ``reads.fasta.fa.gz.gzi``, and ``reads.fasta.fa.gz.readdb``.
 
-* If you ran Albacore 1.2 or earlier: ::
+Compute the draft genome assembly using CANU
+-----------------------------------------------
 
-    nanopolish extract --type template /path/to/fast5/directory/pass/ > reads.fa
+To create a draft genome assembly we have used CANU. ::
 
-.. note:: These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named ``reads.fa``.
+    	canu \
+			-p ecoli -d outdir genomeSize=4.6m \
+			-nanopore-raw albacore-2.0.1-merged.fastq \
+			gnuplotTested = true \
+			useGrid = false
+
+As this takes a few hours, we have already pre-assembled the data : ``draft.fa``.
 
 Computing a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-The original purpose of nanopolish was to compute an improved consensus sequence for a draft genome assembly produced by a long-read assembly like canu.
-In the example data set we have included ``draft.fa`` which is an assembly of a subset of reads from an E. coli sample. 
-In order to improve the assembly, we first align the original non-assembled reads (``region.fasta``) to the draft assembly (``draft.fa``). 
-We need samtools (1.2) and BWA (0.7.12).
-::
-	
+Now that we have the ``reads.fasta`` indexed with nanopolish index, and have a draft genome assembly ``draft.fa`` we can improve the assembly with nanopolish. The first step is to index the draft genome using BWA INDEX: :: 
+
     # Index the draft genome
     bwa index draft.fa
+
+irst align the original non-assembled reads (``reads.fasta``) to the draft assembly (``draft.fa``). ::
 
     # Align the basecalled reads to the draft sequence
     bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
