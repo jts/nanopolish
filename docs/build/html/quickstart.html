@@ -98,7 +98,6 @@
 <li class="toctree-l2"><a class="reference internal" href="#compute-the-draft-genome-assembly-using-canu">Compute the draft genome assembly using CANU</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#computing-a-new-consensus-sequence-for-a-draft-assembly">Computing a new consensus sequence for a draft assembly</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#evaluate-the-assembly">Evaluate the assembly</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#calling-methylation">Calling Methylation</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="manual.html">Manual</a></li>
@@ -178,19 +177,21 @@
 <div class="section" id="download-example-dataset">
 <h2>Download example dataset<a class="headerlink" href="#download-example-dataset" title="Permalink to this headline">¶</a></h2>
 <p>You can download an example data set here:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">a</span> <span class="n">way</span> <span class="n">to</span> <span class="n">downlaod</span> <span class="n">the</span> <span class="n">example</span> <span class="n">data</span> <span class="nb">set</span>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">insert</span> <span class="n">a</span> <span class="n">way</span> <span class="n">to</span> <span class="n">download</span> <span class="n">the</span> <span class="n">example</span> <span class="n">data</span> <span class="nb">set</span><span class="p">]</span>
 </pre></div>
 </div>
-<p>Details:
-* Sample :      E. coli str. K-12 substr. MG1655
-* Instrument : MinION sequencing R9.4 chemistry
-* Basecaller : Albacore v2.0.1</p>
+<p>Details:</p>
+<ul class="simple">
+<li>Sample :      E. coli str. K-12 substr. MG1655</li>
+<li>Instrument : MinION sequencing R9.4 chemistry</li>
+<li>Basecaller : Albacore v2.0.1</li>
+</ul>
 <p>You should find the following files:</p>
 <ul class="simple">
-<li><code class="docutils literal"><span class="pre">reads.fasta</span></code> - subset of basecalled reads</li>
-<li><code class="docutils literal"><span class="pre">draft.fasta</span></code> - draft genome assembly</li>
-<li><code class="docutils literal"><span class="pre">draft.fasta.fai</span></code> - draft genome assembly index</li>
-<li><code class="docutils literal"><span class="pre">fast5_files/</span></code> - a directory containing FAST5 files</li>
+<li><code class="docutils literal"><span class="pre">reads.fasta</span></code> : subset of basecalled reads</li>
+<li><code class="docutils literal"><span class="pre">draft.fasta</span></code> : draft genome assembly</li>
+<li><code class="docutils literal"><span class="pre">draft.fasta.fai</span></code> : draft genome assembly index</li>
+<li><code class="docutils literal"><span class="pre">fast5_files/</span></code> : a directory containing FAST5 files</li>
 </ul>
 </div>
 <div class="section" id="data-preprocessing">
@@ -199,30 +200,28 @@
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="n">fast5_files</span><span class="o">/</span> <span class="n">reads</span><span class="o">.</span><span class="n">fasta</span>
 </pre></div>
 </div>
-<ul class="simple">
-<li>We get the following files: <code class="docutils literal"><span class="pre">reads.fasta.fa.gz</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.fai</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.gzi</span></code>, and <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.readdb</span></code>.</li>
-</ul>
+<p>We get the following files: <code class="docutils literal"><span class="pre">reads.fasta.fa.gz</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.fai</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.gzi</span></code>, and <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.readdb</span></code>.</p>
 </div>
 <div class="section" id="compute-the-draft-genome-assembly-using-canu">
 <h2>Compute the draft genome assembly using CANU<a class="headerlink" href="#compute-the-draft-genome-assembly-using-canu" title="Permalink to this headline">¶</a></h2>
 <p>To create a draft genome assembly we have used CANU.</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">canu</span> \
-                <span class="o">-</span><span class="n">p</span> <span class="n">ecoli</span> <span class="o">-</span><span class="n">d</span> <span class="n">outdir</span> <span class="n">genomeSize</span><span class="o">=</span><span class="mf">4.6</span><span class="n">m</span> \
-                <span class="o">-</span><span class="n">nanopore</span><span class="o">-</span><span class="n">raw</span> <span class="n">albacore</span><span class="o">-</span><span class="mf">2.0</span><span class="o">.</span><span class="mi">1</span><span class="o">-</span><span class="n">merged</span><span class="o">.</span><span class="n">fastq</span> \
-                <span class="n">gnuplotTested</span> <span class="o">=</span> <span class="n">true</span> \
-                <span class="n">useGrid</span> <span class="o">=</span> <span class="n">false</span>
+            <span class="o">-</span><span class="n">p</span> <span class="n">ecoli</span> <span class="o">-</span><span class="n">d</span> <span class="n">outdir</span> <span class="n">genomeSize</span><span class="o">=</span><span class="mf">4.6</span><span class="n">m</span> \
+            <span class="o">-</span><span class="n">nanopore</span><span class="o">-</span><span class="n">raw</span> <span class="n">albacore</span><span class="o">-</span><span class="mf">2.0</span><span class="o">.</span><span class="mi">1</span><span class="o">-</span><span class="n">merged</span><span class="o">.</span><span class="n">fastq</span> \
+            <span class="n">gnuplotTested</span> <span class="o">=</span> <span class="n">true</span> \
+            <span class="n">useGrid</span> <span class="o">=</span> <span class="n">false</span>
 </pre></div>
 </div>
-<p>As this takes a few hours, we have already pre-assembled the data : <code class="docutils literal"><span class="pre">draft.fa</span></code>.</p>
+<p>As this takes a few hours, we have already pre-assembled the data: <code class="docutils literal"><span class="pre">draft.fa</span></code>.</p>
 </div>
 <div class="section" id="computing-a-new-consensus-sequence-for-a-draft-assembly">
 <h2>Computing a new consensus sequence for a draft assembly<a class="headerlink" href="#computing-a-new-consensus-sequence-for-a-draft-assembly" title="Permalink to this headline">¶</a></h2>
-<p>Now that we have the <code class="docutils literal"><span class="pre">reads.fasta</span></code> indexed with nanopolish index, and have a draft genome assembly <code class="docutils literal"><span class="pre">draft.fa</span></code> we can improve the assembly with nanopolish. The first step is to index the draft genome using BWA INDEX:</p>
+<p>Now that we have the <code class="docutils literal"><span class="pre">reads.fasta</span></code> indexed with <code class="docutils literal"><span class="pre">nanopolish</span> <span class="pre">index</span></code>, and have a draft genome assembly <code class="docutils literal"><span class="pre">draft.fa</span></code> we can improve the assembly with nanopolish. The first step is to index the draft genome using BWA INDEX:</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Index the draft genome</span>
 <span class="n">bwa</span> <span class="n">index</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span>
 </pre></div>
 </div>
-<p>irst align the original non-assembled reads (<code class="docutils literal"><span class="pre">reads.fasta</span></code>) to the draft assembly (<code class="docutils literal"><span class="pre">draft.fa</span></code>).</p>
+<p>Then we align the original non-assembled reads (<code class="docutils literal"><span class="pre">reads.fasta</span></code>) to the draft assembly (<code class="docutils literal"><span class="pre">draft.fa</span></code>).</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Align the basecalled reads to the draft sequence</span>
 <span class="n">bwa</span> <span class="n">mem</span> <span class="o">-</span><span class="n">x</span> <span class="n">ont2d</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">samtools</span> <span class="n">sort</span> <span class="o">-</span><span class="n">o</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">T</span> <span class="n">reads</span><span class="o">.</span><span class="n">tmp</span> <span class="o">-</span>
 <span class="n">samtools</span> <span class="n">index</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span>
@@ -230,7 +229,7 @@
 </div>
 <p>Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We’ll run this in parallel:</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_makerange</span><span class="o">.</span><span class="n">py</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">parallel</span> <span class="o">--</span><span class="n">results</span> <span class="n">nanopolish</span><span class="o">.</span><span class="n">results</span> <span class="o">-</span><span class="n">P</span> <span class="mi">8</span> \
-<span class="n">nanopolish</span> <span class="n">variants</span> <span class="o">--</span><span class="n">consensus</span> <span class="n">polished</span><span class="o">.</span><span class="p">{</span><span class="mi">1</span><span class="p">}</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">w</span> <span class="p">{</span><span class="mi">1</span><span class="p">}</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">g</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">t</span> <span class="mi">4</span> <span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">candidate</span><span class="o">-</span><span class="n">frequency</span> <span class="mf">0.1</span>
+<span class="n">nanopolish</span> <span class="n">variants</span> <span class="o">--</span><span class="n">consensus</span> <span class="n">polished</span><span class="o">.</span><span class="p">{</span><span class="mi">1</span><span class="p">}</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">w</span> <span class="p">{</span><span class="mi">1</span><span class="p">}</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fasta</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">g</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">t</span> <span class="mi">4</span> <span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">candidate</span><span class="o">-</span><span class="n">frequency</span> <span class="mf">0.1</span>
 </pre></div>
 </div>
 <p>This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the <code class="docutils literal"><span class="pre">-P</span></code> and <code class="docutils literal"><span class="pre">--threads</span></code> options as appropriate for the machines you have available.</p>
@@ -241,23 +240,7 @@
 </div>
 <div class="section" id="evaluate-the-assembly">
 <h2>Evaluate the assembly<a class="headerlink" href="#evaluate-the-assembly" title="Permalink to this headline">¶</a></h2>
-</div>
-<div class="section" id="calling-methylation">
-<h2>Calling Methylation<a class="headerlink" href="#calling-methylation" title="Permalink to this headline">¶</a></h2>
-<p>nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described here. Here’s how you run it:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Align the basecalled reads to a reference genome</span>
-<span class="n">bwa</span> <span class="n">mem</span> <span class="o">-</span><span class="n">x</span> <span class="n">ont2d</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="n">reference</span><span class="o">.</span><span class="n">fa</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">samtools</span> <span class="n">sort</span> <span class="o">-</span><span class="n">o</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">T</span> <span class="n">reads</span><span class="o">.</span><span class="n">tmp</span> <span class="o">-</span>
-<span class="n">samtools</span> <span class="n">index</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span>
-
-<span class="c1"># Run the methylation caller</span>
-<span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="n">methylation</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">g</span> <span class="n">reference</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">&gt;</span> <span class="n">methylation</span><span class="o">.</span><span class="n">tsv</span>
-</pre></div>
-</div>
-<p>The output of call-methylation is a tab-separated file containing per-read log-likelihood ratios (positive values indicate more evidence for 5-mC, negative values indicate more evidence for C). Each line contains the name of the read that covered the CpG site, which allows methylation calls to be phased. We have provided a script to calculate per-site methylation frequencies using call-methylation’s output:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">nanopolish</span><span class="o">/</span><span class="n">scripts</span><span class="o">/</span><span class="n">calculate_methylation_frequency</span> <span class="o">-</span><span class="n">c</span> <span class="mf">2.5</span> <span class="o">-</span><span class="n">i</span> <span class="n">methylation</span><span class="o">.</span><span class="n">tsv</span> <span class="o">&gt;</span> <span class="n">frequencies</span><span class="o">.</span><span class="n">tsv</span>
-</pre></div>
-</div>
-<p>The output of this script is a tab-seperated file containing the genomic position of the CpG site, the number of reads that covered the site, and the percentage of those reads that were predicted to be methylated. The <code class="docutils literal"><span class="pre">-c</span> <span class="pre">2.5</span></code> option requires the absolute value of the log-likelihood ratio to be at least 2.5 to make a call, otherwise the read will be ignored. This helps reduce calling errors as only sites with sufficient evidence will be included in the calculation.</p>
+<p>To analyze how nanopolish performed improving the accuracy we use <a class="reference external" href="https://github.com/mummer4/mummer">MUMmer</a>. MUMmer contains “dnadiff” a script that enables us to see a rreport on alignment statistics. With dnadiff we can compare the two different assemblies. The value that we are interested in is <code class="docutils literal"><span class="pre">AvgIdentity</span></code> which is a measurement of how similar the genome assemblies are to a reference genome.</p>
 </div>
 </div>
 
