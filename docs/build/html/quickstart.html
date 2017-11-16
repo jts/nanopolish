@@ -177,31 +177,19 @@
 </div>
 <div class="section" id="data-preprocessing">
 <h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
-<ol class="arabic">
-<li><dl class="first docutils">
-<dt>Create index files that link reads with their signal-level data</dt>
-<dd><blockquote class="first">
-<div><ul class="simple">
-<li>Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</li>
-<li>If you ran Albacore 2.0, run nanopolish index (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</li>
-</ul>
-</div></blockquote>
-<div class="highlight-bash"><div class="highlight"><pre><span></span>
+<p>Create index files that link reads with their signal-level data
+* Nanopolish needs access to the signal-level data measured by the nanopore sequencer.
+* If you ran Albacore 2.0, run nanopolish index (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="n">fast5_files</span><span class="o">/</span> <span class="n">region</span><span class="o">.</span><span class="n">fasta</span>
 </pre></div>
 </div>
-<p>nanopolish index -d fast5_files/ region.fasta</p>
-<blockquote class="last">
-<div><ul class="simple">
-<li>If you ran Albacore 1.2 or earlier:</li>
-</ul>
-<div class="highlight-bash"><div class="highlight"><pre><span></span>nanopolish extract --type template /path/to/fast5/directory/pass/ &gt; reads.fa
+<ul>
+<li><p class="first">If you ran Albacore 1.2 or earlier:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="o">--</span><span class="nb">type</span> <span class="n">template</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">directory</span><span class="o">/</span><span class="k">pass</span><span class="o">/</span> <span class="o">&gt;</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span>
 </pre></div>
 </div>
-</div></blockquote>
-</dd>
-</dl>
 </li>
-</ol>
+</ul>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
 <p class="last">These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named <code class="docutils literal"><span class="pre">reads.fa</span></code>.</p>

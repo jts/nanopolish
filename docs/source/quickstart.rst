@@ -13,19 +13,15 @@ Download example dataset
 Data preprocessing
 ------------------------------------
 
-#. Create index files that link reads with their signal-level data
-	* Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
-	* If you ran Albacore 2.0, run nanopolish index (``-d`` can be specified more than once if using multiple runs):
-
-    .. code-block:: bash
+Create index files that link reads with their signal-level data
+* Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
+* If you ran Albacore 2.0, run nanopolish index (``-d`` can be specified more than once if using multiple runs): ::
 
     nanopolish index -d fast5_files/ region.fasta
 
-	* If you ran Albacore 1.2 or earlier:
+* If you ran Albacore 1.2 or earlier: ::
 
-        .. code-block:: bash
-
-		nanopolish extract --type template /path/to/fast5/directory/pass/ > reads.fa
+    nanopolish extract --type template /path/to/fast5/directory/pass/ > reads.fa
 
 .. note:: These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named ``reads.fa``.
 
