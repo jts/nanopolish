@@ -31,9 +31,13 @@
 #include "nanopolish_read_db.h"
 #include "nanopolish_hmm_input_sequence.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_bam_processor.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+
+//
+using namespace std::placeholders;
 
 //
 // Getopt
@@ -508,11 +512,11 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 }
 
 // Realign the read in event space
-void realign_read(EventalignWriter writer,
-                  const ReadDB& read_db, 
-                  const faidx_t* fai, 
-                  const bam_hdr_t* hdr, 
-                  const bam1_t* record, 
+void realign_read(const ReadDB& read_db,
+                  const faidx_t* fai,
+                  const EventalignWriter& writer,
+                  const bam_hdr_t* hdr,
+                  const bam1_t* record,
                   size_t read_idx,
                   int region_start,
                   int region_end)
@@ -524,12 +528,12 @@ void realign_read(EventalignWriter writer,
     SquiggleRead sr(read_name, read_db, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
 
     if(opt::verbose > 1) {
-        fprintf(stderr, "Realigning %s [%zu %zu]\n", 
+        fprintf(stderr, "Realigning %s [%zu %zu]\n",
                 read_name.c_str(), sr.events[0].size(), sr.events[1].size());
     }
-    
+
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
-        
+
         // Do not align this strand if it was not sequenced
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
@@ -862,41 +866,9 @@ int eventalign_main(int argc, char** argv)
 
     ReadDB read_db;
     read_db.load(opt::reads_file);
-    
-    // Open the BAM and iterate over reads
 
-    // load bam file
-    htsFile* bam_fh = sam_open(opt::bam_file.c_str(), "r");
-    assert(bam_fh != NULL);
-
-    // load bam index file
-    std::string index_filename = opt::bam_file + ".bai";
-    hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
-    if(bam_idx == NULL) {
-        bam_index_error_exit(opt::bam_file);
-    }
-
-    // read the bam header
-    bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
-
-    hts_itr_t* itr;
-
-    // If processing a region of the genome, only emit events aligned to this window
-    int clip_start = -1;
-    int clip_end = -1;
-
-    if(opt::region.empty()) {
-        // TODO: is this valid?
-        itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
-    } else {
-
-        fprintf(stderr, "Region: %s\n", opt::region.c_str());
-        itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
-        hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
-    }
 
 #ifndef H5_HAVE_THREADSAFE
     if(opt::num_threads > 1) {
@@ -909,72 +881,30 @@ int eventalign_main(int argc, char** argv)
     // Initialize output
     EventalignWriter writer = { NULL, NULL, NULL };
 
-    if(opt::output_sam) {
-        writer.sam_fp = hts_open("-", "w");
-        emit_sam_header(writer.sam_fp, hdr);
-    } else {
-        writer.tsv_fp = stdout;
-        emit_tsv_header(writer.tsv_fp);
-    }
-
     if(!opt::summary_file.empty()) {
         writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
         // header
         fprintf(writer.summary_fp, "read_index\tread_name\tfast5_path\tmodel_name\tstrand\tnum_events\t");
         fprintf(writer.summary_fp, "num_steps\tnum_skips\tnum_stays\ttotal_duration\tshift\tscale\tdrift\tvar\n");
     }
-    
-    // Initialize iteration
-    std::vector<bam1_t*> records(opt::batch_size, NULL);
-    for(size_t i = 0; i < records.size(); ++i) {
-        records[i] = bam_init1();
+
+    // the BamProcessor framework calls the input function with the
+    // bam record, read index, etc passed as parameters
+    // bind the other parameters the worker function needs here
+    auto f = std::bind(realign_read, std::ref(read_db), std::ref(fai), std::ref(writer), _1, _2, _3, _4, _5);
+    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+
+    // Copy the bam header to std
+    if(opt::output_sam) {
+        writer.sam_fp = hts_open("-", "w");
+        emit_sam_header(writer.sam_fp, processor.get_bam_header());
+    } else {
+        writer.tsv_fp = stdout;
+        emit_tsv_header(writer.tsv_fp);
     }
 
-    int result;
-    size_t num_reads_realigned = 0;
-    size_t num_records_buffered = 0;
-    Progress progress("[eventalign]");
-
-    do {
-        assert(num_records_buffered < records.size());
-        
-        // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
-        
-        num_records_buffered += result >= 0;
-        // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
-            for(size_t i = 0; i < num_records_buffered; ++i) {
-                bam1_t* record = records[i];
-                size_t read_idx = num_reads_realigned + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(writer, read_db, fai, hdr, record, read_idx, clip_start, clip_end);
-                }
-            }
-
-            num_reads_realigned += num_records_buffered;
-            num_records_buffered = 0;
-        }
-
-        if(opt::progress) {
-            fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
-        }
-    } while(result >= 0);
- 
-    assert(num_records_buffered == 0);
-
-    // cleanup records
-    for(size_t i = 0; i < records.size(); ++i) {
-        bam_destroy1(records[i]);
-    }
-
-    // cleanup
-    sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
-    fai_destroy(fai);
-    sam_close(bam_fh);
-    hts_idx_destroy(bam_idx);
+    // run
+    processor.parallel_run(f);
 
     if(writer.sam_fp != NULL) {
         hts_close(writer.sam_fp);
@@ -983,5 +913,7 @@ int eventalign_main(int argc, char** argv)
     if(writer.summary_fp != NULL) {
         fclose(writer.summary_fp);
     }
+
+    fai_destroy(fai);
     return EXIT_SUCCESS;
 }
