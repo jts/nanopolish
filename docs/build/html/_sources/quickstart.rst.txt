@@ -10,7 +10,10 @@ Download example dataset
 * Instrument : MinION sequencing R9.4 chemistry
 * Basecaller : Albacore v2.0.1
 
-Files: ::
+Files:
+
+..code-block :: bash
+
 	example_data/
 		region.bam
 		region.bam.bai
@@ -29,14 +32,14 @@ Data preprocessing
 ------------------------------------
 
 #. Create index files that link reads with their signal-level data
-	#. Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
-	#. If you ran Albacore 2.0, run nanopolish index: (``-d`` can be specified more than once if using multiple runs):
+	* Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
+	* If you ran Albacore 2.0, run nanopolish index: (``-d`` can be specified more than once if using multiple runs):
 
 		.. code-block:: bash
 
 		nanopolish index -d fast5_files/ region.fasta
 
-	#. If you ran Albacore 1.2 or earlier:
+	* If you ran Albacore 1.2 or earlier:
 
         .. code-block:: bash
 
