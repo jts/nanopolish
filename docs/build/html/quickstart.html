@@ -175,9 +175,9 @@
 <li>Basecaller : Albacore v2.0.1</li>
 </ul>
 <p>Files:</p>
-<p>..code-block :: bash</p>
 <blockquote>
-<div><dl class="docutils">
+<div><p>..code-block :: bash</p>
+<dl class="docutils">
 <dt>example_data/</dt>
 <dd>region.bam
 region.bam.bai
@@ -199,19 +199,16 @@ original/</dd>
 <ol class="arabic">
 <li><dl class="first docutils">
 <dt>Create index files that link reads with their signal-level data</dt>
-<dd><ul class="first">
-<li><p class="first">Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</p>
-</li>
-<li><p class="first">If you ran Albacore 2.0, run nanopolish index: (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
-<blockquote>
-<div><div class="highlight-bash"><div class="highlight"><pre><span></span>
+<dd><ul class="first simple">
+<li>Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</li>
+<li>If you ran Albacore 2.0, run nanopolish index: (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</li>
+</ul>
+<div class="highlight-bash"><div class="highlight"><pre><span></span>
 </pre></div>
 </div>
 <p>nanopolish index -d fast5_files/ region.fasta</p>
-</div></blockquote>
-</li>
-<li><p class="first">If you ran Albacore 1.2 or earlier:</p>
-</li>
+<ul class="simple">
+<li>If you ran Albacore 1.2 or earlier:</li>
 </ul>
 <div class="last highlight-bash"><div class="highlight"><pre><span></span>nanopolish extract --type template /path/to/fast5/directory/pass/ &gt; reads.fa
 </pre></div>

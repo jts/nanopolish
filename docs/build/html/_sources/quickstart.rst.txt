@@ -12,21 +12,21 @@ Download example dataset
 
 Files:
 
-..code-block :: bash
+    ..code-block :: bash
 
-	example_data/
-		region.bam
-		region.bam.bai
-		region.fasta
-		region.fasta.fa.gz
-		region.fasta.fa.gz.fai
-		region.fasta.fa.gz.gzi
-		region.fasta.fa.gz.readdb
-		ecoli.log
-		draft.fa
-		draft.fa.fai
-		fast5_files/
-		original/	
+    example_data/
+        region.bam
+        region.bam.bai
+        region.fasta
+        region.fasta.fa.gz
+        region.fasta.fa.gz.fai
+        region.fasta.fa.gz.gzi
+        region.fasta.fa.gz.readdb
+        ecoli.log
+        draft.fa
+        draft.fa.fai
+        fast5_files/
+        original/
 
 Data preprocessing
 ------------------------------------
@@ -35,9 +35,9 @@ Data preprocessing
 	* Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
 	* If you ran Albacore 2.0, run nanopolish index: (``-d`` can be specified more than once if using multiple runs):
 
-		.. code-block:: bash
+        .. code-block:: bash
 
-		nanopolish index -d fast5_files/ region.fasta
+        nanopolish index -d fast5_files/ region.fasta
 
 	* If you ran Albacore 1.2 or earlier:
 
