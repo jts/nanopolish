@@ -169,34 +169,57 @@
 <span id="id1"></span><h1>Quickstart<a class="headerlink" href="#quickstart" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="download-example-dataset">
 <h2>Download example dataset<a class="headerlink" href="#download-example-dataset" title="Permalink to this headline">¶</a></h2>
-<p>Sample:         E. coli str. K-12 substr. MG1655
-Instrument: MinION sequencing R9.4 chemistry
-Basecaller: Albacore v2.0.1</p>
+<ul class="simple">
+<li>Sample :      E. coli str. K-12 substr. MG1655</li>
+<li>Instrument : MinION sequencing R9.4 chemistry</li>
+<li>Basecaller : Albacore v2.0.1</li>
+</ul>
+<dl class="docutils">
+<dt>Files: ::</dt>
+<dd><dl class="first last docutils">
+<dt>example_data/</dt>
+<dd>region.bam
+region.bam.bai
+region.fasta
+region.fasta.fa.gz
+region.fasta.fa.gz.fai
+region.fasta.fa.gz.gzi
+region.fasta.fa.gz.readdb
+ecoli.log
+draft.fa
+draft.fa.fai
+fast5_files/
+original/</dd>
+</dl>
+</dd>
+</dl>
 </div>
 <div class="section" id="data-preprocessing">
 <h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
-<p>Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run nanopolish index on your input reads (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Only run this if you used Albacore 2.0 or later</span>
-<span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">raw_fast5s</span><span class="o">/</span> <span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>Create index files that link reads with their signal-level data</dt>
+<dd><ol class="first arabic">
+<li><p class="first">Nanopolish needs access to the signal-level data measured by the nanopore sequencer.</p>
+</li>
+<li><p class="first">If you ran Albacore 2.0, run nanopolish index: (<code class="docutils literal"><span class="pre">-d</span></code> can be specified more than once if using multiple runs):</p>
+<blockquote>
+<div><div class="highlight-bash"><div class="highlight"><pre><span></span>
 </pre></div>
 </div>
-<p>This will create:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span>
-<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">fai</span>
-<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">gzi</span>
-<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">readdb</span>
+<p>nanopolish index -d fast5_files/ region.fasta</p>
+</div></blockquote>
+</li>
+<li><p class="first">If you ran Albacore 1.2 or earlier:</p>
+</li>
+</ol>
+<div class="last highlight-bash"><div class="highlight"><pre><span></span>nanopolish extract --type template /path/to/fast5/directory/pass/ &gt; reads.fa
 </pre></div>
 </div>
-<p>Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FAST5 file:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">read_id_1</span>       <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">reads_id_1</span><span class="o">/</span><span class="n">signals</span>
-<span class="n">read_id_2</span>       <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">read_id_2</span><span class="o">/</span><span class="n">signals</span>
-</pre></div>
-</div>
-<p>If you basecalled your reads with Albacore 1.2 or earlier, you should run nanopolish extract on your input reads instead:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Only run this if you used Albacore 1.2 or later</span>
-<span class="n">nanopolish</span> <span class="n">extract</span> <span class="o">--</span><span class="nb">type</span> <span class="n">template</span> <span class="n">directory</span><span class="o">/</span><span class="k">pass</span><span class="o">/</span> <span class="o">&gt;</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span>
-</pre></div>
-</div>
+</dd>
+</dl>
+</li>
+</ol>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
 <p class="last">These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named <code class="docutils literal"><span class="pre">reads.fa</span></code>.</p>

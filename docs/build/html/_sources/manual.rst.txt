@@ -77,6 +77,32 @@ Usage example
      - stdout
      - Write output to FILE
 
+index
+--------------------
+
+Overview
+"""""""""""""""""""""""
+
+Input
+""""""""
+
+Output
+""""""""
+
+This will create: ::
+
+    albacore_output.fastq.fa.gz
+    albacore_output.fastq.fa.gz.fai
+    albacore_output.fastq.fa.gz.gzi
+    albacore_output.fastq.fa.gz.readdb
+
+Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FA
+ST5 file: ::
+
+    read_id_1   /path/to/fast5/containing/reads_id_1/signals
+    read_id_2   /path/to/fast5/containing/read_id_2/signals
+
+
 call-methylation
 --------------------
 

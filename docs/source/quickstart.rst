@@ -6,35 +6,41 @@ Quickstart
 Download example dataset
 ------------------------------------
 
-Sample: 	E. coli str. K-12 substr. MG1655
-Instrument: MinION sequencing R9.4 chemistry
-Basecaller: Albacore v2.0.1
+* Sample :	E. coli str. K-12 substr. MG1655
+* Instrument : MinION sequencing R9.4 chemistry
+* Basecaller : Albacore v2.0.1
 
+Files: ::
+	example_data/
+		region.bam
+		region.bam.bai
+		region.fasta
+		region.fasta.fa.gz
+		region.fasta.fa.gz.fai
+		region.fasta.fa.gz.gzi
+		region.fasta.fa.gz.readdb
+		ecoli.log
+		draft.fa
+		draft.fa.fai
+		fast5_files/
+		original/	
 
 Data preprocessing
 ------------------------------------
 
-Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run nanopolish index on your input reads (``-d`` can be specified more than once if using multiple runs): ::
+#. Create index files that link reads with their signal-level data
+	#. Nanopolish needs access to the signal-level data measured by the nanopore sequencer. 
+	#. If you ran Albacore 2.0, run nanopolish index: (``-d`` can be specified more than once if using multiple runs):
 
-    # Only run this if you used Albacore 2.0 or later
-    nanopolish index -d /path/to/raw_fast5s/ albacore_output.fastq
+		.. code-block:: bash
 
-This will create: ::
+		nanopolish index -d fast5_files/ region.fasta
 
-	albacore_output.fastq.fa.gz
-	albacore_output.fastq.fa.gz.fai
-	albacore_output.fastq.fa.gz.gzi
-	albacore_output.fastq.fa.gz.readdb
+	#. If you ran Albacore 1.2 or earlier:
 
-Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FAST5 file: ::
+        .. code-block:: bash
 
-	read_id_1	/path/to/fast5/containing/reads_id_1/signals
-	read_id_2	/path/to/fast5/containing/read_id_2/signals
-
-If you basecalled your reads with Albacore 1.2 or earlier, you should run nanopolish extract on your input reads instead: ::
-
-   # Only run this if you used Albacore 1.2 or later
-   nanopolish extract --type template directory/pass/ > reads.fa
+		nanopolish extract --type template /path/to/fast5/directory/pass/ > reads.fa
 
 .. note:: These two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named ``reads.fa``.
 

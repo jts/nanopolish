@@ -101,11 +101,17 @@
 <li class="toctree-l3"><a class="reference internal" href="#usage-example">Usage example</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#call-methylation">call-methylation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#index">index</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#id2">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id3">Input</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id4">Output</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id5">Usage example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#call-methylation">call-methylation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id5">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">Output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">Usage example</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#variants">variants</a></li>
@@ -217,8 +223,8 @@
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
 </pre></div>
 </div>
-<table border="1" class="colwidths-given docutils" id="id6">
-<caption><span class="caption-text">Command line arguments</span><a class="headerlink" href="#id6" title="Permalink to this table">¶</a></caption>
+<table border="1" class="colwidths-given docutils" id="id9">
+<caption><span class="caption-text">Command line arguments</span><a class="headerlink" href="#id9" title="Permalink to this table">¶</a></caption>
 <colgroup>
 <col width="20%" />
 <col width="10%" />
@@ -267,30 +273,55 @@
 </table>
 </div>
 </div>
-<div class="section" id="call-methylation">
-<h2>call-methylation<a class="headerlink" href="#call-methylation" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="index">
+<h2>index<a class="headerlink" href="#index" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="id2">
 <h3>Overview<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h3>
-<p>Classify nucleotides as methylated or not.</p>
 </div>
 <div class="section" id="id3">
 <h3>Input<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="id4">
+<h3>Output<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<p>This will create:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">fai</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">gzi</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">readdb</span>
+</pre></div>
+</div>
+<p>Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FA
+ST5 file:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">read_id_1</span>   <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">reads_id_1</span><span class="o">/</span><span class="n">signals</span>
+<span class="n">read_id_2</span>   <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">read_id_2</span><span class="o">/</span><span class="n">signals</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="call-methylation">
+<h2>call-methylation<a class="headerlink" href="#call-methylation" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id5">
+<h3>Overview<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<p>Classify nucleotides as methylated or not.</p>
+</div>
+<div class="section" id="id6">
+<h3>Input<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h3>
 <blockquote>
 <div><ul class="simple">
 <li>Basecalled ONT reads in FASTA format</li>
 </ul>
 </div></blockquote>
 </div>
-<div class="section" id="id4">
-<h3>Output<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id7">
+<h3>Output<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
 <blockquote>
 <div><ul class="simple">
 <li>tab-separated file containing per-read log-likelihood ratios</li>
 </ul>
 </div></blockquote>
 </div>
-<div class="section" id="id5">
-<h3>Usage example<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id8">
+<h3>Usage example<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h3>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
 </pre></div>
 </div>
