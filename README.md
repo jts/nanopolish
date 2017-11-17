@@ -10,7 +10,7 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 [eigen](http://eigen.tuxfamily.org) is also automatically downloaded and included when compiling with `make`.
 
-[biopython](http://www.biopython.org) is required to run the helpers in `scripts/`.
+[biopython](http://www.biopython.org) and [pysam](http://pysam.readthedocs.io/en/latest/installation.html) are required to run the helpers in `scripts/`.
 
 [htslib](http://github.com/samtools/htslib) is included as a submodule and compiled automatically.
 
