@@ -16,9 +16,12 @@ Nanopolish
    manual
    faq
 
-Publication
+Publications
 ====================================
-Loman, Nicholas J., Joshua Quick, and Jared T. Simpson. "A complete bacterial genome assembled de novo using only nanopore sequencing data." Nature methods 12.8 (2015): 733-735.
+
+* Loman, Nicholas J., Joshua Quick, and Jared T. Simpson. "A complete bacterial genome assembled de novo using only nanopore sequencing data." Nature methods 12.8 (2015): 733-735.
+* Quick, Joshua, et al. "Real-time, portable genome sequencing for Ebola surveillance." Nature 530.7589 (2016): 228-232.
+* Simpson, Jared T., et al. "Detecting DNA cytosine methylation using nanopore sequencing." nature methods 14.4 (2017): 407-410.
 
 Credits and Thanks
 ========================
