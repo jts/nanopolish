@@ -242,10 +242,10 @@ def main():
 		for s in log:
 			lfile.write(s + "\n")
 	an_logfile = op + "/" + logfile
-	archive.add(logfile, arcname=an_logfile)
 	custom_print( "[ Log file ] " +  an_logfile )
 	custom_print( "[ Tar file ] " + str(tar_filename) )
 	custom_print( "[ Finished ] " )
+	archive.add(logfile, arcname=an_logfile)
 	archive.close()
 
 def file_length(filename):
