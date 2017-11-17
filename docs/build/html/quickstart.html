@@ -1,0 +1,319 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Quickstart &mdash; Nanopolish 0.8.4 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  
+
+  
+
+  
+        <link rel="index" title="Index"
+              href="genindex.html"/>
+        <link rel="search" title="Search" href="search.html"/>
+    <link rel="top" title="Nanopolish 0.8.4 documentation" href="index.html"/>
+        <link rel="next" title="Manual" href="manual.html"/>
+        <link rel="prev" title="Installation" href="installation.html"/> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html" class="icon icon-home"> Nanopolish
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                0.8.4
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#download-example-dataset">Download example dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-preprocessing">Data preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#compute-the-draft-genome-assembly-using-canu">Compute the draft genome assembly using CANU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#computing-a-new-consensus-sequence-for-a-draft-assembly">Computing a new consensus sequence for a draft assembly</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#evaluate-the-assembly">Evaluate the assembly</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="manual.html">Manual</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Nanopolish</a>
+        
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>Quickstart</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/quickstart.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="quickstart">
+<span id="id1"></span><h1>Quickstart<a class="headerlink" href="#quickstart" title="Permalink to this headline">¶</a></h1>
+<p>The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help users get started.</p>
+<p>Requirements:</p>
+<ul class="simple">
+<li><a class="reference external" href="installation.html">Nanopolish</a></li>
+<li><a class="reference external" href="http://samtools.sourceforge.net/">samtool v1.2</a></li>
+<li><a class="reference external" href="https://github.com/lh3/bwa">bwa mem v0.7.12</a></li>
+</ul>
+<div class="section" id="download-example-dataset">
+<h2>Download example dataset<a class="headerlink" href="#download-example-dataset" title="Permalink to this headline">¶</a></h2>
+<p>You can download an example data set here:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">insert</span> <span class="n">a</span> <span class="n">way</span> <span class="n">to</span> <span class="n">download</span> <span class="n">the</span> <span class="n">example</span> <span class="n">data</span> <span class="nb">set</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Details:</p>
+<ul class="simple">
+<li>Sample :      E. coli str. K-12 substr. MG1655</li>
+<li>Instrument : MinION sequencing R9.4 chemistry</li>
+<li>Basecaller : Albacore v2.0.1</li>
+</ul>
+<p>You should find the following files:</p>
+<ul class="simple">
+<li><code class="docutils literal"><span class="pre">reads.fasta</span></code> : subset of basecalled reads</li>
+<li><code class="docutils literal"><span class="pre">draft.fasta</span></code> : draft genome assembly</li>
+<li><code class="docutils literal"><span class="pre">draft.fasta.fai</span></code> : draft genome assembly index</li>
+<li><code class="docutils literal"><span class="pre">fast5_files/</span></code> : a directory containing FAST5 files</li>
+</ul>
+</div>
+<div class="section" id="data-preprocessing">
+<h2>Data preprocessing<a class="headerlink" href="#data-preprocessing" title="Permalink to this headline">¶</a></h2>
+<p>Nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index <code class="docutils literal"><span class="pre">readdb</span></code> file that links read ids with their signal-level data in the FAST5 files.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">index</span> <span class="o">-</span><span class="n">d</span> <span class="n">fast5_files</span><span class="o">/</span> <span class="n">reads</span><span class="o">.</span><span class="n">fasta</span>
+</pre></div>
+</div>
+<p>We get the following files: <code class="docutils literal"><span class="pre">reads.fasta.fa.gz</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.fai</span></code>, <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.gzi</span></code>, and <code class="docutils literal"><span class="pre">reads.fasta.fa.gz.readdb</span></code>.</p>
+</div>
+<div class="section" id="compute-the-draft-genome-assembly-using-canu">
+<h2>Compute the draft genome assembly using CANU<a class="headerlink" href="#compute-the-draft-genome-assembly-using-canu" title="Permalink to this headline">¶</a></h2>
+<p>To create a draft genome assembly we have used CANU.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">canu</span> \
+            <span class="o">-</span><span class="n">p</span> <span class="n">ecoli</span> <span class="o">-</span><span class="n">d</span> <span class="n">outdir</span> <span class="n">genomeSize</span><span class="o">=</span><span class="mf">4.6</span><span class="n">m</span> \
+            <span class="o">-</span><span class="n">nanopore</span><span class="o">-</span><span class="n">raw</span> <span class="n">albacore</span><span class="o">-</span><span class="mf">2.0</span><span class="o">.</span><span class="mi">1</span><span class="o">-</span><span class="n">merged</span><span class="o">.</span><span class="n">fastq</span> \
+            <span class="n">gnuplotTested</span> <span class="o">=</span> <span class="n">true</span> \
+            <span class="n">useGrid</span> <span class="o">=</span> <span class="n">false</span>
+</pre></div>
+</div>
+<p>As this takes a few hours, we have already pre-assembled the data: <code class="docutils literal"><span class="pre">draft.fa</span></code>.</p>
+</div>
+<div class="section" id="computing-a-new-consensus-sequence-for-a-draft-assembly">
+<h2>Computing a new consensus sequence for a draft assembly<a class="headerlink" href="#computing-a-new-consensus-sequence-for-a-draft-assembly" title="Permalink to this headline">¶</a></h2>
+<p>Now that we have the <code class="docutils literal"><span class="pre">reads.fasta</span></code> indexed with <code class="docutils literal"><span class="pre">nanopolish</span> <span class="pre">index</span></code>, and have a draft genome assembly <code class="docutils literal"><span class="pre">draft.fa</span></code> we can improve the assembly with nanopolish. The first step is to index the draft genome using BWA INDEX:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Index the draft genome</span>
+<span class="n">bwa</span> <span class="n">index</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span>
+</pre></div>
+</div>
+<p>Then we align the original non-assembled reads (<code class="docutils literal"><span class="pre">reads.fasta</span></code>) to the draft assembly (<code class="docutils literal"><span class="pre">draft.fa</span></code>).</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="c1"># Align the basecalled reads to the draft sequence</span>
+<span class="n">bwa</span> <span class="n">mem</span> <span class="o">-</span><span class="n">x</span> <span class="n">ont2d</span> <span class="o">-</span><span class="n">t</span> <span class="mi">8</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="n">reads</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">samtools</span> <span class="n">sort</span> <span class="o">-</span><span class="n">o</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">T</span> <span class="n">reads</span><span class="o">.</span><span class="n">tmp</span> <span class="o">-</span>
+<span class="n">samtools</span> <span class="n">index</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span>
+</pre></div>
+</div>
+<p>Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We’ll run this in parallel:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_makerange</span><span class="o">.</span><span class="n">py</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">|</span> <span class="n">parallel</span> <span class="o">--</span><span class="n">results</span> <span class="n">nanopolish</span><span class="o">.</span><span class="n">results</span> <span class="o">-</span><span class="n">P</span> <span class="mi">8</span> \
+<span class="n">nanopolish</span> <span class="n">variants</span> <span class="o">--</span><span class="n">consensus</span> <span class="n">polished</span><span class="o">.</span><span class="p">{</span><span class="mi">1</span><span class="p">}</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">w</span> <span class="p">{</span><span class="mi">1</span><span class="p">}</span> <span class="o">-</span><span class="n">r</span> <span class="n">reads</span><span class="o">.</span><span class="n">fasta</span> <span class="o">-</span><span class="n">b</span> <span class="n">reads</span><span class="o">.</span><span class="n">sorted</span><span class="o">.</span><span class="n">bam</span> <span class="o">-</span><span class="n">g</span> <span class="n">draft</span><span class="o">.</span><span class="n">fa</span> <span class="o">-</span><span class="n">t</span> <span class="mi">4</span> <span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">candidate</span><span class="o">-</span><span class="n">frequency</span> <span class="mf">0.1</span>
+</pre></div>
+</div>
+<p>This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the <code class="docutils literal"><span class="pre">-P</span></code> and <code class="docutils literal"><span class="pre">--threads</span></code> options as appropriate for the machines you have available.</p>
+<p>After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">nanopolish_merge</span><span class="o">.</span><span class="n">py</span> <span class="n">polished</span><span class="o">.*.</span><span class="n">fa</span> <span class="o">&gt;</span> <span class="n">polished_genome</span><span class="o">.</span><span class="n">fa</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="evaluate-the-assembly">
+<h2>Evaluate the assembly<a class="headerlink" href="#evaluate-the-assembly" title="Permalink to this headline">¶</a></h2>
+<p>To analyze how nanopolish performed improving the accuracy we use <a class="reference external" href="https://github.com/mummer4/mummer">MUMmer</a>. MUMmer contains “dnadiff” a script that enables us to see a rreport on alignment statistics. With dnadiff we can compare the two different assemblies. The value that we are interested in is <code class="docutils literal"><span class="pre">AvgIdentity</span></code> which is a measurement of how similar the genome assemblies are to a reference genome.</p>
+</div>
+</div>
+
+
+           </div>
+           <div class="articleComments">
+            
+           </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="manual.html" class="btn btn-neutral float-right" title="Manual" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="installation.html" class="btn btn-neutral" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Simpson Lab.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'0.8.4',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>

@@ -1,0 +1,413 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Manual &mdash; Nanopolish 0.8.4 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  
+
+  
+
+  
+        <link rel="index" title="Index"
+              href="genindex.html"/>
+        <link rel="search" title="Search" href="search.html"/>
+    <link rel="top" title="Nanopolish 0.8.4 documentation" href="index.html"/>
+        <link rel="next" title="FAQ" href="faq.html"/>
+        <link rel="prev" title="Quickstart" href="quickstart.html"/> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html" class="icon icon-home"> Nanopolish
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                0.8.4
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Manual</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#extract">Extract</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#input">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#output">Output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#usage-example">Usage example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#index">index</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">Output</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#call-methylation">call-methylation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id5">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">Output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">Usage example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#variants">variants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#variants-consensus">variants –consensus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#eventalign">eventalign</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">FAQ</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Nanopolish</a>
+        
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>Manual</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/manual.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="manual">
+<span id="id1"></span><h1>Manual<a class="headerlink" href="#manual" title="Permalink to this headline">¶</a></h1>
+<p>Modules available:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span><span class="p">:</span> <span class="n">extract</span> <span class="n">reads</span> <span class="ow">in</span> <span class="n">FASTA</span> <span class="ow">or</span> <span class="n">FASTQ</span> <span class="nb">format</span> <span class="kn">from</span> <span class="nn">a</span> <span class="n">directory</span> <span class="n">of</span> <span class="n">FAST5</span> <span class="n">files</span>
+<span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="n">methylation</span><span class="p">:</span> <span class="n">predict</span> <span class="n">genomic</span> <span class="n">bases</span> <span class="n">that</span> <span class="n">may</span> <span class="n">be</span> <span class="n">methylated</span>
+<span class="n">nanopolish</span> <span class="n">variants</span><span class="p">:</span> <span class="n">detect</span> <span class="n">SNPs</span> <span class="ow">and</span> <span class="n">indels</span> <span class="k">with</span> <span class="n">respect</span> <span class="n">to</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">genome</span>
+<span class="n">nanopolish</span> <span class="n">variants</span> <span class="o">--</span><span class="n">consensus</span><span class="p">:</span> <span class="n">calculate</span> <span class="n">an</span> <span class="n">improved</span> <span class="n">consensus</span> <span class="n">sequence</span> <span class="k">for</span> <span class="n">a</span> <span class="n">draft</span> <span class="n">genome</span> <span class="n">assembly</span>
+<span class="n">nanopolish</span> <span class="n">eventalign</span><span class="p">:</span> <span class="n">align</span> <span class="n">signal</span><span class="o">-</span><span class="n">level</span> <span class="n">events</span> <span class="n">to</span> <span class="n">k</span><span class="o">-</span><span class="n">mers</span> <span class="n">of</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">genome</span>
+</pre></div>
+</div>
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<div class="section" id="extract">
+<h2>Extract<a class="headerlink" href="#extract" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="overview">
+<h3>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h3>
+<p>This module is used to extract reads in FASTA or FASTQ format from a directory of FAST5 files.</p>
+</div>
+<div class="section" id="input">
+<h3>Input<a class="headerlink" href="#input" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>path to a directory of FAST5 files modified to contain basecall information</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="output">
+<h3>Output<a class="headerlink" href="#output" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>sequences of reads in FASTA or FASTQ format</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="usage-example">
+<h3>Usage example<a class="headerlink" href="#usage-example" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">extract</span> <span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<table border="1" class="colwidths-given docutils" id="id9">
+<caption><span class="caption-text">Command line arguments</span><a class="headerlink" href="#id9" title="Permalink to this table">¶</a></caption>
+<colgroup>
+<col width="20%" />
+<col width="10%" />
+<col width="20%" />
+<col width="50%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Argument name(s)</th>
+<th class="head">Required</th>
+<th class="head">Default value</th>
+<th class="head">Description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>&lt;fast5|dir&gt;</td>
+<td>Y</td>
+<td>NA</td>
+<td>FAST5 or path to directory of FAST5 files.</td>
+</tr>
+<tr class="row-odd"><td>-r, –recurse</td>
+<td>N</td>
+<td>NA</td>
+<td>Recurse into subdirectories</td>
+</tr>
+<tr class="row-even"><td>-q, –fastq</td>
+<td>N</td>
+<td>fasta format</td>
+<td>Use when you want to extract to FASTQ format</td>
+</tr>
+<tr class="row-odd"><td>-t, –type=TYPE</td>
+<td>N</td>
+<td>2d-or-template</td>
+<td>The type of read either: {template, complement, 2d, 2d-or-template, any}</td>
+</tr>
+<tr class="row-even"><td>-b, –basecaller=NAME[:VERSION]</td>
+<td>N</td>
+<td>NA</td>
+<td>consider only data produced by basecaller NAME, optionally with given exact VERSION</td>
+</tr>
+<tr class="row-odd"><td>-o, –output=FILE</td>
+<td>N</td>
+<td>stdout</td>
+<td>Write output to FILE</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="index">
+<h2>index<a class="headerlink" href="#index" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id2">
+<h3>Overview<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="id3">
+<h3>Input<a class="headerlink" href="#id3" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="id4">
+<h3>Output<a class="headerlink" href="#id4" title="Permalink to this headline">¶</a></h3>
+<p>This will create:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">fai</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">gzi</span>
+<span class="n">albacore_output</span><span class="o">.</span><span class="n">fastq</span><span class="o">.</span><span class="n">fa</span><span class="o">.</span><span class="n">gz</span><span class="o">.</span><span class="n">readdb</span>
+</pre></div>
+</div>
+<p>Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FA
+ST5 file:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">read_id_1</span>   <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">reads_id_1</span><span class="o">/</span><span class="n">signals</span>
+<span class="n">read_id_2</span>   <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">fast5</span><span class="o">/</span><span class="n">containing</span><span class="o">/</span><span class="n">read_id_2</span><span class="o">/</span><span class="n">signals</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="call-methylation">
+<h2>call-methylation<a class="headerlink" href="#call-methylation" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="id5">
+<h3>Overview<a class="headerlink" href="#id5" title="Permalink to this headline">¶</a></h3>
+<p>Classify nucleotides as methylated or not.</p>
+</div>
+<div class="section" id="id6">
+<h3>Input<a class="headerlink" href="#id6" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>Basecalled ONT reads in FASTA format</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="id7">
+<h3>Output<a class="headerlink" href="#id7" title="Permalink to this headline">¶</a></h3>
+<blockquote>
+<div><ul class="simple">
+<li>tab-separated file containing per-read log-likelihood ratios</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="id8">
+<h3>Usage example<a class="headerlink" href="#id8" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">nanopolish</span> <span class="n">call</span><span class="o">-</span><span class="p">[</span><span class="n">OPTIONS</span><span class="p">]</span> <span class="o">&lt;</span><span class="n">fast5</span><span class="o">|</span><span class="nb">dir</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="variants">
+<h2>variants<a class="headerlink" href="#variants" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="variants-consensus">
+<h2>variants –consensus<a class="headerlink" href="#variants-consensus" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="eventalign">
+<h2>eventalign<a class="headerlink" href="#eventalign" title="Permalink to this headline">¶</a></h2>
+</div>
+</div>
+
+
+           </div>
+           <div class="articleComments">
+            
+           </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="faq.html" class="btn btn-neutral float-right" title="FAQ" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="quickstart.html" class="btn btn-neutral" title="Quickstart" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Simpson Lab.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'0.8.4',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>
