@@ -39,6 +39,7 @@
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+#include <limits> // for -INFTY
 
 using namespace std::placeholders;
 
@@ -151,6 +152,281 @@ void parse_polya_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 }
+
+//==================================================================================================
+// Basic HMM struct with fixed transition/emission parameters;
+// all of the below is relative to a **scaled & shifted** set of events.
+struct PolyAHMM {
+    // state transition probabilities:
+    float state_transitions[4][4] = { {0.99f, 0.01f, 0.00f, 0.00f},
+                                      {0.00f, 0.99f, 0.01f, 0.00f},
+                                      {0.00f, 0.00f, 0.99f, 0.01f},
+                                      {0.00f, 0.00f, 0.00f, 1.00f} };
+    // log-prob transitions:
+    float log_state_transitions[4][4] = { {-0.0101f, -4.6052f, -INFINITY, -INFINITY},
+                                          {-INFINITY, -0.0101f, -4.6052f, -INFINITY},
+                                          {-INFINITY, -INFINITY, -0.0101f, -4.6052f},
+                                          {-INFINITY, -INFINITY, -INFINITY,  0.0000f} };
+    // default emission parameters, from eyeballing a bunch of plots:
+    GaussianParameters l_emission = {100.0f, 2.5f};  // leader;
+    GaussianParameters a_emission = {75.0f, 3.0f};   // adapter;
+    GaussianParameters p_emission = {99.0f, 2.5f};   // polya;
+    GaussianParameters t_emission = {93.0f, 5.0f};  // transcript;
+};
+
+// Get the log-probability of seeing `x` given we're in state `state` of an HMM
+// N.B.: we scale the emission parameters (events are **not** scaled).
+float emit_log_proba(const float x, const PolyAHMM hmm, const uint8_t state,
+                     const float scale, const float shift, const float var)
+{
+    GaussianParameters emission;
+    if (state == 0) {
+        emission = hmm.l_emission;
+    }
+    if (state == 1) {
+        emission = hmm.a_emission;
+    }
+    if (state == 2) {
+        emission = hmm.p_emission;
+    }
+    if (state == 3) {
+        emission = hmm.t_emission;
+    }
+    emission.mean = shift + scale*emission.mean;
+    emission.stdv = var * emission.stdv;
+    emission.log_stdv = std::log(emission.stdv);
+    float log_probs = log_normal_pdf(x, emission);
+    return log_probs;
+}
+
+// Run viterbi algorithm given event sequence and an HMM;
+// returns a struct ViterbiOutputs composed of viterbi probs
+// and a vector of integers from {0,1,2,3} == {L,A,P,T}.
+// N.B.: this algorithm takes place in log-space for numerical stability; when we
+// write `scores`, this refers to log(P).
+struct ViterbiOutputs {
+    std::vector<float> scores;
+    std::vector<uint8_t> labels;
+};
+ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
+{
+    // get scale/shift/var values, number of events:
+    float scale = static_cast<float>(sr.pore_model[0].scale);
+    float shift = static_cast<float>(sr.pore_model[0].shift);
+    float var = static_cast<float>(sr.pore_model[0].var);
+    size_t num_events = sr.events[0].size();
+
+    // create/initialize viterbi scores and backpointers:
+    std::vector<float> init_scores(4, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
+    std::vector<uint8_t> init_bptrs(4, 4); // 4 == INIT symbol
+    std::vector< std::vector<float> > viterbi_scores(num_events, init_scores);
+    std::vector< std::vector<uint8_t> > viterbi_bptrs(num_events, init_bptrs);
+
+    // forward viterbi pass; fill up backpointers:
+    // weight initially on L:
+    viterbi_scores[0][0] = emit_log_proba(sr.events[0][num_events-1].mean, hmm, 0, scale, shift, var);
+    for (size_t i=1; i < num_events; ++i) {
+        // `t` moves from 3'->5' on the vector of events, in opposite direction of `i`:
+        size_t t = (num_events-1-i);
+        // get scores and update timestep:
+        float l_to_l = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][0];
+        float l_to_a = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][1];
+        float a_to_a = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][1];
+        float a_to_p = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][2];
+        float p_to_p = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][2];
+        float p_to_t = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][3];
+        float t_to_t = viterbi_scores.at(i-1)[3] + hmm.log_state_transitions[3][3];
+
+        viterbi_scores.at(i)[0] = l_to_l + emit_log_proba(sr.events[0][t].mean, hmm, 0, scale, shift, var);
+        viterbi_scores.at(i)[1] = std::max(l_to_a, a_to_a) + emit_log_proba(sr.events[0][t].mean, hmm, 1, scale, shift, var);
+        viterbi_scores.at(i)[2] = std::max(a_to_p, p_to_p) + emit_log_proba(sr.events[0][t].mean, hmm, 2, scale, shift, var);
+        viterbi_scores.at(i)[3] = std::max(p_to_t, t_to_t) + emit_log_proba(sr.events[0][t].mean, hmm, 3, scale, shift, var);
+
+        // backpointers:
+        uint8_t l_bptr = 0; // L can only come from L
+        uint8_t a_bptr = (l_to_a < a_to_a) ? 1 : 0; // A->A : L->A
+        uint8_t p_bptr = (a_to_p < p_to_p) ? 2 : 1; // P->P : A->P
+        uint8_t t_bptr = (p_to_t < t_to_t) ? 3 : 2; // T->T : P->T
+        viterbi_bptrs.at(i)[0] = l_bptr;
+        viterbi_bptrs.at(i)[1] = a_bptr;
+        viterbi_bptrs.at(i)[2] = p_bptr;
+        viterbi_bptrs.at(i)[3] = t_bptr;
+    }
+
+    // backwards viterbi pass:
+    // allocate `regions` vector of same dimensions as event sequence;
+    // clamp final state to 'T' ~ transcript:
+    std::vector<uint8_t> regions(num_events, 0);
+    std::vector<float> scores(num_events, 0);
+    regions[num_events-1] = 3;
+    scores[num_events-1] = viterbi_scores.at(num_events-1)[3];
+    // loop backwards and keep appending best states:
+    for (size_t j=(num_events-2); j > 0; --j) {
+        regions[j] = viterbi_bptrs.at(j)[regions.at(j+1)];
+        scores[j] = viterbi_scores.at(j)[regions.at(j+1)];
+    }
+
+    // put into struct and return:
+    ViterbiOutputs output_vectors = { scores, regions };
+    return output_vectors;
+}
+
+// HMM construct/viterbi wrapper for segmentation of a squiggle read
+ViterbiOutputs segment_read_into_regions(const SquiggleRead& sr)
+{
+    PolyAHMM polya_hmm;
+    ViterbiOutputs output_vectors = polya_viterbi(sr, polya_hmm);
+    return output_vectors;
+}
+
+// helper fn that gets the final indices of each of the first three regions
+struct RegionIxs {
+    size_t leader;
+    size_t adapter;
+    size_t polya;
+};
+RegionIxs get_region_indices(const std::vector<uint8_t> regions)
+{
+    RegionIxs ixs = { 0, 0, 0 };
+
+    // loop through sequence and collect values:
+    for (std::vector<uint8_t>::size_type i = 0; i < regions.size(); ++i) {
+        // call end of leader:
+        if (regions[i] == 0 && regions[i+1] == 1) {
+            ixs.leader = static_cast<size_t>(i);
+        }
+        // call end of adapter:
+        if (regions[i] == 1 && regions[i+1] == 2) {
+            ixs.adapter = static_cast<size_t>(i);
+        }
+        // call end of polya:
+        if (regions[i] == 2 && regions[i+1] == 3) {
+            ixs.polya = static_cast<size_t>(i);
+        }
+    }
+
+    // set sensible default values (1 event past previous region) if not all three detected:
+    // L-end is always detected (min value == 0)
+    if (ixs.adapter == 0) {
+        // A-end undetected if all events after L are all A's; set final 3 events as A,P,T:
+        ixs.adapter = regions.size() - 3;
+        ixs.polya = regions.size() - 2;
+    } else if (ixs.polya == 0) {
+        // P-end undetected if all events after A are all P's; set final events to P,T:
+        ixs.polya = regions.size() - 2;
+    }
+    
+    return ixs;
+}
+
+// Write Poly(A) region segmentation data to TSV
+void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
+                                        const faidx_t* fai,
+                                        FILE* out_fp,
+                                        const bam_hdr_t* hdr,
+                                        const bam1_t* record,
+                                        size_t read_idx,
+                                        int region_start,
+                                        int region_end)
+{
+    //----- load a squiggle read
+    std::string read_name = bam_get_qname(record);
+
+    //----- get length of suffix of the read that was softclipped:
+    size_t n_cigar = record->core.n_cigar;
+    uint32_t prefix_cigar = bam_get_cigar(record)[0];
+    uint32_t suffix_cigar = bam_get_cigar(record)[n_cigar - 1];
+
+    uint32_t prefix_clip = bam_cigar_oplen(prefix_cigar);
+    uint32_t suffix_clip = bam_cigar_oplen(suffix_cigar);
+
+    SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
+
+    //----- print clipping data if `verbose > 2` set:
+    if (opt::verbose > 2) {
+        fprintf(stderr, "[polya] read: %s length: %zu prefix clip: %zu suffix clip %zu\n",
+                read_name.c_str(), sr.read_sequence.length(), prefix_clip, suffix_clip);
+    }
+    std::string sequenced_transcript = sr.read_sequence;
+
+    //----- QC: skip this read if long skip at end or if most of transcript wasnt aligned
+    if (suffix_clip > 200 || (double)(prefix_clip + suffix_clip) / sequenced_transcript.length() > 0.2) {
+        return;
+    }
+
+    //----- QC: skip if no events:
+    if (sr.events[0].empty()) {
+        return;
+    }
+
+    //----- perform HMM-based regional segmentation and get regions:
+    ViterbiOutputs viterbi_outs = segment_read_into_regions(sr);
+    RegionIxs region_indices = get_region_indices(viterbi_outs.labels);
+
+    //----- print TSV line:
+    // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
+    // (n.b.: everything in 5'->3' order due to inversion in SquiggleRead constructor, but our
+    // `region_indices` struct has everything in 3'->5' order)
+    int STRAND = 0;
+    size_t num_events = sr.events[0].size();
+    double total_num_samples = sr.samples.size();
+    double polya_sample_start = sr.events[STRAND][num_events - region_indices.adapter - 1].start_time * sr.sample_rate;
+    double polya_sample_end = sr.events[STRAND][num_events - region_indices.polya].start_time * sr.sample_rate;
+    double adapter_sample_start = sr.events[STRAND][num_events - region_indices.leader].start_time * sr.sample_rate;
+    // calculate duration of poly(A) region (in seconds)
+    double duration = sr.events[STRAND][num_events - region_indices.polya].start_time
+        - sr.events[STRAND][num_events - region_indices.adapter - 1].start_time;
+    // calculate read duration (length of transcript, in seconds) and read rate:
+    double read_duration = (total_num_samples - polya_sample_end) / sr.sample_rate;
+    double read_rate = (sequenced_transcript.length() - suffix_clip) / read_duration;
+    // length of the poly(A) tail, in nucleotides:
+    double polya_length = duration * read_rate;
+
+
+    // print to TSV:
+    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\n",
+            read_name.c_str(), record->core.pos, polya_sample_start, polya_sample_end,
+            read_rate, polya_length);
+
+    //----- if `verbose >= 1`, print the samples (picoAmps) of the read,
+    // up to the first 1000 samples of transcript region:
+    if (opt::verbose >= 1) {
+        // copy 5'->3'-oriented samples from squiggleread and reverse back to 3'->5':
+        std::vector<float> samples(sr.samples);
+        std::reverse(samples.begin(), samples.end());
+        const PolyAHMM hmm;
+        for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
+            std::string tag;
+            if (i < adapter_sample_start) {
+                tag = "LEADER";
+            } else if (i < polya_sample_start) {
+                tag =  "ADAPTER";
+            } else if (i < polya_sample_end) {
+                tag = "POLYA";
+            } else {
+                tag = "TRANSCRIPT";
+            }
+
+            double s = samples[i];
+            double scaled_s = (s - sr.pore_model[0].shift) / sr.pore_model[0].scale;
+            double s_proba_0 = emit_log_proba(s, hmm, 0, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_1 = emit_log_proba(s, hmm, 1, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_2 = emit_log_proba(s, hmm, 2, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            double s_proba_3 = emit_log_proba(s, hmm, 3, sr.pore_model[0].scale,
+                                              sr.pore_model[0].shift, sr.pore_model[0].var);
+            fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
+                    read_name.substr(0,6).c_str(), i, s, scaled_s,
+                    s_proba_0, s_proba_1, s_proba_2, s_proba_3,
+                    tag.c_str());
+        }
+    }
+
+}
+
+//==================================================================================================
 
 double bhattacharyya_coefficient(const PoreModelStateParams& a,
                                  const PoreModelStateParams& b)
@@ -340,9 +616,13 @@ int polya_main(int argc, char** argv)
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
+    //auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
+    auto f = std::bind(estimate_polya_for_single_read_hmm, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
+
+    // free allocated values:
+    fai_destroy(fai);
 
     return EXIT_SUCCESS;
 }
