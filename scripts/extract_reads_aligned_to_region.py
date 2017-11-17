@@ -2,7 +2,7 @@
 '''
 ========================================================
 Extract info on reads that align to a given region 
-in reference.
+in draft genome assembly.
 ========================================================
 '''
 try:
