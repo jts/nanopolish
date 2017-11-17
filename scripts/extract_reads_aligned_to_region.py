@@ -30,7 +30,7 @@ def main():
 	parser.add_argument('-g', '--draft_ga', action="store", required=True, dest="draft_ga", help="Draft genome assembly (refer to draft.fa in Nanopolish README).")
 	parser.add_argument('-c', '--draft_ga_coords', action="store", required=True, dest="draft_ga_coords", help="Draft genome assembly coordinates wrapped in quotes ex. \"tig000001:10000-20000\".")
 	parser.add_argument('-r', '--readdb', action="store", required=True, dest="readdb", help="Nanopolish readdb index file.")
-	parser.add_argument('-o', '--output_prefix', action="store", required=False, default="output", dest="output_prefix", help="Output prefix")
+	parser.add_argument('-o', '--output_prefix', action="store", required=False, default="reads_subset", dest="output_prefix", help="Output prefix")
 	args = parser.parse_args()
 	
 	# Check to see if user used verbose option
