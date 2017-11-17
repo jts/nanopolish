@@ -8,7 +8,7 @@ Dependencies
 
 * `libhdf5 <https://support.hdfgroup.org/HDF5/release/obtain5.html>`_ is automatically downloaded and compiled when running make but this can be disabled with: HDF5=nofetch make. The nanopolish binary will link libhdf5.a statically.
 * `eigen <http://eigen.tuxfamily.org/index.php?title=Main_Page>`_ is also automatically downloaded and included when compiling with make.
-* `biopython <http://biopython.org/>`_ is required to run the helpers in scripts/.
+* `biopython <http://biopython.org/>`_ and `pysam <http://pysam.readthedocs.io/en/latest/installation.html>`_ are required to run the helpers in `scripts/`.
 * `htslib <https://github.com/samtools/htslib>`_ is included as a submodule and compiled automatically.
 * A compiler that supports C++11 is needed to build the sources. Development of the code is performed using gcc-4.8.
 
