@@ -17,7 +17,7 @@ Download example dataset
 You can download an example data set here: ::
 
     wget http://s3.climb.ac.uk/nanopolish_tutorial/ecoli_2kb_region.tar.gz
-	tar -xvf ecoli_2kb_region.tar.gz
+    tar -xvf ecoli_2kb_region.tar.gz
 
 Details:
 
@@ -34,11 +34,10 @@ You should find the following files:
 
 Overview
 -------------------------------
-.. image:: _images/nanopolish-workflow.png
-   :scale: 50 %
-   :alt: nanopolish-tutorial-workflow
 
-   Nanopolish recommended workflow for improving consensus sequence.
+.. figure:: _static/nanopolish-workflow.png
+  :scale: 80%
+  :alt: nanopolish-tutorial-workflow
 
 Data preprocessing
 ------------------------------------
