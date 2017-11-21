@@ -73,6 +73,9 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->base_model[0] = this->base_model[1] = NULL;
     this->fast5_path = read_db.get_signal_path(this->read_name);
+    if(this->fast5_path == "") {
+        return;
+    }
 
     #pragma omp critical(sr_load_fast5)
     {
