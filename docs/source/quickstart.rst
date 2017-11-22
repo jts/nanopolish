@@ -1,7 +1,7 @@
 .. _quickstart:
 
 Quickstart tutorial
-===================
+====================
 
 The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
 
@@ -10,7 +10,7 @@ Requirements for tutorial:
 * `Nanopolish <installation.html>`_
 * `samtool v1.2 <http://samtools.sourceforge.net/>`_
 * `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
-* `MUMmer <https://github.com/mummer4/mummer/blob/master/INSTALL.md>`_
+* `MUMmer <https://github.com/mummer4/mummer>`_
 
 Download example dataset
 ------------------------------------
