@@ -1,40 +1,60 @@
 .. _quickstart:
 
-Quickstart
-===================
+Quickstart tutorial
+====================
 
-The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help users get started.
+The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
 
-Requirements:
+Requirements for tutorial:
 
 * `Nanopolish <installation.html>`_
 * `samtool v1.2 <http://samtools.sourceforge.net/>`_
 * `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
+* `MUMmer <https://github.com/mummer4/mummer>`_
 
 Download example dataset
 ------------------------------------
 
-You can download an example data set here: ::
+You can download the example data we will use here: ::
 
-	[insert a way to download the example data set]
+    wget http://s3.climb.ac.uk/nanopolish_tutorial/ecoli_2kb_region.tar.gz
+    tar -xvf ecoli_2kb_region.tar.gz
+    cd ecoli_2kb_region
 
 Details:
 
 * Sample :	E. coli str. K-12 substr. MG1655
 * Instrument : MinION sequencing R9.4 chemistry
 * Basecaller : Albacore v2.0.1
+* Region: "tig00000001:200000-202000"
+
+This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly.
 
 You should find the following files:
 
 * ``reads.fasta`` : subset of basecalled reads
-* ``draft.fasta`` : draft genome assembly
-* ``draft.fasta.fai`` : draft genome assembly index
+* ``draft.fa`` : draft genome assembly
+* ``draft.fa.fai`` : draft genome assembly index
 * ``fast5_files/`` : a directory containing FAST5 files
+* ``ecoli_2kb_region.log`` : a log file for how the dataset was created with nanopolish helper script (``scripts/extract_reads_aligned_to_region.py``) 
+
+For the optional evaluation step you will need the reference genome: ::
+
+    wget -O ref.fa ftp://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
+
+Analysis workflow
+-------------------------------
+
+The pipeline below describes the recommended analysis workflow for larger datasets. In this tutorial, we will run through the basic steps of the pipeline for this smaller (2kb) dataset.
+
+.. figure:: _static/nanopolish-workflow.png
+  :scale: 90%
+  :alt: nanopolish-tutorial-workflow
 
 Data preprocessing
 ------------------------------------
 
-Nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index ``readdb`` file that links read ids with their signal-level data in the FAST5 files. ::
+Nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index ``readdb`` file that links read ids with their signal-level data in the FAST5 files: ::
 
     nanopolish index -d fast5_files/ reads.fasta
 
@@ -43,43 +63,51 @@ We get the following files: ``reads.fasta.fa.gz``, ``reads.fasta.fa.gz.fai``, ``
 Compute the draft genome assembly using CANU
 -----------------------------------------------
 
-To create a draft genome assembly we have used CANU. ::
+As computing the draft genome assembly takes a few hours we have included the pre-assembled data for you (``draft.fa``).
+We used the following parameters with `canu <canu.readthedocs.io>`_: ::
 
     canu \
-		-p ecoli -d outdir genomeSize=4.6m \
-		-nanopore-raw albacore-2.0.1-merged.fastq \
-		gnuplotTested = true \
-		useGrid = false
-
-As this takes a few hours, we have already pre-assembled the data: ``draft.fa``.
+        -p ecoli -d outdir genomeSize=4.6m \
+        -nanopore-raw albacore-2.0.1-merged.fastq \
+        gnuplotTested = true \
+        useGrid = false
 
 Computing a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-Now that we have the ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa`` we can improve the assembly with nanopolish. The first step is to index the draft genome using BWA INDEX: :: 
+Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started! 
 
-    # Index the draft genome
+First step, is to index the draft genome assembly. We can do that with the following command: ::
+
     bwa index draft.fa
 
-Then we align the original non-assembled reads (``reads.fasta``) to the draft assembly (``draft.fa``). ::
+Next, we align the original non-assembled reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort the alignment information: ::
 
-    # Align the basecalled reads to the draft sequence
-    bwa mem -x ont2d -t 8 draft.fa reads.fa | samtools sort -o reads.sorted.bam -T reads.tmp -
+    bwa mem -x ont2d -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
-Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We'll run this in parallel: ::
+    # check point: we can do a quick check to see if this step worked
+    # the bam file should not be empty...
+    samtools view reads.sorted.bam | head
 
-    python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
-    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fasta -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
+Then we run the consensus algorithm. For larger datasets we use ``nanopolish_makerange.py`` to split the draft genome assembly into 50kb segments, so that we can run the consensus algorithm on each segment in parallel. The output would be the polished segments in ``fasta`` format. 
+Since our dataset is only covering a 2kb region, we skip this step and use the following command: ::
 
-This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the ``-P`` and ``--threads`` options as appropriate for the machines you have available.
+    nanopolish variants --consensus polished.fa \
+        -w "tig00000001:200000-202000" \
+        -r reads.fasta \
+        -b reads.sorted.bam \
+        -g draft.fa
 
-After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly: ::
-
-    python nanopolish_merge.py polished.*.fa > polished_genome.fa
-
+We are left with our desired output: ``polished.fa``.
 
 Evaluate the assembly
 ---------------------------------
 
-To analyze how nanopolish performed improving the accuracy we use `MUMmer <https://github.com/mummer4/mummer>`_. MUMmer contains "dnadiff" a script that enables us to see a rreport on alignment statistics. With dnadiff we can compare the two different assemblies. The value that we are interested in is ``AvgIdentity`` which is a measurement of how similar the genome assemblies are to a reference genome.
+To analyze how nanopolish performed improving the accuracy we use `MUMmer <https://github.com/mummer4/mummer>`_. MUMmer contains "dnadiff" a script that enables us to see a report on alignment statistics. With dnadiff we can compare the two different assemblies. ::
+
+    mkdir analysis
+    MUMmer3.23/dnadiff --prefix analysis/draft.dnadiff ref.fa draft.fa
+    MUMmer3.23/dnadiff --prefix analysis/polished.dnadiff ref.fa polished.fa
+
+This generates ``draft.dnadiff.report`` and ``polished.dnadiff.report`` along with other files. The metric we are interested in is ``AvgIdentity`` under ``[ Alignments ] 1-to-1``, which is a measurement of how similar the genome assemblies are to the reference genome. If we see a higher value for the polished assembly than the draft, we can conclude that the nanopolish consensus algorithm worked successfully.
