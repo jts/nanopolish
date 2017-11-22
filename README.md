@@ -6,7 +6,7 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Dependencies
 
-[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) is automatically downloaded and compiled when running `make` but this can be disabled with: `HDF5=nofetch make`. The nanopolish binary will link libhdf5.a statically.
+[libhdf5](http://www.hdfgroup.org/HDF5/release/obtain5.html) is automatically downloaded and compiled when running `make` but this can be disabled with: `HDF5=nofetch make`. When using an externally-provided HDF5 it must be compiled with multi-threading support `--enable-threadsafe`.
 
 [eigen](http://eigen.tuxfamily.org) is also automatically downloaded and included when compiling with `make`.
 
