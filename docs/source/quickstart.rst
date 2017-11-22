@@ -81,7 +81,7 @@ First step, is to index the draft genome assembly. We can do that with the follo
 
     bwa index draft.fa
 
-We first align the original non-assembled reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort the alignment information: ::
+Next, we align the original non-assembled reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort the alignment information: ::
 
     bwa mem -x ont2d -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
@@ -90,7 +90,7 @@ We first align the original non-assembled reads (``reads.fasta``) to the draft a
     # the bam file should not be empty...
     samtools view reads.sorted.bam | head
 
-Then we run the consensus algorithm. For larger datasets we use ``nanopolish_makerange.py`` to split the draft genome assembly into 50kb segments, so that we can run the consensus algorithm on each segment in parallel. The output will be the polished segments in ``fasta`` format. 
+Then we run the consensus algorithm. For larger datasets we use ``nanopolish_makerange.py`` to split the draft genome assembly into 50kb segments, so that we can run the consensus algorithm on each segment in parallel. The output would be the polished segments in ``fasta`` format. 
 Since our dataset is only covering a 2kb region, we skip this step and use the following command: ::
 
     nanopolish variants --consensus polished.fa \
@@ -106,7 +106,7 @@ Evaluate the assembly
 
 To analyze how nanopolish performed improving the accuracy we use `MUMmer <https://github.com/mummer4/mummer>`_. MUMmer contains "dnadiff" a script that enables us to see a report on alignment statistics. With dnadiff we can compare the two different assemblies. ::
 
-	mkdir analysis
+    mkdir analysis
     MUMmer3.23/dnadiff --prefix analysis/draft.dnadiff ref.fa draft.fa
     MUMmer3.23/dnadiff --prefix analysis/polished.dnadiff ref.fa polished.fa
 
