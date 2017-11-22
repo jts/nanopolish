@@ -14,7 +14,7 @@ By default, nanopolish will download and compile all of its required dependencie
 * [eigen-3.2.5](http://eigen.tuxfamily.org)
 * [htslib-1.4](http://github.com/samtools/htslib) 
 
-Additionally the helper `scripts/` use [biopython](http://www.biopython.org) and [pysam](http://pysam.readthedocs.io/en/latest/installation.html).
+Additionally the helper `scripts` require [biopython](http://www.biopython.org) and [pysam](http://pysam.readthedocs.io/en/latest/installation.html).
 
 
 ## Installation instructions
