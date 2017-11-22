@@ -82,25 +82,51 @@ index
 
 Overview
 """""""""""""""""""""""
+Build an index mapping from basecalled reads to the signals measured by the sequencer
 
 Input
 """"""""
+    * path to directory of raw nanopore sequencing data in FAST5 format
+    * basecalled reads
 
 Output
 """"""""
+    * gzipped FASTA format of basecalled reads
+    * index files (fai, gzi, readdb)
 
-This will create: ::
-
-    albacore_output.fastq.fa.gz
-    albacore_output.fastq.fa.gz.fai
-    albacore_output.fastq.fa.gz.gzi
-    albacore_output.fastq.fa.gz.readdb
-
+Readdb file format
+""""""""""""""""""""
 Readdb file is a tab-separated file that contains two columns. One column represents read ids and the other column represents the corresponding path to FA
 ST5 file: ::
 
     read_id_1   /path/to/fast5/containing/reads_id_1/signals
     read_id_2   /path/to/fast5/containing/read_id_2/signals
+
+Usage example
+""""""""""""""
+::
+
+    nanopolish index [OPTIONS] -d nanopore_raw_file_directory reads.fastq
+
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
+
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - -d, --directory
+     - Y
+     - NA
+     - FAST5 or path to directory of FAST5 files containing ONT sequencing raw signal information.
+
+   * - -f, --fast5-fofn
+     - N
+     - NA
+     - file containing the paths to each fast5 for the run
+
 
 
 call-methylation
@@ -128,13 +154,82 @@ Usage example
 
    nanopolish call-[OPTIONS] <fast5|dir>
 
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
 
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - -r, --reads=FILE
+     - Y
+     - NA
+     - the 2D ONT reads are in fasta FILE
+
+   * - -b, --bam=FILE
+     - Y
+     - NA 
+     - the reads aligned to the genome assembly are in bam FILE
+
+   * - -g, --genome=FILE
+     - Y
+     - NA 
+     - the genome we are computing a consensus for is in FILE
+
+   * - -t, --threads=NUM
+     - N
+     - 1
+     - use NUM threads
+
+   * - --progress
+     - N
+     - NA
+     - print out a progress message
 
 variants
 --------------------
 
-variants --consensus
---------------------
+Overview
+"""""""""""""""""""""""
 
-eventalign
---------------------
+This module is used to call single nucleotide polymorphisms (SNPs) using a signal-level HMM.  
+
+Input
+"""""""""""""""""""""""
+
+    * basecalled reads
+    * alignment info
+    * genome assembly
+
+Output
+"""""""""""""""""""
+
+    * 
+
+Usage example
+"""""""""""""""""""""""
+
+::
+
+   nanopolish extract [OPTIONS] <fast5|dir>
+
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
+
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - --snps
+   * - N
+   * - NA
+   * - use flag to only call SNPs
+
+   * - --consensus=FILE
+   * - N
+   * - NA
+   * - run in consensus calling mode and write polished sequence to FILE
