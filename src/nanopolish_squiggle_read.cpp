@@ -31,6 +31,7 @@ int g_unparseable_reads = 0;
 int g_qc_fail_reads = 0;
 int g_failed_calibration_reads = 0;
 int g_failed_alignment_reads = 0;
+int g_bad_fast5_file = 0;
 
 const double MIN_CALIBRATION_VAR = 2.5;
 
@@ -79,25 +80,33 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
     #pragma omp critical(sr_load_fast5)
     {
-        this->f_p = new fast5::File(fast5_path);
-        assert(this->f_p->is_open());
+        // If for some reason the fast5s become unreadable in between indexing
+        // and executing the fast5::File constructor may throw. For example
+        // see issue #273. We catch here and skip the read in such cases
+        try {
+            this->f_p = new fast5::File(fast5_path);
+            assert(this->f_p->is_open());
 
-        // Try to detect whether this read is DNA or RNA
-        this->nucleotide_type = SRNT_DNA;
-        if(this->f_p->have_context_tags_params()) {
-            fast5::Context_Tags_Params context_tags = this->f_p->get_context_tags_params();
-            std::string experiment_type = context_tags["experiment_type"];
-            if(experiment_type == "rna") {
-                this->nucleotide_type = SRNT_RNA;
+            // Try to detect whether this read is DNA or RNA
+            this->nucleotide_type = SRNT_DNA;
+            if(this->f_p->have_context_tags_params()) {
+                fast5::Context_Tags_Params context_tags = this->f_p->get_context_tags_params();
+                std::string experiment_type = context_tags["experiment_type"];
+                if(experiment_type == "rna") {
+                    this->nucleotide_type = SRNT_RNA;
+                }
             }
-        }
 
-        bool is_event_read = is_extract_read_name(this->read_name);
-        if(this->nucleotide_type == SRNT_DNA && is_event_read) {
-            load_from_events(flags);
-        } else {
-            this->read_sequence = read_db.get_read_sequence(read_name);
-            load_from_raw(flags);
+            bool is_event_read = is_extract_read_name(this->read_name);
+            if(this->nucleotide_type == SRNT_DNA && is_event_read) {
+                load_from_events(flags);
+            } else {
+                this->read_sequence = read_db.get_read_sequence(read_name);
+                load_from_raw(flags);
+            }
+        } catch(hdf5_tools::Exception e) {
+            fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+            g_bad_fast5_file += 1;
         }
 
         delete this->f_p;

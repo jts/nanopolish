@@ -54,11 +54,17 @@ static std::ostream* os_p;
 void index_file(ReadDB& read_db, const std::string& fn)
 {
     PROFILE_FUNC("index_file")
-    fast5::File* fp = new fast5::File(fn);
-    if(fp->is_open()) {
-        fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
-        std::string read_id = params.read_id;
-        read_db.add_signal_path(read_id, fn);
+
+    fast5::File* fp = NULL;
+    try {
+        fp = new fast5::File(fn);
+        if(fp->is_open()) {
+            fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
+            std::string read_id = params.read_id;
+            read_db.add_signal_path(read_id, fn);
+        }
+    } catch(hdf5_tools::Exception e) {
+        fprintf(stderr, "skipping invalid fast5 file: %s\n", fn.c_str());
     }
     delete fp;
 } // process_file
@@ -78,7 +84,7 @@ void index_path(ReadDB& read_db, const std::string& path)
                 // recurse
                 index_path(read_db, full_fn);
                 read_db.print_stats();
-            } else if (full_fn.find(".fast5") != -1 && fast5::File::is_valid_file(full_fn)) {
+            } else if (full_fn.find(".fast5") != -1) {
                 index_file(read_db, full_fn);
             }
         }

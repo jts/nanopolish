@@ -62,6 +62,9 @@ int print_version(int, char **)
 
 int main(int argc, char** argv)
 {
+    // Turn off HDF's exception printing, which is generally unhelpful for users
+    hdf5::H5Eset_auto(0, NULL, NULL);
+
     int ret = 0;
     if(argc <= 1) {
         printf("error: no command provided\n");
@@ -76,15 +79,17 @@ int main(int argc, char** argv)
             ret = print_usage( argc - 1, argv + 1);
     }
 
+
     // Emit a warning when some reads had to be skipped
     extern int g_total_reads;
     extern int g_unparseable_reads;
     extern int g_qc_fail_reads;
     extern int g_failed_calibration_reads;
     extern int g_failed_alignment_reads;
+    extern int g_bad_fast5_file;
     if(g_total_reads > 0) {
-        fprintf(stderr, "[post-run summary] total reads: %d unparseable: %d qc fail: %d could not calibrate: %d no alignment: %d\n", 
-            g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads, g_failed_alignment_reads);
+        fprintf(stderr, "[post-run summary] total reads: %d, unparseable: %d, qc fail: %d, could not calibrate: %d, no alignment: %d, bad fast5: %d\n", 
+            g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads, g_failed_alignment_reads, g_bad_fast5_file);
     }
     return ret;
 }
