@@ -25,7 +25,7 @@ def merge_into_consensus(consensus, incoming, overlap_length):
 
     assert(len(aln_con) == len(aln_inc))
 
-    for i in xrange(0, len(aln_con) / 2):
+    for i in range(0, len(aln_con) // 2):
         a = aln_con[i]
         b = aln_inc[i]
 
