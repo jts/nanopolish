@@ -231,7 +231,7 @@ def main():
 	custom_print( "[+] Num reads in new FASTA: \t" + str(num_reads_fasta) )
 	custom_print( "[+] Num files in fast5_files/: \t" + str(num_fast5_files))
 	if not all( v == num_fast5_files for v in values ):
-		custom_print( "[!] WARNING: The number of reads in the new bam, new fasta, and num of fast5 files tarred are not equal..." )
+		print( "[!] WARNING: The number of reads in the new bam, new fasta, and num of fast5 files tarred are not equal..." )
 	else:
 		custom_print( "[ Validated output ] Number of reads in the new bam, new fasta, and num of fast5 files tarred are equal!" )
 
