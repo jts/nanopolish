@@ -111,5 +111,4 @@ To analyze how nanopolish performed improving the accuracy we use `MUMmer <https
 
 This generates ``draft.dnadiff.report`` and ``polished.dnadiff.report`` along with other files. The metric we are interested in is ``AvgIdentity`` under ``[ Alignments ] 1-to-1``, which is a measurement of how similar the genome assemblies are to the reference genome. We expect to see a higher value for the polished assembly than the draft ( ``99.90`` vs ``99.53`` ), concluding that the nanopolish consensus algorithm worked successfully.
 
-.. note::
-   The example dataset was PCR amplified causing a loss of methylation information. We recommend using the ``-q dam,dcm `` if you have data with methylation information to account for known bacterial methyltransferases.
+.. note:: The example dataset was PCR amplified causing a loss of methylation information. We recommend using the ``-q dam,dcm `` if you have data with methylation information to account for known bacterial methyltransferases.
