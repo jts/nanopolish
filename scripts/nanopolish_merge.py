@@ -25,7 +25,7 @@ def merge_into_consensus(consensus, incoming, overlap_length):
 
     assert(len(aln_con) == len(aln_inc))
 
-    for i in xrange(0, len(aln_con) / 2):
+    for i in range(0, len(aln_con) // 2):
         a = aln_con[i]
         b = aln_inc[i]
 
@@ -74,24 +74,29 @@ for fn in sys.argv[1:]:
             segments_by_name[contig] = dict()
 
         segment_start, segment_end = segment_range.split("-")
-
-        sys.stderr.write('Insert %s %s\n' % (contig, segment_start))
         segments_by_name[contig][int(segment_start)] = str(rec.seq)
 
 # Assemble while making sure every segment is present
 for contig_name in sorted(segments_by_name.keys()):
     assembly = ""
     prev_segment = None
+    all_segments_found = True
     for segment_start in sorted(segments_by_name[contig_name]):
 
-        sys.stderr.write('Merging %s %d\n' % (contig_name, segment_start))
         # Ensure the segments overlap
-        assert(prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start)
+        if not( prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start ):
+            sys.stderr.write("error: segment starting at %s:%d is missing\n" % (contig, prev_segment + SEGMENT_LENGTH + 40))
+            all_segments_found = False
 
         sequence = segments_by_name[contig_name][segment_start]
 
         assembly = merge_into_consensus(assembly, sequence, OVERLAP_LENGTH)
         prev_segment = segment_start
 
+
     # Write final assembly
-    print(">%s\n%s" % (contig_name, assembly))
+    if all_segments_found:
+        print(">%s\n%s" % (contig_name, assembly))
+    else:
+        sys.stderr.write("error: some segments are missing, could not merge contig %s\n" % (contig))
+        sys.exit(1)
