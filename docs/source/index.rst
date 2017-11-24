@@ -13,6 +13,7 @@ Nanopolish
 
    installation
    quickstart
+   quickstart_eventalign
    manual
    faq
 
