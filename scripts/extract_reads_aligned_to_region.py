@@ -39,7 +39,7 @@ def main():
 		verbose = True
 
 	# Infer readdb file from fasta/q file
-	readdb = args.fa_filename + ".fa.gz.readdb"
+	readdb = args.fa_filename + ".index.readdb"
 
 	custom_print( "===================================================" )
 	custom_print( "Extract reads that align to given region" )
