@@ -213,7 +213,7 @@ Usage example
 
 ::
 
-   nanopolish extract [OPTIONS] <fast5|dir>
+   nanopolish variants [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa
 
 .. list-table::
    :widths: 20 10 20 50
@@ -233,3 +233,135 @@ Usage example
    * - N
    * - NA
    * - run in consensus calling mode and write polished sequence to FILE
+
+   * - --fix-homopolymers
+   * - N
+   * - NA
+   * - use flag to run the experimental homopolymer caller
+
+   * - --faster
+   * - N
+   * - NA
+   * - minimize compute time while slightly reducing consensus accuracy
+
+   * - -w, --window=STR
+   * - N
+   * - NA
+   * - find variants in window STR (format: <chromsome_name>:<start>-<end>)
+
+   * - -r, --reads=FILE
+   * - Y
+   * - NA
+   * - the 2D ONT reads are in fasta FILE
+
+   * - -b, --bam=FILE
+   * - Y
+   * - NA
+   * - the reads aligned to the reference genome are in bam FILE 
+
+   * - -e, --event-bam=FILE
+   * - Y
+   * - NA
+   * - the events aligned to the reference genome are in bam FILE
+
+   * - -g, --genome=FILE
+   * - Y
+   * - NA
+   * - the reference genome is in FILE
+
+   * - -o, --outfile=FILE
+   * - N
+   * - stdout
+   * - write result to FILE
+
+   * - -t, --threads=NUM
+   * - N
+   * - 1
+   * - use NUM threads
+
+   * - -m, --min-candidate-frequency=F
+   * - N
+   * - 0.2
+   * - extract candidate variants from the aligned reads when the variant frequency is at least F
+
+   * - -d, --min-candidate-depth=D
+   * - N
+   * - 20
+   * - extract candidate variants from the aligned reads when the depth is at least D
+
+   * - -x, --max-haplotypes=N
+   * - N
+   * - 1000
+   * - consider at most N haplotypes combinations
+
+   * - --max-rounds=N
+   * - N
+   * - 50
+   * - perform N rounds of consensus sequence improvement
+
+   * - -c, --candidates=VCF
+   * - N
+   * - NA
+   * - read variants candidates from VCF, rather than discovering them from aligned reads
+
+   * - -a, --alternative-basecalls-bam=FILE
+   * - N
+   * - NA
+   * - if an alternative basecaller was used that does not output event annotations then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam
+
+   * - --calculate-all-support
+   * - N
+   * - NA
+   * - when making a call, also calculate the support of the 3 other possible bases
+
+   * - --models-fofn=FILE
+   * - N
+   * - NA
+   * - read alternatives k-mer models from FILE
+
+
+Event align
+--------------------
+
+Overview
+"""""""""""""""""""""""
+
+Align nanopore events to reference k-mers
+
+Input
+"""""""""""""""""""""""
+
+    * basecalled reads
+    * alignment information
+    * assembled genome
+
+Output
+"""""""""""""""""""""""
+
+    * tab-separated file containing per-read log-likelihood ratio
+s
+
+Usage example
+"""""""""""""""""""""""
+
+::
+
+   nanopolish eventalign [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa
+
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
+
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - --sam
+     - N
+     - NA
+     - use to write output in SAM format
+
+   * - -w, --window=STR
+   * - -r, --reads=FILE
+   *
