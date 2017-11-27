@@ -1,9 +1,9 @@
 .. _quickstart:
 
-Quickstart - event align
-==================================
+Quickstart - how to align reads to events
+=============================================
 
-The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with the nanopolish module: eventalign.
+The eventalign module in nanopolish is used to align reads to events or "squiggles". The output of this module can be used to call variants with nanopolish. Here we provide a step-by-step tutorial to help you get started with the nanopolish module: eventalign.
 
 Requirements for tutorial:
 
@@ -14,8 +14,7 @@ Requirements for tutorial:
 Download example dataset
 ------------------------------------
 
-
-You can download the example data we will use here: ::
+You can download the example dataset we will use here: ::
 
     wget http://s3.climb.ac.uk/nanopolish_tutorial/ecoli_2kb_region.tar.gz
     tar -xvf ecoli_2kb_region.tar.gz
@@ -27,6 +26,7 @@ Details:
 * Instrument : MinION sequencing R9.4 chemistry
 * Basecaller : Albacore v2.0.1
 * Region: "tig00000001:200000-202000"
+* Note: Ligation-mediated PCR amplification performed
 
 This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly.
 
@@ -42,9 +42,8 @@ You will need the reference genome: ::
 
     wget -O ref.fa ftp://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
 
-
 Analysis workflow
-------------------
+--------------------
 
 
 Align the reads with bwa
@@ -66,4 +65,9 @@ Now we align the events to the squiggle data: ::
         --genome ref.fa \
         --sam
 
-This will generate a sam file.
+This will generate a sam file. We can convert it to bam format with the following: ::
+
+    samtools sort -O bam \
+        -o reads-events.sorted.bam \
+        -T reads.tmp  \
+        reads 

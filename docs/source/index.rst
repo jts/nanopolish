@@ -12,10 +12,8 @@ Nanopolish
    :hidden:
 
    installation
-   quickstart
-   quickstart_eventalign
+   quickstart_consensus
    manual
-   faq
 
 Publications
 ====================================

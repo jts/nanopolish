@@ -6,11 +6,15 @@ Installation
 Dependencies
 -----------------------
 
-* `libhdf5 <https://support.hdfgroup.org/HDF5/release/obtain5.html>`_ is automatically downloaded and compiled when running make but this can be disabled with: HDF5=nofetch make. The nanopolish binary will link libhdf5.a statically.
-* `eigen <http://eigen.tuxfamily.org/index.php?title=Main_Page>`_ is also automatically downloaded and included when compiling with make.
-* `biopython <http://biopython.org/>`_ and `pysam <http://pysam.readthedocs.io/en/latest/installation.html>`_ are required to run the helpers in `scripts/`.
-* `htslib <https://github.com/samtools/htslib>`_ is included as a submodule and compiled automatically.
-* A compiler that supports C++11 is needed to build the sources. Development of the code is performed using gcc-4.8.
+A compiler that supports C++11 is needed to build nanopolish. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
+
+By default, nanopolish will download and compile all of its required dependencies. Some users however may want to use system-wide versions of the libraries. To turn off the automatic installation of dependencies set `HDF5=noinstall`, `EIGEN=noinstall` or `HTS=noinstall` parameters when running `make` as appropriate. The current versions and compile options for the dependencies are:
+
+* `libhdf5-1.8.14 <http://www.hdfgroup.org/HDF5/release/obtain5.html>`_ compiled with multi-threading support `--enable-threadsafe`
+* `eigen-3.2.5 <http://eigen.tuxfamily.org/>`_ 
+* `htslib-1.4 <http://github.com/samtools/htslib>`_
+
+Additionally the helper `scripts` require `biopython <http://biopython.org/>`_ and `pysam <http://pysam.readthedocs.io/en/latest/installation.html>`_.
 
 Installing the latest code from github (recommended)
 ------------------------------------------------------
