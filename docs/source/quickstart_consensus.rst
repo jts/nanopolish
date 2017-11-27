@@ -3,11 +3,11 @@
 Quickstart - how to polish the consensus assembly
 ===================================================
 
-The original purpose for Nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
+The original purpose for nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
 
 Requirements for tutorial:
 
-* `Nanopolish <installation.html>`_
+* `nanopolish <installation.html>`_
 * `samtool v1.2 <http://samtools.sourceforge.net/>`_
 * `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
 * `MUMmer <https://github.com/mummer4/mummer>`_
@@ -55,7 +55,7 @@ The pipeline below describes the recommended analysis workflow for larger datase
 Data preprocessing
 ------------------------------------
 
-Nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index ``readdb`` file that links read ids with their signal-level data in the FAST5 files: ::
+nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index ``readdb`` file that links read ids with their signal-level data in the FAST5 files: ::
 
     nanopolish index -d fast5_files/ reads.fasta
 

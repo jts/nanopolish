@@ -13,7 +13,7 @@ Modules available: ::
 
 |
 
-Extract
+extract
 --------------------
 
 Overview
@@ -38,7 +38,7 @@ Usage example
 
    nanopolish extract [OPTIONS] <fast5|dir>
 
-.. list-table:: Command line arguments
+.. list-table:: 
    :widths: 20 10 20 50
    :header-rows: 1
 
@@ -320,7 +320,7 @@ Usage example
      - read alternatives k-mer models from FILE
 
 
-Event align
+event align
 --------------------
 
 Overview
