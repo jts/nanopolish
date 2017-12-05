@@ -31,7 +31,7 @@ Usage example
         --bam reads.sorted.bam \
         --reads albacore-merged.fastq \
         --genome draft.fa \
-		--window "tig00000001:200000-250200" \
+        --window "tig00000001:200000-250200" \
         --output_prefix ecoli --verbose
 
 .. list-table:: 
@@ -43,32 +43,32 @@ Usage example
      - Default value
      - Description
 
-   * - -b, --bam
+   * - ``-b``, ``--bam``
      - Y
      - NA
      - Sorted bam file created by aligning reads to the draft genome.
 
-   * - -g, --genome
+   * - ``-g``, ``--genome``
      - Y
      - NA
      - Draft genome assembly
 
-   * - -r, --reads
+   * - ``-r``, ``--reads``
      - Y
      - NA
      - Fasta, fastq, fasta.gz, or fastq.gz file containing basecalled reads.
 
-   * - -w, --window
+   * - ``-w``, ``--window``
      - Y
      - NA
      - Draft genome assembly coordinate string ex. "contig:start-end". It is essential that you wrap the coordinates in quotation marks (\").
 
-   * - -o, --output_prefix
+   * - ``-o``, ``--output_prefix``
      - N
      - reads_subset
      - Prefix of output tar.gz and log file.
 
-   * - -v, --verbose
+   * - ``-v``, ``--verbose``
      - N
      - False
      - Use for verbose output with info on progress.
@@ -86,23 +86,22 @@ Script overview
     - uses samfile.fetch(region=draft_ga_coords) to get all reads aligned to region
     - if reads map to multiple sections within draft ga it is not added again
 4. Parses through the input readdb file to find the FAST5 files associated with each region that aligned to region
-   - stores in dictionary region_fast5_files; key = read_id, value = path/to/fast5/file
-   - path to fast5 file is currently dependent on the user's directory structure
+    - stores in dictionary region_fast5_files; key = read_id, value = path/to/fast5/file
+    - path to fast5 file is currently dependent on the user's directory structure
 5. Make a BAM and BAI file for this specific region
-   - creates a new BAM file called region.bam
-   - with pysam.view we rewrite the new bam with reads that aligned to the region...
-   - with pysam.index we create a new BAI file
+    - creates a new BAM file called ``region.bam``
+    - with pysam.view we rewrite the new bam with reads that aligned to the region...
+    - with pysam.index we create a new BAI file
 6. Now to make a new FASTA file with this subset of reads
-   - the new fasta file is called region.fasta
-   - this first checks what type of sequences file is given { fasta, fastq, fasta.gz, fastq.gz }
-   - then handles based on type of seq file using SeqIO.parse
-   - then writes to a new fasta file
+    - the new fasta file is called ``region.fasta``
+    - this first checks what type of sequences file is given { ``fasta``, ``fastq``, ``fasta.gz``, ``fastq.gz`` }
+    - then handles based on type of seq file using SeqIO.parse
+    - then writes to a new fasta file
 7. Let's get to tarring
-   - creates a tar.gz file with the output prefix
-   - saves the fast5 files in directory output_prefix/fast5_files/
+    - creates a ``tar.gz`` file with the output prefix
+    - saves the fast5 files in directory ``output_prefix/fast5_files/``
 8. Adds the new fasta, new bam, and new bai file with the subset of reads
 9. Adds the draft genome asssembly and associated fai index file
-10. Performs a check
-   - the number of reads in the new BAM file, new FASTA file, and the number of files in the fast5_files directory should be equal
-11. Outputs a log file
-FIN!
+10. Performs a check:
+    - the number of reads in the new BAM file, new FASTA file, and the number of files in the fast5_files directory should be equal
+11. Outputs a ``tar.gz`` and ``log`` file. FIN!
