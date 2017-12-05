@@ -10,7 +10,7 @@ A compiler that supports C++11 is needed to build nanopolish. Development of the
 
 By default, nanopolish will download and compile all of its required dependencies. Some users however may want to use system-wide versions of the libraries. To turn off the automatic installation of dependencies set `HDF5=noinstall`, `EIGEN=noinstall` or `HTS=noinstall` parameters when running `make` as appropriate. The current versions and compile options for the dependencies are:
 
-* `libhdf5-1.8.14 <http://www.hdfgroup.org/HDF5/release/obtain5.html>`_ compiled with multi-threading support `--enable-threadsafe`
+* `libhdf5-1.8.14 <http://www.hdfgroup.org/HDF5/release/obtain5.html>`_ compiled with multi-threading support ``--enable-threadsafe``
 * `eigen-3.2.5 <http://eigen.tuxfamily.org/>`_ 
 * `htslib-1.4 <http://github.com/samtools/htslib>`_
 

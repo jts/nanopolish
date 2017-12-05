@@ -20,7 +20,7 @@ Workflow
 
 #. Narrow down a problematic region by running ``nanopolish variants --consensus [...]`` and changing the ``-w`` parameter.
 #. Run the ``scripts/extract_reads_aligned_to_region.py``.
-#. Send the ``.tar.gz`` to us by hosting either a dropbox or google drive.
+#. Send the resulting ``tar.gz`` file to us by hosting either a dropbox or google drive.
 
 Usage example
 """""""""""""""""""""""
