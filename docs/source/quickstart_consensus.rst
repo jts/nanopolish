@@ -5,11 +5,11 @@ Quickstart - how to polish the consensus assembly
 
 The original purpose for nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
 
-Requirements for tutorial:
+**Requirements**:
 
-* `nanopolish <installation.html>`_
-* `samtool v1.2 <http://samtools.sourceforge.net/>`_
-* `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
+* `nanopolish v0.8.4 <installation.html>`_
+* `samtools v1.2 <http://samtools.sourceforge.net/>`_
+* `bwa v0.7.12 <https://github.com/lh3/bwa>`_
 * `MUMmer <https://github.com/mummer4/mummer>`_
 
 Download example dataset
@@ -21,7 +21,7 @@ You can download the example dataset we will use here: ::
     tar -xvf ecoli_2kb_region.tar.gz
     cd ecoli_2kb_region
 
-Details:
+**Details**:
 
 * Sample :	E. coli str. K-12 substr. MG1655
 * Instrument : MinION sequencing R9.4 chemistry
@@ -71,7 +71,7 @@ We used the following parameters with `canu <canu.readthedocs.io>`_: ::
         -p ecoli -d outdir genomeSize=4.6m \
         -nanopore-raw albacore-2.0.1-merged.fastq \
 
-Computing a new consensus sequence for a draft assembly
+Compute a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
 Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started! 
@@ -85,7 +85,8 @@ Next, we align the original reads (``reads.fasta``) to the draft assembly (``dra
     bwa mem -x ont2d -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
-    # check point: we can do a quick check to see if this step worked. The bam file should not be empty.
+**Checkpoint**: we can do a quick check to see if this step worked. The bam file should not be empty. ::
+
     samtools view reads.sorted.bam | head
 
 Then we run the consensus algorithm. For larger datasets we use ``nanopolish_makerange.py`` to split the draft genome assembly into 50kb segments, so that we can run the consensus algorithm on each segment in parallel. The output would be the polished segments in ``fasta`` format. 
