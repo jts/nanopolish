@@ -27,7 +27,7 @@ void profile_hmm_forward_initialize_r9(FloatMatrix& fm)
 
 float profile_hmm_score_r9(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    const uint32_t k = data.read->pore_model[data.strand].k;
+    const uint32_t k = data.pore_model->k;
     uint32_t n_kmers = sequence.length() - k + 1;
 
     uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
@@ -66,7 +66,7 @@ void profile_hmm_viterbi_initialize_r9(FloatMatrix& m)
 std::vector<HMMAlignmentState> profile_hmm_align_r9(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
     std::vector<HMMAlignmentState> alignment;
-    const uint32_t k = data.read->pore_model[data.strand].k;
+    const uint32_t k = data.pore_model->k;
 
     uint32_t n_kmers = sequence.length() - k + 1;
     uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states

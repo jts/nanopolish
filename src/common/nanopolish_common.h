@@ -18,7 +18,7 @@
 #include "logsum.h"
 
 #define PACKAGE_NAME "nanopolish"
-#define PACKAGE_VERSION "0.8.3"
+#define PACKAGE_VERSION "0.8.4"
 #define PACKAGE_BUGREPORT "https://github.com/jts/nanopolish/issues"
 
 //
@@ -43,15 +43,17 @@ const uint8_t NUM_STRANDS = 2;
 // Data structures
 //
 
+// Forward declare
 class SquiggleRead;
+class PoreModel;
 
 // This struct is used as input into the HMM
-// It tracks where the event stream starts/stops
-// for the partial consensus sequence under consideration
+// It tracks where the event stream starts/stops for the candidate sequence
+// that is being evaluated.
 struct HMMInputData
 {
     SquiggleRead* read;
-    uint32_t anchor_index;
+    const PoreModel* pore_model;
     uint32_t event_start_idx;
     uint32_t event_stop_idx;
     uint8_t strand;
@@ -73,7 +75,7 @@ struct HMMAlignmentState
 // The parameters of a gaussian distribution
 struct GaussianParameters
 {
-    GaussianParameters() : mean(0.0f), stdv(1.0f) { log_stdv = log(stdv); }
+    GaussianParameters() : mean(0.0f), stdv(1.0f), log_stdv(0.0) { }
     GaussianParameters(float m, float s) : mean(m), stdv(s) { log_stdv = log(stdv); }
 
     float mean;

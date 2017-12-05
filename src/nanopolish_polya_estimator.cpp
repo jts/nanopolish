@@ -153,7 +153,7 @@ void parse_polya_options(int argc, char** argv)
     }
 }
 
-//==================================================================================================
+
 // Basic HMM struct with fixed transition/emission parameters;
 // all of the below is relative to a **scaled & shifted** set of events.
 struct PolyAHMM {
@@ -167,11 +167,16 @@ struct PolyAHMM {
                                           {-INFINITY, -0.0101f, -4.6052f, -INFINITY},
                                           {-INFINITY, -INFINITY, -0.0101f, -4.6052f},
                                           {-INFINITY, -INFINITY, -INFINITY,  0.0000f} };
-    // default emission parameters, from eyeballing a bunch of plots:
-    GaussianParameters l_emission = {100.0f, 2.5f};  // leader;
-    GaussianParameters a_emission = {75.0f, 3.0f};   // adapter;
-    GaussianParameters p_emission = {99.0f, 2.5f};   // polya;
-    GaussianParameters t_emission = {93.0f, 5.0f};  // transcript;
+    // default emission parameters, from empirical MLE:
+    GaussianParameters l_emission = {110.276f, 2.815f};
+    GaussianParameters a_emission = {79.898f, 3.0883f};
+    GaussianParameters p_emission = {111.352f, 2.085f}; 
+    GaussianParameters t_emission = {99.016f, 4.339f};
+    // for reference: hand-tuned emission parameters for older kmer model:
+    // LEADER {100.0f, 2.5f};
+    // ADAPTER {75.0f, 3.0f};
+    // POLYA {99.0f, 2.5f};
+    // TRANSCRIPT {93.0f, 5.0f};
 };
 
 // Get the log-probability of seeing `x` given we're in state `state` of an HMM
@@ -211,9 +216,9 @@ struct ViterbiOutputs {
 ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
 {
     // get scale/shift/var values, number of events:
-    float scale = static_cast<float>(sr.pore_model[0].scale);
-    float shift = static_cast<float>(sr.pore_model[0].shift);
-    float var = static_cast<float>(sr.pore_model[0].var);
+    float scale = static_cast<float>(sr.scalings[0].scale);
+    float shift = static_cast<float>(sr.scalings[0].shift);
+    float var = static_cast<float>(sr.scalings[0].var);
     size_t num_events = sr.events[0].size();
 
     // create/initialize viterbi scores and backpointers:
@@ -315,8 +320,70 @@ RegionIxs get_region_indices(const std::vector<uint8_t> regions)
         // P-end undetected if all events after A are all P's; set final events to P,T:
         ixs.polya = regions.size() - 2;
     }
-    
+
     return ixs;
+}
+
+// helper fn that checks a segmented read for an incomplete poly(A) region; returns
+// `1` if the poly(A) region is incomplete and 0 if it passes.
+// an INCOMPLETE poly(A) call is a situation where a spuriously high/low signal lasting
+// approx. 100 samples throws off the HMM and prevents it from seeing the rest of the
+// region.
+uint8_t qc_incomplete_polya(const SquiggleRead& sr, double polya_start, double polya_end)
+{
+    // qc parameters, found empirically:
+    double multiplier = 2.5;
+    double polya_stdv_cutoff = 4.0;
+    size_t clip_samples = 50;
+    size_t skip_samples = 100;
+    size_t downstream_block_size = 100;
+
+    // get number of samples; we need this to compensate for the 5'->3' ordering of `sr.samples`
+    size_t num_samples = sr.samples.size();
+
+    // start and stop indices for called poly(A) region, taking clipping and reversal into account:
+    size_t polya_start_ix = num_samples - (size_t)polya_end + clip_samples;
+    size_t polya_stop_ix = num_samples - (size_t)polya_start - clip_samples;
+
+    // compute STDV of inner region of poly(A) samples:
+    double polya_mean_acc = 0.0;
+    for (size_t ix = polya_start_ix; ix < polya_stop_ix; ++ix) {
+	polya_mean_acc += sr.samples[ix];
+    }
+    double polya_mean = polya_mean_acc / (polya_stop_ix - polya_start_ix - 2*clip_samples);
+    double polya_stdv_acc = 0.0;
+    for (size_t ix = polya_start_ix; ix < polya_stop_ix; ++ix) {
+	polya_stdv_acc += (sr.samples[ix] - polya_mean) * (sr.samples[ix] - polya_mean);
+    }
+    double polya_stdv = sqrt(polya_stdv_acc / (polya_stop_ix - polya_start_ix - 2*clip_samples));
+
+    // start and stop indices for downstream region, taking 5'->3' orientation into account:
+    size_t downstream_start_ix = num_samples - (size_t)polya_end - skip_samples - downstream_block_size;
+    size_t downstream_stop_ix = num_samples -(size_t)polya_end - skip_samples;
+
+    // compute STDV of downstream region:
+    double downstream_mean_acc = 0.0;
+    for (size_t ix = downstream_start_ix; ix < downstream_stop_ix; ++ix) {
+	downstream_mean_acc += sr.samples[ix];
+    }
+    double downstream_mean = downstream_mean_acc / downstream_block_size;
+    double downstream_stdv_acc = 0.0;
+    for (size_t ix = downstream_start_ix; ix < downstream_stop_ix; ++ix) {
+	downstream_stdv_acc += (sr.samples[ix] - downstream_mean) * (sr.samples[ix] - downstream_mean);
+    }
+    double downstream_stdv = sqrt(downstream_stdv_acc / downstream_block_size);
+
+    // if the downstream region has a STDV that's more stable than expected, we have an incomplete poly(A):
+    uint8_t qc_incomplete_flag;
+    if (downstream_stdv < multiplier * polya_stdv && polya_stdv < polya_stdv_cutoff) {
+        qc_incomplete_flag = 1;
+    } else {
+        qc_incomplete_flag = 0;
+    }
+
+    //std::cout << "POLYA STDV: " << polya_stdv << "| DOWNSTREAM STDV: " << downstream_stdv << std::endl;
+
+    return qc_incomplete_flag;
 }
 
 // Write Poly(A) region segmentation data to TSV
@@ -363,7 +430,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     ViterbiOutputs viterbi_outs = segment_read_into_regions(sr);
     RegionIxs region_indices = get_region_indices(viterbi_outs.labels);
 
-    //----- print TSV line:
+    //----- compute output values:
     // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
     // (n.b.: everything in 5'->3' order due to inversion in SquiggleRead constructor, but our
     // `region_indices` struct has everything in 3'->5' order)
@@ -382,19 +449,39 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     // length of the poly(A) tail, in nucleotides:
     double polya_length = duration * read_rate;
 
+    //----- QC: check for NOREGION and INCOMPLETE poly(A) calls (with NOREGION taking precedence):
+    double num_leader_samples = adapter_sample_start;
+    double num_adapter_samples = polya_sample_start - adapter_sample_start;
+    double num_polya_samples = polya_sample_end - polya_sample_start;
+    std::string qc_tag;
+    if (num_leader_samples < 200.0 || num_adapter_samples < 200.0 || num_polya_samples < 200.0) {
+        qc_tag = "NOREGION";
+    } else if (qc_incomplete_polya(sr,polya_sample_start,polya_sample_end) == 1) {
+        qc_tag = "INCOMPLETE";
+    } else {
+        qc_tag = "PASS";
+    }
 
-    // print to TSV:
-    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\n",
+    //----- print to TSV:
+    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\n",
             read_name.c_str(), record->core.pos, polya_sample_start, polya_sample_end,
-            read_rate, polya_length);
+            read_rate, polya_length, qc_tag.c_str());
 
-    //----- if `verbose >= 1`, print the samples (picoAmps) of the read,
+    //----- if `verbose == 1`, print out the full read segmentation:
+    if (opt::verbose == 1) {
+        fprintf(out_fp, "polya-segmentation\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\n",
+                read_name.c_str(), record->core.pos,
+                adapter_sample_start, polya_sample_start, polya_sample_end,
+                read_rate, polya_length);
+    }
+    //----- if `verbose >= 2`, print the samples (picoAmps) of the read,
     // up to the first 1000 samples of transcript region:
-    if (opt::verbose >= 1) {
+    if (opt::verbose >= 2) {
         // copy 5'->3'-oriented samples from squiggleread and reverse back to 3'->5':
         std::vector<float> samples(sr.samples);
         std::reverse(samples.begin(), samples.end());
         const PolyAHMM hmm;
+	std::string ref_name(hdr->target_name[record->core.tid]);
         for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
             std::string tag;
             if (i < adapter_sample_start) {
@@ -408,197 +495,22 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
             }
 
             double s = samples[i];
-            double scaled_s = (s - sr.pore_model[0].shift) / sr.pore_model[0].scale;
-            double s_proba_0 = emit_log_proba(s, hmm, 0, sr.pore_model[0].scale,
-                                              sr.pore_model[0].shift, sr.pore_model[0].var);
-            double s_proba_1 = emit_log_proba(s, hmm, 1, sr.pore_model[0].scale,
-                                              sr.pore_model[0].shift, sr.pore_model[0].var);
-            double s_proba_2 = emit_log_proba(s, hmm, 2, sr.pore_model[0].scale,
-                                              sr.pore_model[0].shift, sr.pore_model[0].var);
-            double s_proba_3 = emit_log_proba(s, hmm, 3, sr.pore_model[0].scale,
-                                              sr.pore_model[0].shift, sr.pore_model[0].var);
-            fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
-                    read_name.substr(0,6).c_str(), i, s, scaled_s,
+            double scaled_s = (s - sr.scalings[0].shift) / sr.scalings[0].scale;
+            double s_proba_0 = emit_log_proba(s, hmm, 0, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            double s_proba_1 = emit_log_proba(s, hmm, 1, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            double s_proba_2 = emit_log_proba(s, hmm, 2, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            double s_proba_3 = emit_log_proba(s, hmm, 3, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            fprintf(out_fp, "polya-samples\t%s\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
+                    read_name.substr(0,6).c_str(), ref_name.c_str(), i, s, scaled_s,
                     s_proba_0, s_proba_1, s_proba_2, s_proba_3,
                     tag.c_str());
         }
     }
 
-}
-
-//==================================================================================================
-
-double bhattacharyya_coefficient(const PoreModelStateParams& a,
-                                 const PoreModelStateParams& b)
-{
-    double var_a = pow(a.level_stdv, 2.0);
-    double var_b = pow(b.level_stdv, 2.0);
-    double term_s = ( (var_a / var_b) + (var_b / var_a) + 2);
-    double term_m = (pow(a.level_mean - b.level_mean, 2.0) / (var_a + var_b));
-    return 0.25 * log( 0.25 * term_s) + 0.25 * term_m;
-}
-
-// Partition the input sequence into segments that have similar current levels based on the pore model
-// The similarity between current levels for adjacent k-mers is determined by the Bhattacharyya coefficient
-// with a tunable mininum distance
-std::vector<size_t> partition_sequence(const std::string& sequence,
-                                       double min_distance,
-                                       const PoreModel& pore_model)
-{
-    size_t k = pore_model.k;
-    size_t num_kmers = sequence.length() - k + 1;
-    std::vector<size_t> partitions(num_kmers);
-    size_t curr_partition = 0;
-    partitions[0] = curr_partition;
-    for(size_t i = 1; i < num_kmers; ++i) {
-        uint32_t prev_rank = pore_model.pmalphabet->kmer_rank(sequence.c_str() + i - 1, k);
-        uint32_t curr_rank = pore_model.pmalphabet->kmer_rank(sequence.c_str() + i, k);
-        const PoreModelStateParams& prev_params = pore_model.states[prev_rank];
-        const PoreModelStateParams& curr_params = pore_model.states[curr_rank];
-        double bc = bhattacharyya_coefficient(curr_params, prev_params);
-        /*
-           fprintf(stderr, "a: (%.1lf, %.2lf) b: (%.1lf, %.2lf) bc: %.3lf\n", curr_params.level_mean, curr_params.level_stdv,
-           prev_params.level_mean, prev_params.level_stdv,
-           bc);
-         */
-        if(bc < min_distance) {
-            partitions[i] = curr_partition;
-        } else {
-            partitions[i] = ++curr_partition;
-        }
-    }
-    return partitions;
-}
-
-//
-void estimate_polya_for_single_read(const ReadDB& read_db,
-                                    const faidx_t* fai,
-                                    FILE* out_fp,
-                                    const bam_hdr_t* hdr,
-                                    const bam1_t* record,
-                                    size_t read_idx,
-                                    int region_start,
-                                    int region_end)
-{
-    // Load a squiggle read for the mapped read
-    std::string read_name = bam_get_qname(record);
-
-    // Get the length of the suffix of the read that has been softclipped
-    size_t n_cigar = record->core.n_cigar;
-    uint32_t prefix_cigar = bam_get_cigar(record)[0];
-    uint32_t suffix_cigar = bam_get_cigar(record)[n_cigar - 1];
-
-    uint32_t prefix_clip = bam_cigar_oplen(prefix_cigar);
-    uint32_t suffix_clip = bam_cigar_oplen(suffix_cigar);
-
-    // load read
-    SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
-
-    if(opt::verbose > 2) {
-        fprintf(stderr, "[polya] read: %s length: %zu prefix clip: %zu suffix clip: %zu\n", read_name.c_str(), sr.read_sequence.length(), prefix_clip, suffix_clip);
-    }
-
-    std::string sequenced_transcript = sr.read_sequence;
-
-    // QC - skip reads with long skips at the end or where most of the transcript was not aligned
-    if(suffix_clip > 200 || (double)(prefix_clip + suffix_clip) / sequenced_transcript.length() > 0.2) {
-        return;
-    }
-
-    // Align events to transcript
-    std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, sequenced_transcript);
-
-    // Partition the read into blocks with a similar current value
-    std::vector<size_t> partitions = partition_sequence(sequenced_transcript, 0.5, sr.pore_model[0]);
-    size_t num_partitions = partitions.back() + 1;
-
-    std::vector<double> start_time_by_partition(num_partitions, INFINITY);
-    std::vector<double> events_by_partition(num_partitions, 0);
-    std::vector<double> sum_z_by_partition(num_partitions, 0);
-
-    size_t k = sr.pore_model[0].k;
-
-    for(size_t i = 0; i < alignment.size(); ++i) {
-        size_t event_idx = alignment[i].read_pos;
-        size_t kmer_idx = alignment[i].ref_pos;
-        size_t partition = partitions[kmer_idx];
-        double time = sr.events[0][event_idx].start_time;
-        if(time < start_time_by_partition[partition]) {
-            start_time_by_partition[partition] = time;
-        }
-
-        std::string kmer = sequenced_transcript.substr(kmer_idx, k);
-        size_t polya_rank = sr.pore_model[0].pmalphabet->kmer_rank("AAAAAA", k);
-        double z = z_score(sr, polya_rank, event_idx, 0);
-        sum_z_by_partition[partition] += z;
-        events_by_partition[partition] += 1;
-        if(opt::verbose > 2) {
-            fprintf(stderr, "[polya] %zu %zu %zu %s partition: %zu time: %.0lf z_score: %.2lf\n",
-                i, kmer_idx, event_idx, kmer.c_str(), partition, start_time_by_partition[partition] * sr.sample_rate, z);
-        }
-    }
-
-    // Select the partition that indicates the poly-A tail using the following conditions:
-    // 1) it is within 10bp of the end of the transcripts alignment
-    // 2) it is not the last partition in the read (which is part of the non-polyA adapter)
-    // 3) at least 500 samples in length
-    // 4) it has the minimum average absolute z-score across all partitions meeting 1-3
-    double min_duration = 500;
-    size_t min_distance_to_alignment_end = 10;
-
-    size_t first_valid_base = sequenced_transcript.size() - suffix_clip - min_distance_to_alignment_end;
-    size_t first_valid_partition = partitions[first_valid_base];
-    size_t best_partition = 0;
-    double best_z = INFINITY;
-    for(size_t i = first_valid_partition; i < num_partitions - 1; ++i) {
-        double duration_in_samples = (start_time_by_partition[i - 1] - start_time_by_partition[i]) * sr.sample_rate;
-        double avg_z = sum_z_by_partition[i] / events_by_partition[i];
-
-        if(opt::verbose > 1) {
-            fprintf(stderr, "checking partition %zu duration: %.0f z: %.2f\n", i, duration_in_samples, avg_z);
-        }
-        if(duration_in_samples > min_duration && abs(avg_z) < best_z) {
-            best_z = abs(avg_z);
-            best_partition = i;
-        }
-    }
-
-    if(best_partition == 0) {
-        fprintf(stderr, "Could not detect poly-A tail for %s\n", read_name.c_str());
-        return;
-    }
-
-    // write inferred poly-A position in samples
-    double sample_start = start_time_by_partition[best_partition] * sr.sample_rate;
-    double sample_end = start_time_by_partition[best_partition - 1] * sr.sample_rate;
-    double duration = start_time_by_partition[best_partition - 1] - start_time_by_partition[best_partition];
-
-    // get the length of transcript part of the read, in seconds
-    double read_duration = start_time_by_partition[0] - start_time_by_partition[best_partition - 1];
-    double read_rate = (sequenced_transcript.length() - suffix_clip) / read_duration;
-
-    double polya_length = duration * read_rate;
-    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\n", read_name.c_str(), record->core.pos, best_partition, sample_start, sample_end, read_rate, polya_length);
-
-    if(opt::verbose >= 1) {
-        // reverse samples
-        const std::vector<float> samples = sr.samples;
-
-        for(size_t i = 0; i < 2 * sample_end && samples.size(); ++i) {
-            std::string tag;
-            if(i < sample_start) {
-                tag = "PRETAIL";
-            } else if(i < sample_end) {
-                tag = "POLYA";
-            } else {
-                tag = "POSTTAIL";
-            }
-
-            double s = samples[i];
-            double scaled_s = (s - sr.pore_model[0].shift) / sr.pore_model[0].scale;
-            fprintf(out_fp, "polya-samples\t%s\t%zu\t%f\t%f\t%s\n", read_name.substr(0,6).c_str(), i, s, scaled_s, tag.c_str());
-        }
-    }
 }
 
 //
@@ -616,7 +528,6 @@ int polya_main(int argc, char** argv)
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    //auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
     auto f = std::bind(estimate_polya_for_single_read_hmm, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);

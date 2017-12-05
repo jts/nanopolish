@@ -31,9 +31,13 @@
 #include "nanopolish_read_db.h"
 #include "nanopolish_hmm_input_sequence.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_bam_processor.h"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+
+//
+using namespace std::placeholders;
 
 //
 // Getopt
@@ -63,7 +67,6 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
-"      --stdv                           enable stdv modelling\n"
 "      --samples                        write the raw samples for the event to the tsv output\n"
 "      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -89,7 +92,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_STDV, OPT_MODELS_FOFN, OPT_SAMPLES };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_MODELS_FOFN, OPT_SAMPLES };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -101,7 +104,6 @@ static const struct option longopts[] = {
     { "summary",          required_argument, NULL, OPT_SUMMARY },
     { "models-fofn",      required_argument, NULL, OPT_MODELS_FOFN },
     { "print-read-names", no_argument,       NULL, 'n' },
-    { "stdv",             no_argument,       NULL, OPT_STDV },
     { "samples",          no_argument,       NULL, OPT_SAMPLES },
     { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",              no_argument,       NULL, OPT_SAM },
@@ -143,6 +145,16 @@ struct EventalignSummary
     int alignment_edit_distance;
     int reference_span;
 };
+
+//
+const PoreModel* EventAlignmentParameters::get_model() const 
+{
+    if(this->alphabet == "") {
+        return this->sr->get_base_model(this->strand_idx);
+    } else {
+        return this->sr->get_model(this->strand_idx, this->alphabet);
+    }
+}
 
 // Modify the aligned_pairs vector to ensure the highest read position
 // does not exceed max_kmer
@@ -370,7 +382,9 @@ void emit_event_alignment_tsv(FILE* fp,
                               const EventAlignmentParameters& params,
                               const std::vector<EventAlignment>& alignments)
 {
-    uint32_t k = sr.pore_model[strand_idx].k;
+    assert(params.alphabet == "");
+    const PoreModel* pore_model = params.get_model();
+    uint32_t k = pore_model->k;
     for(size_t i = 0; i < alignments.size(); ++i) {
 
         const EventAlignment& ea = alignments[i];
@@ -396,21 +410,21 @@ void emit_event_alignment_tsv(FILE* fp,
         }
 
         // event information
-        float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
+        float event_mean = sr.get_unscaled_level(ea.event_idx, ea.strand_idx);
         float event_stdv = sr.get_stdv(ea.event_idx, ea.strand_idx);
         float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-        uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
+        uint32_t rank = pore_model->pmalphabet->kmer_rank(ea.model_kmer.c_str(), k);
         float model_mean = 0.0;
         float model_stdv = 0.0;
 
         if(opt::scale_events) {
 
             // scale reads to the model
-            event_mean = (event_mean - sr.pore_model[ea.strand_idx].shift) / sr.pore_model[ea.strand_idx].scale;
+            event_mean = sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx);
 
             // unscaled model parameters
             if(ea.hmm_state != 'B') {
-                PoreModelStateParams model = sr.pore_model[ea.strand_idx].get_parameters(rank);
+                PoreModelStateParams model = pore_model->get_parameters(rank);
                 model_mean = model.level_mean;
                 model_stdv = model.level_stdv;
             }
@@ -418,13 +432,13 @@ void emit_event_alignment_tsv(FILE* fp,
 
             // scale model to the reads
             if(ea.hmm_state != 'B') {
-                GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
+                GaussianParameters model = sr.get_scaled_gaussian_from_pore_model_state(*pore_model, ea.strand_idx, rank);
                 model_mean = model.mean;
                 model_stdv = model.stdv;
             }
         }
 
-        float standard_level = (event_mean - model_mean) / (sqrt(sr.pore_model[ea.strand_idx].var) * model_stdv);
+        float standard_level = (event_mean - model_mean) / (sqrt(sr.scalings[ea.strand_idx].var) * model_stdv);
         fprintf(fp, "%d\t%.2lf\t%.3lf\t%.5lf\t", ea.event_idx, event_mean, event_stdv, event_duration);
         fprintf(fp, "%s\t%.2lf\t%.2lf\t%.2lf", ea.model_kmer.c_str(),
                                                model_mean,
@@ -452,7 +466,9 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 {
     EventalignSummary summary;
 
-    uint32_t k = sr.pore_model[strand_idx].k;
+    assert(params.alphabet == "");
+    const PoreModel* pore_model = params.get_model();
+    uint32_t k = pore_model->k;
 
     size_t prev_ref_pos = std::string::npos;
 
@@ -479,11 +495,8 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
         summary.sum_duration += sr.get_duration(ea.event_idx, ea.strand_idx);
 
         if(ea.hmm_state == 'M') {
-            
-            uint32_t rank = params.alphabet->kmer_rank(ea.model_kmer.c_str(), k);
-            GaussianParameters model = sr.pore_model[ea.strand_idx].get_scaled_parameters(rank);
-            float event_mean = sr.get_drift_corrected_level(ea.event_idx, ea.strand_idx);
-            double z = (event_mean - model.mean) / model.stdv;
+            uint32_t rank = pore_model->pmalphabet->kmer_rank(ea.model_kmer.c_str(), k);
+            double z = z_score(sr, *pore_model, rank, ea.event_idx, ea.strand_idx);
             summary.sum_z_score += z;
         }
 
@@ -499,11 +512,11 @@ EventalignSummary summarize_alignment(const SquiggleRead& sr,
 }
 
 // Realign the read in event space
-void realign_read(EventalignWriter writer,
-                  const ReadDB& read_db, 
-                  const faidx_t* fai, 
-                  const bam_hdr_t* hdr, 
-                  const bam1_t* record, 
+void realign_read(const ReadDB& read_db,
+                  const faidx_t* fai,
+                  const EventalignWriter& writer,
+                  const bam_hdr_t* hdr,
+                  const bam1_t* record,
                   size_t read_idx,
                   int region_start,
                   int region_end)
@@ -515,12 +528,12 @@ void realign_read(EventalignWriter writer,
     SquiggleRead sr(read_name, read_db, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
 
     if(opt::verbose > 1) {
-        fprintf(stderr, "Realigning %s [%zu %zu]\n", 
+        fprintf(stderr, "Realigning %s [%zu %zu]\n",
                 read_name.c_str(), sr.events[0].size(), sr.events[1].size());
     }
-    
+
     for(int strand_idx = 0; strand_idx < 2; ++strand_idx) {
-        
+
         // Do not align this strand if it was not sequenced
         if(!sr.has_events_for_strand(strand_idx)) {
             continue;
@@ -554,12 +567,13 @@ void realign_read(EventalignWriter writer,
             }
 
             if(writer.summary_fp != NULL && summary.num_events > 0) {
-
-                PoreModel& pore_model = sr.pore_model[strand_idx];
+                assert(params.alphabet == "");
+                const PoreModel* pore_model = params.get_model();
+                SquiggleScalings& scalings = sr.scalings[strand_idx];
                 fprintf(writer.summary_fp, "%zu\t%s\t%s\t", read_idx, read_name.c_str(), sr.fast5_path.c_str());
-                fprintf(writer.summary_fp, "%s\t%s\t", pore_model.name.c_str(), strand_idx == 0 ? "template" : "complement");
+                fprintf(writer.summary_fp, "%s\t%s\t", pore_model->name.c_str(), strand_idx == 0 ? "template" : "complement");
                 fprintf(writer.summary_fp, "%d\t%d\t%d\t%d\t", summary.num_events, summary.num_steps, summary.num_skips, summary.num_stays);
-                fprintf(writer.summary_fp, "%.2lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\n", summary.sum_duration, pore_model.shift, pore_model.scale, pore_model.drift, pore_model.var);
+                fprintf(writer.summary_fp, "%.2lf\t%.3lf\t%.3lf\t%.3lf\t%.3lf\n", summary.sum_duration, scalings.shift, scalings.scale, scalings.drift, scalings.var);
             }
         }
     }
@@ -574,6 +588,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     assert(params.record != NULL);
     assert(params.strand_idx < NUM_STRANDS);
     assert( (params.region_start == -1 && params.region_end == -1) || (params.region_start <= params.region_end));
+    const PoreModel* pore_model = params.get_model();
 
     std::vector<EventAlignment> alignment_output;
 
@@ -585,12 +600,12 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
                                                   bam_endpos(params.record), &fetched_len);
 
     // k from read pore model
-    const uint32_t k = params.sr->pore_model[params.strand_idx].k;
+    const uint32_t k = params.sr->get_model_k(params.strand_idx);
 
     // If the reference sequence contains ambiguity codes
     // switch them to the lexicographically lowest base
-    ref_seq = params.alphabet->disambiguate(ref_seq);
-    std::string rc_ref_seq = params.alphabet->reverse_complement(ref_seq);
+    ref_seq = pore_model->pmalphabet->disambiguate(ref_seq);
+    std::string rc_ref_seq = pore_model->pmalphabet->reverse_complement(ref_seq);
 
     if(ref_offset == 0)
         return alignment_output;
@@ -622,8 +637,8 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         int read_kidx_end = aligned_pairs.back().read_pos;
         
         if(do_base_rc) {
-            read_kidx_start = params.sr->flip_k_strand(read_kidx_start);
-            read_kidx_end = params.sr->flip_k_strand(read_kidx_end);
+            read_kidx_start = params.sr->flip_k_strand(read_kidx_start, k);
+            read_kidx_end = params.sr->flip_k_strand(read_kidx_end, k);
         }
         
         assert(read_kidx_start >= 0);
@@ -647,7 +662,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
 
             if(do_base_rc) {
-                curr_end_read = params.sr->flip_k_strand(curr_end_read);
+                curr_end_read = params.sr->flip_k_strand(curr_end_read, k);
             }
             assert(curr_end_read >= 0);
 
@@ -658,7 +673,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             std::string rc_subseq = rc_ref_seq.substr(ref_seq.length() - s - l, l);
             assert(fwd_subseq.length() == rc_subseq.length());
 
-            HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, params.alphabet);
+            HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, pore_model->pmalphabet);
             
             // Require a minimum amount of sequence to align to
             if(hmm_sequence.length() < 2 * k)
@@ -667,7 +682,9 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             // Set up HMM input
             HMMInputData input;
             input.read = params.sr;
-            input.anchor_index = 0; // not used here
+            input.pore_model = pore_model;
+            assert(input.pore_model != NULL);
+
             input.event_start_idx = curr_start_event;
             input.event_stop_idx = params.sr->get_closest_event_to(curr_end_read, params.strand_idx);
             //printf("[SEGMENT_START] read: %s event start: %zu event end: %zu\n", params.sr->read_name.c_str(), input.event_start_idx, input.event_stop_idx);
@@ -785,7 +802,6 @@ void parse_eventalign_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'n': opt::print_read_names = true; break;
             case 'f': opt::full_output = true; break;
-            case OPT_STDV: model_stdv() = true; break;
             case OPT_SAMPLES: opt::write_samples = true; break;
             case 'v': opt::verbose++; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
@@ -850,41 +866,9 @@ int eventalign_main(int argc, char** argv)
 
     ReadDB read_db;
     read_db.load(opt::reads_file);
-    
-    // Open the BAM and iterate over reads
 
-    // load bam file
-    htsFile* bam_fh = sam_open(opt::bam_file.c_str(), "r");
-    assert(bam_fh != NULL);
-
-    // load bam index file
-    std::string index_filename = opt::bam_file + ".bai";
-    hts_idx_t* bam_idx = bam_index_load(index_filename.c_str());
-    if(bam_idx == NULL) {
-        bam_index_error_exit(opt::bam_file);
-    }
-
-    // read the bam header
-    bam_hdr_t* hdr = sam_hdr_read(bam_fh);
-    
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
-
-    hts_itr_t* itr;
-
-    // If processing a region of the genome, only emit events aligned to this window
-    int clip_start = -1;
-    int clip_end = -1;
-
-    if(opt::region.empty()) {
-        // TODO: is this valid?
-        itr = sam_itr_queryi(bam_idx, HTS_IDX_START, 0, 0);
-    } else {
-
-        fprintf(stderr, "Region: %s\n", opt::region.c_str());
-        itr = sam_itr_querys(bam_idx, hdr, opt::region.c_str());
-        hts_parse_reg(opt::region.c_str(), &clip_start, &clip_end);
-    }
 
 #ifndef H5_HAVE_THREADSAFE
     if(opt::num_threads > 1) {
@@ -897,72 +881,30 @@ int eventalign_main(int argc, char** argv)
     // Initialize output
     EventalignWriter writer = { NULL, NULL, NULL };
 
-    if(opt::output_sam) {
-        writer.sam_fp = hts_open("-", "w");
-        emit_sam_header(writer.sam_fp, hdr);
-    } else {
-        writer.tsv_fp = stdout;
-        emit_tsv_header(writer.tsv_fp);
-    }
-
     if(!opt::summary_file.empty()) {
         writer.summary_fp = fopen(opt::summary_file.c_str(), "w");
         // header
         fprintf(writer.summary_fp, "read_index\tread_name\tfast5_path\tmodel_name\tstrand\tnum_events\t");
         fprintf(writer.summary_fp, "num_steps\tnum_skips\tnum_stays\ttotal_duration\tshift\tscale\tdrift\tvar\n");
     }
-    
-    // Initialize iteration
-    std::vector<bam1_t*> records(opt::batch_size, NULL);
-    for(size_t i = 0; i < records.size(); ++i) {
-        records[i] = bam_init1();
+
+    // the BamProcessor framework calls the input function with the
+    // bam record, read index, etc passed as parameters
+    // bind the other parameters the worker function needs here
+    auto f = std::bind(realign_read, std::ref(read_db), std::ref(fai), std::ref(writer), _1, _2, _3, _4, _5);
+    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+
+    // Copy the bam header to std
+    if(opt::output_sam) {
+        writer.sam_fp = hts_open("-", "w");
+        emit_sam_header(writer.sam_fp, processor.get_bam_header());
+    } else {
+        writer.tsv_fp = stdout;
+        emit_tsv_header(writer.tsv_fp);
     }
 
-    int result;
-    size_t num_reads_realigned = 0;
-    size_t num_records_buffered = 0;
-    Progress progress("[eventalign]");
-
-    do {
-        assert(num_records_buffered < records.size());
-        
-        // read a record into the next slot in the buffer
-        result = sam_itr_next(bam_fh, itr, records[num_records_buffered]);
-        
-        num_records_buffered += result >= 0;
-        // realign if we've hit the max buffer size or reached the end of file
-        if(num_records_buffered == records.size() || result < 0) {
-            #pragma omp parallel for            
-            for(size_t i = 0; i < num_records_buffered; ++i) {
-                bam1_t* record = records[i];
-                size_t read_idx = num_reads_realigned + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
-                    realign_read(writer, read_db, fai, hdr, record, read_idx, clip_start, clip_end);
-                }
-            }
-
-            num_reads_realigned += num_records_buffered;
-            num_records_buffered = 0;
-        }
-
-        if(opt::progress) {
-            fprintf(stderr, "Realigned %zu reads in %.1lfs\r", num_reads_realigned, progress.get_elapsed_seconds());
-        }
-    } while(result >= 0);
- 
-    assert(num_records_buffered == 0);
-
-    // cleanup records
-    for(size_t i = 0; i < records.size(); ++i) {
-        bam_destroy1(records[i]);
-    }
-
-    // cleanup
-    sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
-    fai_destroy(fai);
-    sam_close(bam_fh);
-    hts_idx_destroy(bam_idx);
+    // run
+    processor.parallel_run(f);
 
     if(writer.sam_fp != NULL) {
         hts_close(writer.sam_fp);
@@ -971,5 +913,7 @@ int eventalign_main(int argc, char** argv)
     if(writer.summary_fp != NULL) {
         fclose(writer.summary_fp);
     }
+
+    fai_destroy(fai);
     return EXIT_SUCCESS;
 }

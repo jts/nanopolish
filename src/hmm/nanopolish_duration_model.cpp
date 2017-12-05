@@ -18,7 +18,7 @@ std::vector<double> DurationModel::generate_aligned_durations(const std::string&
                                                               const HMMInputData& data,
                                                               const uint32_t alignment_flags)
 {
-    size_t k = data.read->pore_model[0].k;
+    size_t k = data.pore_model->k;
     size_t num_kmers = sequence.size() - k + 1;
     // initialize the vector of durations
     std::vector<double> duration_by_kmer_position(num_kmers, 0.0);

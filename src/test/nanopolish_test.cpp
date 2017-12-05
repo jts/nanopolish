@@ -18,6 +18,7 @@
 #include "nanopolish_alphabet.h"
 #include "nanopolish_emissions.h"
 #include "nanopolish_profile_hmm.h"
+#include "nanopolish_pore_model_set.h"
 #include "nanopolish_variant_db.h"
 #include "training_core.hpp"
 #include "invgauss.hpp"
@@ -273,6 +274,56 @@ TEST_CASE( "math", "[math]") {
     REQUIRE( log_normal_pdf(2.25, params) == Approx(log(normal_pdf(2.25, params))) );
 }
 
+TEST_CASE( "scalings", "[scalings]") {
+
+    SquiggleRead test_read;
+    size_t strand = 0;
+    test_read.base_model[0] = PoreModelSet::get_model("r9.4_450bps", "nucleotide", "template", 6);
+    const PoreModel* pore_model = test_read.base_model[0];
+    test_read.scalings[strand].set4(10.0f, 1.2, 0.5, 1.3);
+    
+    assert(pore_model != NULL);
+
+    // Generate events from the pore model
+    const SquiggleScalings& scalings = test_read.scalings[strand];
+    size_t n_events = 100;
+    double duration = 10.0 / 4000.0f;
+    size_t rank = 100;
+    std::default_random_engine generator;
+
+    std::vector<float> lp_truth;
+    std::vector<float> z_truth;
+
+    for(size_t i = 0; i < n_events; ++i) {
+
+        PoreModelStateParams params = pore_model->states[rank];
+        SquiggleEvent event;
+        event.stdv = 1.0f; //unused
+        event.start_time = (i * duration);
+        event.duration = duration;
+        
+        // Generate level from N(a + bu + ct, (do)^2)
+        float g_mean = scalings.shift + scalings.scale * params.level_mean + event.start_time * scalings.drift;
+        float g_stdv = scalings.var * params.level_stdv;
+
+        std::normal_distribution<float> distribution(g_mean, g_stdv);
+        event.mean = distribution(generator);
+        test_read.events[0].push_back(event);
+
+        GaussianParameters gp = { g_mean, g_stdv };
+        lp_truth.push_back(log_normal_pdf(event.mean, gp));
+        z_truth.push_back((event.mean - gp.mean) / gp.stdv);
+    }
+
+    // Calculate log-probability of observing an event by scaling the event
+    for(size_t i = 0; i < n_events; ++i) {
+        float lp = log_probability_match_r9(test_read, *pore_model, rank, i, strand);
+        float z = z_score(test_read, *pore_model, rank, i, strand);
+        REQUIRE( lp == Approx(lp_truth[i]) );
+        REQUIRE( z == Approx(z_truth[i]) );
+    }
+}
+
 size_t factorial(size_t n)
 {
     if(n == 0 || n == 1) {
@@ -361,7 +412,8 @@ TEST_CASE( "hmm", "[hmm]") {
     input[0].event_stride = 1;
     input[0].rc = false;
     input[0].strand = 0;
-    
+    input[0].pore_model = sr.get_model(0, "nucleotide");
+
     // complement strand
     input[1].read = &sr;
     input[1].event_start_idx = 6788;
@@ -369,7 +421,8 @@ TEST_CASE( "hmm", "[hmm]") {
     input[1].event_stride = -1;
     input[1].rc = true;
     input[1].strand = 1;
-
+    input[1].pore_model = sr.get_model(1, "nucleotide");
+    
     // expected output
     std::string expected_alignment[2];
     expected_alignment[0] = 
@@ -515,77 +568,5 @@ TEST_CASE("training", "[training]")
         CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
         CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
         CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
-    }
-
-    // next, we test inverse gaussian training for the case where the gaussians are distinct
-    SECTION("inverse_gaussian_1")
-    {
-        float delta_um_rate = .05;
-        float delta_level_mean = 10.0;
-        float delta_sd_mean = 0.3;
-        ParamMixture gen_mixture;
-        gen_mixture.log_weights.push_back(std::log(um_rate + delta_um_rate));
-        gen_mixture.log_weights.push_back(std::log(1 - (um_rate + delta_um_rate)));
-        gen_mixture.params.push_back(um_params);
-        gen_mixture.params.push_back(um_params);
-        gen_mixture.params[1].level_mean += delta_level_mean;
-        gen_mixture.params[1].sd_mean += delta_sd_mean;
-        gen_mixture.params[1].update_sd_stdv();
-        gen_mixture.params[1].update_logs();
-        auto data = generate_training_data(gen_mixture, n_data);
-        ParamMixture in_mixture;
-        in_mixture.log_weights.push_back(std::log(um_rate));
-        in_mixture.log_weights.push_back(std::log(1 - um_rate));
-        in_mixture.params.push_back(um_params);
-        in_mixture.params.push_back(um_params);
-        // encourage the second component to capture points not well fit by the first
-        in_mixture.params[1].level_stdv += 1.0;
-        in_mixture.params[1].update_logs();
-        auto mid_mixture = train_gaussian_mixture(data, in_mixture);
-        CHECK( std::exp(mid_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
-        CHECK( mid_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
-        CHECK( mid_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
-        auto out_mixture = train_invgaussian_mixture(data, mid_mixture);
-        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
-        CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[0].sd_mean == Approx( um_params.sd_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[1].sd_mean == Approx( um_params.sd_mean + delta_sd_mean ).epsilon(.05) );
-    }
-
-    // next, we test inverse gaussian training for the case where the gaussians are very similar
-    SECTION("inverse_gaussian_2")
-    {
-        float delta_um_rate = .05;
-        float delta_level_mean = 2.0;
-        float delta_sd_mean = 0.3;
-        ParamMixture gen_mixture;
-        gen_mixture.log_weights.push_back(std::log(um_rate + delta_um_rate));
-        gen_mixture.log_weights.push_back(std::log(1 - (um_rate + delta_um_rate)));
-        gen_mixture.params.push_back(um_params);
-        gen_mixture.params.push_back(um_params);
-        gen_mixture.params[1].level_mean += delta_level_mean;
-        gen_mixture.params[1].sd_mean += delta_sd_mean;
-        gen_mixture.params[1].update_sd_stdv();
-        gen_mixture.params[1].update_logs();
-        auto data = generate_training_data(gen_mixture, n_data);
-        ParamMixture in_mixture;
-        in_mixture.log_weights.push_back(std::log(um_rate));
-        in_mixture.log_weights.push_back(std::log(1 - um_rate));
-        in_mixture.params.push_back(um_params);
-        in_mixture.params.push_back(um_params);
-        // encourage the second component to capture points not well fit by the first
-        in_mixture.params[1].level_stdv += 1.0;
-        in_mixture.params[1].update_logs();
-        auto mid_mixture = train_gaussian_mixture(data, in_mixture);
-        CHECK( std::exp(mid_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
-        CHECK( mid_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
-        CHECK( mid_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
-        auto out_mixture = train_invgaussian_mixture(data, mid_mixture);
-        CHECK( std::exp(out_mixture.log_weights[0]) == Approx( um_rate + delta_um_rate ).epsilon(.05) );
-        CHECK( out_mixture.params[0].level_mean == Approx( um_params.level_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[1].level_mean == Approx( um_params.level_mean + delta_level_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[0].sd_mean == Approx( um_params.sd_mean ).epsilon(.05) );
-        CHECK( out_mixture.params[1].sd_mean == Approx( um_params.sd_mean + delta_sd_mean ).epsilon(.05) );
     }
 }

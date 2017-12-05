@@ -84,6 +84,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -p, --ploidy=NUM                     the ploidy level of the sequenced genome\n"
+"  -q  --methylation-aware=STR          turn on methylation aware polishing and test motifs given in STR (example: -q dcm,dam)\n"
 "      --genotype=FILE                  call genotypes for the variants in the vcf FILE\n"
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
@@ -118,7 +119,6 @@ namespace opt
     static int snps_only = 0;
     static int show_progress = 0;
     static int num_threads = 1;
-    static int calibrate = 0;
     static int consensus_mode = 0;
     static int fix_homopolymers = 0;
     static int genotype_only = 0;
@@ -130,9 +130,10 @@ namespace opt
     static int screen_score_threshold = 100;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
+    static std::vector<std::string> methylation_types;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -167,6 +168,7 @@ static const struct option longopts[] = {
     { "candidates",                required_argument, NULL, 'c' },
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
+    { "methylation-aware",         required_argument, NULL, 'q' },
     { "effort",                    required_argument, NULL, OPT_EFFORT },
     { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
@@ -281,7 +283,15 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
     // Add all positively-scoring single-base changes into the candidate set
     for(size_t i = region_start; i < region_end; ++i) {
+        
+        int calling_start = i - opt::screen_flanking_sequence;
+        int calling_end = i + 1 + opt::screen_flanking_sequence;
 
+        if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
+            continue;
+        }
+        
+        std::vector<Variant> tmp_variants;
         for(size_t j = 0; j < 4; ++j) {
             // Substitutions
             Variant v;
@@ -291,14 +301,14 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             v.alt_seq = "ACGT"[j];
 
             if(v.ref_seq != v.alt_seq) {
-                out_variants.push_back(v);
+                tmp_variants.push_back(v);
             }
 
             // Insertions
             v.alt_seq = v.ref_seq + "ACGT"[j];
             // ignore insertions of the type "A" -> "AA" as these are redundant
             if(v.alt_seq[1] != v.ref_seq[0]) {
-                out_variants.push_back(v);
+                tmp_variants.push_back(v);
             }
         }
 
@@ -311,8 +321,28 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
         // ignore deletions of the type "AA" -> "A" as these are redundant
         if(del.alt_seq[0] != del.ref_seq[1]) {
-            out_variants.push_back(del);
+            tmp_variants.push_back(del);
         }
+
+        // Screen variants by score
+        // We do this internally here as it is much faster to get the event sequences
+        // for the entire window for all variants at this position once, rather than
+        // for each variant individually
+        std::vector<HMMInputData> event_sequences =
+            alignments.get_event_subsequences(contig, calling_start, calling_end);
+
+        Haplotype test_haplotype(contig,
+                                 calling_start,
+                                 alignments.get_reference_substring(contig, calling_start, calling_end));
+
+        for(const Variant& v : tmp_variants) {
+            Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold, opt::methylation_types);
+            scored_variant.info = "";
+            if(scored_variant.quality > 0) {
+                out_variants.push_back(scored_variant);
+            }
+        }
+
     }
     return out_variants;
 }
@@ -344,7 +374,8 @@ std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
         std::vector<HMMInputData> event_sequences =
             alignments.get_event_subsequences(contig, calling_start, calling_end);
 
-        Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold);
+        Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold, opt::methylation_types);
+
         scored_variant.info = "";
         if(scored_variant.quality > 0) {
             out_variants.push_back(scored_variant);
@@ -425,10 +456,11 @@ void print_debug_stats(const std::string& contig,
         double called_score = profile_hmm_score(called_haplotype.get_sequence(), data, alignment_flags);
         double base_avg = base_score / num_events;
         double called_avg = called_score / num_events;
-        const PoreModel& pm = data.read->pore_model[data.strand];
+        const SquiggleScalings& scalings = data.read->scalings[data.strand];
+        const PoreModel& pm = *data.pore_model;
         fprintf(stats_out, "%s\t%d\t%d\t", data.read->read_name.c_str(), data.strand, data.rc);
         fprintf(stats_out, "%.2lf\t%.2lf\t\t%.2lf\t%.2lf\t%.2lf\t", base_score, called_score, base_avg, called_avg, called_score - base_score);
-        fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", pm.shift, pm.scale, pm.drift, pm.var);
+        fprintf(stats_out, "%.2lf\t%.2lf\t%.4lf\t%.2lf\n", scalings.shift, scalings.scale, scalings.drift, scalings.var);
 
         // print paired alignment
         std::vector<HMMAlignmentState> base_align = profile_hmm_align(base_haplotype.get_sequence(), data, alignment_flags);
@@ -464,8 +496,8 @@ void print_debug_stats(const std::string& contig,
             PoreModelStateParams base_model = pm.states[pm.pmalphabet->kmer_rank(base_kmer.c_str(), k)];
             PoreModelStateParams called_model = pm.states[pm.pmalphabet->kmer_rank(called_kmer.c_str(), k)];
 
-            float base_standard_level = (event_mean - base_model.level_mean) / (sqrt(pm.var) * base_model.level_stdv);
-            float called_standard_level = (event_mean - called_model.level_mean) / (sqrt(pm.var) * called_model.level_stdv);
+            float base_standard_level = (event_mean - base_model.level_mean) / (sqrt(scalings.var) * base_model.level_stdv);
+            float called_standard_level = (event_mean - called_model.level_mean) / (sqrt(scalings.var) * called_model.level_stdv);
             base_standard_level = base_align[bi].state == 'M' ? base_standard_level : INFINITY;
             called_standard_level = called_align[ci].state == 'M' ? called_standard_level : INFINITY;
 
@@ -572,7 +604,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         std::vector<double> event_likelihoods(MAX_HP_LENGTH + 1, 0.0f);
 
         for(size_t j = 0; j < event_sequences.size(); ++j) {
-            assert(kmer_size == event_sequences[j].read->pore_model[0].k);
+            assert(kmer_size == event_sequences[j].read->get_model_k(0));
             assert(kmer_size == 6);
 
             const SquiggleRead* read = event_sequences[j].read;
@@ -623,7 +655,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
                 double num_kmers = variant_offset_end - variant_offset_start;
                 double log_gamma = sum_duration > MIN_DURATION ?  DurationModel::log_gamma_sum(sum_duration, params, num_kmers) : 0.0f;
-                if(read->pore_model[strand].metadata.is_r9()) {
+                if(read->pore_type == PT_R9) {
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {
@@ -779,7 +811,8 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                 opt::max_haplotypes,
                                 opt::ploidy,
                                 opt::genotype_only,
-                                alignment_flags);
+                                alignment_flags,
+                                opt::methylation_types);
 
             if(opt::debug_alignments) {
                 print_debug_stats(alignments.get_region_contig(),
@@ -834,7 +867,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     // load the region, accounting for the buffering
     if(region_start < BUFFER)
         region_start = BUFFER;
-    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file, opt::calibrate);
+    AlignmentDB alignments(opt::reads_file, opt::genome_file, opt::bam_file, opt::event_bam_file);
 
     if(!opt::alternative_basecalls_bam.empty()) {
         alignments.set_alternative_basecalls_bam(opt::alternative_basecalls_bam);
@@ -964,6 +997,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
 void parse_call_variants_options(int argc, char** argv)
 {
+    std::string methylation_motifs_str;
     bool die = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
@@ -979,6 +1013,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'x': arg >> opt::max_haplotypes; break;
             case 'c': arg >> opt::candidates_file; break;
             case 'p': arg >> opt::ploidy; break;
+            case 'q': arg >> methylation_motifs_str; break;
             case 'a': arg >> opt::alternative_basecalls_bam; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
@@ -1044,6 +1079,15 @@ void parse_call_variants_options(int argc, char** argv)
     if(!opt::models_fofn.empty()) {
         // initialize the model set from the fofn
         PoreModelSet::initialize(opt::models_fofn);
+    }
+
+    if(!methylation_motifs_str.empty()) {
+        opt::methylation_types = split(methylation_motifs_str, ',');
+        for(const std::string& mtype : opt::methylation_types) {
+            // this call will abort if the alphabet does not exist
+            const Alphabet* alphabet = get_alphabet_by_name(mtype);
+            assert(alphabet != NULL);
+        }
     }
 
     if (die)
