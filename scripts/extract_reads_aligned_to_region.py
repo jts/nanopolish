@@ -8,13 +8,14 @@ in draft genome assembly.
 try:
 	from Bio import SeqIO
 	import pysam
-	import sys, os
 	import argparse
 	import subprocess
 	import tarfile
 	import gzip
+	import sys,os
 except ImportError:
-	custom_print(('Missing package(s)'))
+	print('Missing package(s)')
+	quit()
 
 verbose = False
 log = list()
@@ -26,17 +27,19 @@ def main():
 	parser = argparse.ArgumentParser(description='Extract and package reads within region')
 	parser.add_argument('-v', '--verbose', action="store_true", default=False, required=False, dest="verbose", help="Use for verbose output with info on progress.")
 	parser.add_argument('-b', '--bam', action="store", required=True, dest="bam", help="Sorted bam file created by aligning reads to the draft genome (refer to reads.sorted.bam in Nanopolish README).")
-	parser.add_argument('-f', '--fa_file', action="store", dest="fa_filename", help="Fasta, fastq, fasta.gz, fastq.gz or fa.gz file (refer to reads.fa in Nanopolish README)")
-	parser.add_argument('-g', '--draft_ga', action="store", required=True, dest="draft_ga", help="Draft genome assembly (refer to draft.fa in Nanopolish README).")
-	parser.add_argument('-c', '--draft_ga_coords', action="store", required=True, dest="draft_ga_coords", help="Draft genome assembly coordinates wrapped in quotes ex. \"tig000001:10000-20000\".")
-	parser.add_argument('-r', '--readdb', action="store", required=True, dest="readdb", help="Nanopolish readdb index file.")
-	parser.add_argument('-o', '--output_prefix', action="store", required=False, default="reads_subset", dest="output_prefix", help="Output prefix")
+	parser.add_argument('-r', '--reads', action="store", dest="fa_filename", help="Fasta, fastq, fasta.gz, or fastq.gz file (refer to reads.fa in Nanopolish README)")
+	parser.add_argument('-g', '--genome',  action="store", required=True, dest="draft_ga", help="Draft genome assembly (refer to draft.fa in Nanopolish README).")
+	parser.add_argument('-w', '--window', action="store", required=True, dest="draft_ga_coords", help="Draft genome assembly coordinates wrapped in quotes ex. \"tig000001:10000-20000\".")
+	parser.add_argument('-o', '--output_prefix', action="store", required=False, default="reads_subset", dest="output_prefix", help="Output prefix for tar.gz file and log file.")
 	args = parser.parse_args()
 	
 	# Check to see if user used verbose option
 	global verbose
 	if args.verbose:
 		verbose = True
+
+	# Infer readdb file from fasta/q file
+	readdb = args.fa_filename + ".index.readdb"
 
 	custom_print( "===================================================" )
 	custom_print( "Extract reads that align to given region" )
@@ -49,7 +52,7 @@ def main():
 	custom_print( "[ Input ]" )
 	custom_print( "[+] Extracting from draft genome assembly coords: " + args.draft_ga_coords )
 	custom_print( "[+] BAM file (reads.fa aligned to draft.fa): " + args.bam )
-	custom_print( "[+] Readdb file: " + args.readdb )
+	custom_print( "[+] Readdb file: " + readdb )
 	custom_print( "[+] Draft genome assembly (draft.fa): " + args.draft_ga )
 	custom_print( "[+] FASTA/Q file (reads.fa): " + args.fa_filename )
 	custom_print( "[+] Output prefix: " + args.output_prefix ) 
@@ -57,7 +60,7 @@ def main():
 	custom_print( "[ Input check ]" )
 	files = list()
 	files.append(args.bam)
-	files.append(args.readdb)
+	files.append(readdb)
 	files.append(args.fa_filename)
 	files.append(args.draft_ga)
 	draft_ga_fai = args.draft_ga + ".fai"
@@ -65,7 +68,7 @@ def main():
 
 	for i in files:
 		if not os.path.exists(i) or not os.path.getsize(i) > 0 or not os.access(i, os.R_OK):
-			custom_print( "Expecting " + i + ". But does not exist, is empty or is not readable." )
+			print( "Expecting " + i + ". But does not exist, is empty or is not readable." )
 			sys.exit(1)
 
 	custom_print( "[ Validated input ] All input files exist, are not-empty, and are readable." )
@@ -76,15 +79,15 @@ def main():
 	# o = old/original, ga = genome assembly, fa = fasta/q file
 	# coords = coordinates, op = output
 	o_bam = args.bam
-	o_readdb = args.readdb
+	o_readdb = readdb
 	o_fa = args.fa_filename
 	op = args.output_prefix
 	draft_ga_coords = args.draft_ga_coords
 
 	# --------------------------------------------------------
 	# PART 3: 	With user input ref coords, extract all 
-	#			aligned reads within these coordinates, 
-	#			store read_ids, and fast5 files.
+	#		aligned reads within these coordinates, 
+	#		store read_ids, and fast5 files.
 	# --------------------------------------------------------
 	custom_print( "[ Extracting info on reads aligned to region ] \t" + draft_ga_coords )
 	samfile = pysam.AlignmentFile(o_bam, "rb")
@@ -103,8 +106,7 @@ def main():
 
 	# --------------------------------------------------------
 	# PART 4:   Parse readdb file and find path to fast5 files
-	#			associated with each read that aligned to 
-	#			region
+	# 		associated with each read that aligned to region
 	# --------------------------------------------------------
 	# readdb file has 2 columns: one indicating read_id and another indicating the fast5 file the read came from
 	# each row represents a read
@@ -131,8 +133,8 @@ def main():
 
 	# --------------------------------------------------------
 	# PART 6: 	With user input ref coords, extract all 
-	#			aligned	reads within these coordinates 
-	#			and make new FASTA file
+	#		aligned	reads within these coordinates 
+	#		and make new FASTA file
 	# --------------------------------------------------------
 	# detect type of sequences file then handle accordingly
 	file_type = detect_fa_filetype(o_fa)
@@ -141,7 +143,7 @@ def main():
 	with open (new_fa, "w") as fout:
 		if ".gz" in file_type:
 			with gzip.open(o_fa, "rt") as fin:
-				if "fa.gz" in file_type or "fasta.gz" in file_type:
+				if "fasta.gz" in file_type:
 					for record in SeqIO.parse(fin, "fasta"):
 						if record.id in region_read_ids:
 							fout.write(">" + record.id + "\n")
@@ -229,9 +231,9 @@ def main():
 	custom_print( "[+] Num reads in new FASTA: \t" + str(num_reads_fasta) )
 	custom_print( "[+] Num files in fast5_files/: \t" + str(num_fast5_files))
 	if not all( v == num_fast5_files for v in values ):
-		custom_print( "[!] WARNING: The number of reads in the new bam, new fasta, and num of fast5 files tarred are not equal..." )
+		print( "[!] WARNING: The number of reads in the new bam, new fasta, and num of fast5 files tarred are not equal..." )
 	else:
-		custom_print( "[ Output validated ] Number of reads in the new bam, new fasta, and num of fast5 files tarred are equal!" )
+		custom_print( "[ Validated output ] Number of reads in the new bam, new fasta, and num of fast5 files tarred are equal!" )
 
 	# --------------------------------------------------------
 	# FINAL: 	Output log if verbose flag not used
@@ -283,11 +285,11 @@ def detect_fa_filetype(fa_filename):
 	# ========================================================
 	path = fa_filename
 	if path.endswith('fa.gz'):
-		return "fa.gz"
+		print("Possibly using the reads file generated by nanopolish index? Use original reads file...")	
 	for ext in ['fastq.gz', 'fasta.gz', 'fastq', 'fasta']:
 		if path.endswith(ext):
 			return ext
-	custom_print( "Must be either fa.gz, fasta, fastq, fasta.gz, fastq.gz" )
+	print( "Must be either fasta, fastq, fasta.gz, fastq.gz" )
 	sys.exit(1)
 
 def custom_print(s):
