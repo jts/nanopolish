@@ -8,12 +8,19 @@ Overview
 
 Running into errors with nanopolish? To help us debug, we need to be able to reproduce the errors. We can do this by packaging a subset of the files that were used by a nanopolish. We have provided ``scripts/extract_reads_aligned_to_region.py`` and this tutorial to help you do exactly this.
 
-This script will:
+Briefly, this script will:
 
 * extract reads that align to a given region in the draft genome assembly
 * rewrite a new BAM, BAI, FASTA file with these reads
 * extract the FAST5 files associated with these reads
 * save all these files into a tar.gz file
+
+Workflow
+"""""""""""""
+
+0. Narrow down a problematic region by running ``nanopolish variants --consensus [...]`` and changing the ``-w`` parameter.
+1. Run the ``scripts/extract_reads_aligned_to_region.py``.
+2. Send the ``.tar.gz`` to us by hosting either a dropbox or google drive.
 
 Usage example
 """""""""""""""""""""""
@@ -28,11 +35,11 @@ Usage example
         --output_prefix ecoli --verbose
 
 .. list-table:: 
-   :widths: 20 10 20 50
+   :widths: 25 5 20 50
    :header-rows: 1
 
    * - Argument name(s)
-     - Required
+     - Req.
      - Default value
      - Description
 
@@ -54,7 +61,7 @@ Usage example
    * - -w, --window
      - Y
      - NA
-     - Draft genome assembly coordinate string ex. "tig000001:10000-20000". It is essential that you wrap the coordinates in apostrophes (\").
+     - Draft genome assembly coordinate string ex. "contig:start-end". It is essential that you wrap the coordinates in quotation marks (\").
 
    * - -o, --output_prefix
      - N
@@ -66,19 +73,18 @@ Usage example
      - False
      - Use for verbose output with info on progress.
 
-Algorithm overview
+Script overview
 """""""""""""""""""""
 
 0. Parse input files
 1. Assumes readdb file name from input reads file
 2. Validates input
-   - checks that input bam, readdb, fasta/q, draft genome assembly, draft genome assembly index file
-     exist, are not empy, and are readable
+    - checks that input bam, readdb, fasta/q, draft genome assembly, draft genome assembly index file exist, are not empy, and are readable
 3. With user input draft genome assembly coordinates, extracts all reads that aligned within these coordinates
    stores the read_ids. This information can be found from the input BAM.
-   - uses pysam.AlignmentFile
-   - uses samfile.fetch(region=draft_ga_coords) to get all reads aligned to region
-   - if reads map to multiple sections within draft ga it is not added again
+    - uses pysam.AlignmentFile
+    - uses samfile.fetch(region=draft_ga_coords) to get all reads aligned to region
+    - if reads map to multiple sections within draft ga it is not added again
 4. Parses through the input readdb file to find the FAST5 files associated with each region that aligned to region
    - stores in dictionary region_fast5_files; key = read_id, value = path/to/fast5/file
    - path to fast5 file is currently dependent on the user's directory structure
