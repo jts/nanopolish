@@ -1,15 +1,20 @@
-.. _quickstart:
+.. _quickstart_eventalign:
 
 Quickstart - how to align reads to events
 =============================================
 
-The eventalign module in nanopolish is used to align reads to events or "squiggles". The output of this module can be used to call variants with nanopolish. Here we provide a step-by-step tutorial to help you get started with the nanopolish module: eventalign.
+The eventalign module in nanopolish is used to align reads to events or "squiggles". As the electrical current signal from MinION has more information, we may be able to more accurately call variants with nanopolish, or compute an improved final consensus sequence. Here we provide a step-by-step tutorial to help you get started with the nanopolish module: eventalign.
+
+For more information about eventalign:
+
+* `Blog post: "Aligning Nanopore Events to a Reference" <http://simpsonlab.github.io/2015/04/08/eventalign/>`_
+* `Preprint: "A complete bacterial genome assembled de novo using only nanopore sequencing data" <https://www.biorxiv.org/content/early/2015/03/11/015552>`_
 
 Requirements for tutorial:
 
-* `Nanopolish <installation.html>`_
-* `samtool v1.2 <http://samtools.sourceforge.net/>`_
-* `bwa mem v0.7.12 <https://github.com/lh3/bwa>`_
+* `Nanopolish v0.8.4 <installation.html>`_
+* `samtools v1.2 <http://samtools.sourceforge.net/>`_
+* `bwa v0.7.12 <https://github.com/lh3/bwa>`_
 
 Download example dataset
 ------------------------------------
@@ -49,25 +54,54 @@ Analysis workflow
 Align the reads with bwa
 --------------------------------
 
-First we want to align the reads to the reads: ::
+In order to run bwa with the reference file, we need to index: ::
 
-    bwa mem -x ont2d ref.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
-    samtools index reads.sorted.bam
+    bwa index ref.fa
 
-Align the events with nanopolish eventalign
+We should end up with the following files:
+
+* ``ref.fa.sa``
+* ``ref.fa.amb``
+* ``ref.fa.ann``
+* ``ref.fa.pac``
+* ``ref.fa.bwt``
+
+We will need to index the reads as well: ::
+
+    nanopolish index -d fast5_files/ reads.fasta
+
+We should end up with the following files:
+
+* ``reads.fasta.index`` 
+* ``reads.fasta.index.fai`` 
+* ``reads.fasta.index.gzi`` 
+* ``reads.fasta.index.readdb``    
+
+Then we can proceed to aligning the reads to the reference: ::
+
+    bwa mem -x ont2d ref.fa reads.fasta | samtools sort -o reads-ref.sorted.bam -T reads.tmp
+    samtools index reads-ref.sorted.bam
+
+We should end up with the following files: 
+
+* ``reads-ref.sorted.bam``
+* ``reads-ref.sorted.bam.bai``
+
+Checkpoint: Let's see if the bam file is not truncated. This will check that the beginning of the file contains a valid header, and checks if the EOF is present. This will exit with a non-zero exit code if the conditions were not met: ::
+
+    samtools quickcheck reads-ref.sorted.bam
+ 
+Align the nanopore events to a reference
 -----------------------------------------------
 
-Now we align the events to the squiggle data: ::
+Now we are ready to align the events to the squiggle data: ::
 
     nanopolish eventalign \
         --reads reads.fasta \
-        --bam reads.sorted.bam \
-        --genome ref.fa \
-        --sam
+        --bam reads-ref.sorted.bam \
+        --genome ref.fa > reads-ref.eventalign.txt
 
-This will generate a sam file. We can convert it to bam format with the following: ::
+Assess the eventalign output
+-----------------------------------------------
 
-    samtools sort -O bam \
-        -o reads-events.sorted.bam \
-        -T reads.tmp  \
-        reads 
+

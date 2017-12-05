@@ -13,6 +13,8 @@ nanopolish
 
    installation
    quickstart_consensus
+   quickstart_eventalign
+   debug
    manual
 
 Publications
