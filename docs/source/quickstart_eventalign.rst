@@ -5,12 +5,12 @@ Quickstart - how to align reads to events
 
 The eventalign module in nanopolish is used to align reads to events or "squiggles". As the electrical current signal from MinION has more information, we may be able to more accurately call variants with nanopolish, or compute an improved final consensus sequence. Here we provide a step-by-step tutorial to help you get started with the nanopolish module: eventalign.
 
-For more information about eventalign:
+**For more information about eventalign**:
 
 * `Blog post: "Aligning Nanopore Events to a Reference" <http://simpsonlab.github.io/2015/04/08/eventalign/>`_
 * `Preprint: "A complete bacterial genome assembled de novo using only nanopore sequencing data" <https://www.biorxiv.org/content/early/2015/03/11/015552>`_
 
-Requirements for tutorial:
+**Requirements**:
 
 * `nanopolish v0.8.4 <installation.html>`_
 * `samtools v1.2 <http://samtools.sourceforge.net/>`_
@@ -25,7 +25,7 @@ You can download the example dataset we will use here: ::
     tar -xvf ecoli_2kb_region.tar.gz
     cd ecoli_2kb_region
 
-Details:
+**Details**:
 
 * Sample :    E. coli str. K-12 substr. MG1655
 * Instrument : MinION sequencing R9.4 chemistry
@@ -47,10 +47,6 @@ You will need the reference genome: ::
 
     wget -O ref.fa ftp://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
 
-Analysis workflow
---------------------
-
-
 Align the reads with bwa
 --------------------------------
 
@@ -58,20 +54,20 @@ In order to run bwa with the reference file, we need to index: ::
 
     bwa index ref.fa
 
-Output files: ``ref.fa.sa``, ``ref.fa.amb``, ``ref.fa.ann``, ``ref.fa.pac``, and ``ref.fa.bwt``.
+**Output files**: ``ref.fa.sa``, ``ref.fa.amb``, ``ref.fa.ann``, ``ref.fa.pac``, and ``ref.fa.bwt``.
 
 We will need to index the reads as well: ::
 
     nanopolish index -d fast5_files/ reads.fasta
 
-Output files: ``reads.fasta.index``, ``reads.fasta.index.fai``, ``reads.fasta.index.gzi``, and ``reads.fasta.index.readdb``.   
+**Output files**: ``reads.fasta.index``, ``reads.fasta.index.fai``, ``reads.fasta.index.gzi``, and ``reads.fasta.index.readdb``.   
 
 Then we can proceed to aligning the reads to the reference: ::
 
     bwa mem -x ont2d ref.fa reads.fasta | samtools sort -o reads-ref.sorted.bam -T reads.tmp
     samtools index reads-ref.sorted.bam
 
-Output files: ``reads-ref.sorted.bam`` and ``reads-ref.sorted.bam.bai``.
+**Output files**: ``reads-ref.sorted.bam`` and ``reads-ref.sorted.bam.bai``.
 
 **Checkpoint**: Let's see if the bam file is not truncated. This will check that the beginning of the file contains a valid header, and checks if the EOF is present. This will exit with a non-zero exit code if the conditions were not met: ::
 
