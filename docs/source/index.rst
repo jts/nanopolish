@@ -3,18 +3,19 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Nanopolish
+nanopolish
 ======================================
-`Nanopolish <https://github.com/jts/nanopolish>`_ is a software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
+`nanopolish <https://github.com/jts/nanopolish>`_ is a software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
 
 .. toctree::
    :hidden:
 
    installation
-   quickstart
+   quickstart_consensus
+   quickstart_eventalign
+   debug
    manual
-   faq
 
 Publications
 ====================================
