@@ -607,8 +607,6 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     ref_seq = pore_model->pmalphabet->disambiguate(ref_seq);
     std::string rc_ref_seq = pore_model->pmalphabet->reverse_complement(ref_seq);
 
-    if(ref_offset == 0)
-
     // Skip unmapped
     if((params.record->core.flag & BAM_FUNMAP) != 0) {
         return alignment_output;
