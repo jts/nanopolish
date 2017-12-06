@@ -608,7 +608,11 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     std::string rc_ref_seq = pore_model->pmalphabet->reverse_complement(ref_seq);
 
     if(ref_offset == 0)
+
+    // Skip unmapped
+    if((params.record->core.flag & BAM_FUNMAP) != 0) {
         return alignment_output;
+    }
 
     // Get the read-to-reference aligned segments
     std::vector<AlignedSegment> aligned_segments = get_aligned_segments(params.record);
@@ -624,8 +628,9 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         int max_kmer_idx = params.sr->read_sequence.size() - k;
         trim_aligned_pairs_to_kmer(aligned_pairs, max_kmer_idx);
 
-        if(aligned_pairs.empty())
+        if(aligned_pairs.empty()) {
             return alignment_output;
+        }
 
         bool do_base_rc = bam_is_rev(params.record);
         bool rc_flags[2] = { do_base_rc, !do_base_rc }; // indexed by strand
@@ -676,8 +681,9 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, pore_model->pmalphabet);
             
             // Require a minimum amount of sequence to align to
-            if(hmm_sequence.length() < 2 * k)
+            if(hmm_sequence.length() < 2 * k) {
                 break;
+            }
 
             // Set up HMM input
             HMMInputData input;

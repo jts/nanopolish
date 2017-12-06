@@ -58,11 +58,18 @@ namespace opt
 }
 static std::ostream* os_p;
 
-std::vector< std::pair< unsigned, std::string > >
+struct ExtractionGroup
+{
+    fast5::Basecall_Group_Description bcd;
+    unsigned int strand_idx;
+    std::string basecall_group;
+};
+
+std::vector<ExtractionGroup>
 get_preferred_basecall_groups(const fast5::File& f)
 {
     bool have_2d = false;
-    std::vector< std::pair< unsigned, std::string > > res;
+    std::vector<ExtractionGroup> res;
     // check 2d
     if (opt::read_type == "any"
         or opt::read_type == "2d"
@@ -92,7 +99,7 @@ get_preferred_basecall_groups(const fast5::File& f)
                 and f.have_basecall_events(1, gr))
             {
                 have_2d = true;
-                res.push_back(std::make_pair(2, gr));
+                res.push_back( { bcd, 2, gr } );
                 if (opt::read_type != "any")
                 {
                     break;
@@ -100,6 +107,7 @@ get_preferred_basecall_groups(const fast5::File& f)
             }
         }
     }
+
     // check 1d
     for (unsigned st = 0; st < 2; ++st)
     {
@@ -131,7 +139,8 @@ get_preferred_basecall_groups(const fast5::File& f)
                 if (f.have_basecall_fastq(st, gr)
                     and f.have_basecall_events(st, gr))
                 {
-                    res.push_back(std::make_pair(st, gr));
+                    res.push_back( {bcd, st, gr} );
+
                     if (opt::read_type != "any")
                     {
                         break;
@@ -140,11 +149,12 @@ get_preferred_basecall_groups(const fast5::File& f)
             }
         }
     }
+
     LOG(debug)
         << "preferred_groups: "
         << alg::os_join(res, ", ", [] (const decltype(res)::value_type& p) {
                 std::ostringstream oss;
-                oss << "(" << p.first << ":" << p.second << ")";
+                oss << "(" << p.strand_idx << ":" << p.basecall_group << ")";
                 return oss.str();
             })
         << "\n";
@@ -175,28 +185,39 @@ void process_file(const std::string& fn)
                 LOG(info) << "file [" << fn << "]: no basecalling data suitable for nanoplish\n";
                 return;
             }
+
             ++opt::total_files_used_count;
             const auto& p = l.front();
             // get and parse fastq
-            auto fq = f.get_basecall_fastq(p.first, p.second);
+            auto fq = f.get_basecall_fastq(p.strand_idx, p.basecall_group);
             auto fq_a = f.split_fq(fq);
+                
+            SemVer basecaller_version = parse_semver_string(p.bcd.version);
+            bool is_albacore_2_read = p.bcd.name == "albacore" && basecaller_version.major == 2;
+
             // construct name
             std::string name;
             std::istringstream(fq_a[0]) >> name;
-            std::replace(name.begin(), name.end(), ':', '_');
-            name += ":" + p.second + ":";
-            if (p.first == 0)
-            {
-                name += "template";
-            }
-            else if (p.first == 1)
-            {
-                name += "complement";
-            }
-            else
-            {
-                name += "2d";
-            }
+            
+            // For older basecalled data appened the group information to the read name
+            // For albacore 2 data this isn't needed as nanopolish works directly from the raw
+            if(!is_albacore_2_read) {
+                std::replace(name.begin(), name.end(), ':', '_');
+                name += ":" + p.basecall_group + ":";
+                if (p.strand_idx == 0)
+                {
+                    name += "template";
+                }
+                else if (p.strand_idx == 1)
+                {
+                    name += "complement";
+                }
+                else
+                {
+                    name += "2d";
+                }
+            } 
+
             if (not opt::fastq)
             {
                 (*os_p)
@@ -388,12 +409,15 @@ int extract_main(int argc, char** argv)
     }
 
     // Build the ReadDB from the output file
-    ReadDB read_db;
-    read_db.build(opt::output_file);
-    read_db.save();
 
     std::clog << "[extract] found " << opt::total_files_count
               << " files, extracted " << opt::total_files_used_count
               << " reads\n";
+    
+    if(opt::total_files_used_count > 0) {
+        ReadDB read_db;
+        read_db.build(opt::output_file);
+        read_db.save();
+    } 
     return 0;
 }
