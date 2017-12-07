@@ -29,6 +29,8 @@ Tutorial - using extraction helper script to create example datsets
 
 We extracted a subset of reads for a 2kb region to create the example dataset for the eventalign and consensus tutorial using ``scripts/extract_reads_aligned_to_region.py``. Here is how:
 
+|
+
 Generated basecalled ``--reads`` file:
 
 #. Basecalled reads with albacore: ::
@@ -43,6 +45,8 @@ Generated basecalled ``--reads`` file:
 
     paste - - - - < albacore-2.0.1-merged.fastq | cut -f 1,2 | sed 's/^@/>/' | tr "\t" "\n" > reads.fasta
 
+|
+
 Generated ``--bam`` file with the draft genome assembly (``-g``):
 
 #. Ran canu to create draft genome assembly: ::
@@ -53,7 +57,7 @@ Generated ``--bam`` file with the draft genome assembly (``-g``):
 
 #. Index draft assembly: ::
 
-	bwa index ecoli.contigs.fasta
+    bwa index ecoli.contigs.fasta
     samtools faidx ecoli.contigs.fasta
 
 #. Aligned reads to draft genome assembly with bwa (v0.7.12): ::
@@ -61,6 +65,7 @@ Generated ``--bam`` file with the draft genome assembly (``-g``):
     bwa mem -x ont2d ecoli.contigs.fasta reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
+|
 
 Selected a ``--window``:
 
@@ -75,6 +80,8 @@ Output: ::
     GCAGAAACTGATAATTTAAGAAAGGAGTCATATCCTCTGAAAAGAAAATGTCCCACAGGTACAGATAGAGTTGCTGCTTATCATACTCACGGTGCAGATA
  
 As we wanted a 2kb region, we selected a random start position (200000) so our end position was 202000. Therefore our ``--window`` was "tig00000001:200000-202000".
+
+|
 
 Using the files we created, we ran ``scripts/extract_reads_aligned_to_region.py``, please see usage example below.
 
