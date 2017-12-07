@@ -1,15 +1,20 @@
 .. _quickstart_call_methylation:
 
 Quickstart - calling methylation with nanopolish
-===================================================
+=====================================================
 
-The original purpose for nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
+As Oxford Nanopore sequencers are sensitive to base modifications it is useful to quantify the strength of their effect. Here we provide a step-by-step tutorial to help you get started with our `call-methylation` module that predicts genomic bases that may be methylated using signal-level information.
+
+
+**For more information about call-methylation:**
+
+* Simpson, Jared T., et al. `"Detecting DNA cytosine methylation using nanopore sequencing." <https://www.nature.com/articles/nmeth.4184>`_ nature methods (2017). 
 
 **Requirements**:
 
 * `nanopolish v0.8.4 <installation.html>`_
 * `samtools v1.2 <http://samtools.sourceforge.net/>`_
-* `minimap <https://github.com/lh3/minimap2>`_
+* `minimap2 <https://github.com/lh3/minimap2>`_
 
 Download example dataset
 ------------------------------------
@@ -55,7 +60,7 @@ Aligning reads to the reference genome
 Next, we need to align the basecalled reads to the reference genome. We use minimap2 as it is fast enough to map reads to the human genome. In this example we'll pipe the output directly into ``samtools sort`` to get a sorted bam file: ::
 
     minimap2 -a -x map-ont reference.fasta albacore_output.fastq | samtools sort -T tmp -o albacore_output.sorted.bam
-	samtools index albacore_output.sorted.bam
+    samtools index albacore_output.sorted.bam
 
 Calling methylation
 -------------------
