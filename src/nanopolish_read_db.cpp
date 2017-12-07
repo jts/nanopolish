@@ -112,11 +112,22 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
 
     // Open writers
     FILE* write_fp = fopen(out_fasta_filename.c_str(), "w");
+    if(write_fp == NULL) {
+        fprintf(stderr, "error: could not open %s for write\n", out_fasta_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
     BGZF* bgzf_write_fp = bgzf_dopen(fileno(write_fp), "w");
+    if(bgzf_write_fp == NULL) {
+        fprintf(stderr, "error: could not open %s for bgzipped write\n", out_fasta_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
 
     // read input sequences, add to DB and convert to fasta
+    int ret = 0;
     kseq_t* seq = kseq_init(gz_read_fp);
-    while(kseq_read(seq) >= 0) {
+    while((ret = kseq_read(seq)) >= 0) {
+
         // Check for a path to the fast5 file in the comment of the read
         std::string path = "";
         if(seq->comment.l > 0) {
@@ -155,6 +166,12 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
             fprintf(stderr, "error in bgzf_write, aborting\n");
             exit(EXIT_FAILURE);
         }
+    }
+
+    // check for abnormal exit conditions
+    if(ret <= -2) {
+        fprintf(stderr, "kseq_read returned %d indicating an error with the input file %s\n", ret, input_filename.c_str());
+        exit(EXIT_FAILURE);
     }
 
     // cleanup
