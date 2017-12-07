@@ -3,12 +3,11 @@
 Quickstart - calling methylation with nanopolish
 =====================================================
 
-As Oxford Nanopore sequencers are sensitive to base modifications it is useful to quantify the strength of their effect. Here we provide a step-by-step tutorial to help you get started with our `call-methylation` module that predicts genomic bases that may be methylated using signal-level information.
+Oxford Nanopore sequencers are sensitive to base modifications. Here we provide a step-by-step tutorial to help you get started with detecting base modifications using nanopolish.
 
+**For more information about our approach:**
 
-**For more information about call-methylation:**
-
-* Simpson, Jared T., et al. `"Detecting DNA cytosine methylation using nanopore sequencing." <https://www.nature.com/articles/nmeth.4184>`_ nature methods (2017). 
+* Simpson, Jared T., et al. `"Detecting DNA cytosine methylation using nanopore sequencing." <https://www.nature.com/articles/nmeth.4184>`_ Nature Methods (2017). 
 
 **Requirements**:
 
@@ -84,7 +83,7 @@ The output file contains a lot of information including the position of the CG d
 
 A positive value in the ``log_lik_ratio`` column indicates support for methylation. We have provided a helper script that can be used to calculate how often each reference position was methylated: ::
 
-	scripts/calculate_methylation_frequency -i methylation_calls.tsv > methylation_frequency.tsv
+	scripts/calculate_methylation_frequency.py -i methylation_calls.tsv > methylation_frequency.tsv
 
 The output is another tab-separated file, this time summarized by genomic position: ::
 
@@ -116,6 +115,8 @@ We can use R to visualize the results - we observe good correlation between the 
         ylab("Nanopolish Methylation Frequency") +
         theme_bw(base_size=20) +
         ggtitle(title)
+
+Here's what the output should look like:
 
 .. figure:: _static/quickstart_methylation_results.png
   :scale: 80%
