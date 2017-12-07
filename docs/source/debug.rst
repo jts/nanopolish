@@ -27,7 +27,7 @@ Tutorial - using extraction helper script to create example datsets
 
 We extracted a subset of reads for a 2kb region to create the example dataset for the eventalign and consensus tutorial using ``scripts/extract_reads_aligned_to_region.py``. Here is how:
 
-Generating basecalled ``--reads`` file:
+Generated basecalled ``--reads`` file:
 
 #. Basecalled reads with albacore: ::
 
@@ -74,7 +74,7 @@ Output: ::
  
 As we wanted a 2kb region, we selected a random start position (200000) so our end position was 202000. Therefore our ``--window`` was "tig00000001:200000-202000".
 
-Using the files we created, we ran `scripts/extract_reads_aligned_to_region.py`, please see usage example below.
+Using the files we created, we ran ``scripts/extract_reads_aligned_to_region.py``, please see usage example below.
 
 .. note:: Make sure nanopolish still reproduces the same error on this subset before sending it to us.
 
