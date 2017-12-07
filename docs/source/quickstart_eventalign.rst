@@ -33,7 +33,7 @@ You can download the example dataset we will use here: ::
 * Region: "tig00000001:200000-202000"
 * Note: Ligation-mediated PCR amplification performed
 
-This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly. To see how we generated these files please refer to the following section: :ref:`Tutorial - using extraction helper script to create example datsets`. 
+This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly. To see how we generated these files please refer to the tutorial :ref:`help_us_debug <here>`. 
 
 You should find the following files:
 
@@ -86,7 +86,7 @@ Assess the eventalign output
 
 If we take a peek at the first few lines of ``reads-ref.eventalign.txt`` this is what we get: ::
 
-	contig                                    position  reference_kmer  read_index  strand  event_index  event_level_mean  event_stdv  event_length  model_kmer  model_mean  model_stdv  standardized_level
+	contig    position  reference_kmer  read_index  strand  event_index  event_level_mean  event_stdv  event_length  model_kmer  model_mean  model_stdv  standardized_level
 	gi|545778205|gb|U00096.3|:c514859-514401  3         ATGGAG          0           t       16538        89.82             3.746       0.00100       CTCCAT      92.53       2.49        -0.88
 	gi|545778205|gb|U00096.3|:c514859-514401  3         ATGGAG          0           t       16537        88.89             2.185       0.00100       CTCCAT      92.53       2.49        -1.18
 	gi|545778205|gb|U00096.3|:c514859-514401  3         ATGGAG          0           t       16536        94.96             2.441       0.00125       CTCCAT      92.53       2.49        0.79
