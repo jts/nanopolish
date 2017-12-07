@@ -14,6 +14,7 @@ nanopolish
    installation
    quickstart_consensus
    quickstart_eventalign
+   quickstart_call_methylation
    debug
    manual
 
