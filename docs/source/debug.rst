@@ -22,17 +22,81 @@ Workflow
 #. Run the ``scripts/extract_reads_aligned_to_region.py``.
 #. Send the resulting ``tar.gz`` file to us by hosting either a dropbox or google drive.
 
+.. _creating_example_dataset:
+
+Tutorial - using extraction helper script to create example datsets
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+We extracted a subset of reads for a 2kb region to create the example dataset for the eventalign and consensus tutorial using ``scripts/extract_reads_aligned_to_region.py``. Here is how:
+
+|
+
+Generated basecalled ``--reads`` file:
+
+#. Basecalled reads with albacore: ::
+
+    read_fast5_basecaller.py -c r94_450bps_linear.cfg -t 8 -i /path/to/raw/fast5/files -s /path/to/albacore-2.0.1/output/directory -o fastq 
+
+#. Merged the different albacore fastq outputs: ::
+
+    cat /path/to/albacore-2.0.1/output/directory/workspace/pass/*.fastq > albacore-2.0.1-merged.fastq
+
+#. Converted the merged fastq to fasta format: ::
+
+    paste - - - - < albacore-2.0.1-merged.fastq | cut -f 1,2 | sed 's/^@/>/' | tr "\t" "\n" > reads.fasta
+
+|
+
+Generated ``--bam`` file with the draft genome assembly (``-g``):
+
+#. Ran canu to create draft genome assembly: ::
+
+    canu \
+        -p ecoli -d outdir genomeSize=4.6m \
+        -nanopore-raw reads.fasta \ 
+
+#. Index draft assembly: ::
+
+    bwa index ecoli.contigs.fasta
+    samtools faidx ecoli.contigs.fasta
+
+#. Aligned reads to draft genome assembly with bwa (v0.7.12): ::
+
+    bwa mem -x ont2d ecoli.contigs.fasta reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
+    samtools index reads.sorted.bam
+
+|
+
+Selected a ``--window``:
+
+#. Identified the first contig name and chose a random start position: ::
+
+    head -3 ecoli.contigs.fasta
+
+Output: ::
+
+    >tig00000001 len=4376233 reads=23096 covStat=7751.73 gappedBases=no class=contig suggestRepeat=no suggestCircular=no
+    AGATGCTTTGAAAGAAACGCAGAATAGATCTCTATGTAATGATATGGAATACTCTGGTATTGTCTGTAAAGATACTAATGGAAAATATTTTGCATCTAAG
+    GCAGAAACTGATAATTTAAGAAAGGAGTCATATCCTCTGAAAAGAAAATGTCCCACAGGTACAGATAGAGTTGCTGCTTATCATACTCACGGTGCAGATA
+ 
+As we wanted a 2kb region, we selected a random start position (200000) so our end position was 202000. Therefore our ``--window`` was "tig00000001:200000-202000".
+
+|
+
+Using the files we created, we ran ``scripts/extract_reads_aligned_to_region.py``, please see usage example below.
+
+.. note:: Make sure nanopolish still reproduces the same error on this subset before sending it to us.
+
 Usage example
 """""""""""""""""""""""
-
 ::
 
     python extract_reads_aligned_to_region.py \
+        --reads reads.fasta \
+        --genome ecoli.contigs.fasta \
         --bam reads.sorted.bam \
-        --reads albacore-merged.fastq \
-        --genome draft.fa \
-        --window "tig00000001:200000-250200" \
-        --output_prefix ecoli --verbose
+        --window "tig00000001:200000-202000" \
+        --output_prefix ecoli_2kb_region --verbose
 
 .. list-table:: 
    :widths: 25 5 20 50
