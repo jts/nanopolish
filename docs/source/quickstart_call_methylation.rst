@@ -116,3 +116,8 @@ We can use R to visualize the results - we observe good correlation between the 
         ylab("Nanopolish Methylation Frequency") +
         theme_bw(base_size=20) +
         ggtitle(title)
+
+.. figure:: _static/quickstart_methylation_results.png
+  :scale: 80%
+  :alt: quickstart_methylation_results
+
