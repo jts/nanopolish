@@ -22,6 +22,8 @@ Workflow
 #. Run the ``scripts/extract_reads_aligned_to_region.py``.
 #. Send the resulting ``tar.gz`` file to us by hosting either a dropbox or google drive.
 
+.. _creating_example_dataset:
+
 Tutorial - using extraction helper script to create example datsets
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
