@@ -33,7 +33,7 @@ You can download the example dataset we will use here: ::
 * Region: "tig00000001:200000-202000"
 * Note: Ligation-mediated PCR amplification performed
 
-This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly.
+This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly. To see how we generated these files please refer to the following section: :ref:`Tutorial - using extraction helper script to create example datsets`. 
 
 You should find the following files:
 
