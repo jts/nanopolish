@@ -88,11 +88,11 @@ A positive value in the ``log_lik_ratio`` column indicates support for methylati
 
 The output is another tab-separated file, this time summarized by genomic position: ::
 
-    chromosome      start   end     num_cpgs_in_group       called_sites    called_sites_methylated methylated_frequency    group_sequence
-	chr20           5036763 5036763 1                       21              20                      0.952                   split-group
-    chr20           5036770 5036770 1                       21              20                      0.952                   split-group
-    chr20           5036780 5036780 1                       21              20                      0.952                   split-group
-    chr20           5037173 5037173 1                       13              5                       0.385                   AAGGACGTTAT
+    chromosome    start    end    num_cpgs_in_group    called_sites    called_sites_methylated    methylated_frequency    group_sequence
+    chr20    5036763    5036763    1    21    20    0.952    split-group
+    chr20    5036770	5036770    1    21    20    0.952    split-group
+    chr20    5036780    5036780    1    21    20    0.952    split-group
+    chr20    5037173    5037173    1    13    5     0.385    AAGGACGTTAT
 
 In the example data set we have also included bisulfite data from ENCODE for the same region of chromosome 20. We can use the included ``compare_methylation.py`` helper script to do a quick comparison between the nanopolish methylation output and bisulfite: ::
 
