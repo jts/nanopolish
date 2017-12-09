@@ -8,7 +8,7 @@ The original purpose for nanopolish was to improve the consensus assembly accura
 **Requirements**:
 
 * `nanopolish v0.8.4 <installation.html>`_
-* `samtools v1.2 <http://samtools.sourceforge.net/>`_
+* `samtools v1.2 <https://htslib.org>`_
 * `bwa v0.7.12 <https://github.com/lh3/bwa>`_
 * `MUMmer <https://github.com/mummer4/mummer>`_
 
