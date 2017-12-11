@@ -283,14 +283,14 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
     // Add all positively-scoring single-base changes into the candidate set
     for(size_t i = region_start; i < region_end; ++i) {
-        
+
         int calling_start = i - opt::screen_flanking_sequence;
         int calling_end = i + 1 + opt::screen_flanking_sequence;
 
         if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
             continue;
         }
-        
+
         std::vector<Variant> tmp_variants;
         for(size_t j = 0; j < 4; ++j) {
             // Substitutions

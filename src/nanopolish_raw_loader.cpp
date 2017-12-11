@@ -84,6 +84,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
  
     // qc
     double min_average_log_emission = -5.0;
+    int max_gap_threshold = 50;
 
     // banding
     int bandwidth = 100;
@@ -315,6 +316,9 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 #ifdef DEBUG_ADAPTIVE
     fprintf(stderr, "[adaback] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, max_score);
 #endif
+
+    int curr_gap = 0;
+    int max_gap = 0;
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
         
         // emit alignment
@@ -335,10 +339,14 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         if(from == FROM_D) {
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
+            curr_gap = 0;
         } else if(from == FROM_U) {
             curr_event_idx -= 1;
+            curr_gap = 0;
         } else {
             curr_kmer_idx -= 1;
+            curr_gap += 1;
+            max_gap = std::max(curr_gap, max_gap);
         }   
     }
     std::reverse(out.begin(), out.end());
@@ -348,12 +356,12 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     bool spanned = out.front().ref_pos == 0 && out.back().ref_pos == n_kmers - 1;
     
     bool failed = false;
-    if(avg_log_emission < min_average_log_emission || !spanned) {
+    if(avg_log_emission < min_average_log_emission || !spanned || max_gap > max_gap_threshold) {
         failed = true;
         out.clear();
     }
 
-    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, fills);
+    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, fills);
     return out;
 }
 

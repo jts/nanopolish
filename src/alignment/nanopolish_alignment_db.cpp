@@ -73,6 +73,7 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
         size_t kmer_pos_ref_strand = seq_record.aligned_bases[i].read_pos;
         size_t kmer_pos_read_strand = seq_record.rc ? this->sr->flip_k_strand(kmer_pos_ref_strand, k) : kmer_pos_ref_strand;
         size_t event_idx = this->sr->get_closest_event_to(kmer_pos_read_strand, strand_idx);
+        assert(event_idx != -1);
         this->aligned_events.push_back( { seq_record.aligned_bases[i].ref_pos, (int)event_idx });
     }
     this->rc = strand_idx == 0 ? seq_record.rc : !seq_record.rc;
