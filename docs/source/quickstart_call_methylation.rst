@@ -12,7 +12,7 @@ Oxford Nanopore sequencers are sensitive to base modifications. Here we provide 
 **Requirements**:
 
 * `nanopolish v0.8.4 <installation.html>`_
-* `samtools v1.2 <http://samtools.sourceforge.net/>`_
+* `samtools v1.2 <https://htslib.org>`_
 * `minimap2 <https://github.com/lh3/minimap2>`_
 
 Download example dataset
