@@ -259,6 +259,7 @@ void phase_single_read(const ReadDB& read_db,
             data.strand = event_align_record.strand;
             data.rc = event_align_record.rc;
             data.event_stride = event_align_record.stride;
+            data.pore_model = sr.get_base_model(event_align_record.strand);
             
             int e1,e2;
             bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events, 
