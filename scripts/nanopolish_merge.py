@@ -98,5 +98,5 @@ for contig_name in sorted(segments_by_name.keys()):
     if all_segments_found:
         print(">%s\n%s" % (contig_name, assembly))
     else:
-        sys.stderr.write("error: some segments are missing, could not merge contig %s\n" % (contig))
+        sys.stderr.write("error: some segments are missing, could not merge contig %s\n" % (contig_name))
         sys.exit(1)
