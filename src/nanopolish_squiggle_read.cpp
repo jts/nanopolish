@@ -71,10 +71,13 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     pore_type(PT_UNKNOWN),
     f_p(nullptr)
 {
+
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->base_model[0] = this->base_model[1] = NULL;
     this->fast5_path = read_db.get_signal_path(this->read_name);
+    g_total_reads += 1;
     if(this->fast5_path == "") {
+        g_bad_fast5_file += 1;
         return;
     }
 
@@ -416,7 +419,6 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         this->events_per_base[strand_idx] = 0.0f;
         g_failed_alignment_reads += 1;
     }
-    g_total_reads += 1;
 
     // Filter poor quality reads that have too many "stays"
     if(!this->events[strand_idx].empty() && this->events_per_base[strand_idx] > 5.0) {
@@ -850,7 +852,6 @@ std::vector<EventRangeForBase> SquiggleRead::read_reconstruction(const std::stri
     std::string classification = !out_event_map.empty() ? "goodread" : "badread";
     fprintf(stderr, "[final] %s %zu out of %zu kmers mismatch (%.2lf) classification: %s\n", this->fast5_path.c_str(), distinct_mismatches, n_read_kmers, mismatch_rate, classification.c_str());
 #endif
-    g_total_reads += 1;
     return out_event_map;
 }
 
