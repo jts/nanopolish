@@ -85,7 +85,7 @@ for contig_name in sorted(segments_by_name.keys()):
 
         # Ensure the segments overlap
         if not( prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start ):
-            sys.stderr.write("error: segment starting at %s:%d is missing\n" % (contig, prev_segment + SEGMENT_LENGTH + 40))
+            sys.stderr.write("error: segment starting at %s:%d is missing\n" % (contig_name, prev_segment + SEGMENT_LENGTH + 40))
             all_segments_found = False
 
         sequence = segments_by_name[contig_name][segment_start]
