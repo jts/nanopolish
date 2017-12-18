@@ -153,30 +153,59 @@ void parse_polya_options(int argc, char** argv)
     }
 }
 
-
 // Basic HMM struct with fixed transition/emission parameters;
 // all of the below is relative to a **scaled & shifted** set of events.
 struct PolyAHMM {
-    // state transition probabilities:
-    float state_transitions[4][4] = { {0.99f, 0.01f, 0.00f, 0.00f},
-                                      {0.00f, 0.99f, 0.01f, 0.00f},
-                                      {0.00f, 0.00f, 0.99f, 0.01f},
-                                      {0.00f, 0.00f, 0.00f, 1.00f} };
-    // log-prob transitions:
-    float log_state_transitions[4][4] = { {-0.0101f, -4.6052f, -INFINITY, -INFINITY},
-                                          {-INFINITY, -0.0101f, -4.6052f, -INFINITY},
-                                          {-INFINITY, -INFINITY, -0.0101f, -4.6052f},
-                                          {-INFINITY, -INFINITY, -INFINITY,  0.0000f} };
-    // default emission parameters, from empirical MLE:
-    GaussianParameters l_emission = {110.276f, 2.815f};
-    GaussianParameters a_emission = {79.898f, 3.0883f};
-    GaussianParameters p_emission = {111.352f, 2.085f}; 
-    GaussianParameters t_emission = {99.016f, 4.339f};
-    // for reference: hand-tuned emission parameters for older kmer model:
-    // LEADER {100.0f, 2.5f};
-    // ADAPTER {75.0f, 3.0f};
-    // POLYA {99.0f, 2.5f};
-    // TRANSCRIPT {93.0f, 5.0f};
+    // State labels: [S]TART => 0 ; [L]EADER => 1 ; [A]DAPTER => 2; [P]OLYA => 3; [C]LIFF => 4; [T]RANSCRIPT => 5
+    // N.B.: `state transitions` is used to compute log probabilities, as viterbi decoding is done in log-space.
+    // state transition probabilities (S->L->A->[P<->C]->T):
+    float state_transitions[6][6] = { {0.10f, 0.90f, 0.00f, 0.00f, 0.00f, 0.00f},     // S -> S (10%), S -> L (90%)
+                                      {0.00f, 0.90f, 0.10f, 0.00f, 0.00f, 0.00f},     // L -> A (10%), L -> L (90%)
+                                      {0.00f, 0.00f, 0.95f, 0.05f, 0.00f, 0.00f},     // A -> P (05%), A -> A (95%)
+                                      {0.00f, 0.00f, 0.00f, 0.89f, 0.01f, 0.10f},     // P -> P (89%), P -> C (01%), P -> T (10%)
+                                      {0.00f, 0.00f, 0.00f, 0.99f, 0.01f, 0.00f},     // C -> P (99%), C -> C (01%)
+                                      {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 1.00f} };   // T -> T (100%)
+    float start_probs[6] = { 0.50f, 0.50f, 0.00f, 0.00f, 0.00f, 0.00f }; // 50/50 chance of starting on L or S
+
+    // emission parameters, from empirical MLE on manually-flagged reads:
+    // START, LEADER, and POLYA have Gaussian emissions;
+    // ADAPTER, TRANSCRIPT have Gaussian mixture emissions;
+    // CLIFF has Uniform emissions.
+    GaussianParameters s_emission = {70.2737f, 3.7743f};
+    GaussianParameters l_emission = {110.973f, 5.237f};
+    GaussianParameters a0_emission = {79.347f, 8.3702f};
+    GaussianParameters a1_emission = {63.3126f, 2.7464f};
+    float a0_coeff = 0.874f;
+    float a1_coeff = 0.126f;
+    GaussianParameters p_emission = {108.883f, 3.257f};
+    float c_begin = 70.0f;
+    float c_end = 140.0f;
+    float c_log_prob = -4.2485f; // natural log of [1/(140-70)]
+    GaussianParameters t0_emission = {79.679f, 6.966f};
+    GaussianParameters t1_emission = {105.784f, 16.022f};
+    float t0_coeff = 0.346f;
+    float t1_coeff = 0.654f;
+
+    // Compute log-probabilities in the constructor:
+    float log_state_transitions[6][6];
+    float log_start_probs[6];
+    PolyAHMM() {
+        for (int i = 0; i < 6; ++i) {
+            for (int j = 0; j < 6; ++j) {
+                if (state_transitions[i][j] > 0.00f) {
+                    log_state_transitions[i][j] = std::log(state_transitions[i][j]);
+                } else {
+                    log_state_transitions[i][j] = -INFINITY;
+                }
+            }
+
+            if (start_probs[i] > 0.00f) {
+                log_start_probs[i] = std::log(start_probs[i]);
+            } else {
+                log_start_probs[i] = -INFINITY;
+            }
+        } 
+    }
 };
 
 // Get the log-probability of seeing `x` given we're in state `state` of an HMM
@@ -184,35 +213,84 @@ struct PolyAHMM {
 float emit_log_proba(const float x, const PolyAHMM hmm, const uint8_t state,
                      const float scale, const float shift, const float var)
 {
-    GaussianParameters emission;
+    // compute on a case-by-case basis to handle heterogeneous probability distributions
+    float log_probs;
     if (state == 0) {
-        emission = hmm.l_emission;
+        // START state:
+        GaussianParameters emission = hmm.s_emission;
+        emission.mean = shift + scale*emission.mean;
+        emission.stdv = var * emission.stdv;
+        emission.log_stdv = std::log(emission.stdv);
+        log_probs = log_normal_pdf(x, emission);
     }
     if (state == 1) {
-        emission = hmm.a_emission;
+        // LEADER state:
+        GaussianParameters emission = hmm.l_emission;
+        emission.mean = shift + scale*emission.mean;
+        emission.stdv = var * emission.stdv;
+        emission.log_stdv = std::log(emission.stdv);
+        log_probs = log_normal_pdf(x, emission);
     }
     if (state == 2) {
-        emission = hmm.p_emission;
+        // ADAPTER state: compute log of gaussian mixture probability
+        GaussianParameters emission0 = hmm.a0_emission;
+        emission0.mean = shift + scale*emission0.mean;
+        emission0.stdv = var * emission0.stdv;
+        emission0.log_stdv = std::log(emission0.stdv);
+        GaussianParameters emission1 = hmm.a1_emission;
+        emission1.mean = shift + scale*emission1.mean;
+        emission1.stdv = var * emission1.stdv;
+        emission1.log_stdv = std::log(emission1.stdv);
+        float a0_coeff = hmm.a0_coeff;
+        float a1_coeff = hmm.a1_coeff;
+        float mixture_proba = (a0_coeff * normal_pdf(x, emission0)) + (a1_coeff * normal_pdf(x, emission1));
+        log_probs = std::log(mixture_proba);
     }
     if (state == 3) {
-        emission = hmm.t_emission;
+        // POLYA state:
+        GaussianParameters emission = hmm.p_emission;
+        emission.mean = shift + scale*emission.mean;
+        emission.stdv = var * emission.stdv;
+        emission.log_stdv = std::log(emission.stdv);
+        log_probs = log_normal_pdf(x, emission);
     }
-    emission.mean = shift + scale*emission.mean;
-    emission.stdv = var * emission.stdv;
-    emission.log_stdv = std::log(emission.stdv);
-    float log_probs = log_normal_pdf(x, emission);
+    if (state == 4) {
+        // CLIFF state: middle-out uniform distribution
+        if ((x > hmm.c_begin) && (x <  hmm.c_end)) {
+            log_probs = hmm.c_log_prob;
+        } else {
+            log_probs = -INFINITY;
+        }
+    }
+    if (state == 5) {
+        // TRANSCRIPT state: compute log of gaussian mixture probability
+        GaussianParameters emission0 = hmm.t0_emission;
+        emission0.mean = shift + scale*emission0.mean;
+        emission0.stdv = var * emission0.stdv;
+        emission0.log_stdv = std::log(emission0.stdv);
+        GaussianParameters emission1 = hmm.t1_emission;
+        emission1.mean = shift + scale*emission1.mean;
+        emission1.stdv = var * emission1.stdv;
+        emission1.log_stdv = std::log(emission1.stdv);
+        float t0_coeff = hmm.t0_coeff;
+        float t1_coeff = hmm.t1_coeff;
+        float mixture_proba = (t0_coeff * normal_pdf(x, emission0)) + (t1_coeff * normal_pdf(x, emission1));
+        log_probs = std::log(mixture_proba);
+    }
     return log_probs;
 }
 
 // Run viterbi algorithm given event sequence and an HMM;
 // returns a struct ViterbiOutputs composed of viterbi probs
-// and a vector of integers from {0,1,2,3} == {L,A,P,T}.
+// and a vector of integers from {0,1,2,3,4,5} == {S,L,A,P,C,T}.
 // N.B.: this algorithm takes place in log-space for numerical stability; when we
 // write `scores`, this refers to log(P).
 struct ViterbiOutputs {
     std::vector<float> scores;
     std::vector<uint8_t> labels;
 };
+
+// Viterbi decoding, in the 3'->5' direction:
 ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
 {
     // get scale/shift/var values, number of events:
@@ -222,40 +300,76 @@ ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
     size_t num_events = sr.events[0].size();
 
     // create/initialize viterbi scores and backpointers:
-    std::vector<float> init_scores(4, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
-    std::vector<uint8_t> init_bptrs(4, 4); // 4 == INIT symbol
+    std::vector<float> init_scores(6, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
+    std::vector<uint8_t> init_bptrs(6, 6); // 6 == INIT symbol
     std::vector< std::vector<float> > viterbi_scores(num_events, init_scores);
     std::vector< std::vector<uint8_t> > viterbi_bptrs(num_events, init_bptrs);
 
     // forward viterbi pass; fill up backpointers:
-    // weight initially on L:
-    viterbi_scores[0][0] = emit_log_proba(sr.events[0][num_events-1].mean, hmm, 0, scale, shift, var);
-    for (size_t i=1; i < num_events; ++i) {
+    // weight initially distributed between S and L:
+    viterbi_scores[0][0] = hmm.log_start_probs[0] + emit_log_proba(sr.events[0][num_events-1].mean, hmm, 0, scale, shift, var);
+    viterbi_scores[0][1] = hmm.log_start_probs[1] + emit_log_proba(sr.events[0][num_events-1].mean, hmm, 1, scale, shift, var);
+    for (size_t i = 1; i < num_events; ++i) {
         // `t` moves from 3'->5' on the vector of events, in opposite direction of `i`:
         size_t t = (num_events-1-i);
-        // get scores and update timestep:
-        float l_to_l = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][0];
-        float l_to_a = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][1];
-        float a_to_a = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][1];
-        float a_to_p = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][2];
-        float p_to_p = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][2];
-        float p_to_t = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][3];
-        float t_to_t = viterbi_scores.at(i-1)[3] + hmm.log_state_transitions[3][3];
+        // get individual incoming state scores:
+        float s_to_s = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][0];
+        float s_to_l = viterbi_scores.at(i-1)[0] + hmm.log_state_transitions[0][1];
+        float l_to_l = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][1];
+        float l_to_a = viterbi_scores.at(i-1)[1] + hmm.log_state_transitions[1][2];
+        float a_to_a = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][2];
+        float a_to_p = viterbi_scores.at(i-1)[2] + hmm.log_state_transitions[2][3];
+        float p_to_p = viterbi_scores.at(i-1)[3] + hmm.log_state_transitions[3][3];
+        float p_to_c = viterbi_scores.at(i-1)[3] + hmm.log_state_transitions[3][4];
+        float p_to_t = viterbi_scores.at(i-1)[3] + hmm.log_state_transitions[3][5];
+        float c_to_c = viterbi_scores.at(i-1)[4] + hmm.log_state_transitions[4][4];
+        float c_to_p = viterbi_scores.at(i-1)[4] + hmm.log_state_transitions[4][3];
+        float t_to_t = viterbi_scores.at(i-1)[5] + hmm.log_state_transitions[5][5];
 
-        viterbi_scores.at(i)[0] = l_to_l + emit_log_proba(sr.events[0][t].mean, hmm, 0, scale, shift, var);
-        viterbi_scores.at(i)[1] = std::max(l_to_a, a_to_a) + emit_log_proba(sr.events[0][t].mean, hmm, 1, scale, shift, var);
-        viterbi_scores.at(i)[2] = std::max(a_to_p, p_to_p) + emit_log_proba(sr.events[0][t].mean, hmm, 2, scale, shift, var);
-        viterbi_scores.at(i)[3] = std::max(p_to_t, t_to_t) + emit_log_proba(sr.events[0][t].mean, hmm, 3, scale, shift, var);
+        // update the viterbi scores for each state at this timestep:
+        viterbi_scores.at(i)[0] = s_to_s + emit_log_proba(sr.events[0][t].mean, hmm, 0, scale, shift, var);
+        viterbi_scores.at(i)[1] = std::max(l_to_l, s_to_l) + emit_log_proba(sr.events[0][t].mean, hmm, 1, scale, shift, var);
+        viterbi_scores.at(i)[2] = std::max(a_to_a, l_to_a) + emit_log_proba(sr.events[0][t].mean, hmm, 2, scale, shift, var);
+        viterbi_scores.at(i)[3] = std::max(p_to_p, std::max(a_to_p, c_to_p)) + emit_log_proba(sr.events[0][t].mean, hmm, 3, scale, shift, var);
+        viterbi_scores.at(i)[4] = std::max(c_to_c, p_to_c) + emit_log_proba(sr.events[0][t].mean, hmm, 4, scale, shift, var);
+        viterbi_scores.at(i)[5] = std::max(p_to_t, t_to_t) + emit_log_proba(sr.events[0][t].mean, hmm, 5, scale, shift, var);
 
         // backpointers:
-        uint8_t l_bptr = 0; // L can only come from L
-        uint8_t a_bptr = (l_to_a < a_to_a) ? 1 : 0; // A->A : L->A
-        uint8_t p_bptr = (a_to_p < p_to_p) ? 2 : 1; // P->P : A->P
-        uint8_t t_bptr = (p_to_t < t_to_t) ? 3 : 2; // T->T : P->T
-        viterbi_bptrs.at(i)[0] = l_bptr;
-        viterbi_bptrs.at(i)[1] = a_bptr;
-        viterbi_bptrs.at(i)[2] = p_bptr;
-        viterbi_bptrs.at(i)[3] = t_bptr;
+        // START: S can only come from S
+        viterbi_bptrs.at(i)[0] = 0;
+        // LEADER: L->L or S->L
+        if (s_to_l < l_to_l) {
+            viterbi_bptrs.at(i)[1] = 1;
+        } else {
+            viterbi_bptrs.at(i)[1] = 0;
+        }
+        // ADAPTER:
+        if (l_to_a < a_to_a) {
+            viterbi_bptrs.at(i)[2] = 2;
+        } else {
+            viterbi_bptrs.at(i)[2] = 1;
+        }
+        // POLYA:
+        if ((a_to_p < p_to_p) && (c_to_p < p_to_p)) {
+            viterbi_bptrs.at(i)[3] = 3;
+        } else if ((p_to_p < a_to_p) && (c_to_p < a_to_p)) {
+            viterbi_bptrs.at(i)[3] = 2;
+        } else {
+            viterbi_bptrs.at(i)[3] = 4;
+        }
+        // CLIFF:
+        if (p_to_c < c_to_c) {
+            viterbi_bptrs.at(i)[4] = 4;
+        } else {
+            viterbi_bptrs.at(i)[4] = 3;
+        }
+        // TRANSCRIPT:
+        if (p_to_t < t_to_t) {
+            viterbi_bptrs.at(i)[5] = 5;
+        } else {
+            viterbi_bptrs.at(i)[5] = 3;
+        }
+
     }
 
     // backwards viterbi pass:
@@ -263,8 +377,8 @@ ViterbiOutputs polya_viterbi(const SquiggleRead& sr, const PolyAHMM hmm)
     // clamp final state to 'T' ~ transcript:
     std::vector<uint8_t> regions(num_events, 0);
     std::vector<float> scores(num_events, 0);
-    regions[num_events-1] = 3;
-    scores[num_events-1] = viterbi_scores.at(num_events-1)[3];
+    regions[num_events-1] = 5;
+    scores[num_events-1] = viterbi_scores.at(num_events-1)[5];
     // loop backwards and keep appending best states:
     for (size_t j=(num_events-2); j > 0; --j) {
         regions[j] = viterbi_bptrs.at(j)[regions.at(j+1)];
@@ -286,104 +400,49 @@ ViterbiOutputs segment_read_into_regions(const SquiggleRead& sr)
 
 // helper fn that gets the final indices of each of the first three regions
 struct RegionIxs {
-    size_t leader;
-    size_t adapter;
-    size_t polya;
+    size_t start;   // final index of S; might not exist if skipped over
+    size_t leader;  // final index of L, as indicated by 3'->5' viterbi
+    size_t adapter; // final index of A, as indicated by 3'->5' viterbi
+    size_t polya;   // final index of P/C, as indicated by 3'->5' viterbi
+    size_t cliffs;  // number of observed 'CLIFF' samples
 };
-RegionIxs get_region_indices(const std::vector<uint8_t> regions)
+RegionIxs get_region_indices(const std::vector<uint8_t> region_labels)
 {
-    RegionIxs ixs = { 0, 0, 0 };
+    RegionIxs ixs = { 0, 1, 2, 3, 0 };
 
     // loop through sequence and collect values:
-    for (std::vector<uint8_t>::size_type i = 0; i < regions.size(); ++i) {
+    for (std::vector<uint8_t>::size_type i = 0; i < region_labels.size(); ++i) {
+        // call end of START:
+        if (region_labels[i] == 0 && region_labels[i+1] == 1) {
+            ixs.start = static_cast<size_t>(i);
+        }
         // call end of leader:
-        if (regions[i] == 0 && regions[i+1] == 1) {
+        if (region_labels[i] == 1 && region_labels[i+1] == 2) {
             ixs.leader = static_cast<size_t>(i);
         }
         // call end of adapter:
-        if (regions[i] == 1 && regions[i+1] == 2) {
+        if (region_labels[i] == 2 && region_labels[i+1] == 3) {
             ixs.adapter = static_cast<size_t>(i);
         }
         // call end of polya:
-        if (regions[i] == 2 && regions[i+1] == 3) {
+        if (region_labels[i] == 3 && region_labels[i+1] == 5) {
             ixs.polya = static_cast<size_t>(i);
+        }
+        // increment cliff counter:
+        if (region_labels[i] == 4) {
+            ixs.cliffs++;
         }
     }
 
-    // set sensible default values (1 event past previous region) if not all three detected:
-    // L-end is always detected (min value == 0)
-    if (ixs.adapter == 0) {
-        // A-end undetected if all events after L are all A's; set final 3 events as A,P,T:
-        ixs.adapter = regions.size() - 3;
-        ixs.polya = regions.size() - 2;
-    } else if (ixs.polya == 0) {
-        // P-end undetected if all events after A are all P's; set final events to P,T:
-        ixs.polya = regions.size() - 2;
+    // set sensible (easy to QC-filter) default values if not all four detected:
+    // S-end is always detected (min value == 0)
+    if (ixs.leader == 1 || ixs.adapter == 2 || ixs.polya == 3) {
+        ixs.leader = region_labels.size() - 3;
+        ixs.adapter = region_labels.size() - 2;
+        ixs.polya = region_labels.size() - 1;
     }
-
+    
     return ixs;
-}
-
-// helper fn that checks a segmented read for an incomplete poly(A) region; returns
-// `1` if the poly(A) region is incomplete and 0 if it passes.
-// an INCOMPLETE poly(A) call is a situation where a spuriously high/low signal lasting
-// approx. 100 samples throws off the HMM and prevents it from seeing the rest of the
-// region.
-uint8_t qc_incomplete_polya(const SquiggleRead& sr, double polya_start, double polya_end)
-{
-    // qc parameters, found empirically:
-    double multiplier = 2.5;
-    double polya_stdv_cutoff = 4.0;
-    size_t clip_samples = 50;
-    size_t skip_samples = 100;
-    size_t downstream_block_size = 100;
-
-    // get number of samples; we need this to compensate for the 5'->3' ordering of `sr.samples`
-    size_t num_samples = sr.samples.size();
-
-    // start and stop indices for called poly(A) region, taking clipping and reversal into account:
-    size_t polya_start_ix = num_samples - (size_t)polya_end + clip_samples;
-    size_t polya_stop_ix = num_samples - (size_t)polya_start - clip_samples;
-
-    // compute STDV of inner region of poly(A) samples:
-    double polya_mean_acc = 0.0;
-    for (size_t ix = polya_start_ix; ix < polya_stop_ix; ++ix) {
-	polya_mean_acc += sr.samples[ix];
-    }
-    double polya_mean = polya_mean_acc / (polya_stop_ix - polya_start_ix - 2*clip_samples);
-    double polya_stdv_acc = 0.0;
-    for (size_t ix = polya_start_ix; ix < polya_stop_ix; ++ix) {
-	polya_stdv_acc += (sr.samples[ix] - polya_mean) * (sr.samples[ix] - polya_mean);
-    }
-    double polya_stdv = sqrt(polya_stdv_acc / (polya_stop_ix - polya_start_ix - 2*clip_samples));
-
-    // start and stop indices for downstream region, taking 5'->3' orientation into account:
-    size_t downstream_start_ix = num_samples - (size_t)polya_end - skip_samples - downstream_block_size;
-    size_t downstream_stop_ix = num_samples -(size_t)polya_end - skip_samples;
-
-    // compute STDV of downstream region:
-    double downstream_mean_acc = 0.0;
-    for (size_t ix = downstream_start_ix; ix < downstream_stop_ix; ++ix) {
-	downstream_mean_acc += sr.samples[ix];
-    }
-    double downstream_mean = downstream_mean_acc / downstream_block_size;
-    double downstream_stdv_acc = 0.0;
-    for (size_t ix = downstream_start_ix; ix < downstream_stop_ix; ++ix) {
-	downstream_stdv_acc += (sr.samples[ix] - downstream_mean) * (sr.samples[ix] - downstream_mean);
-    }
-    double downstream_stdv = sqrt(downstream_stdv_acc / downstream_block_size);
-
-    // if the downstream region has a STDV that's more stable than expected, we have an incomplete poly(A):
-    uint8_t qc_incomplete_flag;
-    if (downstream_stdv < multiplier * polya_stdv && polya_stdv < polya_stdv_cutoff) {
-        qc_incomplete_flag = 1;
-    } else {
-        qc_incomplete_flag = 0;
-    }
-
-    //std::cout << "POLYA STDV: " << polya_stdv << "| DOWNSTREAM STDV: " << downstream_stdv << std::endl;
-
-    return qc_incomplete_flag;
 }
 
 // Write Poly(A) region segmentation data to TSV
@@ -427,8 +486,8 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     }
 
     //----- perform HMM-based regional segmentation and get regions:
-    ViterbiOutputs viterbi_outs = segment_read_into_regions(sr);
-    RegionIxs region_indices = get_region_indices(viterbi_outs.labels);
+    ViterbiOutputs v_out = segment_read_into_regions(sr);
+    RegionIxs region_indices = get_region_indices(v_out.labels);
 
     //----- compute output values:
     // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
@@ -440,6 +499,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     double polya_sample_start = sr.events[STRAND][num_events - region_indices.adapter - 1].start_time * sr.sample_rate;
     double polya_sample_end = sr.events[STRAND][num_events - region_indices.polya].start_time * sr.sample_rate;
     double adapter_sample_start = sr.events[STRAND][num_events - region_indices.leader].start_time * sr.sample_rate;
+    double leader_sample_start = sr.events[STRAND][num_events - region_indices.start].start_time * sr.sample_rate;
     // calculate duration of poly(A) region (in seconds)
     double duration = sr.events[STRAND][num_events - region_indices.polya].start_time
         - sr.events[STRAND][num_events - region_indices.adapter - 1].start_time;
@@ -448,31 +508,39 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     double read_rate = (sequenced_transcript.length() - suffix_clip) / read_duration;
     // length of the poly(A) tail, in nucleotides:
     double polya_length = duration * read_rate;
+    // number of cliffs observed:
+    size_t num_cliffs = region_indices.cliffs;
+    // estimated adapter length, in nucleotides:
+    double adapter_duration = sr.events[STRAND][num_events - region_indices.adapter].start_time
+        - sr.events[STRAND][num_events - region_indices.leader - 1].start_time;
+    double adapter_length = adapter_duration * read_rate;
 
-    //----- QC: check for NOREGION and INCOMPLETE poly(A) calls (with NOREGION taking precedence):
+    //----- QC: check for NOREGION and faulty ADAPTER:
+    // `adapter_qc_tol` is the upper-tolerance for number of estimated adapter nucleotides; discovered empirically
     double num_leader_samples = adapter_sample_start;
     double num_adapter_samples = polya_sample_start - adapter_sample_start;
     double num_polya_samples = polya_sample_end - polya_sample_start;
+    double adapter_qc_tol = 300.0f;
     std::string qc_tag;
     if (num_leader_samples < 200.0 || num_adapter_samples < 200.0 || num_polya_samples < 200.0) {
         qc_tag = "NOREGION";
-    } else if (qc_incomplete_polya(sr,polya_sample_start,polya_sample_end) == 1) {
-        qc_tag = "INCOMPLETE";
+    } else if (adapter_length > adapter_qc_tol) {
+        qc_tag = "ADAPTER";
     } else {
         qc_tag = "PASS";
     }
 
     //----- print to TSV:
-    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\n",
+    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%zu\t%s\n",
             read_name.c_str(), record->core.pos, polya_sample_start, polya_sample_end,
-            read_rate, polya_length, qc_tag.c_str());
+            read_rate, polya_length, num_cliffs, qc_tag.c_str());
 
     //----- if `verbose == 1`, print out the full read segmentation:
     if (opt::verbose == 1) {
-        fprintf(out_fp, "polya-segmentation\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\n",
+        fprintf(out_fp, "polya-segmentation\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\n",
                 read_name.c_str(), record->core.pos,
-                adapter_sample_start, polya_sample_start, polya_sample_end,
-                read_rate, polya_length);
+                leader_sample_start, adapter_sample_start, polya_sample_start, polya_sample_end,
+                read_rate, polya_length, adapter_length);
     }
     //----- if `verbose >= 2`, print the samples (picoAmps) of the read,
     // up to the first 1000 samples of transcript region:
@@ -481,10 +549,12 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
         std::vector<float> samples(sr.samples);
         std::reverse(samples.begin(), samples.end());
         const PolyAHMM hmm;
-	std::string ref_name(hdr->target_name[record->core.tid]);
+    std::string ref_name(hdr->target_name[record->core.tid]);
         for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
             std::string tag;
-            if (i < adapter_sample_start) {
+            if (i < leader_sample_start) {
+                tag = "START";
+            } else if (i < adapter_sample_start) {
                 tag = "LEADER";
             } else if (i < polya_sample_start) {
                 tag =  "ADAPTER";
@@ -504,9 +574,13 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
                                               sr.scalings[0].shift, sr.scalings[0].var);
             double s_proba_3 = emit_log_proba(s, hmm, 3, sr.scalings[0].scale,
                                               sr.scalings[0].shift, sr.scalings[0].var);
-            fprintf(out_fp, "polya-samples\t%s\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
+            double s_proba_4 = emit_log_proba(s, hmm, 4, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            double s_proba_5 = emit_log_proba(s, hmm, 5, sr.scalings[0].scale,
+                                              sr.scalings[0].shift, sr.scalings[0].var);
+            fprintf(out_fp, "polya-samples\t%s\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
                     read_name.substr(0,6).c_str(), ref_name.c_str(), i, s, scaled_s,
-                    s_proba_0, s_proba_1, s_proba_2, s_proba_3,
+                    s_proba_0, s_proba_1, s_proba_2, s_proba_3, s_proba_4, s_proba_5,
                     tag.c_str());
         }
     }
