@@ -315,7 +315,7 @@ void phase_single_read(const ReadDB& read_db,
         out_record->core.tid = record->core.tid;
         out_record->core.pos = alignment_start_pos;
         out_record->core.qual = record->core.qual;
-        out_record->core.flag = record->core.flag & BAM_FSUPPLEMENTARY;
+        out_record->core.flag = record->core.flag;
 
         // no read pairs
         out_record->core.mtid = -1;
