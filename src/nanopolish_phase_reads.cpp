@@ -197,7 +197,7 @@ void phase_single_read(const ReadDB& read_db,
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
     int alignment_end_pos = bam_endpos(record);
-    
+
     // Search the variant collection for the index of the first/last variants to phase
     Variant lower_search;
     lower_search.ref_name = ref_name;
@@ -209,7 +209,7 @@ void phase_single_read(const ReadDB& read_db,
     upper_search.ref_position = alignment_end_pos;
     auto upper_iter = std::upper_bound(variants.begin(), variants.end(), upper_search, sortByPosition);
 
-    fprintf(stderr, "%s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    fprintf(stderr, "Phasing read %s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
 
     // no variants to phase?
     if(lower_iter == variants.end()) {
@@ -217,10 +217,10 @@ void phase_single_read(const ReadDB& read_db,
     }
 
     int fetched_len;
-    std::string reference_seq = get_reference_region_ts(fai, 
-                                                        ref_name.c_str(), 
-                                                        alignment_start_pos, 
-                                                        alignment_end_pos, 
+    std::string reference_seq = get_reference_region_ts(fai,
+                                                        ref_name.c_str(),
+                                                        alignment_start_pos,
+                                                        alignment_end_pos,
                                                         &fetched_len);
 
     std::string read_outseq = reference_seq;
@@ -242,7 +242,7 @@ void phase_single_read(const ReadDB& read_db,
         SequenceAlignmentRecord seq_align_record(record);
         EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
-        // 
+        //
         for(; lower_iter < upper_iter; ++lower_iter) {
 
             const Variant& v = *lower_iter;
@@ -259,12 +259,13 @@ void phase_single_read(const ReadDB& read_db,
             data.strand = event_align_record.strand;
             data.rc = event_align_record.rc;
             data.event_stride = event_align_record.stride;
-            
+            data.pore_model = data.read->get_base_model(data.strand);
+
             int e1,e2;
-            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events, 
+            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
                                                             calling_start,
                                                             calling_end,
-                                                            e1, 
+                                                            e1,
                                                             e2);
 
             // The events of this read do not span the calling window, skip
@@ -277,7 +278,7 @@ void phase_single_read(const ReadDB& read_db,
 
             Haplotype calling_haplotype =
                 reference_haplotype.substr_by_reference(calling_start, calling_end);
-        
+
             double ref_score = profile_hmm_score(calling_haplotype.get_sequence(), data, alignment_flags);
             bool good_haplotype = calling_haplotype.apply_variant(v);
             if(good_haplotype) {
@@ -309,13 +310,13 @@ void phase_single_read(const ReadDB& read_db,
 
         // Construct the output bam record
         bam1_t* out_record = bam_init1();
-        
+
         // basic stats
         out_record->core.tid = record->core.tid;
         out_record->core.pos = alignment_start_pos;
         out_record->core.qual = record->core.qual;
         out_record->core.flag = record->core.flag & BAM_FSUPPLEMENTARY;
-        
+
         // no read pairs
         out_record->core.mtid = -1;
         out_record->core.mpos = -1;
