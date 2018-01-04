@@ -209,7 +209,9 @@ void phase_single_read(const ReadDB& read_db,
     upper_search.ref_position = alignment_end_pos;
     auto upper_iter = std::upper_bound(variants.begin(), variants.end(), upper_search, sortByPosition);
 
-    fprintf(stderr, "Phasing read %s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    if(opt::verbose >= 1) {
+        fprintf(stderr, "Phasing read %s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    }
 
     // no variants to phase?
     if(lower_iter == variants.end()) {
@@ -302,7 +304,10 @@ void phase_single_read(const ReadDB& read_db,
                 //fprintf(stderr, "\t%s score: %.2lf %.2lf %c p_wrong: %.3lf Q: %d QC: %c\n", v.key().c_str(), ref_score, alt_score, call, log_p_wrong, (int)q_score, q_char);
 
                 int out_position = v.ref_position - alignment_start_pos;
-                assert(read_outseq[out_position] == v.ref_seq[0]);
+                if(read_outseq[out_position] != v.ref_seq[0]) {
+                    fprintf(stderr, "warning: reference base at position %d does not match variant record (%c != %c)\n",
+                        v.ref_position, v.ref_seq[0], read_outseq[out_position]);
+                }
                 read_outseq[out_position] = call;
                 read_outqual[out_position] = q_char;
             }
