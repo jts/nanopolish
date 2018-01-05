@@ -414,9 +414,14 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
         // deletion
         Variant v = candidate_variants[vi];
 
-        if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size())) {
-            v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
+        // Do not allow deletions to extend within opt::min_flanking_sequence of the end of the haplotype
+        int deletion_end = v.ref_position + v.ref_seq.size();
+        if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, deletion_end) &&
+           alignments.get_region_end() - deletion_end > opt::min_flanking_sequence ) {
+
+            v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, deletion_end);
             assert(v.ref_seq != candidate_variants[vi].ref_seq);
+            assert(v.ref_seq.length() == candidate_variants[vi].ref_seq.length() + 1);
             assert(v.ref_seq.substr(0, candidate_variants[vi].ref_seq.size()) == candidate_variants[vi].ref_seq);
             out_variants.push_back(v);
         }
@@ -783,6 +788,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         int calling_end = candidate_variants[end_variant_idx - 1].ref_position +
                           candidate_variants[end_variant_idx - 1].ref_seq.length() +
                           opt::min_flanking_sequence;
+
         int calling_size = calling_end - calling_start;
 
         if(opt::verbose > 2) {
