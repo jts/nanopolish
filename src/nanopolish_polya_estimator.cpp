@@ -59,12 +59,13 @@ static const char *POLYA_USAGE_MESSAGE =
 "Estimate the length of the poly-A tail on direct RNA reads\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
+"  -s, --segmentation                   print segmentation instead of annotations\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
-"  -w, --window=STR                     compute the consensus for window STR (format: ctg:start_id-end_id)\n"
+"  -w, --window=STR                     only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)\n"
 "  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -g, --genome=FILE                    the reference genome assembly for the reads is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -78,9 +79,10 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
+    static unsigned int segmentation;
 }
 
-static const char* shortopts = "r:b:g:t:w:v";
+static const char* shortopts = "r:b:g:st:w:v";
 
 enum { OPT_HELP = 1, OPT_VERSION };
 
@@ -93,6 +95,7 @@ static const struct option longopts[] = {
     { "threads",          required_argument, NULL, 't' },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
+    { "segmentation",     no_argument,       NULL, 's' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -108,6 +111,8 @@ void parse_polya_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
+            case 'w': arg >> opt::region; break;
+            case 's': opt::segmentation++; break;
             case OPT_HELP:
                 std::cout << POLYA_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -467,6 +472,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
 {
     //----- load a squiggle read
     std::string read_name = bam_get_qname(record);
+    std::string ref_name(hdr->target_name[record->core.tid]);
 
     //----- get length of suffix of the read that was softclipped:
     size_t n_cigar = record->core.n_cigar;
@@ -536,29 +542,30 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
         qc_tag = "PASS";
     }
 
-    //----- print to TSV:
+    //----- print annotations to TSV:
     #pragma omp critical
-    fprintf(out_fp, "polya-annotation\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%zu\t%s\n",
-            read_name.c_str(), record->core.pos, polya_sample_start, polya_sample_end,
-            read_rate, polya_length, num_cliffs, qc_tag.c_str());
-
-    //----- if `verbose == 1`, print out the full read segmentation:
-    #pragma omp critical
-    if (opt::verbose == 1) {
-        fprintf(out_fp, "polya-segmentation\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\n",
-                read_name.c_str(), record->core.pos,
-                leader_sample_start, adapter_sample_start, polya_sample_start, polya_sample_end,
-                read_rate, polya_length, adapter_length);
+    if (opt::segmentation == 0) {
+        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%zu\t%s\n",
+                read_name.c_str(), ref_name.c_str(), record->core.pos, polya_sample_start, polya_sample_end,
+                read_rate, polya_length, num_cliffs, qc_tag.c_str());
     }
-    //----- if `verbose >= 2`, print the samples (picoAmps) of the read,
+
+    //----- if `--segmentations`, print out the full read segmentation:
+    #pragma omp critical
+    if (opt::segmentation >= 1) {
+        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\t%s\n",
+                read_name.c_str(), ref_name.c_str(), record->core.pos,
+                leader_sample_start, adapter_sample_start, polya_sample_start, polya_sample_end+1.0f,
+                read_rate, polya_length, adapter_length, qc_tag.c_str());
+    }
+    //----- if `verbose >= 1`, print the samples (picoAmps) of the read,
     // up to the first 1000 samples of transcript region:
     #pragma omp critical
-    if (opt::verbose >= 2) {
+    if (opt::verbose >= 1) {
         // copy 5'->3'-oriented samples from squiggleread and reverse back to 3'->5':
         std::vector<float> samples(sr.samples);
         std::reverse(samples.begin(), samples.end());
         const PolyAHMM hmm;
-        std::string ref_name(hdr->target_name[record->core.tid]);
         for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
             std::string tag;
             if (i < leader_sample_start) {
@@ -607,6 +614,14 @@ int polya_main(int argc, char** argv)
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
+
+    // print header line:
+    if (opt::segmentation == 0) {
+        fprintf(stdout, "readname\tcontig\tpos\tpolya_start\tpolya_end\tread_rate\tpolya_length\tnum_cliffs\tqc_tag\n");
+    }
+    if (opt::segmentation >= 1) {
+        fprintf(stdout, "readname\tcontig\tpos\tleader_start\tadapter_start\tpolya_start\ttranscr_start\tread_rate\tpolya_length\tadapter_length\tqc_tag\n");
+    }
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
