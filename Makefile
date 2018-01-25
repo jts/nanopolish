@@ -8,7 +8,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 #
 
 #Basic flags every build needs
-LIBS=-lz
+LIBS=-lz -lgomp
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
 CFLAGS ?= -O3 -std=c99
