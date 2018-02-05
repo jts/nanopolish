@@ -224,6 +224,9 @@ void phase_single_read(const ReadDB& read_db,
                                                         alignment_start_pos,
                                                         alignment_end_pos,
                                                         &fetched_len);
+    
+    // convert to upper case to avoid calling c>C as variants
+    std::transform(reference_seq.begin(), reference_seq.end(), reference_seq.begin(), ::toupper);
 
     std::string read_outseq = reference_seq;
     std::string read_outqual(reference_seq.length(), MAX_Q_SCORE + BAM_Q_OFFSET);
