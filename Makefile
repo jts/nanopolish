@@ -52,8 +52,8 @@ ifeq ($(HTS), install)
     HTS_INCLUDE=-I./htslib
 else
     # Use system-wide htslib
-	HTS_LIB=
-	HTS_INCLUDE=
+    HTS_LIB=
+    HTS_INCLUDE=
     LIBS += -lhts
 endif
 
