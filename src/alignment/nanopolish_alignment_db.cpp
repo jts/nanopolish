@@ -77,11 +77,16 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
     }
     this->rc = strand_idx == 0 ? seq_record.rc : !seq_record.rc;
     this->strand = strand_idx;
-    this->stride = this->aligned_events.front().read_pos < this->aligned_events.back().read_pos ? 1 : -1;
 
-    // check for a degenerate alignment and discard the events if so
-    if(this->aligned_events.front().read_pos == this->aligned_events.back().read_pos) {
-        this->aligned_events.clear();
+    if(!this->aligned_events.empty()) {
+        this->stride = this->aligned_events.front().read_pos < this->aligned_events.back().read_pos ? 1 : -1;
+
+        // check for a degenerate alignment and discard the events if so
+        if(this->aligned_events.front().read_pos == this->aligned_events.back().read_pos) {
+            this->aligned_events.clear();
+        }
+    } else {
+        this->stride = 1;
     }
 }
 
