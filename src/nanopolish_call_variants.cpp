@@ -1103,6 +1103,11 @@ void parse_call_variants_options(int argc, char** argv)
     }
 }
 
+void print_invalid_window_error(int start_base, int end_base)
+{
+    fprintf(stderr, "[error] Invalid polishing window: [%d %d] - please adjust -w parameter.\n", start_base, end_base);
+}
+
 int call_variants_main(int argc, char** argv)
 {
     parse_call_variants_options(argc, argv);
@@ -1127,9 +1132,16 @@ int call_variants_main(int argc, char** argv)
         end_base = contig_length - 1;
     }
 
+    // Verify window coordinates are correct
+    if(start_base > end_base) {
+        print_invalid_window_error(start_base, end_base);
+        fprintf(stderr, "The starting coordinate of the polishing window must be less than or equal to the end coordinate\n");
+        exit(EXIT_FAILURE);
+    }
+
     int MIN_DISTANCE_TO_END = 40;
     if(contig_length - start_base < MIN_DISTANCE_TO_END) {
-        fprintf(stderr, "Invalid polishing window: [%d %d] - please adjust -w parameter.\n", start_base, end_base);
+        print_invalid_window_error(start_base, end_base);
         fprintf(stderr, "The starting coordinate of the polishing window must be at least %dbp from the contig end\n", MIN_DISTANCE_TO_END);
         exit(EXIT_FAILURE);
     }
