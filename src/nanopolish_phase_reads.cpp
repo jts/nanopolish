@@ -384,8 +384,10 @@ int phase_reads_main(int argc, char** argv)
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     
     // Copy the bam header to std
-    sam_hdr_write(sam_out, processor.get_bam_header());
-    
+    int ret = sam_hdr_write(sam_out, processor.get_bam_header());
+    if(ret != 0) {
+        fprintf(stderr, "[warning] sam_hdr_write returned %d\n", ret);
+    }
     processor.parallel_run(f);
     
     fai_destroy(fai);
