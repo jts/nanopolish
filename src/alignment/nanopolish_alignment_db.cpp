@@ -389,6 +389,9 @@ void AlignmentDB::load_region(const std::string& contig,
     char* ref_segment = faidx_fetch_seq(fai, m_region_contig.c_str(), m_region_start, m_region_end, &fetched_len);
     m_region_ref_sequence = ref_segment;
     
+    // ensure reference sequence is upper case
+    std::transform(m_region_ref_sequence.begin(), m_region_ref_sequence.end(), m_region_ref_sequence.begin(), ::toupper);
+
     // load base-space alignments
     m_sequence_records = _load_sequence_by_region(m_sequence_bam);
 
