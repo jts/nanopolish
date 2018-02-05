@@ -8,7 +8,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 #
 
 #Basic flags every build needs
-LIBS=-lz
+LIBS=-lz -lgomp
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
 CFLAGS ?= -O3 -std=c99
@@ -52,7 +52,9 @@ ifeq ($(HTS), install)
     HTS_INCLUDE=-I./htslib
 else
     # Use system-wide htslib
-    HTS_LIB=-lhts
+	HTS_LIB=
+	HTS_INCLUDE=
+    LIBS += -lhts
 endif
 
 # Include the header-only fast5 library
