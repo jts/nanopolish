@@ -347,6 +347,14 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
         start_time += length_in_seconds;
     }
 
+    if(flags & SRF_LOAD_RAW_SAMPLES) {
+        this->samples.resize(rt.n);
+        for(size_t i = 0; i < this->samples.size(); ++i) {
+            assert(rt.start + i < rt.n);
+            this->samples[i] = rt.raw[rt.start + i];
+        }
+    }
+
     // If sequencing RNA, reverse the events to be 3'->5'
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
