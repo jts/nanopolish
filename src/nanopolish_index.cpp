@@ -57,7 +57,6 @@ void index_file(ReadDB& read_db, const std::string& fn)
 {
     PROFILE_FUNC("index_file")
     
-    // new
     hid_t hdf5_file = fast5_open(fn);
     if(hdf5_file < 0) {
         fprintf(stderr, "could not open fast5 file: %s\n", fn.c_str());
@@ -68,22 +67,6 @@ void index_file(ReadDB& read_db, const std::string& fn)
         read_db.add_signal_path(read_id, fn);
     }
     fast5_close(hdf5_file);
-
-    // old
-    /*
-    fast5::File* fp = NULL;
-    try {
-        fp = new fast5::File(fn);
-        if(fp->is_open()) {
-            fast5::Raw_Samples_Params params = fp->get_raw_samples_params();
-            std::string read_id = params.read_id;
-            read_db.add_signal_path(read_id, fn);
-        }
-    } catch(hdf5_tools::Exception e) {
-        fprintf(stderr, "skipping invalid fast5 file: %s\n", fn.c_str());
-    }
-    delete fp;
-    */
 } // process_file
 
 void index_path(ReadDB& read_db, const std::string& path)
