@@ -7,9 +7,13 @@
 // to read specific data from fast5 files
 //
 #include <string.h>
+#include <math.h>
 #include "nanopolish_fast5_io.h"
 
+//#define DEBUG_FAST5_IO 1
+
 #define RAW_ROOT "/Raw/Reads/"
+int verbose = 0;
 
 //
 hid_t fast5_open(const std::string& filename)
@@ -18,9 +22,21 @@ hid_t fast5_open(const std::string& filename)
     return hdf5file;
 }
 
+//
 void fast5_close(hid_t hdf5_file)
 {
     H5Fclose(hdf5_file);
+}
+
+//
+std::string fast5_get_raw_read_group(hid_t hdf5_file)
+{
+    std::string read_name = fast5_get_raw_read_name(hdf5_file);
+    if(read_name != "") {
+        return std::string(RAW_ROOT) + read_name;
+    } else {
+        return "";
+    }
 }
 
 //
@@ -58,41 +74,192 @@ std::string fast5_get_read_id(hid_t hdf5_file)
 
     std::string out = "";
     
-    // Get the path to the raw read
-    std::string raw_read = fast5_get_raw_read_name(hdf5_file);
-    if(raw_read == "") {
+    // Get the path to the raw read group
+    std::string raw_read_group = fast5_get_raw_read_group(hdf5_file);
+    if(raw_read_group == "") {
         return out;
     }
-    std::string raw_group_path = RAW_ROOT + raw_read;
+
+    return fast5_get_fixed_string_attribute(hdf5_file, raw_read_group, "read_id");
+}
+
+//
+raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling)
+{
+    float* rawptr = NULL;
+    hid_t space;
+    hsize_t nsample;
+    herr_t status;
+    float raw_unit;
+    raw_table rawtbl = { 0, 0, 0, NULL };
+
+    // mostly from scrappie
+    std::string raw_read_group = fast5_get_raw_read_group(hdf5_file);
+
+    // Create data set name
+    std::string signal_path = raw_read_group + "/Signal";
+
+    hid_t dset = H5Dopen(hdf5_file, signal_path.c_str(), H5P_DEFAULT);
+    if (dset < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to open dataset '%s' to read raw signal from.\n", signal_path.c_str());
+#endif
+        goto cleanup2;
+    }
+
+    space = H5Dget_space(dset);
+    if (space < 0) {
+        fprintf(stderr, "Failed to create copy of dataspace for raw signal %s.\n", signal_path.c_str());
+        goto cleanup3;
+    }
+
+    H5Sget_simple_extent_dims(space, &nsample, NULL);
+    rawptr = (float*)calloc(nsample, sizeof(float));
+    status = H5Dread(dset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, rawptr);
+
+    if (status < 0) {
+        free(rawptr);
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to read raw data from dataset %s.\n", signal_path.c_str());
+#endif
+        goto cleanup4;
+    }
+
+    // convert to pA
+    rawtbl = (raw_table) { nsample, 0, nsample, rawptr };
+    raw_unit = scaling.range / scaling.digitisation;
+    for (size_t i = 0; i < nsample; i++) {
+        rawptr[i] = (rawptr[i] + scaling.offset) * raw_unit;
+    }
+
+ cleanup4:
+    H5Sclose(space);
+ cleanup3:
+    H5Dclose(dset);
+ cleanup2:
+    return rawtbl;
+}
+
+//
+std::string fast5_get_experiment_type(hid_t hdf5_file)
+{
+    return fast5_get_fixed_string_attribute(hdf5_file, "/UniqueGlobalKey/context_tags", "experiment_type");
+}
+
+// from scrappie
+float fast5_read_float_attribute(hid_t group, const char *attribute) {
+    float val = NAN;
+    if (group < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Invalid group passed to %s:%d.", __FILE__, __LINE__);
+#endif
+        return val;
+    }
+
+    hid_t attr = H5Aopen(group, attribute, H5P_DEFAULT);
+    if (attr < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to open attribute '%s' for reading.", attribute);
+#endif
+        return val;
+    }
+
+    H5Aread(attr, H5T_NATIVE_FLOAT, &val);
+    H5Aclose(attr);
+
+    return val;
+}
+
+//
+fast5_raw_scaling fast5_get_channel_params(hid_t hdf5_file)
+{
+    // from scrappie
+    fast5_raw_scaling scaling = { NAN, NAN, NAN, NAN };
+    const char *scaling_path = "/UniqueGlobalKey/channel_id";
+
+    hid_t scaling_group = H5Gopen(hdf5_file, scaling_path, H5P_DEFAULT);
+    if (scaling_group < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to group %s.", scaling_path);
+#endif
+        return scaling;
+    }
+
+    scaling.digitisation = fast5_read_float_attribute(scaling_group, "digitisation");
+    scaling.offset = fast5_read_float_attribute(scaling_group, "offset");
+    scaling.range = fast5_read_float_attribute(scaling_group, "range");
+    scaling.sample_rate = fast5_read_float_attribute(scaling_group, "sampling_rate");
+
+    H5Gclose(scaling_group);
+
+    return scaling;
+}
+
+//
+// Internal functions
+//
+
+//
+std::string fast5_get_fixed_string_attribute(hid_t hdf5_file, const std::string& group_name, const std::string& attribute_name)
+{
+    size_t storage_size;
+    char* buffer;
+    hid_t group, attribute, attribute_type;
+    int ret;
+    std::string out;
 
     // Open the group /Raw/Reads/Read_nnn
-    raw_group = H5Gopen(hdf5_file, raw_group_path.c_str(), H5P_DEFAULT);
-    if(raw_group < 0) {
+    group = H5Gopen(hdf5_file, group_name.c_str(), H5P_DEFAULT);
+    if(group < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "could not open group %s\n", group_name.c_str());
+#endif
+        goto close_group;
+    }
+
+    // Ensure attribute exists
+    ret = H5Aexists(group, attribute_name.c_str());
+    if(ret <= 0) {
         goto close_group;
     }
 
     // Open the attribute
-    read_name_attribute = H5Aopen(raw_group, "read_id", H5P_DEFAULT);
-    if(read_name_attribute < 0) {
+    attribute = H5Aopen(group, attribute_name.c_str(), H5P_DEFAULT);
+    if(attribute < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "could not open attribute: %s\n", attribute_name.c_str());
+#endif
         goto close_attr;
     }
 
-    // Read the attribute
-    storage_size = H5Aget_storage_size(read_name_attribute);
-    read_name_str = (char*)calloc(storage_size + 1, sizeof(char));
-    attribute_type = H5Aget_type(read_name_attribute);
+    // Get data type and check it is a fixed-length string
+    attribute_type = H5Aget_type(attribute);
+    if(H5Tis_variable_str(attribute_type)) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "variable length string detected -- ignoring attribute\n");
+#endif
+        goto close_type;
+    }
 
-    ret = H5Aread(read_name_attribute, attribute_type, read_name_str);
+    // Get the storage size and allocate
+    storage_size = H5Aget_storage_size(attribute);
+    buffer = (char*)calloc(storage_size + 1, sizeof(char));
+
+    // finally read the attribute
+    ret = H5Aread(attribute, attribute_type, buffer);
     if(ret >= 0) {
-        out = read_name_str;
+        out = buffer;
     }
 
     // clean up
-    free(read_name_str);
+    free(buffer);
+close_type:
     H5Tclose(attribute_type);
 close_attr:
-    H5Aclose(read_name_attribute);
+    H5Aclose(attribute);
 close_group:
-    H5Gclose(raw_group);
+    H5Gclose(group);
+
     return out;
 }
+
