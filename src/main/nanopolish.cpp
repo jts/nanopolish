@@ -63,7 +63,7 @@ int print_version(int, char **)
 int main(int argc, char** argv)
 {
     // Turn off HDF's exception printing, which is generally unhelpful for users
-    hdf5::H5Eset_auto(0, NULL, NULL);
+    H5Eset_auto(0, NULL, NULL);
 
     int ret = 0;
     if(argc <= 1) {
