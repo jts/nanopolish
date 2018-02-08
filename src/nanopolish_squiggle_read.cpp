@@ -117,6 +117,9 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             this->read_sequence = read_db.get_read_sequence(read_name);
             load_from_raw(hdf5_file, flags);
         }
+        
+        fast5_close(hdf5_file);
+        
     } else {
         fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
         g_bad_fast5_file += 1;
