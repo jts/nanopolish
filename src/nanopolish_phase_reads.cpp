@@ -351,11 +351,14 @@ int phase_reads_main(int argc, char** argv)
 
     ReadDB read_db;
     read_db.load(opt::reads_file);
-    
+
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
-  
-    std::vector<Variant> variants;  
+    if(fai == NULL) {
+        exit(EXIT_FAILURE);
+    }
+
+    std::vector<Variant> variants;
     if(!opt::region.empty()) {
         std::string contig;
         int start_base;
@@ -370,28 +373,28 @@ int phase_reads_main(int argc, char** argv)
 
     // Sort variants by reference coordinate
     std::sort(variants.begin(), variants.end(), sortByPosition);
-    
+
     // remove hom reference
     auto new_end = std::remove_if(variants.begin(), variants.end(), [](Variant v) { return v.genotype == "0/0"; });
     variants.erase( new_end, variants.end());
-    
+
     samFile* sam_out = sam_open("-", "w");
 
-    // the BamProcessor framework calls the input function with the 
+    // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     auto f = std::bind(phase_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), sam_out, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
-    
+
     // Copy the bam header to std
     int ret = sam_hdr_write(sam_out, processor.get_bam_header());
     if(ret != 0) {
         fprintf(stderr, "[warning] sam_hdr_write returned %d\n", ret);
     }
     processor.parallel_run(f);
-    
+
     fai_destroy(fai);
     sam_close(sam_out);
-    
+
     return EXIT_SUCCESS;
 }
