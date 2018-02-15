@@ -93,7 +93,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
         // Try to detect whether this read is DNA or RNA
         this->nucleotide_type = experiment_type == "rna" ? SRNT_RNA : SRNT_DNA;
-        
+
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
 
@@ -117,14 +117,14 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             this->read_sequence = read_db.get_read_sequence(read_name);
             load_from_raw(hdf5_file, flags);
         }
-        
+
         fast5_close(hdf5_file);
-        
+
     } else {
         fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
         g_bad_fast5_file += 1;
     }
-    
+
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }
