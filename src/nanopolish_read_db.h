@@ -46,6 +46,9 @@ class ReadDB
         
         // returns the path to the signal data for the given read
         std::string get_signal_path(const std::string& read_id) const;
+        
+        // returns true if a read with this ID is in the DB
+        bool has_read(const std::string& read_id) const;
 
         // returns the basecalled sequence for the given read
         std::string get_read_sequence(const std::string& read_id) const;
@@ -56,6 +59,9 @@ class ReadDB
         //
         // Summaries and sanity checks
         //
+
+        // return the number of reads with a fast5 file
+        size_t get_num_reads_with_path() const;
 
         // returns true if all reads in the database have paths to their signal-level data
         bool check_signal_paths() const;
