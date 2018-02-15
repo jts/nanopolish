@@ -13,6 +13,7 @@
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_extract.h"
 #include "nanopolish_raw_loader.h"
+#include "nanopolish_fast5_io.h"
 
 extern "C" {
 #include "event_detection.h"
@@ -81,39 +82,47 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         return;
     }
 
-    #pragma omp critical(sr_load_fast5)
-    {
-        // If for some reason the fast5s become unreadable in between indexing
-        // and executing the fast5::File constructor may throw. For example
-        // see issue #273. We catch here and skip the read in such cases
-        try {
-            this->f_p = new fast5::File(fast5_path);
-            assert(this->f_p->is_open());
 
-            // Try to detect whether this read is DNA or RNA
-            this->nucleotide_type = SRNT_DNA;
-            if(this->f_p->have_context_tags_params()) {
-                fast5::Context_Tags_Params context_tags = this->f_p->get_context_tags_params();
-                std::string experiment_type = context_tags["experiment_type"];
-                if(experiment_type == "rna") {
-                    this->nucleotide_type = SRNT_RNA;
+    // Get the read type from the fast5 file
+    hid_t hdf5_file = fast5_open(fast5_path);
+    if(hdf5_file >= 0) {
+
+        //fprintf(stderr, "file: %s\n", fast5_path.c_str());
+        std::string experiment_type = fast5_get_experiment_type(hdf5_file);
+        //fprintf(stderr, "type: %s\n", experiment_type.c_str());
+
+        // Try to detect whether this read is DNA or RNA
+        this->nucleotide_type = experiment_type == "rna" ? SRNT_RNA : SRNT_DNA;
+
+        // Did this read come from nanopolish extract?
+        bool is_event_read = is_extract_read_name(this->read_name);
+
+        // Use the legacy loader for DNA reads from extract, otherwise use the new loader
+        if(this->nucleotide_type == SRNT_DNA && is_event_read) {
+            try {
+                #pragma omp critical(sr_load_fast5)
+                {
+                    this->f_p = new fast5::File(fast5_path);
+                    assert(this->f_p->is_open());
+                    load_from_events(flags);
                 }
+            } catch(hdf5_tools::Exception e) {
+                fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+                g_bad_fast5_file += 1;
             }
 
-            bool is_event_read = is_extract_read_name(this->read_name);
-            if(this->nucleotide_type == SRNT_DNA && is_event_read) {
-                load_from_events(flags);
-            } else {
-                this->read_sequence = read_db.get_read_sequence(read_name);
-                load_from_raw(flags);
-            }
-        } catch(hdf5_tools::Exception e) {
-            fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
-            g_bad_fast5_file += 1;
+            delete this->f_p;
+            this->f_p = nullptr;
+        } else {
+            this->read_sequence = read_db.get_read_sequence(read_name);
+            load_from_raw(hdf5_file, flags);
         }
 
-        delete this->f_p;
-        this->f_p = nullptr;
+        fast5_close(hdf5_file);
+
+    } else {
+        fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+        g_bad_fast5_file += 1;
     }
 
     if(!this->events[0].empty()) {
@@ -262,7 +271,7 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 }
 
 //
-void SquiggleRead::load_from_raw(const uint32_t flags)
+void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
 {
     // File not in db, can't load
     if(this->fast5_path == "" || this->read_sequence == "") {
@@ -294,33 +303,12 @@ void SquiggleRead::load_from_raw(const uint32_t flags)
     this->base_model[strand_idx] = PoreModelSet::get_model(kit, alphabet, strand_str, k);
     assert(this->base_model[strand_idx] != NULL);
 
-    // Ensure signal file is available for read
-    assert(f_p->is_open());
-
     // Read the sample rate
-    auto channel_params = f_p->get_channel_id_params();
-    this->sample_rate = channel_params.sampling_rate;
+    auto channel_params = fast5_get_channel_params(hdf5_file);
+    this->sample_rate = channel_params.sample_rate;
 
     // Read the actual samples
-    auto& sample_read_names = f_p->get_raw_samples_read_name_list();
-    if(sample_read_names.empty()) {
-        fprintf(stderr, "Error, no raw samples found\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // we assume the first raw sample read is the one we're after
-    std::string sample_read_name = sample_read_names.front();
-    std::vector<float> samples = f_p->get_raw_samples(sample_read_name);
-
-    // convert samples to scrappie's format (for event detection)
-    raw_table rt;
-    rt.n = samples.size();
-    rt.start = 0;
-    rt.end = samples.size() - 1;
-    rt.raw = (float*)malloc(sizeof(float) * samples.size());
-    for(size_t i = 0; i < samples.size(); ++i) {
-        rt.raw[i] = samples[i];
-    }
+    raw_table rt = fast5_get_raw_samples(hdf5_file, channel_params);
 
     // trim using scrappie's internal method
     // parameters taken directly from scrappie defaults

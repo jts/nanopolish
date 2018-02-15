@@ -560,11 +560,14 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(c
 std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(const std::vector<SequenceAlignmentRecord>& sequence_records)
 {
     std::vector<EventAlignmentRecord> records;
+
+    #pragma omp parallel for
     for(size_t i = 0; i < sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& seq_record = sequence_records[i];
 
         // conditionally load the squiggle read if it hasn't been loaded already
         _load_squiggle_read(seq_record.read_name);
+
         for(size_t si = 0; si < NUM_STRANDS; ++si) {
             
             // skip complement
@@ -578,6 +581,7 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(
                 continue;
             }
 
+            #pragma omp critical
             records.emplace_back(sr, si, seq_record);
         }
     }
@@ -622,7 +626,11 @@ void AlignmentDB::_load_squiggle_read(const std::string& read_name)
 {
     // Do we need to load this fast5 file?
     if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
+        
+        // Allow the load to happen in parallel but lock access to adding it into the map
         SquiggleRead* sr = new SquiggleRead(read_name, m_read_db);
+        
+        #pragma omp critical
         m_squiggle_read_map[read_name] = sr;
     }
 }
