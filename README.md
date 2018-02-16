@@ -63,7 +63,7 @@ Nanopolish needs access to the signal-level data measured by the nanopore sequen
 nanopolish index -d /path/to/raw_fast5s/ -s sequencing_summary.txt albacore_output.fastq
 ```
 
-The `-s` option tells nanopolish to read the `sequencing_summary.txt` file from Albacore to speed up indexing. Without this option `nanopolish index` is extremely slow as it needs to read every fast5 file individually. If you basecalled your run in parallel, so you have multiple sequencing_summary.txt files, you can use the `-f` option to pass in file containing the paths to the sequencing summary files (one per line).
+The `-s` option tells nanopolish to read the `sequencing_summary.txt` file from Albacore to speed up indexing. Without this option `nanopolish index` is extremely slow as it needs to read every fast5 file individually. If you basecalled your run in parallel, so you have multiple `sequencing_summary.txt` files, you can use the `-f` option to pass in a file containing the paths to the sequencing summary files (one per line).
 
 ### Computing a new consensus sequence for a draft assembly
 
