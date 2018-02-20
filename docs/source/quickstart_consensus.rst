@@ -1,9 +1,9 @@
 .. _quickstart_consensus:
 
-Quickstart - how to polish the consensus assembly
+Quickstart - how to polish a genome assembly
 ===================================================
 
-The original purpose for nanopolish was to improve the consensus assembly accuracy for Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started with our tool.
+The original purpose of nanopolish was to improve the consensus accuracy of an assembly of Oxford Nanopore Technology sequencing reads. Here we provide a step-by-step tutorial to help you get started.
 
 **Requirements**:
 
