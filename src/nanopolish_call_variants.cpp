@@ -133,7 +133,7 @@ namespace opt
     static std::vector<std::string> methylation_types;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:p:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
