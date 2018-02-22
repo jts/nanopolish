@@ -100,6 +100,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
+"  -K  --batchsize=NUM                  the batch size (default: 128)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -116,7 +117,7 @@ namespace opt
     static int batch_size = 128;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS };
 
@@ -131,6 +132,7 @@ static const struct option longopts[] = {
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
+    { "batchsize",        no_argument,       NULL, 'K' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -338,6 +340,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'm': arg >> opt::models_fofn; break;
             case 'w': arg >> opt::region; break;
             case 'v': opt::verbose++; break;
+            case 'K': arg >> opt::batch_size ;break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << CALL_METHYLATION_USAGE_MESSAGE;
@@ -419,7 +422,7 @@ int call_methylation_main(int argc, char** argv)
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
-    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.parallel_run(f);
 
     // cleanup

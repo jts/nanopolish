@@ -21,7 +21,8 @@ class BamProcessor
     public:
         BamProcessor(const std::string& bam_filename, 
                      const std::string& region,
-                     const int num_threads);
+                     const int num_threads,
+                     const int batch_size=128);
 
         ~BamProcessor();
 

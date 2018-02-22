@@ -16,10 +16,12 @@
 
 BamProcessor::BamProcessor(const std::string& bam_file,
                            const std::string& region,
-                           const int num_threads) :
+                           const int num_threads,
+                           const int batch_size) :
                             m_bam_file(bam_file),
                             m_region(region),
-                            m_num_threads(num_threads)
+                            m_num_threads(num_threads),
+                            m_batch_size(batch_size)
 
 {
     // load bam file
