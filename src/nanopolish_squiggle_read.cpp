@@ -92,7 +92,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         //fprintf(stderr, "type: %s\n", experiment_type.c_str());
 
         // Try to detect whether this read is DNA or RNA
-        this->nucleotide_type = experiment_type == "rna" ? SRNT_RNA : SRNT_DNA;
+        this->nucleotide_type = experiment_type == "rna" || experiment_type == "internal_rna" ? SRNT_RNA : SRNT_DNA;
 
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
