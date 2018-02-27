@@ -63,7 +63,7 @@ static const char *POLYA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -w, --window=STR                     only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)\n"
-"  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
+"  -r, --reads=FILE                     the 1D ONT direct RNA reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome assembly for the reads is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
