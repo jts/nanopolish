@@ -16,10 +16,12 @@
 
 BamProcessor::BamProcessor(const std::string& bam_file,
                            const std::string& region,
-                           const int num_threads) :
+                           const int num_threads,
+                           const int batch_size) :
                             m_bam_file(bam_file),
                             m_region(region),
-                            m_num_threads(num_threads)
+                            m_num_threads(num_threads),
+                            m_batch_size(batch_size)
 
 {
     // load bam file
@@ -98,7 +100,7 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
 
         // realign if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0 || (num_records_buffered + num_reads_realigned == m_max_reads)) {
-            #pragma omp parallel for
+            #pragma omp parallel for schedule(dynamic)
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;

@@ -84,7 +84,7 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int scale_events = 0;
-    static int batch_size = 128;
+    static int batch_size = 512;
     static bool print_read_names;
     static bool full_output;
     static bool write_samples = false;
