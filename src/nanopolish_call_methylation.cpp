@@ -100,7 +100,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
-"  -K  --batchsize=NUM                  the batch size (default: 128)\n"
+"  -K  --batchsize=NUM                  the batch size (default: 512)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -114,7 +114,7 @@ namespace opt
     static std::string cpg_methylation_model_type = "reftrained";
     static int progress = 0;
     static int num_threads = 1;
-    static int batch_size = 128;
+    static int batch_size = 512;
 }
 
 static const char* shortopts = "r:b:g:t:w:m:K:vn";
