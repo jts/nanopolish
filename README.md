@@ -59,18 +59,11 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run `nanopolish index` on your input reads (-d can be specified more than once if using multiple runs):
 
 ```
-# Only run this if you used Albacore 2.0 or later
-nanopolish index -d /path/to/raw_fast5s/ albacore_output.fastq
+# Index the output of the albacore basecaller
+nanopolish index -d /path/to/raw_fast5s/ -s sequencing_summary.txt albacore_output.fastq
 ```
 
-If you basecalled your reads with Albacore 1.2 or earlier, you should run `nanopolish extract` on your input reads instead:
-
-```
-# Only run this if you used Albacore 1.2 or later
-nanopolish extract --type template directory/pass/ > reads.fa
-```
-
-Note these two commands are mutually exclusive - you only need to run one of them. You need to decide what command to run depending on the version of Albacore that you used. In the following sections we assume you have preprocessed the data by following the instructions above and that your reads are in a file named `reads.fa`.
+The `-s` option tells nanopolish to read the `sequencing_summary.txt` file from Albacore to speed up indexing. Without this option `nanopolish index` is extremely slow as it needs to read every fast5 file individually. If you basecalled your run in parallel, so you have multiple `sequencing_summary.txt` files, you can use the `-f` option to pass in a file containing the paths to the sequencing summary files (one per line).
 
 ### Computing a new consensus sequence for a draft assembly
 

@@ -208,6 +208,13 @@ std::string fast5_get_fixed_string_attribute(hid_t hdf5_file, const std::string&
     int ret;
     std::string out;
 
+    // according to http://hdf-forum.184993.n3.nabble.com/check-if-dataset-exists-td194725.html
+    // we should use H5Lexists to check for the existence of a group/dataset using an arbitrary path
+    ret = H5Lexists(hdf5_file, group_name.c_str(), H5P_DEFAULT);
+    if(ret <= 0) {
+        return "";
+    }
+
     // Open the group /Raw/Reads/Read_nnn
     group = H5Gopen(hdf5_file, group_name.c_str(), H5P_DEFAULT);
     if(group < 0) {
