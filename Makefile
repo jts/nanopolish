@@ -52,7 +52,9 @@ ifeq ($(HTS), install)
     HTS_INCLUDE=-I./htslib
 else
     # Use system-wide htslib
-    HTS_LIB=-lhts
+    HTS_LIB=
+    HTS_INCLUDE=
+    LIBS += -lhts
 endif
 
 # Include the header-only fast5 library

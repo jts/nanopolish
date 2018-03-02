@@ -85,7 +85,7 @@ for contig_name in sorted(segments_by_name.keys()):
 
         # Ensure the segments overlap
         if not( prev_segment is None or prev_segment + SEGMENT_LENGTH + OVERLAP_LENGTH > segment_start ):
-            sys.stderr.write("error: segment starting at %s:%d is missing\n" % (contig, prev_segment + SEGMENT_LENGTH + 40))
+            sys.stderr.write("error: segment starting at %s:%d is missing\n" % (contig_name, prev_segment + SEGMENT_LENGTH + 40))
             all_segments_found = False
 
         sequence = segments_by_name[contig_name][segment_start]
@@ -98,5 +98,5 @@ for contig_name in sorted(segments_by_name.keys()):
     if all_segments_found:
         print(">%s\n%s" % (contig_name, assembly))
     else:
-        sys.stderr.write("error: some segments are missing, could not merge contig %s\n" % (contig))
+        sys.stderr.write("error: some segments are missing, could not merge contig %s\n" % (contig_name))
         sys.exit(1)

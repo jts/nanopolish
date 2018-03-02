@@ -133,7 +133,7 @@ namespace opt
     static std::vector<std::string> methylation_types;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:p:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -414,9 +414,14 @@ std::vector<Variant> expand_variants(const AlignmentDB& alignments,
         // deletion
         Variant v = candidate_variants[vi];
 
-        if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size())) {
-            v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, v.ref_position + v.ref_seq.size());
+        // Do not allow deletions to extend within opt::min_flanking_sequence of the end of the haplotype
+        int deletion_end = v.ref_position + v.ref_seq.size();
+        if(alignments.are_coordinates_valid(v.ref_name, v.ref_position, deletion_end) &&
+           alignments.get_region_end() - deletion_end > opt::min_flanking_sequence ) {
+
+            v.ref_seq = alignments.get_reference_substring(v.ref_name, v.ref_position, deletion_end);
             assert(v.ref_seq != candidate_variants[vi].ref_seq);
+            assert(v.ref_seq.length() == candidate_variants[vi].ref_seq.length() + 1);
             assert(v.ref_seq.substr(0, candidate_variants[vi].ref_seq.size()) == candidate_variants[vi].ref_seq);
             out_variants.push_back(v);
         }
@@ -783,6 +788,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         int calling_end = candidate_variants[end_variant_idx - 1].ref_position +
                           candidate_variants[end_variant_idx - 1].ref_seq.length() +
                           opt::min_flanking_sequence;
+
         int calling_size = calling_end - calling_start;
 
         if(opt::verbose > 2) {
@@ -1097,6 +1103,11 @@ void parse_call_variants_options(int argc, char** argv)
     }
 }
 
+void print_invalid_window_error(int start_base, int end_base)
+{
+    fprintf(stderr, "[error] Invalid polishing window: [%d %d] - please adjust -w parameter.\n", start_base, end_base);
+}
+
 int call_variants_main(int argc, char** argv)
 {
     parse_call_variants_options(argc, argv);
@@ -1121,9 +1132,16 @@ int call_variants_main(int argc, char** argv)
         end_base = contig_length - 1;
     }
 
+    // Verify window coordinates are correct
+    if(start_base > end_base) {
+        print_invalid_window_error(start_base, end_base);
+        fprintf(stderr, "The starting coordinate of the polishing window must be less than or equal to the end coordinate\n");
+        exit(EXIT_FAILURE);
+    }
+
     int MIN_DISTANCE_TO_END = 40;
     if(contig_length - start_base < MIN_DISTANCE_TO_END) {
-        fprintf(stderr, "Invalid polishing window: [%d %d] - please adjust -w parameter.\n", start_base, end_base);
+        print_invalid_window_error(start_base, end_base);
         fprintf(stderr, "The starting coordinate of the polishing window must be at least %dbp from the contig end\n", MIN_DISTANCE_TO_END);
         exit(EXIT_FAILURE);
     }

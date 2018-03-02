@@ -190,6 +190,12 @@ void ReadDB::add_signal_path(const std::string& read_id, const std::string& path
     m_data[read_id].signal_data_path = path;
 }
 
+bool ReadDB::has_read(const std::string& read_id) const
+{
+    const auto& iter = m_data.find(read_id);
+    return iter != m_data.end();
+}
+
 //
 std::string ReadDB::get_signal_path(const std::string& read_id) const
 {
@@ -238,14 +244,21 @@ void ReadDB::save() const
 
 
 //
-bool ReadDB::check_signal_paths() const
+size_t ReadDB::get_num_reads_with_path() const
 {
+    size_t num_reads_with_path = 0;
     for(const auto& iter : m_data) {
-        if(iter.second.signal_data_path == "") {
-            return false;
+        if(iter.second.signal_data_path != "") {
+            num_reads_with_path += 1;
         }
     }
-    return true;
+    return num_reads_with_path;
+}
+
+bool ReadDB::check_signal_paths() const
+{
+    size_t num_reads_with_path = get_num_reads_with_path();
+    return num_reads_with_path == m_data.size();
 }
 
 //
@@ -255,5 +268,5 @@ void ReadDB::print_stats() const
     for(const auto& iter : m_data) {
         num_reads_with_path += iter.second.signal_data_path != "";
     }
-    fprintf(stderr, "[readdb] num reads: %zu, num reads with path: %zu\n", m_data.size(), num_reads_with_path);
+    fprintf(stderr, "[readdb] num reads: %zu, num reads with path to fast5: %zu\n", m_data.size(), num_reads_with_path);
 }

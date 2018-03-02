@@ -302,7 +302,7 @@ class SquiggleRead
         void load_from_events(const uint32_t flags);
 
         // Load all read data from raw samples
-        void load_from_raw(const uint32_t flags);
+        void load_from_raw(hid_t hdf5_file, const uint32_t flags);
 
         // Version-specific intialization functions
         void _load_R7(uint32_t si);

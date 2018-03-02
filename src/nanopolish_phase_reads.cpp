@@ -197,7 +197,7 @@ void phase_single_read(const ReadDB& read_db,
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
     int alignment_end_pos = bam_endpos(record);
-    
+
     // Search the variant collection for the index of the first/last variants to phase
     Variant lower_search;
     lower_search.ref_name = ref_name;
@@ -209,7 +209,9 @@ void phase_single_read(const ReadDB& read_db,
     upper_search.ref_position = alignment_end_pos;
     auto upper_iter = std::upper_bound(variants.begin(), variants.end(), upper_search, sortByPosition);
 
-    fprintf(stderr, "%s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    if(opt::verbose >= 1) {
+        fprintf(stderr, "Phasing read %s %s:%u-%u %zu\n", read_name.c_str(), ref_name.c_str(), alignment_start_pos, alignment_end_pos, upper_iter - lower_iter);
+    }
 
     // no variants to phase?
     if(lower_iter == variants.end()) {
@@ -217,11 +219,14 @@ void phase_single_read(const ReadDB& read_db,
     }
 
     int fetched_len;
-    std::string reference_seq = get_reference_region_ts(fai, 
-                                                        ref_name.c_str(), 
-                                                        alignment_start_pos, 
-                                                        alignment_end_pos, 
+    std::string reference_seq = get_reference_region_ts(fai,
+                                                        ref_name.c_str(),
+                                                        alignment_start_pos,
+                                                        alignment_end_pos,
                                                         &fetched_len);
+    
+    // convert to upper case to avoid calling c>C as variants
+    std::transform(reference_seq.begin(), reference_seq.end(), reference_seq.begin(), ::toupper);
 
     std::string read_outseq = reference_seq;
     std::string read_outqual(reference_seq.length(), MAX_Q_SCORE + BAM_Q_OFFSET);
@@ -242,7 +247,7 @@ void phase_single_read(const ReadDB& read_db,
         SequenceAlignmentRecord seq_align_record(record);
         EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
-        // 
+        //
         for(; lower_iter < upper_iter; ++lower_iter) {
 
             const Variant& v = *lower_iter;
@@ -259,12 +264,13 @@ void phase_single_read(const ReadDB& read_db,
             data.strand = event_align_record.strand;
             data.rc = event_align_record.rc;
             data.event_stride = event_align_record.stride;
-            
+            data.pore_model = data.read->get_base_model(data.strand);
+
             int e1,e2;
-            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events, 
+            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
                                                             calling_start,
                                                             calling_end,
-                                                            e1, 
+                                                            e1,
                                                             e2);
 
             // The events of this read do not span the calling window, skip
@@ -277,7 +283,7 @@ void phase_single_read(const ReadDB& read_db,
 
             Haplotype calling_haplotype =
                 reference_haplotype.substr_by_reference(calling_start, calling_end);
-        
+
             double ref_score = profile_hmm_score(calling_haplotype.get_sequence(), data, alignment_flags);
             bool good_haplotype = calling_haplotype.apply_variant(v);
             if(good_haplotype) {
@@ -301,7 +307,10 @@ void phase_single_read(const ReadDB& read_db,
                 //fprintf(stderr, "\t%s score: %.2lf %.2lf %c p_wrong: %.3lf Q: %d QC: %c\n", v.key().c_str(), ref_score, alt_score, call, log_p_wrong, (int)q_score, q_char);
 
                 int out_position = v.ref_position - alignment_start_pos;
-                assert(read_outseq[out_position] == v.ref_seq[0]);
+                if(read_outseq[out_position] != v.ref_seq[0]) {
+                    fprintf(stderr, "warning: reference base at position %d does not match variant record (%c != %c)\n",
+                        v.ref_position, v.ref_seq[0], read_outseq[out_position]);
+                }
                 read_outseq[out_position] = call;
                 read_outqual[out_position] = q_char;
             }
@@ -309,13 +318,13 @@ void phase_single_read(const ReadDB& read_db,
 
         // Construct the output bam record
         bam1_t* out_record = bam_init1();
-        
+
         // basic stats
         out_record->core.tid = record->core.tid;
         out_record->core.pos = alignment_start_pos;
         out_record->core.qual = record->core.qual;
-        out_record->core.flag = record->core.flag & BAM_FSUPPLEMENTARY;
-        
+        out_record->core.flag = record->core.flag;
+
         // no read pairs
         out_record->core.mtid = -1;
         out_record->core.mpos = -1;
@@ -342,11 +351,14 @@ int phase_reads_main(int argc, char** argv)
 
     ReadDB read_db;
     read_db.load(opt::reads_file);
-    
+
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
-  
-    std::vector<Variant> variants;  
+    if(fai == NULL) {
+        exit(EXIT_FAILURE);
+    }
+
+    std::vector<Variant> variants;
     if(!opt::region.empty()) {
         std::string contig;
         int start_base;
@@ -361,26 +373,28 @@ int phase_reads_main(int argc, char** argv)
 
     // Sort variants by reference coordinate
     std::sort(variants.begin(), variants.end(), sortByPosition);
-    
+
     // remove hom reference
     auto new_end = std::remove_if(variants.begin(), variants.end(), [](Variant v) { return v.genotype == "0/0"; });
     variants.erase( new_end, variants.end());
-    
+
     samFile* sam_out = sam_open("-", "w");
 
-    // the BamProcessor framework calls the input function with the 
+    // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     auto f = std::bind(phase_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), sam_out, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
-    
+
     // Copy the bam header to std
-    sam_hdr_write(sam_out, processor.get_bam_header());
-    
+    int ret = sam_hdr_write(sam_out, processor.get_bam_header());
+    if(ret != 0) {
+        fprintf(stderr, "[warning] sam_hdr_write returned %d\n", ret);
+    }
     processor.parallel_run(f);
-    
+
     fai_destroy(fai);
     sam_close(sam_out);
-    
+
     return EXIT_SUCCESS;
 }
