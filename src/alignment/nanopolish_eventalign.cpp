@@ -84,7 +84,7 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int scale_events = 0;
-    static int batch_size = 128;
+    static int batch_size = 512;
     static bool print_read_names;
     static bool full_output;
     static bool write_samples = false;
@@ -599,6 +599,9 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset, 
                                                   bam_endpos(params.record), &fetched_len);
 
+    // convert to upper case
+    std::transform(ref_seq.begin(), ref_seq.end(), ref_seq.begin(), ::toupper);
+    
     // k from read pore model
     const uint32_t k = params.sr->get_model_k(params.strand_idx);
 

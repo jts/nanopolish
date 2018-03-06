@@ -73,12 +73,21 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
         size_t kmer_pos_ref_strand = seq_record.aligned_bases[i].read_pos;
         size_t kmer_pos_read_strand = seq_record.rc ? this->sr->flip_k_strand(kmer_pos_ref_strand, k) : kmer_pos_ref_strand;
         size_t event_idx = this->sr->get_closest_event_to(kmer_pos_read_strand, strand_idx);
-        assert(event_idx != -1);
         this->aligned_events.push_back( { seq_record.aligned_bases[i].ref_pos, (int)event_idx });
     }
     this->rc = strand_idx == 0 ? seq_record.rc : !seq_record.rc;
     this->strand = strand_idx;
-    this->stride = this->aligned_events.front().read_pos < this->aligned_events.back().read_pos ? 1 : -1;
+
+    if(!this->aligned_events.empty()) {
+        this->stride = this->aligned_events.front().read_pos < this->aligned_events.back().read_pos ? 1 : -1;
+
+        // check for a degenerate alignment and discard the events if so
+        if(this->aligned_events.front().read_pos == this->aligned_events.back().read_pos) {
+            this->aligned_events.clear();
+        }
+    } else {
+        this->stride = 1;
+    }
 }
 
 //
@@ -385,6 +394,9 @@ void AlignmentDB::load_region(const std::string& contig,
     char* ref_segment = faidx_fetch_seq(fai, m_region_contig.c_str(), m_region_start, m_region_end, &fetched_len);
     m_region_ref_sequence = ref_segment;
     
+    // ensure reference sequence is upper case
+    std::transform(m_region_ref_sequence.begin(), m_region_ref_sequence.end(), m_region_ref_sequence.begin(), ::toupper);
+
     // load base-space alignments
     m_sequence_records = _load_sequence_by_region(m_sequence_bam);
 
@@ -548,11 +560,14 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(c
 std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(const std::vector<SequenceAlignmentRecord>& sequence_records)
 {
     std::vector<EventAlignmentRecord> records;
+
+    #pragma omp parallel for
     for(size_t i = 0; i < sequence_records.size(); ++i) {
         const SequenceAlignmentRecord& seq_record = sequence_records[i];
 
         // conditionally load the squiggle read if it hasn't been loaded already
         _load_squiggle_read(seq_record.read_name);
+
         for(size_t si = 0; si < NUM_STRANDS; ++si) {
             
             // skip complement
@@ -566,6 +581,7 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(
                 continue;
             }
 
+            #pragma omp critical
             records.emplace_back(sr, si, seq_record);
         }
     }
@@ -610,7 +626,11 @@ void AlignmentDB::_load_squiggle_read(const std::string& read_name)
 {
     // Do we need to load this fast5 file?
     if(m_squiggle_read_map.find(read_name) == m_squiggle_read_map.end()) {
+        
+        // Allow the load to happen in parallel but lock access to adding it into the map
         SquiggleRead* sr = new SquiggleRead(read_name, m_read_db);
+        
+        #pragma omp critical
         m_squiggle_read_map[read_name] = sr;
     }
 }
