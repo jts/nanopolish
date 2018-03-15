@@ -167,7 +167,7 @@ Usage example
    * - ``-r``, ``--reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b``, ``--bam=FILE``
      - Y
@@ -253,7 +253,7 @@ Usage example
    * - ``-r``, ``--reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b``, ``--bam=FILE``
      - Y
@@ -365,7 +365,7 @@ Usage example
    * - ``-r, --reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b, --bam=FILE``
      - Y
@@ -458,7 +458,7 @@ Usage example
    * - ``-r, --reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b, --bam=FILE``
      - Y
