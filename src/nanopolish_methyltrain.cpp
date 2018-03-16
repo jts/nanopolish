@@ -101,7 +101,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "  -c  --calibrate                      recalibrate aligned reads to model before training\n"
 "      --no-update-models               do not write out trained models\n"
 "      --output-scores                  optionally output read scores during training\n"
-"  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
