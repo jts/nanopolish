@@ -336,6 +336,8 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     }
 
     if(flags & SRF_LOAD_RAW_SAMPLES) {
+
+        this->sample_start_time = 0;
         this->samples.resize(rt.n);
         for(size_t i = 0; i < this->samples.size(); ++i) {
             assert(rt.start + i < rt.n);
