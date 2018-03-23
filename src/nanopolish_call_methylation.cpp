@@ -116,6 +116,7 @@ namespace opt
     static int num_threads = 1;
     static int batch_size = 512;
     static int min_separation = 10;
+    static int min_flank = 10;
 }
 
 static const char* shortopts = "r:b:g:t:w:m:K:vn";
@@ -225,8 +226,8 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             size_t end_idx = groups[group_idx].second;
 
             // the coordinates on the reference substring for this group of sites
-            int sub_start_pos = cpg_sites[start_idx] - opt::min_separation;
-            int sub_end_pos = cpg_sites[end_idx - 1] + opt::min_separation;
+            int sub_start_pos = cpg_sites[start_idx] - opt::min_flank;
+            int sub_end_pos = cpg_sites[end_idx - 1] + opt::min_flank;
             int span = cpg_sites[end_idx - 1] - cpg_sites[start_idx];
 
             // skip if too close to the start of the read alignment or
