@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-'''
+"""
 ========================================================
-Extract info on reads that align to a given region 
+Extract info on reads that align to a given region
 in draft genome assembly.
 ========================================================
-'''
+"""
+from __future__ import print_function
+
 try:
 	from Bio import SeqIO
 	import pysam
@@ -289,7 +291,7 @@ def detect_fa_filetype(fa_filename):
 	for ext in ['fastq.gz', 'fasta.gz', 'fastq', 'fasta']:
 		if path.endswith(ext):
 			return ext
-	print( "Must be either fasta, fastq, fasta.gz, fastq.gz" )
+	print("Must be either fasta, fastq, fasta.gz, fastq.gz")
 	sys.exit(1)
 
 def custom_print(s):
@@ -302,7 +304,7 @@ def custom_print(s):
 	global verbose
 	global log
 	if verbose:
-		print s
+		print(s)
 	log.append(s)
 
 if __name__ == "__main__":
