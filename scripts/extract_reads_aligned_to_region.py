@@ -202,7 +202,7 @@ def main():
 	
 	# handle missing fast5 files
 	if bad_f5_found:
-		print("\nERROR: For read " + read_id + ", trying to add " + str(f5) + ".")
+		print("\nERROR: For read " + read_id + ", could not add " + str(f5) + ".")
 		print("This path is inferred from the readdb file.")
 		print("Please check that this is the correct path in readdb file for this read.")
 		if num_bad_cases > 1:
