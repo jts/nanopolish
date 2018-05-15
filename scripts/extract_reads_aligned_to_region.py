@@ -180,6 +180,11 @@ def main():
 	archive = tarfile.open(tar_filename, "w:gz")
 	custom_print( "[ Creating a tar.gz file ] \t" + tar_filename )
 	custom_print( "[+] FAST5 files: " + op + "/fast5_files/<FAST5 file(s)>" )
+	# track missing fast5 files
+	bad_f5_found = False # true if missing fast5 file
+	bad_read_id = ""
+	bad_f5_path = ""
+	num_bad_cases = 0
 	for r in region_fast5_files.keys():
 		read_id = r
 		f5 = region_fast5_files[r]
@@ -187,7 +192,23 @@ def main():
 		# get basename of fast5 file
 		f5_basename = extract_basename(f5)
 		an = op + "/fast5_files/" + f5_basename
-		archive.add(f5, arcname=an)
+		try:
+			archive.add(f5, arcname=an)
+		except:
+			bad_f5_found = True
+			bad_read_id = read_id
+			bad_f5_path = f5
+			num_bad_cases += 1
+	
+	# handle missing fast5 files
+	if bad_f5_found:
+		print("\nERROR: For read " + read_id + ", trying to add " + str(f5) + ".")
+		print("This path is inferred from the readdb file.")
+		print("Please check that this is the correct path in readdb file for this read.")
+		if num_bad_cases > 1:
+			print("There are " + str(num_bad_cases) + " other reads with this problem (out of " + str(len(region_fast5_files)) + ").")
+		print("\n")
+		sys.exit(1)
 
 	# --------------------------------------------------------
 	# PART 8:	Add new files to tar
