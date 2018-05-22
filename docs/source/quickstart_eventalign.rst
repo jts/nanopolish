@@ -12,9 +12,9 @@ The eventalign module in nanopolish is used to align events or "squiggles" to a 
 
 **Requirements**:
 
-* `nanopolish v0.8.4 <installation.html>`_
-* `samtools v1.2 <http://samtools.sourceforge.net/>`_
-* `bwa v0.7.12 <https://github.com/lh3/bwa>`_
+* `nanopolish <installation.html>`_
+* `samtools <http://samtools.sourceforge.net/>`_
+* `minimap2 <https://github.com/lh3/minimap2>`_
 
 Download example dataset
 ------------------------------------
@@ -42,16 +42,16 @@ You should find the following files:
 
 You will need the E. coli reference genome: ::
 
-    wget -O ref.fa ftp://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
+    curl -o ref.fa https://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
 
-Align the reads with bwa
+Align the reads with minimap2
 --------------------------------
 
-In order to run bwa we first need to index the reference genome: ::
+In order to run minimap2 we first need to index the reference genome: ::
 
-    bwa index ref.fa
+    minimap2 -d ref.mmi ref.fa
 
-**Output files**: ``ref.fa.sa``, ``ref.fa.amb``, ``ref.fa.ann``, ``ref.fa.pac``, and ``ref.fa.bwt``.
+**Output files**: ``ref.mmi``.
 
 We will need to index the reads as well: ::
 
@@ -61,7 +61,7 @@ We will need to index the reads as well: ::
 
 Then we can align the reads to the reference: ::
 
-    bwa mem -x ont2d ref.fa reads.fasta | samtools sort -o reads-ref.sorted.bam -T reads.tmp
+    minimap2 -ax map-ont -t 8 ref.fa reads.fasta | samtools sort -o reads-ref.sorted.bam -T reads.tmp
     samtools index reads-ref.sorted.bam
 
 **Output files**: ``reads-ref.sorted.bam`` and ``reads-ref.sorted.bam.bai``.
