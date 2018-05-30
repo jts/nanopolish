@@ -75,7 +75,7 @@ struct ScoredSite
 };
 
 //
-Alphabet* mtest_alphabet = &gMCpGAlphabet;
+const Alphabet* mtest_alphabet;
 
 //
 // Getopt
@@ -89,7 +89,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *CALL_METHYLATION_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa --methylation cpg\n"
 "Classify nucleotides as methylated or not.\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
@@ -98,6 +98,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
@@ -109,6 +110,7 @@ namespace opt
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
+    static std::string methylation_type;
     static std::string models_fofn;
     static std::string region;
     static std::string cpg_methylation_model_type = "reftrained";
@@ -119,7 +121,7 @@ namespace opt
     static int min_flank = 10;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:K:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:q:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION };
 
@@ -128,6 +130,7 @@ static const struct option longopts[] = {
     { "reads",            required_argument, NULL, 'r' },
     { "bam",              required_argument, NULL, 'b' },
     { "genome",           required_argument, NULL, 'g' },
+    { "methylation",      required_argument, NULL, 'q' },
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
     { "models-fofn",      required_argument, NULL, 'm' },
@@ -149,7 +152,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                                     int region_start,
                                     int region_end)
 {
-    // Load a squiggle read for the mapped read
+	// Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
 
@@ -165,7 +168,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 
         // check if there is a cpg model for this strand
         if(!PoreModelSet::has_model(sr.get_model_kit_name(strand_idx),
-                                    "cpg",
+                                    opt::methylation_type,
                                     sr.get_model_strand_name(strand_idx),
                                     k))
         {
@@ -199,12 +202,11 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         std::vector<int> cpg_sites;
         assert(ref_seq.size() != 0);
         for(size_t i = 0; i < ref_seq.size() - 1; ++i) {
-            if(ref_seq[i] == 'C' && ref_seq[i+1] == 'G') {
+            if(mtest_alphabet->is_motif_match(ref_seq, i))
                 cpg_sites.push_back(i);
-            }
         }
 
-        // Batch the CpGs together into groups that are separated by some minimum distance
+		// Batch the CpGs together into groups that are separated by some minimum distance
         std::vector<std::pair<int, int>> groups;
 
         size_t curr_idx = 0;
@@ -263,7 +265,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             // Set up event data
             HMMInputData data;
             data.read = &sr;
-            data.pore_model = sr.get_model(strand_idx, "cpg");
+            data.pore_model = sr.get_model(strand_idx, opt::methylation_type);
             data.strand = strand_idx;
             data.rc = event_align_record.rc;
             data.event_start_idx = e1;
@@ -336,6 +338,7 @@ void parse_call_methylation_options(int argc, char** argv)
         switch (c) {
             case 'r': arg >> opt::reads_file; break;
             case 'g': arg >> opt::genome_file; break;
+            case 'q': arg >> opt::methylation_type; break;
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
@@ -377,6 +380,13 @@ void parse_call_methylation_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
     }
+    
+    if(opt::methylation_type.empty()) {
+        std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";  
+        die = true;
+    }
+    else
+        mtest_alphabet = get_alphabet_by_name(opt::methylation_type);
 
     if(opt::bam_file.empty()) {
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";

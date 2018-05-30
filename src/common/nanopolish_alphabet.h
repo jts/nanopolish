@@ -239,6 +239,18 @@ class Alphabet
 
         // does this alphabet contain all of the nucleotides in bases?
         virtual bool contains_all(const char *bases) const = 0;
+
+        // check if the motif matches a recognition site
+        bool is_motif_match(const std::string& str, const size_t i) const
+		{
+            RecognitionMatch match;
+            for(size_t j = 0; j < num_recognition_sites(); ++j){
+				match = match_to_site(str, i, get_recognition_site(j), recognition_length());
+                if(match.length == recognition_length())
+                    return true;
+            }
+            return false;
+        }
 };
 
 #define BASIC_MEMBER_BOILERPLATE \
