@@ -152,7 +152,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                                     int region_start,
                                     int region_end)
 {
-	// Load a squiggle read for the mapped read
+    // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
 
@@ -206,7 +206,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                 cpg_sites.push_back(i);
         }
 
-		// Batch the CpGs together into groups that are separated by some minimum distance
+        // Batch the CpGs together into groups that are separated by some minimum distance
         std::vector<std::pair<int, int>> groups;
 
         size_t curr_idx = 0;
@@ -380,7 +380,7 @@ void parse_call_methylation_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
     }
-    
+
     if(opt::methylation_type.empty()) {
         std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";  
         die = true;
