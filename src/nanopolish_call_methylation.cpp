@@ -199,22 +199,22 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         ref_seq = gDNAAlphabet.disambiguate(ref_seq);
 
         // Scan the sequence for CpGs
-        std::vector<int> cpg_sites;
+        std::vector<int> motif_sites;
         assert(ref_seq.size() != 0);
         for(size_t i = 0; i < ref_seq.size() - 1; ++i) {
             if(mtest_alphabet->is_motif_match(ref_seq, i))
-                cpg_sites.push_back(i);
+                motif_sites.push_back(i);
         }
 
         // Batch the CpGs together into groups that are separated by some minimum distance
         std::vector<std::pair<int, int>> groups;
 
         size_t curr_idx = 0;
-        while(curr_idx < cpg_sites.size()) {
+        while(curr_idx < motif_sites.size()) {
             // Find the endpoint of this group of sites
             size_t end_idx = curr_idx + 1;
-            while(end_idx < cpg_sites.size()) {
-                if(cpg_sites[end_idx] - cpg_sites[end_idx - 1] > opt::min_separation)
+            while(end_idx < motif_sites.size()) {
+                if(motif_sites[end_idx] - motif_sites[end_idx - 1] > opt::min_separation)
                     break;
                 end_idx += 1;
             }
@@ -228,9 +228,9 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             size_t end_idx = groups[group_idx].second;
 
             // the coordinates on the reference substring for this group of sites
-            int sub_start_pos = cpg_sites[start_idx] - opt::min_flank;
-            int sub_end_pos = cpg_sites[end_idx - 1] + opt::min_flank;
-            int span = cpg_sites[end_idx - 1] - cpg_sites[start_idx];
+            int sub_start_pos = motif_sites[start_idx] - opt::min_flank;
+            int sub_end_pos = motif_sites[end_idx - 1] + opt::min_flank;
+            int span = motif_sites[end_idx - 1] - motif_sites[start_idx];
 
             // skip if too close to the start of the read alignment or
             // if the reference range is too large to efficiently call
@@ -285,19 +285,19 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             double methylated_score = profile_hmm_score(methylated, data, hmm_flags);
 
             // Aggregate score
-            int start_position = cpg_sites[start_idx] + ref_start_pos;
+            int start_position = motif_sites[start_idx] + ref_start_pos;
             auto iter = site_score_map.find(start_position);
             if(iter == site_score_map.end()) {
                 // insert new score into the map
                 ScoredSite ss;
                 ss.chromosome = contig;
                 ss.start_position = start_position;
-                ss.end_position = cpg_sites[end_idx - 1] + ref_start_pos;
+                ss.end_position = motif_sites[end_idx - 1] + ref_start_pos;
                 ss.n_cpg = end_idx - start_idx;
 
                 // extract the CpG site(s) with a k-mers worth of surrounding context
-                size_t site_output_start = cpg_sites[start_idx] - k + 1;
-                size_t site_output_end =  cpg_sites[end_idx - 1] + k;
+                size_t site_output_start = motif_sites[start_idx] - k + 1;
+                size_t site_output_end =  motif_sites[end_idx - 1] + k;
                 ss.sequence = ref_seq.substr(site_output_start, site_output_end - site_output_start);
 
                 // insert into the map
@@ -385,8 +385,9 @@ void parse_call_methylation_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";  
         die = true;
     }
-    else
+    else {
         mtest_alphabet = get_alphabet_by_name(opt::methylation_type);
+    }
 
     if(opt::bam_file.empty()) {
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
