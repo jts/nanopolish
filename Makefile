@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/cuda_kernels
 
 #
 # Set libraries, paths, flags and options
@@ -11,9 +11,12 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 LIBS=-lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
-CFLAGS ?= -O3 -std=c99
+CFLAGS ?= -std=c99 -O3
 CXX ?= g++
 CC ?= gcc
+NVCC = nvcc
+NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0/include -g
+CURTFLAGS ?= -L/usr/local/cuda-9.0/lib64 -lcudart
 
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
 HDF5?=install
@@ -102,20 +105,24 @@ eigen/INSTALL:
 
 # Find the source files by searching subdirectories
 CPP_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cpp))
+CU_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cu))
 C_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.c))
 EXE_SRC=src/main/nanopolish.cpp src/test/nanopolish_test.cpp
 
 # Automatically generated object names
 CPP_OBJ=$(CPP_SRC:.cpp=.o)
 C_OBJ=$(C_SRC:.c=.o)
+CU_OBJ=$(CU_SRC:.cu=.o)
+
+.SUFFIXES: .cu
 
 # Generate dependencies
 PHONY=depend
 depend: .depend
 
-.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
+.depend: $(CPP_SRC) $(C_SRC) $(CU_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(NVCCFLAGS) $(NVCC) -MM $(CPP_SRC) $(C_SRC) $(CU_SRC) > ./.depend;
 
 include .depend
 
@@ -126,16 +133,19 @@ include .depend
 .c.o:
 	$(CC) -o $@ -c $(CFLAGS) $(CPPFLAGS) $(H5_INCLUDE) -fPIC $<
 
+.cu.o:
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $(CPPFLAGS) $<
+
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(PROGRAM): src/main/nanopolish.o $(CU_OBJ) $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS) $(CURTFLAGS)
 
 # Link test executable
-$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS) $(CURTFLAGS)
 
 test: $(TEST_PROGRAM)
 	./$(TEST_PROGRAM)
 
 clean:
-	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
+	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
