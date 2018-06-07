@@ -38,6 +38,9 @@
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
+#include <chrono>
+#include <cuda_kernels/GpuAligner.h>
+
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -277,11 +280,18 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                           int region_end,
                                                           uint32_t alignment_flags)
 {
+    std::cout << "CHECKPOINT 13" << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
+
     std::vector<Variant> out_variants;
 
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
+
+
+    auto scoring = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
+
     for(size_t i = region_start; i < region_end; ++i) {
 
         int calling_start = i - opt::screen_flanking_sequence;
@@ -335,15 +345,44 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                  calling_start,
                                  alignments.get_reference_substring(contig, calling_start, calling_end));
 
+        GpuAligner aligner;
+        aligner.setY(15);
+        std::cout << aligner.calculateSum() <<std::endl;
+
+        std::vector<double> scores = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
+                                                       alignment_flags, opt::screen_score_threshold,
+                                                       opt::methylation_types);
+
         for(const Variant& v : tmp_variants) {
-            Variant scored_variant = score_variant_thresholded(v, test_haplotype, event_sequences, alignment_flags, opt::screen_score_threshold, opt::methylation_types);
+            auto t0 = std::chrono::high_resolution_clock::now();
+            Variant scored_variant = score_variant_thresholded(v,
+                                                               test_haplotype,
+                                                               event_sequences,
+                                                               alignment_flags,
+                                                               opt::screen_score_threshold,
+                                                               opt::methylation_types);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            scoring += t1-t0;
             scored_variant.info = "";
             if(scored_variant.quality > 0) {
                 out_variants.push_back(scored_variant);
             }
         }
-
     }
+
+    std::cout << "CHECKPOINT 14 - Region end - start ength= " << region_end - region_start << std::endl;
+
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
+
+    auto screening = std::chrono::duration_cast<std::chrono::milliseconds>(scoring).count();
+
+    std::cout << "FUNCTION TOOK " << duration << "ms" << std::endl;
+    std::cout << "SCREENING COMPONENT TOOK " << screening << "ms" << std::endl;
+
+
+
     return out_variants;
 }
 
@@ -894,7 +933,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
                                alignments.get_region_start(),
                                alignments.get_reference());
 */
-
+    std::cout<<"CHECKPOINT 8 - Data loaded"<<std::endl;
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
@@ -903,13 +942,16 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         candidate_variants = read_variants_for_region(opt::candidates_file, contig, region_start, region_end);
     }
 
+    std::cout<<"CHECKPOINT 9 - Candidate variants generated"<<std::endl;
+
     if(opt::consensus_mode) {
 
         // generate single-base edits that have a positive haplotype score
         std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, alignment_flags);
-
+        std::cout<<"CHECKPOINT 11 - Single base edits generated"<<std::endl;
         // insert these into the candidate set
         candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
+        std::cout<<"CHECKPOINT 12 - Single base edits inserted into vector"<<std::endl;
 
         // deduplicate variants
         std::set<Variant, VariantKeyComp> dedup_set(candidate_variants.begin(), candidate_variants.end());
@@ -917,6 +959,8 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         candidate_variants.insert(candidate_variants.end(), dedup_set.begin(), dedup_set.end());
         std::sort(candidate_variants.begin(), candidate_variants.end(), sortByPosition);
     }
+
+    std::cout<<"CHECKPOINT 10 - Additional candidate variants generated"<<std::endl;
 
     // Step 2. Call variants
 
@@ -926,6 +970,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
 
     if(opt::consensus_mode) {
+        std::cout << "CHECKPOINT 7 - CONSENSUS MODE" << std::endl;
         //
         // Calling strategy in consensus mode
         //
@@ -1118,6 +1163,7 @@ int call_variants_main(int argc, char** argv)
     int end_base;
     int contig_length = -1;
 
+    std::cout << "Checkpoint 3" << std::endl;
     // If a window has been specified, only call variants/polish in that range
     if(!opt::window.empty()) {
         // Parse the window string
@@ -1153,6 +1199,8 @@ int call_variants_main(int argc, char** argv)
         out_fp = stdout;
     }
 
+    std::cout << "Checkpoint 4" << std::endl;
+
     // Build the VCF header
     std::vector<std::string> tag_fields;
 
@@ -1187,9 +1235,13 @@ int call_variants_main(int argc, char** argv)
             Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
                 "Genotype"));
 
+    std::cout << "Checkpoint 5" << std::endl;
+
     Variant::write_vcf_header(out_fp, tag_fields);
 
     Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, out_fp);
+
+    std::cout << "Checkpoint 6" << std::endl;
 
     if(out_fp != stdout) {
         fclose(out_fp);

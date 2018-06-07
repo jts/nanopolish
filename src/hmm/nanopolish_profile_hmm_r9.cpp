@@ -46,7 +46,7 @@ float profile_hmm_score_r9(const HMMInputSequence& sequence, const HMMInputData&
     FloatMatrix fm;
     allocate_matrix(fm, n_rows, n_states);
 
-    profile_hmm_forward_initialize_r9(fm);
+    profile_hmm_forward_initialize_r9(fm); // what does this do?
 
     ProfileHMMForwardOutputR9 output(&fm);
 

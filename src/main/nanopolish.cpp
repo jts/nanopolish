@@ -64,6 +64,7 @@ int main(int argc, char** argv)
 {
     // Turn off HDF's exception printing, which is generally unhelpful for users
     H5Eset_auto(0, NULL, NULL);
+    std::cout << "CHECKPOINT 1\n";
 
     int ret = 0;
     if(argc <= 1) {
@@ -73,9 +74,11 @@ int main(int argc, char** argv)
     } else {
         std::string command(argv[1]);
         auto iter = programs.find(command);
-        if (iter != programs.end()) 
-            ret = iter->second( argc - 1, argv + 1);
-        else
+        if (iter != programs.end()) {
+            std::cout << "CHECKPOINT 2: " << iter->first <<std::endl;
+            ret = iter->second(argc - 1, argv + 1);
+        }
+       else
             ret = print_usage( argc - 1, argv + 1);
     }
 
@@ -88,7 +91,7 @@ int main(int argc, char** argv)
     extern int g_failed_alignment_reads;
     extern int g_bad_fast5_file;
     if(g_total_reads > 0) {
-        fprintf(stderr, "[post-run summary] total reads: %d, unparseable: %d, qc fail: %d, could not calibrate: %d, no alignment: %d, bad fast5: %d\n", 
+        fprintf(stderr, "[post-run summaryz] total reads: %d, unparseable: %d, qc fail: %d, could not calibrate: %d, no alignment: %d, bad fast5: %d\n",
             g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads, g_failed_alignment_reads, g_bad_fast5_file);
     }
     return ret;

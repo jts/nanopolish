@@ -2,9 +2,12 @@
 #include <cuda.h>
 #include "GpuAligner.h"
 #include <vector>
+#include "nanopolish_profile_hmm_r9.h"
+
 
 __global__ void findSumToN(int *n, int limit)
 {
+    //printf("HELLO FROM SUM\n");
     int tId = threadIdx.x;
 
     for (int i=0; i<=(int)log2((double)limit); i++)
@@ -16,6 +19,20 @@ __global__ void findSumToN(int *n, int limit)
         __syncthreads();
     }
 }
+
+
+__global__ void getScores(float * eventData, float * returnValues)
+{
+    int tId = threadIdx.x;
+    if (tId == 0) {
+        printf("data: %f\n", eventData[0]);
+        printf("data: %f\n", eventData[1]);
+        printf("data: %f\n", eventData[2]);
+    }
+    returnValues[0] = 0.356;
+    //__syncthreads();
+}
+
 
 GpuAligner::GpuAligner()
 {
@@ -53,11 +70,13 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
                    std::vector<HMMInputData> event_sequences,
                    uint32_t alignment_flags){
 
+    // These asserts are here during the development phase
     assert(!sequences.empty());
     assert(std::string(sequences[0].get_alphabet()->get_name()) == "nucleotide");
     for (auto e: event_sequences) {
         assert(std::string(e.pore_model->pmalphabet->get_name()) == "nucleotide");
         assert(e.read->pore_type == PT_R9);
+        assert( (e.rc && e.event_stride == -1) || (!e.rc && e.event_stride == 1));
     }
 
     size_t num_models = sequences.size();
@@ -65,11 +84,76 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
 
     assert(num_models == 1); //this is temporary
 
-    // start preparing the data for the CUDA Kernel
+    auto sequence = sequences[0]; // temporary. We are only going to score one sequence against a set of events for now.
+
+    const uint32_t k = event_sequences[0].pore_model->k; //k is the kmerity
+    uint32_t n_kmers = sequence.length() - k + 1; //number of kmers in the sequence
+
+    uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
+
+    std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1)
+    std::vector<uint32_t> e_starts; //event starts
+
+    for(auto e: event_sequences){
+        uint32_t e_start = e.event_start_idx;
+        e_starts.push_back(e_start);
+        uint32_t e_end = e.event_stop_idx;
+        uint32_t n_events = 0;
+        if(e_end > e_start)
+            n_events = e_end - e_start + 1;
+        else
+            n_events = e_start - e_end + 1;
+
+        n_rows.push_back(n_events + 1);
+    }
 
 
+    // Prepare raw data and send it over to the score calculator kernel
 
-    return 0.210964;
+    // Buffer 1: Raw event data and associated starts and stops
+
+    size_t numEventsTotal = 0;
+    //1. Count the total number of events across all reads
+    std::vector<int> eventLengths;
+    for (auto e: event_sequences){
+        size_t numEvents = e.read->events->size();
+
+        eventLengths.push_back(numEvents);
+        numEventsTotal += numEvents;
+    }
+
+    float * eventMeans;
+    //Allocate a host buffer to store the event means
+    size_t eventMeansSize = numEventsTotal * sizeof(float);
+    cudaHostAlloc(&eventMeans, eventMeansSize , cudaHostAllocDefault);
+
+    size_t offset = 0;
+    for (auto ev: event_sequences){
+        size_t num_events = ev.read->events->size();
+        for (int i=0;i<num_events;i++) {
+            eventMeans[offset + i] = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
+        }
+        offset += num_events;
+    }
+
+
+    float* devicePtr;
+    cudaMalloc( (void**)&devicePtr, eventMeansSize);
+    cudaMemcpy( devicePtr, eventMeans, eventMeansSize, cudaMemcpyHostToDevice );
+
+    dim3 dimBlock( 1, 1 );
+    dim3 dimGrid( 1, 1 );
+
+    float * returnValues;
+    cudaMalloc((void **) &returnValues, sizeof(float) * num_models); //one score per read
+
+    float * returnedValues;
+    getScores<<<dimGrid, dimBlock>>>(devicePtr, returnValues);
+
+    cudaMemcpy(returnedValues, returnValues, num_models *sizeof(float), cudaMemcpyDeviceToHost );
+
+    auto r = returnedValues[0];
+    return r;
 }
 
 std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
