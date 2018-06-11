@@ -25,15 +25,13 @@ __device__ float lp_match_r9(int rank,
                              float * poreModelLevelLogStdv,
                              float * poreModelLevelStdv,
                              float * poreModelLevelMean){
+
     float log_inv_sqrt_2pi = log(0.3989422804014327); // no need to calculate this every time. better solutions available..
 
     // STEP 1: GET DRIFT-SCALED LEVEL:
     float level = mean; //TODO: Do actual drift scaling. this is a cheat
-    // TODO: STEP 2: Get *scaled* Gaussian from pore model
+    // TODO: Apply scaling to these 3 model values as is done in the CPP implementation
     //these can just be pulled from the model
-    //float gaussian_mean = 0.0;
-    //float gaussian_stdv = 0.0;
-    //float gaussian_log_level_stdv = 0.0;
     float gaussian_mean = poreModelLevelMean[rank];
     float gaussian_stdv = poreModelLevelStdv[rank];
     float gaussian_log_level_stdv = poreModelLevelLogStdv[rank];
@@ -57,7 +55,13 @@ __global__ void getScores(float * eventData,
                           float * poreModelLevelMean,
                           float * returnValues)
 {
-    printf("Entered\n");
+    int MAX_STATES=1024;
+    // kmer probabilities will be stored here
+    __shared__ float prevProbabilities[MAX_STATES];
+    for (int i =0;i<MAX_STATES;i++){
+        prevProbabilities[i] = -INFINITY;
+    }
+
     //float log_inv_sqrt_2pi = log(0.3989422804014327);
 
     //Step 1: calculate transitions. For now we are going to use external params.
@@ -128,18 +132,15 @@ __global__ void getScores(float * eventData,
                                           poreModelLevelLogStdv,
                                           poreModelLevelStdv,
                                           poreModelLevelMean);
-        printf("LP MATCH: %f\n", lp_emission_m);
         float lp_emission_b = BAD_EVENT_PENALTY;
+
+        // Get all the scores for a match
+        float HMT_FROM_SAME_M = lp_mm_self + DPTableFromRow[curBlockOffset + PSR9_MATCH];
     }
 
-    //int tId = threadIdx.x;
-    ///if (tId == 0) {
-    //    printf("data: %f\n", eventData[0]);
-    //    printf("data: %f\n", eventData[1]);
-    //    printf("data: %f\n", eventData[2]);
-    //}
+
     returnValues[blockIdx.x] = 0.356;
-    //__syncthreads();
+    __syncthreads();
 }
 
 
