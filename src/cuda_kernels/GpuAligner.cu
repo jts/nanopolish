@@ -4,19 +4,10 @@
 #include <vector>
 #include "nanopolish_profile_hmm_r9.h"
 
-__global__ void findSumToN(int *n, int limit)
-{
-    //printf("HELLO FROM SUM\n");
-    int tId = threadIdx.x;
+#define MAX_STATES 1024
 
-    for (int i=0; i<=(int)log2((double)limit); i++)
-    {
-        if (tId%(int)(pow(2.0,(double)(i+1))) == 0){
-            if (tId+(int)pow(2.0, (double)i) >= limit) break;
-            n[tId] += n[tId+(int)pow(2.0, (double)i)];
-        }
-        __syncthreads();
-    }
+__device__ float logsumexpf(float x, float y){
+    return fmax(x, y) + log1pf(expf(-fabsf(y-x)));
 }
 
 //TODO: Implement, inc pore model
@@ -38,8 +29,6 @@ __device__ float lp_match_r9(int rank,
     // Step 3: calculate log-normal PDF
     float a = (level - gaussian_mean) / gaussian_stdv; // g is the gaussian parameters
     return log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a); // log_inv_sqrt_2pi is defined in a comment above
-
-    return 0.1973;
 }
 
 __global__ void getScores(float * eventData,
@@ -55,7 +44,6 @@ __global__ void getScores(float * eventData,
                           float * poreModelLevelMean,
                           float * returnValues)
 {
-    int MAX_STATES=1024;
     // kmer probabilities will be stored here
     __shared__ float prevProbabilities[MAX_STATES];
     for (int i =0;i<MAX_STATES;i++){
@@ -135,7 +123,30 @@ __global__ void getScores(float * eventData,
         float lp_emission_b = BAD_EVENT_PENALTY;
 
         // Get all the scores for a match
-        float HMT_FROM_SAME_M = lp_mm_self + DPTableFromRow[curBlockOffset + PSR9_MATCH];
+        float HMT_FROM_SAME_M = lp_mm_self + prevProbabilities[curBlockOffset + PSR9_MATCH];
+        float HMT_FROM_PREV_M = lp_mm_next + prevProbabilities[prevBlockOffset + PSR9_MATCH];
+        float HMT_FROM_SAME_B = lp_bm_self + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT];
+        float HMT_FROM_PREV_B = lp_bm_next + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
+        float HMT_FROM_PREV_K = lp_km + prevProbabilities[prevBlockOffset + PSR9_KMER_SKIP];
+
+        // m_s is the probability of going from the start state
+        // to this kmer. The start state is (currently) only
+        // allowed to go to the first kmer. If ALLOW_PRE_CLIP
+        // is defined, we allow all events before this one to be skipped,
+        // with a penalty;
+        // TODO: Implemnet the HMT_FROM_SOFT score. this appears needed but I don't yet understand it.
+
+        // NOW calculate the score
+        float sum = HMT_FROM_SAME_M;
+        sum = logsumexpf(sum, HMT_FROM_PREV_M);
+        sum = logsumexpf(sum, HMT_FROM_SAME_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_K);
+        sum += lp_emission_m;
+
+        __syncthreads();
+        prevProbabilities[curBlockIdx + PSR9_MATCH] = sum;
+        __syncthreads();
     }
 
 
@@ -152,30 +163,6 @@ GpuAligner::GpuAligner()
         n[i] = i;
 }
 
-int GpuAligner::calculateSum()
-{
-    int *n_d;
-    cudaMalloc( (void**)&n_d, asize );
-
-    cudaMemcpy(n_d, n, asize, cudaMemcpyHostToDevice );
-
-    dim3 dimBlock( y, 1 );
-    dim3 dimGrid( 1, 1 );
-    findSumToN<<<dimGrid, dimBlock>>>(n_d, y);
-    cudaMemcpy(n, n_d, asize, cudaMemcpyDeviceToHost);
-    cudaFree (n_d);
-    return n[0];
-}
-
-void GpuAligner::setY(int newVal)
-{
-    y = newVal;
-    asize = y*sizeof(int);
-    for (int i=0; i<y; i++)
-        n[i] = i;
-
-}
-
 double scoreKernel(std::vector<HMMInputSequence> sequences,
                    std::vector<HMMInputData> event_sequences,
                    uint32_t alignment_flags){
@@ -184,6 +171,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     //Let's assume that every event sequence has the same pore model
     //event_sequences[0].pore_model.
 
+    int num_reads = event_sequences.size();
     // These asserts are here during the development phase
     assert(!sequences.empty());
     assert(std::string(sequences[0].get_alphabet()->get_name()) == "nucleotide");
@@ -325,7 +313,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMemcpy( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
 
-    dim3 dimBlock(num_models);
+    dim3 dimBlock(num_reads);
 
     int num_blocks = n_states / PSR9_NUM_STATES;
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
@@ -334,9 +322,11 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     dim3 dimGrid(num_blocks - 2); // One thread per state, not including Start and Terminal state.
 
     float * returnValues;
-    cudaMalloc((void **) &returnValues, sizeof(float) * num_models); //one score per read
+    cudaMalloc((void **) &returnValues, sizeof(float) * num_reads); //one score per read
 
-    float * returnedValues;
+    //TODO: this should be a cuda memalloc
+    float* returnedValues = new float[num_reads];
+
     getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
             eventsPerBaseDev,
             numRowsDev,
@@ -350,10 +340,15 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             poreModelLevelMeanDev,
             returnValues);
 
-    //cudaMemcpy(returnedValues, returnValues, num_models *sizeof(float), cudaMemcpyDeviceToHost );
+    cudaMemcpy(returnedValues, returnValues, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
 
-    //auto r = returnedValues[0];
-    return 0.0;
+    float r = 0.0;
+    for(int i=0; i<num_reads;i++){
+        r += returnedValues[i];
+    }
+
+    //TODO a bunch of cuda memory needs to be freed.
+    return r;
 }
 
 std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,

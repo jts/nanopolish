@@ -369,6 +369,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_SOFT] = -INFINITY;
             output.update_cell(row, curr_block_offset + PSR9_BAD_EVENT, scores, lp_emission_b);
 
+            // in cu this is where the shared memory sync on prev states would go.
             // state PSR9_KMER_SKIP
             scores.x[HMT_FROM_SAME_M] = -INFINITY;
             scores.x[HMT_FROM_PREV_M] = bt.lp_mk + output.get(row, prev_block_offset + PSR9_MATCH);

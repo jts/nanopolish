@@ -291,6 +291,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
 
     auto scoring = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
+    auto gpu_exec = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
 
     for(size_t i = region_start; i < region_end; ++i) {
 
@@ -346,12 +347,12 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                  alignments.get_reference_substring(contig, calling_start, calling_end));
 
         GpuAligner aligner;
-        aligner.setY(15);
-        std::cout << aligner.calculateSum() <<std::endl;
-
+        auto t0_gpu = std::chrono::high_resolution_clock::now();
         std::vector<double> scores = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
                                                        alignment_flags, opt::screen_score_threshold,
                                                        opt::methylation_types);
+        auto tf_gpu = std::chrono::high_resolution_clock::now();
+        gpu_exec = tf_gpu - t0_gpu;
 
         for(const Variant& v : tmp_variants) {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -378,8 +379,11 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
     auto screening = std::chrono::duration_cast<std::chrono::milliseconds>(scoring).count();
 
+    auto gpu_screening = std::chrono::duration_cast<std::chrono::milliseconds>(gpu_exec).count();
+
     std::cout << "FUNCTION TOOK " << duration << "ms" << std::endl;
-    std::cout << "SCREENING COMPONENT TOOK " << screening << "ms" << std::endl;
+    std::cout << "SCREENING (CPU) COMPONENT TOOK " << screening << "ms" << std::endl;
+    std::cout << "SCREENING (GPU) COMPONENT TOOK " << gpu_screening << "ms" << std::endl;
 
 
 
