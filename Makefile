@@ -9,9 +9,9 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 
 #Basic flags every build needs
 LIBS=-lz
-CXXFLAGS ?= -g -O3
+CXXFLAGS ?= -g #-O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
-CFLAGS ?= -std=c99 -O3
+CFLAGS ?= -std=c99 #-O3
 CXX ?= g++
 CC ?= gcc
 NVCC = nvcc

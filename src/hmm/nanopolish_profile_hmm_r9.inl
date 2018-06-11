@@ -285,7 +285,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     
     // Calculate number of blocks
     // A block of the HMM is a set of states for one kmer
-    uint32_t num_blocks = output.get_num_columns() / PSR9_NUM_STATES; // num_columns is the number of kmers
+    uint32_t num_blocks = output.get_num_columns() / PSR9_NUM_STATES; // num_columns is the number of HMM STATES
     uint32_t last_event_row_idx = output.get_num_rows() - 1;
 
     // Precompute the transition probabilites for each kmer block
