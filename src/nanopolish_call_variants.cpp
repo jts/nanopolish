@@ -284,6 +284,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     auto start = std::chrono::high_resolution_clock::now();
 
     std::vector<Variant> out_variants;
+    std::vector<Variant> out_variants_gpu;
 
     std::string contig = alignments.get_region_contig();
 
@@ -352,7 +353,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                        alignment_flags, opt::screen_score_threshold,
                                                        opt::methylation_types);
         auto tf_gpu = std::chrono::high_resolution_clock::now();
-        gpu_exec = tf_gpu - t0_gpu;
+        gpu_exec += tf_gpu - t0_gpu;
 
         for(const Variant& v : tmp_variants) {
             auto t0 = std::chrono::high_resolution_clock::now();

@@ -239,8 +239,8 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
         numEventsTotal += numEvents;
     }
 
-    float * eventMeans;
     //Allocate a host buffer to store the event means
+    float * eventMeans;
     size_t eventMeansSize = numEventsTotal * sizeof(float);
     cudaHostAlloc(&eventMeans, eventMeansSize , cudaHostAllocDefault);
 
@@ -256,6 +256,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     }
 
     int num_states = event_sequences[0].pore_model->states.size();
+
     std::vector<float> pore_model_level_log_stdv(num_states);
     std::vector<float> pore_model_level_mean(num_states);
     std::vector<float> pore_model_level_stdv(num_states);
@@ -270,47 +271,47 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
 
     float* poreModelLevelLogStdvDev;
     cudaMalloc( (void**)&poreModelLevelLogStdvDev, pore_model_level_log_stdv.size() * sizeof(float));
-    cudaMemcpy( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
 
     float* poreModelLevelMeanDev;
     cudaMalloc( (void**)&poreModelLevelMeanDev, pore_model_level_mean.size() * sizeof(float));
-    cudaMemcpy( poreModelLevelMeanDev, pore_model_level_mean.data(), pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( poreModelLevelMeanDev, pore_model_level_mean.data(), pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice );
 
     float* poreModelLevelStdvDev;
     cudaMalloc( (void**)&poreModelLevelStdvDev, pore_model_level_stdv.size() * sizeof(float));
-    cudaMemcpy( poreModelLevelStdvDev, pore_model_level_stdv.data(), pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( poreModelLevelStdvDev, pore_model_level_stdv.data(), pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
 
 
     float* eventsPerBaseDev;
     cudaMalloc( (void**)&eventsPerBaseDev, eventsPerBase.size() * sizeof(float));
-    cudaMemcpy( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice );
 
     float* eventMeansDev;
     cudaMalloc( (void**)&eventMeansDev, eventMeansSize);
-    cudaMemcpy( eventMeansDev, eventMeans, eventMeansSize, cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( eventMeansDev, eventMeans, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
 
     int* numRowsDev;
     cudaMalloc( (void**)&numRowsDev, n_rows.size() * sizeof(int));
-    cudaMemcpy( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     int* kmerRanksDev;
     int* kmerRanksRCDev;
     cudaMalloc( (void**)&kmerRanksDev, kmer_ranks.size() * sizeof(int));
     cudaMalloc( (void**)&kmerRanksRCDev, kmer_ranks_rc.size() * sizeof(int));
-    cudaMemcpy( kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int), cudaMemcpyHostToDevice );
-    cudaMemcpy( kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     int* eventStartsDev;
     cudaMalloc( (void**)&eventStartsDev, e_starts.size() * sizeof(int));
-    cudaMemcpy( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     int* eventStridesDev;
     cudaMalloc( (void**)&eventStridesDev, event_strides.size() * sizeof(int));
-    cudaMemcpy( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     int* eventOffsetsDev;
     cudaMalloc( (void**)&eventOffsetsDev, eventOffsets.size() * sizeof(int));
-    cudaMemcpy( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
 
     dim3 dimBlock(num_reads);
@@ -325,7 +326,9 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc((void **) &returnValues, sizeof(float) * num_reads); //one score per read
 
     //TODO: this should be a cuda memalloc
-    float* returnedValues = new float[num_reads];
+    float* returnedValues;// = new float[num_reads];
+    //size_t eventMeansSize = numEventsTotal * sizeof(float);
+    cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
 
     getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
             eventsPerBaseDev,
@@ -340,14 +343,31 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             poreModelLevelMeanDev,
             returnValues);
 
-    cudaMemcpy(returnedValues, returnValues, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+    //cudaDeviceSynchronize();
+    cudaMemcpyAsync(returnedValues, returnValues, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Free device memory
+    cudaFree(eventMeansDev);
+    cudaFree(eventsPerBaseDev);
+    cudaFree(numRowsDev);
+    cudaFree(eventStartsDev);
+    cudaFree(eventStridesDev);
+    cudaFree(kmerRanksDev);
+    cudaFree(kmerRanksRCDev);
+    cudaFree(eventOffsetsDev);
+    cudaFree(poreModelLevelLogStdvDev);
+    cudaFree(poreModelLevelStdvDev);
+    cudaFree(poreModelLevelMeanDev);
+
+
+    //Free host memory
+    cudaFreeHost(eventMeans);
 
     float r = 0.0;
     for(int i=0; i<num_reads;i++){
         r += returnedValues[i];
     }
 
-    //TODO a bunch of cuda memory needs to be freed.
     return r;
 }
 
@@ -367,34 +387,25 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
         variant_haplotypes[i].apply_variant(input_variants[i]);
     }
 
-
-    //variant_haplotype.apply_variant(input_variant);
-
     // Make methylated versions of each input sequence. Once for the base haplotype and once each for each variant
     std::vector<HMMInputSequence> base_sequences = generate_methylated_alternatives(base_haplotype.get_sequence(),
                                                                                     methylation_types);
+    std::vector<std::vector<HMMInputSequence>> variant_sequences;
+    for (auto v: variant_haplotypes){
+        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
+        variant_sequences.push_back(variant_sequence);
+    }
 
     assert(base_sequences.size() == 1);
-
-    std::vector<std::vector<HMMInputSequence>> methylatedVariantSequences;
-    for(auto variant: variant_haplotypes) {
-        std::vector<HMMInputSequence> variant_sequences = generate_methylated_alternatives(
-                variant.get_sequence(), methylation_types);
-        methylatedVariantSequences.push_back(variant_sequences);
-
-    }
-
-    //For now let's not worry about methylation
-    assert(methylatedVariantSequences.size() == numVariants);
-    for (auto m: methylatedVariantSequences) {
-        assert(m.size() == 1);
-    }
-    //Next we need to get the scores.
 
     // return the sum of the score for the base sequences over all the event sequences
     double base_score = scoreKernel(base_sequences, event_sequences, alignment_flags);
 
-    std::vector<double> v;
-    v.push_back(base_score);
+    std::vector<double> v(variant_sequences.size());
+    for (int i=0; i<variant_sequences.size(); i++){
+        double score = scoreKernel(variant_sequences[i], event_sequences, alignment_flags); //TODO: Base sequence needs to be replaced with the variant itself
+        v[i] = (score - base_score);
+    }
+
     return v;
 }
