@@ -313,19 +313,15 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc( (void**)&eventOffsetsDev, eventOffsets.size() * sizeof(int));
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-
-    dim3 dimBlock(num_reads);
-
     int num_blocks = n_states / PSR9_NUM_STATES;
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
 
-
-    dim3 dimGrid(num_blocks - 2); // One thread per state, not including Start and Terminal state.
+    dim3 dimBlock(num_blocks - 2);
+    dim3 dimGrid(1); // One thread per state, not including Start and Terminal state.
 
     float * returnValues;
     cudaMalloc((void **) &returnValues, sizeof(float) * num_reads); //one score per read
 
-    //TODO: this should be a cuda memalloc
     float* returnedValues;// = new float[num_reads];
     //size_t eventMeansSize = numEventsTotal * sizeof(float);
     cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
@@ -358,7 +354,6 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaFree(poreModelLevelLogStdvDev);
     cudaFree(poreModelLevelStdvDev);
     cudaFree(poreModelLevelMeanDev);
-
 
     //Free host memory
     cudaFreeHost(eventMeans);
