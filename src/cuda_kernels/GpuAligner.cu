@@ -7,7 +7,11 @@
 #define MAX_STATES 1024
 
 __device__ float logsumexpf(float x, float y){
-    return fmax(x, y) + log1pf(expf(-fabsf(y-x)));
+    if(x == -INFINITY && y == -INFINITY){
+        return -INFINITY;
+    }
+    float result = fmax(x, y) + log1pf(expf(-fabsf(y - x)));
+    return result;
 }
 
 //TODO: Implement, inc pore model
@@ -15,7 +19,8 @@ __device__ float lp_match_r9(int rank,
                              float mean,
                              float * poreModelLevelLogStdv,
                              float * poreModelLevelStdv,
-                             float * poreModelLevelMean){
+                             float * poreModelLevelMean,
+                             bool debug = false){
 
     float log_inv_sqrt_2pi = log(0.3989422804014327); // no need to calculate this every time. better solutions available..
 
@@ -28,7 +33,23 @@ __device__ float lp_match_r9(int rank,
     float gaussian_log_level_stdv = poreModelLevelLogStdv[rank];
     // Step 3: calculate log-normal PDF
     float a = (level - gaussian_mean) / gaussian_stdv; // g is the gaussian parameters
-    return log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a); // log_inv_sqrt_2pi is defined in a comment above
+
+    float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a); // log_inv_sqrt_2pi is defined in a comment above
+
+    if (debug == true) {
+        if (threadIdx.x == 0) {
+            printf(">GPU: kmer rank is %i\n", rank);
+            printf(">GPU: level %f\n", level);
+            printf(">GPU: gaussian mean %f\n", gaussian_mean);
+            printf(">GPU: gaussian stdv %f\n", gaussian_stdv);
+            printf(">GPU: gaussian log level stdv %f\n", gaussian_log_level_stdv);
+            printf(">GPU a: %f\n", a);
+            printf(">GPU emission: %f\n", emission);
+        }
+    }
+
+    return emission; // log_inv_sqrt_2pi is defined in a comment above
+
 }
 
 __global__ void getScores(float * eventData,
@@ -42,15 +63,15 @@ __global__ void getScores(float * eventData,
                           float * poreModelLevelLogStdv,
                           float * poreModelLevelStdv,
                           float * poreModelLevelMean,
-                          float * returnValues)
-{
-    // kmer probabilities will be stored here
+                          float * returnValues) {
+
+    // Initialise the prev probability row, which is the row of the DP table
+
+    int n_states = blockDim.x * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
     __shared__ float prevProbabilities[MAX_STATES];
-    for (int i =0;i<MAX_STATES;i++){
+    for (int i = 0; i < n_states; i++) {
         prevProbabilities[i] = -INFINITY;
     }
-
-    //float log_inv_sqrt_2pi = log(0.3989422804014327);
 
     //Step 1: calculate transitions. For now we are going to use external params.
     int readIdx = blockIdx.x;
@@ -59,13 +80,20 @@ __global__ void getScores(float * eventData,
     int e_start = eventStarts[readIdx]; // Event start for read
     int e_stride = eventStrides[readIdx];
     int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
-    //int kmer_ranks = kmerRanks[readIdx.x]; // TODO: Use RC for RC reads
+
+    //float levelLogStdv = poreModelLevelLogStdv[e_offset];
+    //float levelStdv = poreModelLevelStdv[e_offset];
+    //float levelMean = poreModelLevelMean[e_offset];
+
+    if (threadIdx.x == 0){
+        printf(">GPU e_start %i\n", e_start);
+    }
 
     int kmerIdx = threadIdx.x;
+    uint32_t rank = kmer_ranks[kmerIdx]; // lexical rank of a kmer
+    printf("Kmer idx %i, Rank: %i\n", kmerIdx, rank);
 
     float p_stay = 1 - (1 / read_events_per_base);
-
-    //printf("Events per base: %f \n", read_events_per_base);
     float p_skip = 0.0025;
     float p_bad = 0.001;
     float p_bad_self = p_bad;
@@ -97,6 +125,8 @@ __global__ void getScores(float * eventData,
     float lp_kk = log(p_kk);
     float lp_km = log(p_km);
 
+    float lp_sm, lp_ms;
+    lp_sm = lp_ms = 0.0f;
 
     // Start filling out the "DP table"
     // Each thread is going to work on an individual P-HMM Block
@@ -113,13 +143,20 @@ __global__ void getScores(float * eventData,
     for(int row=1; row<numRows;row++){
         // Emission probabilities
         int event_idx = e_start + (row - 1) * e_stride;
-        uint32_t rank = kmer_ranks[kmerIdx]; // lexical rank of a kmer
         float event_mean = eventData[e_offset + row];
+
+        bool debug = false;
+        if (threadIdx.x == 0 && row == 1){
+            debug = true;
+        }
+
         float lp_emission_m = lp_match_r9(rank,
                                           event_mean,
                                           poreModelLevelLogStdv,
                                           poreModelLevelStdv,
-                                          poreModelLevelMean);
+                                          poreModelLevelMean,
+                                          debug);
+
         float lp_emission_b = BAD_EVENT_PENALTY;
 
         // Get all the scores for a match
@@ -134,19 +171,64 @@ __global__ void getScores(float * eventData,
         // allowed to go to the first kmer. If ALLOW_PRE_CLIP
         // is defined, we allow all events before this one to be skipped,
         // with a penalty;
+        float HMT_FROM_SOFT = (kmerIdx == 0 && (event_idx == e_start)) ? lp_sm  : -INFINITY; // TODO: Add the pre-flank to this calculation. Also flags and HAF_ALLOW_PRE_CLIP
+
+        if ((threadIdx.x == 0) && (row == 1)){
+            printf("rank %i\n", rank);
+            printf("event mean %f\n", event_mean);
+            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv);
+            printf("poreModelLevelStdv %f\n", poreModelLevelStdv);
+            printf("poreModelLevelMean %f\n", poreModelLevelMean);
+            printf("lp_emission_m is %f\n", lp_emission_m);
+            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
+            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
+            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
+            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
+            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
+        }
+
+        // m_s is the probability of going from the start state
+        // to this kmer. The start state is (currently) only
+        // allowed to go to the first kmer. If ALLOW_PRE_CLIP
+        // is defined, we allow all events before this one to be skipped,
+        // with a penalty;
         // TODO: Implemnet the HMT_FROM_SOFT score. this appears needed but I don't yet understand it.
 
-        // NOW calculate the score
+        // calculate the score
         float sum = HMT_FROM_SAME_M;
+
+        sum = logsumexpf(sum, HMT_FROM_SOFT);
+        if (debug == true){
+            printf("Sum1 is : %f\n", sum);
+        }
         sum = logsumexpf(sum, HMT_FROM_PREV_M);
+        if (debug == true){
+            printf("Sum2 is : %f\n", sum);
+        }
+
         sum = logsumexpf(sum, HMT_FROM_SAME_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
+        if (debug == true){
+            printf("Sum3 is : %f\n", sum);
+        }
+
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
         sum += lp_emission_m;
+        if (debug == true){
+            printf("Sum4 is : %f\n", sum);
+        }
 
         __syncthreads();
-        prevProbabilities[curBlockIdx + PSR9_MATCH] = sum;
+        prevProbabilities[curBlockOffset + PSR9_MATCH] = sum;
         __syncthreads();
+
+        if ((threadIdx.x == 0) && (row == 1)) {
+            printf("Number of states is %i\n", n_states);
+            for (int c = 0; c < n_states; c++) {
+                printf("GPU> Value for row 1 and col %i is %f\n", c, prevProbabilities[c]);
+            }
+        }
     }
 
 
@@ -386,10 +468,10 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
     std::vector<HMMInputSequence> base_sequences = generate_methylated_alternatives(base_haplotype.get_sequence(),
                                                                                     methylation_types);
     std::vector<std::vector<HMMInputSequence>> variant_sequences;
-    for (auto v: variant_haplotypes){
-        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
-        variant_sequences.push_back(variant_sequence);
-    }
+    //for (auto v: variant_haplotypes){
+    //    auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
+    //    variant_sequences.push_back(variant_sequence);
+    //}
 
     assert(base_sequences.size() == 1);
 

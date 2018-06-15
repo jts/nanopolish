@@ -216,7 +216,7 @@ inline std::vector<float> make_pre_flanking(const HMMInputData& data,
         pre_flank[i] = log(TRANS_CLIP_SELF) + 
                        log_probability_background(*data.read, event_idx, data.strand) + // emit from background
                        pre_flank[i - 1]; // this accounts for the transition from the start & to the silent pre
-    
+
     }
 
     return pre_flank;
@@ -261,7 +261,7 @@ inline std::vector<float> make_post_flanking(const HMMInputData& data,
 template<class ProfileHMMOutput>
 inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
                                          const HMMInputData& _data,
-                                         const uint32_t,
+                                         const uint32_t,  //e_start apparently not used by this function
                                          uint32_t flags,
                                          ProfileHMMOutput& output)
 {
@@ -282,7 +282,8 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
 #endif
 
     uint32_t e_start = data.event_start_idx;
-    
+
+    printf(">CPU e_start: %i\n", e_start);
     // Calculate number of blocks
     // A block of the HMM is a set of states for one kmer
     uint32_t num_blocks = output.get_num_columns() / PSR9_NUM_STATES; // num_columns is the number of HMM STATES
@@ -301,8 +302,11 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     assert( data.pore_model->states.size() == sequence.get_num_kmer_ranks(k) );
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
-    for(size_t ki = 0; ki < num_kmers; ++ki)
-        kmer_ranks[ki] = sequence.get_kmer_rank(ki, k, data.rc);
+    for(size_t ki = 0; ki < num_kmers; ++ki) {
+        int kr = sequence.get_kmer_rank(ki, k, data.rc);
+        printf("Kmer rank: %i\n", kr);
+        kmer_ranks[ki] = kr;
+    }
 
     size_t num_events = output.get_num_rows() - 1;
 
@@ -337,7 +341,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             // Emission probabilities
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
-            float lp_emission_m = log_probability_match_r9(*data.read, *data.pore_model, rank, event_idx, data.strand);
+            float lp_emission_m = log_probability_match_r9(*data.read, *data.pore_model, rank, event_idx, data.strand, true);
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;
@@ -360,6 +364,20 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
+            printf("======\n");
+            //diagnostics - after match has been applied
+            if (row == 1) {
+                auto nc = output.get_num_columns();
+                //for (int i = 0; i < nc; i++) {
+                //    printf("CPU> Value for row 0 col %i is %f\n", i, output.get(0, i));
+                //}
+                for (int i = 0; i < nc; i++) {
+                    printf("CPU> Value for row 1 col %i is %f\n", i, output.get(1, i));
+                }
+            }
+
+
+
             // state PSR9_BAD_EVENT
             scores.x[HMT_FROM_SAME_M] = bt.lp_mb + output.get(row - 1, curr_block_offset + PSR9_MATCH);
             scores.x[HMT_FROM_PREV_M] = -INFINITY; // not allowed
@@ -368,6 +386,16 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_PREV_K] = -INFINITY;
             scores.x[HMT_FROM_SOFT] = -INFINITY;
             output.update_cell(row, curr_block_offset + PSR9_BAD_EVENT, scores, lp_emission_b);
+
+            if ((block == 1) && (row == 1)){ //blcok 1 corresponds to threadIdx 0 on GPU
+                printf("lp_emission_m is %f\n", lp_emission_m);
+                printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+                printf(">CPU score HMT_FROM_SAME_M is %f\n", scores.x[HMT_FROM_SAME_M]);
+                printf(">CPU score HMT_FROM_PREV_M is %f\n", scores.x[HMT_FROM_PREV_M]);
+                printf(">CPU score HMT_FROM_SAME_B is %f\n", scores.x[HMT_FROM_SAME_B]);
+                printf(">CPU score HMT_FROM_PREV_B is %f\n", scores.x[HMT_FROM_PREV_B]);
+                printf(">CPU score HMT_FROM_PREV_K is %f\n", scores.x[HMT_FROM_PREV_K]);
+            }
 
             // in cu this is where the shared memory sync on prev states would go.
             // state PSR9_KMER_SKIP
@@ -425,6 +453,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
 #endif
         }
     }
+
     
     return output.get_end();
 }

@@ -58,11 +58,20 @@ inline float log_probability_match_r9(const SquiggleRead& read,
                                       const PoreModel& pore_model,
                                       uint32_t kmer_rank,
                                       uint32_t event_idx,
-                                      uint8_t strand)
+                                      uint8_t strand,
+                                      bool debug = false)
 {
     // event level mean, scaled with the drift value
     float level = read.get_drift_scaled_level(event_idx, strand);
+
     GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(pore_model, strand, kmer_rank);
+    if (debug == true) {
+        printf(">CPU kmer_rank is: %i\n", kmer_rank);
+        printf(">CPU level is: %f\n", level);
+        printf(">CPU gaussian mean: %f\n", gp.mean);
+        printf(">CPU gaussian stdv: %f\n", gp.stdv);
+        printf(">CPU gaussian log_level_stdv: %f\n", gp.log_stdv);
+    }
     float lp = log_normal_pdf(level, gp);
     return lp;
 }
