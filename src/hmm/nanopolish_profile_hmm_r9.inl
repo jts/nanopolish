@@ -326,6 +326,16 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     // Fill in matrix
     for(uint32_t row = 1; row < output.get_num_rows(); row++) {
 
+        printf("======\n");
+        //diagnostics - after match and bad event have been applied
+        if (row == 4) { // row 1 has been computed so we can have a peek
+            auto nc = output.get_num_columns();
+            int rw = 3;
+            for (int i = 0; i < nc; i++) {
+                printf("CPU> Value for row %i col %i is %f\n", rw, i, output.get(rw, i));
+            }
+        }
+
         // Skip the first block which is the start state, it was initialized above
         // Similarily skip the last block, which is calculated in the terminate() function
         for(uint32_t block = 1; block < num_blocks - 1; block++) {
@@ -364,38 +374,16 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
-            printf("======\n");
-            //diagnostics - after match has been applied
-            if (row == 1) {
-                auto nc = output.get_num_columns();
-                //for (int i = 0; i < nc; i++) {
-                //    printf("CPU> Value for row 0 col %i is %f\n", i, output.get(0, i));
-                //}
-                for (int i = 0; i < nc; i++) {
-                    printf("CPU> Value for row 1 col %i is %f\n", i, output.get(1, i));
-                }
-            }
-
-
-
-            // state PSR9_BAD_EVENT
+             // state PSR9_BAD_EVENT
             scores.x[HMT_FROM_SAME_M] = bt.lp_mb + output.get(row - 1, curr_block_offset + PSR9_MATCH);
             scores.x[HMT_FROM_PREV_M] = -INFINITY; // not allowed
             scores.x[HMT_FROM_SAME_B] = bt.lp_bb + output.get(row - 1, curr_block_offset + PSR9_BAD_EVENT);
             scores.x[HMT_FROM_PREV_B] = -INFINITY;
             scores.x[HMT_FROM_PREV_K] = -INFINITY;
             scores.x[HMT_FROM_SOFT] = -INFINITY;
+            printf("before: %f:\n", output.get(row, curr_block_offset + PSR9_BAD_EVENT));
             output.update_cell(row, curr_block_offset + PSR9_BAD_EVENT, scores, lp_emission_b);
-
-            if ((block == 1) && (row == 1)){ //blcok 1 corresponds to threadIdx 0 on GPU
-                printf("lp_emission_m is %f\n", lp_emission_m);
-                printf("PSR9_MATCH is %i\n", PSR9_MATCH);
-                printf(">CPU score HMT_FROM_SAME_M is %f\n", scores.x[HMT_FROM_SAME_M]);
-                printf(">CPU score HMT_FROM_PREV_M is %f\n", scores.x[HMT_FROM_PREV_M]);
-                printf(">CPU score HMT_FROM_SAME_B is %f\n", scores.x[HMT_FROM_SAME_B]);
-                printf(">CPU score HMT_FROM_PREV_B is %f\n", scores.x[HMT_FROM_PREV_B]);
-                printf(">CPU score HMT_FROM_PREV_K is %f\n", scores.x[HMT_FROM_PREV_K]);
-            }
+            printf("after: %f:\n", output.get(row, curr_block_offset + PSR9_BAD_EVENT));
 
             // in cu this is where the shared memory sync on prev states would go.
             // state PSR9_KMER_SKIP
@@ -406,6 +394,16 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_PREV_K] = bt.lp_kk + output.get(row, prev_block_offset + PSR9_KMER_SKIP);
             scores.x[HMT_FROM_SOFT] = -INFINITY;
             output.update_cell(row, curr_block_offset + PSR9_KMER_SKIP, scores, 0.0f); // no emission
+
+            if ((block == 1) && (row == 1)){ //blcok 1 corresponds to threadIdx 0 on GPU
+                printf("lp_emission_m is %f\n", lp_emission_m);
+                printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+                printf(">CPU score HMT_FROM_SAME_M is %f\n", scores.x[HMT_FROM_SAME_M]);
+                printf(">CPU score HMT_FROM_PREV_M is %f\n", scores.x[HMT_FROM_PREV_M]);
+                printf(">CPU score HMT_FROM_SAME_B is %f\n", scores.x[HMT_FROM_SAME_B]);
+                printf(">CPU score HMT_FROM_PREV_B is %f\n", scores.x[HMT_FROM_PREV_B]);
+                printf(">CPU score HMT_FROM_PREV_K is %f\n", scores.x[HMT_FROM_PREV_K]);
+            }
 
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 

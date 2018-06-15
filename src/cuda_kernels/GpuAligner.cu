@@ -173,28 +173,6 @@ __global__ void getScores(float * eventData,
         // with a penalty;
         float HMT_FROM_SOFT = (kmerIdx == 0 && (event_idx == e_start)) ? lp_sm  : -INFINITY; // TODO: Add the pre-flank to this calculation. Also flags and HAF_ALLOW_PRE_CLIP
 
-        if ((threadIdx.x == 0) && (row == 1)){
-            printf("rank %i\n", rank);
-            printf("event mean %f\n", event_mean);
-            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv);
-            printf("poreModelLevelStdv %f\n", poreModelLevelStdv);
-            printf("poreModelLevelMean %f\n", poreModelLevelMean);
-            printf("lp_emission_m is %f\n", lp_emission_m);
-            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
-            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
-            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
-            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
-            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
-            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
-        }
-
-        // m_s is the probability of going from the start state
-        // to this kmer. The start state is (currently) only
-        // allowed to go to the first kmer. If ALLOW_PRE_CLIP
-        // is defined, we allow all events before this one to be skipped,
-        // with a penalty;
-        // TODO: Implemnet the HMT_FROM_SOFT score. this appears needed but I don't yet understand it.
-
         // calculate the score
         float sum = HMT_FROM_SAME_M;
 
@@ -219,14 +197,93 @@ __global__ void getScores(float * eventData,
             printf("Sum4 is : %f\n", sum);
         }
 
-        __syncthreads();
-        prevProbabilities[curBlockOffset + PSR9_MATCH] = sum;
+        float newMatchScore = sum;
+        // Here need to calculate the bad event score
+
+        // state PSR9_BAD_EVENT
+        HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
+        HMT_FROM_PREV_M = -INFINITY; // not allowed
+        HMT_FROM_SAME_B = lp_bb + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT];
+        HMT_FROM_PREV_B = -INFINITY;
+        HMT_FROM_PREV_K = -INFINITY;
+        HMT_FROM_SOFT = -INFINITY;
+
+        sum = HMT_FROM_SAME_M;
+        sum = logsumexpf(sum, HMT_FROM_PREV_M);
+        sum = logsumexpf(sum, HMT_FROM_SAME_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_K);
+        sum = logsumexpf(sum, HMT_FROM_SOFT);
+        sum += lp_emission_b;
+
+        float newBadEventScore = sum;
+
+        // Write row out
+        prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
+        prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
         __syncthreads();
 
-        if ((threadIdx.x == 0) && (row == 1)) {
+        // state PSR9_KMER_SKIP
+        HMT_FROM_SAME_M = -INFINITY;
+        HMT_FROM_PREV_M = lp_mk + prevProbabilities[prevBlockOffset + PSR9_MATCH];
+        HMT_FROM_SAME_B = -INFINITY;
+        HMT_FROM_PREV_B = lp_bk + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
+
+        HMT_FROM_SOFT = -INFINITY;
+
+        sum = HMT_FROM_SAME_M;
+        sum = logsumexpf(sum, HMT_FROM_PREV_M);
+        sum = logsumexpf(sum, HMT_FROM_SAME_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_B);
+        sum = logsumexpf(sum, HMT_FROM_PREV_K);
+        sum = logsumexpf(sum, HMT_FROM_SOFT);
+        sum += 0.0;//No emission. redundant.
+
+        float newSkipScore = sum;
+
+        prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] = newSkipScore;
+        __syncthreads();
+
+        //Now need to do the skip-skip transition, which is serial.
+        if (threadIdx.x == 0){
+            for (int blkidx = 2;blkidx <= blockDim.x; blkidx++){
+                //calculate the skipscore using the previous
+                //Current skip score for block blkidx:
+                float curSkipScore = prevProbabilities[blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP];
+                printf("Current skip score for block %i is %f",blkidx, curSkipScore);
+                //new score to add - TODO: use the correct lp_kk score
+
+                HMT_FROM_PREV_K = lp_kk + newSkipScore;
+                newSkipScore = logsumexpf(curSkipScore, HMT_FROM_PREV_K);
+                //add it
+                prevProbabilities[blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP] = newSkipScore;
+            }
+        }
+
+        // Now do the end state
+        __syncthreads();
+
+        if ((threadIdx.x == 1) && (row == 1)){
+            printf("rank %i\n", rank);
+            printf("event mean %f\n", event_mean);
+            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv);
+            printf("poreModelLevelStdv %f\n", poreModelLevelStdv);
+            printf("poreModelLevelMean %f\n", poreModelLevelMean);
+            printf("lp_emission_m is %f\n", lp_emission_m);
+            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
+            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
+            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
+            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
+            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
+            printf(">GPU newSkipScore is %f\n", newSkipScore);
+        }
+
+
+        if ((threadIdx.x == 0) && (row == 3)) {
             printf("Number of states is %i\n", n_states);
             for (int c = 0; c < n_states; c++) {
-                printf("GPU> Value for row 1 and col %i is %f\n", c, prevProbabilities[c]);
+                printf("GPU> Value for row 3 and col %i is %f\n", c, prevProbabilities[c]);
             }
         }
     }
