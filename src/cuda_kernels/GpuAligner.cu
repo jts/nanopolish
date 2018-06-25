@@ -20,17 +20,23 @@ __device__ float lp_match_r9(int rank,
                              float * poreModelLevelLogStdv,
                              float * poreModelLevelStdv,
                              float * poreModelLevelMean,
+                             float scale,
+                             float shift,
+                             float var,
+                             float logVar,
                              bool debug = false){
 
     float log_inv_sqrt_2pi = log(0.3989422804014327); // no need to calculate this every time. better solutions available..
 
     // STEP 1: GET DRIFT-SCALED LEVEL:
-    float level = mean; //TODO: Do actual drift scaling. this is a cheat
+    float level = mean;
     // TODO: Apply scaling to these 3 model values as is done in the CPP implementation
     //these can just be pulled from the model
-    float gaussian_mean = poreModelLevelMean[rank];
-    float gaussian_stdv = poreModelLevelStdv[rank];
-    float gaussian_log_level_stdv = poreModelLevelLogStdv[rank];
+
+    float gaussian_mean = scale * poreModelLevelMean[rank] + shift;
+    float gaussian_stdv = poreModelLevelStdv[rank] * var;
+    float gaussian_log_level_stdv = poreModelLevelLogStdv[rank] + logVar;
+
     // Step 3: calculate log-normal PDF
     float a = (level - gaussian_mean) / gaussian_stdv; // g is the gaussian parameters
 
@@ -63,6 +69,10 @@ __global__ void getScores(float * eventData,
                           float * poreModelLevelLogStdv,
                           float * poreModelLevelStdv,
                           float * poreModelLevelMean,
+                          float * scaleDev,
+                          float * shiftDev,
+                          float * varDev,
+                          float * logVarDev,
                           float * returnValues) {
 
     // Initialise the prev probability row, which is the row of the DP table
@@ -140,11 +150,18 @@ __global__ void getScores(float * eventData,
     // the penalty is controlled by the transition probability
     float BAD_EVENT_PENALTY = 0.0f;
 
+    float scale = scaleDev[readIdx];
+    float shift = shiftDev[readIdx];
+    float var = varDev[readIdx];
+    float logVar = logVarDev[readIdx];
+
     for(int row=1; row<numRows;row++){
         // Emission probabilities
         int event_idx = e_start + (row - 1) * e_stride;
         float event_mean = eventData[e_offset + row];
-
+        if (threadIdx.x == 0 && row ==1){
+            printf("event mean: %f\n", event_mean);
+        }
         bool debug = false;
         if (threadIdx.x == 0 && row == 1){
             debug = true;
@@ -155,8 +172,17 @@ __global__ void getScores(float * eventData,
                                           poreModelLevelLogStdv,
                                           poreModelLevelStdv,
                                           poreModelLevelMean,
+                                          scale,
+                                          shift,
+                                          var,
+                                          logVar,
                                           debug);
 
+        //TODO: The level I am seeing is nto agreeing with the CPU one atm.
+        if (threadIdx.x == 0 && row == 1){
+            printf("GPU> lp_emission_m %f\n", lp_emission_m);
+            printf("GPU> level being used to calculate emission: %f\n", event_mean);
+        }
         float lp_emission_b = BAD_EVENT_PENALTY;
 
         // Get all the scores for a match
@@ -250,7 +276,7 @@ __global__ void getScores(float * eventData,
                 //calculate the skipscore using the previous
                 //Current skip score for block blkidx:
                 float curSkipScore = prevProbabilities[blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP];
-                printf("Current skip score for block %i is %f",blkidx, curSkipScore);
+                //printf("Current skip score for block %i is %f",blkidx, curSkipScore);
                 //new score to add - TODO: use the correct lp_kk score
 
                 HMT_FROM_PREV_K = lp_kk + newSkipScore;
@@ -266,9 +292,9 @@ __global__ void getScores(float * eventData,
         if ((threadIdx.x == 1) && (row == 1)){
             printf("rank %i\n", rank);
             printf("event mean %f\n", event_mean);
-            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv);
-            printf("poreModelLevelStdv %f\n", poreModelLevelStdv);
-            printf("poreModelLevelMean %f\n", poreModelLevelMean);
+            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
+            printf("poreModelLevelStdv %f\n", poreModelLevelStdv[0]);
+            printf("poreModelLevelMean %f\n", poreModelLevelMean[0]);
             printf("lp_emission_m is %f\n", lp_emission_m);
             printf("PSR9_MATCH is %i\n", PSR9_MATCH);
             printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
@@ -280,10 +306,10 @@ __global__ void getScores(float * eventData,
         }
 
 
-        if ((threadIdx.x == 0) && (row == 3)) {
+        if ((threadIdx.x == 0) && (row == 1)) {
             printf("Number of states is %i\n", n_states);
             for (int c = 0; c < n_states; c++) {
-                printf("GPU> Value for row 3 and col %i is %f\n", c, prevProbabilities[c]);
+                printf("GPU> Value for row %i and col %i is %f\n",row, c, prevProbabilities[c]);
             }
         }
     }
@@ -389,7 +415,9 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
         eventOffsets.push_back(offset);
         size_t num_events = ev.read->events->size();
         for (int i=0;i<num_events;i++) {
-            eventMeans[offset + i] = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
+            auto scaled = ev.read->get_drift_scaled_level(i, ev.strand); // send the data in drift scaled
+            //auto unscaled = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
+            eventMeans[offset + i] = scaled;
         }
         offset += num_events;
     }
@@ -400,12 +428,40 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     std::vector<float> pore_model_level_mean(num_states);
     std::vector<float> pore_model_level_stdv(num_states);
 
+    //TODO: Fix this.
     for(int st=0; st<num_states; st++){
-        auto params = event_sequences[0].pore_model->states[0]; //let's just initially get the params for AAAAAA
+        auto params = event_sequences[0].pore_model->states[st]; //let's just initially get the params for AAAAAA
         pore_model_level_log_stdv[st] = params.level_log_stdv;
         pore_model_level_mean[st] = params.level_mean;
         pore_model_level_stdv[st] = params.level_stdv;
     }
+
+    std::vector<float> scale(num_reads);
+    std::vector<float> shift(num_reads);
+    std::vector<float> var(num_reads);
+    std::vector<float> log_var(num_reads);
+
+    for (int i=0;i<num_reads;i++){
+        scale[i] = event_sequences[i].read->scalings->scale;
+        shift[i] = event_sequences[i].read->scalings->shift;
+        var[i] = event_sequences[i].read->scalings->var;
+        log_var[i] = event_sequences[i].read->scalings->log_var;
+    }
+
+    float* scaleDev;
+    float* shiftDev;
+    float* varDev;
+    float* logVarDev;
+
+    cudaMalloc( (void**)&scaleDev, scale.size() * sizeof(float));
+    cudaMalloc( (void**)&shiftDev, shift.size() * sizeof(float));
+    cudaMalloc( (void**)&varDev, var.size() * sizeof(float));
+    cudaMalloc( (void**)&logVarDev, log_var.size() * sizeof(float));
+
+    cudaMemcpyAsync( scaleDev, scale.data(), scale.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( shiftDev, shift.data(), shift.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice );
 
 
     float* poreModelLevelLogStdvDev;
@@ -455,8 +511,8 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     int num_blocks = n_states / PSR9_NUM_STATES;
     uint32_t num_kmers = num_blocks - 2; // two terminal blocks
 
-    dim3 dimBlock(num_blocks - 2);
-    dim3 dimGrid(1); // One thread per state, not including Start and Terminal state.
+    dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
+    dim3 dimGrid(1); // Only looking at first event at the moment
 
     float * returnValues;
     cudaMalloc((void **) &returnValues, sizeof(float) * num_reads); //one score per read
@@ -476,6 +532,10 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             poreModelLevelLogStdvDev,
             poreModelLevelStdvDev,
             poreModelLevelMeanDev,
+            scaleDev,
+            shiftDev,
+            varDev,
+            logVarDev,
             returnValues);
 
     //cudaDeviceSynchronize();
@@ -493,6 +553,10 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaFree(poreModelLevelLogStdvDev);
     cudaFree(poreModelLevelStdvDev);
     cudaFree(poreModelLevelMeanDev);
+    cudaFree(scaleDev);
+    cudaFree(shiftDev);
+    cudaFree(varDev);
+    cudaFree(logVarDev);
 
     //Free host memory
     cudaFreeHost(eventMeans);
@@ -525,6 +589,7 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
     std::vector<HMMInputSequence> base_sequences = generate_methylated_alternatives(base_haplotype.get_sequence(),
                                                                                     methylation_types);
     std::vector<std::vector<HMMInputSequence>> variant_sequences;
+
     //for (auto v: variant_haplotypes){
     //    auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
     //    variant_sequences.push_back(variant_sequence);
