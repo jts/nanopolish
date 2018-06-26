@@ -49,7 +49,6 @@ Analysis workflow
 The pipeline below describes the recommended analysis workflow for larger datasets. In this tutorial, we will run through the basic steps of the pipeline for this smaller (2kb) dataset.
 
 .. figure:: _static/nanopolish-workflow.png
-  :scale: 70%
   :alt: nanopolish-tutorial-workflow
 
 Data preprocessing
@@ -65,7 +64,7 @@ Compute the draft genome assembly using canu
 -----------------------------------------------
 
 As computing the draft genome assembly takes a few hours we have included the pre-assembled data for you (``draft.fa``).
-We used the following parameters with `canu <canu.readthedocs.io>`_: ::
+We used the following parameters with `canu <http://canu.readthedocs.io/en/latest/>`_: ::
 
     canu \
         -p ecoli -d outdir genomeSize=4.6m \
