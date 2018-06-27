@@ -36,7 +36,7 @@ When major features have been added or bugs fixed, we will tag and release a new
 ```
 git clone --recursive https://github.com/jts/nanopolish.git
 cd nanopolish
-git checkout v0.7.1
+git checkout v0.9.2
 make
 ```
 
@@ -82,7 +82,7 @@ Now, we use nanopolish to compute the consensus sequence (the genome is polished
 
 ```
 python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
-    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
+    nanopolish variants --consensus -o polished.{1}.vcf -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
 ```
 
 This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
@@ -90,7 +90,7 @@ This command will run the consensus algorithm on eight 50kbp segments of the gen
 After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly:
 
 ```
-python nanopolish_merge.py polished.*.fa > polished_genome.fa
+nanopolish vcf2fasta -g draft.fa polished.*.vcf > polished_genome.fa
 ```
 
 ## Calling Methylation
