@@ -68,6 +68,7 @@ inline float log_probability_match_r9(const SquiggleRead& read,
     }
     GaussianParameters gp = read.get_scaled_gaussian_from_pore_model_state(pore_model, strand, kmer_rank);
     if (debug == true) {
+        printf(">Event IDX is: %i\n", event_idx);
         printf(">CPU Strand is: %i\n", strand);
         printf(">CPU kmer_rank is: %i\n", kmer_rank);
         printf(">CPU level is: %f\n", level);

@@ -330,7 +330,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
         //diagnostics - after match and bad event have been applied
         if (row == 4) { // row 1 has been computed so we can have a peek
             auto nc = output.get_num_columns();
-            int rw = 1;
+            int rw = 3;
             for (int i = 0; i < nc; i++) {
                 printf("CPU> Value for row %i col %i is %f\n", rw, i, output.get(rw, i));
             }
@@ -372,7 +372,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_SOFT] = (kmer_idx == 0 &&
                                         (event_idx == e_start ||
                                              (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
-            
+            printf("lp_emission_m is %f\n", lp_emission_m);
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
              // state PSR9_BAD_EVENT
@@ -395,16 +395,6 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_PREV_K] = bt.lp_kk + output.get(row, prev_block_offset + PSR9_KMER_SKIP);
             scores.x[HMT_FROM_SOFT] = -INFINITY;
             output.update_cell(row, curr_block_offset + PSR9_KMER_SKIP, scores, 0.0f); // no emission
-
-            //if ((block == 1) && (row == 1)){ //blcok 1 corresponds to threadIdx 0 on GPU
-            //    printf("lp_emission_m is %f\n", lp_emission_m);
-            //    printf("PSR9_MATCH is %i\n", PSR9_MATCH);
-            //    printf(">CPU score HMT_FROM_SAME_M is %f\n", scores.x[HMT_FROM_SAME_M]);
-            //    printf(">CPU score HMT_FROM_PREV_M is %f\n", scores.x[HMT_FROM_PREV_M]);
-            //    printf(">CPU score HMT_FROM_SAME_B is %f\n", scores.x[HMT_FROM_SAME_B]);
-            //    printf(">CPU score HMT_FROM_PREV_B is %f\n", scores.x[HMT_FROM_PREV_B]);
-            //    printf(">CPU score HMT_FROM_PREV_K is %f\n", scores.x[HMT_FROM_PREV_K]);
-            //}
 
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 

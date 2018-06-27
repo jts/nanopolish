@@ -73,6 +73,7 @@ __global__ void getScores(float * eventData,
                           float * shiftDev,
                           float * varDev,
                           float * logVarDev,
+                          float * preFlankingDev,
                           float * returnValues) {
 
     // Initialise the prev probability row, which is the row of the DP table
@@ -91,9 +92,6 @@ __global__ void getScores(float * eventData,
     int e_stride = eventStrides[readIdx];
     int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
 
-    //float levelLogStdv = poreModelLevelLogStdv[e_offset];
-    //float levelStdv = poreModelLevelStdv[e_offset];
-    //float levelMean = poreModelLevelMean[e_offset];
 
     if (threadIdx.x == 0){
         printf(">GPU e_start %i\n", e_start);
@@ -158,12 +156,12 @@ __global__ void getScores(float * eventData,
     for(int row=1; row<numRows;row++){
         // Emission probabilities
         int event_idx = e_start + (row - 1) * e_stride;
-        float event_mean = eventData[e_offset + row];
-        if (threadIdx.x == 0 && row ==1){
-            printf("event mean: %f\n", event_mean);
-        }
+        float event_mean = eventData[e_offset + row - 1];
+        float preFlank = preFlankingDev[e_offset + row - 1];
+
         bool debug = false;
-        if (threadIdx.x == 0 && row == 1){
+
+        if (threadIdx.x == 0 && row == 3){
             debug = true;
         }
 
@@ -178,11 +176,7 @@ __global__ void getScores(float * eventData,
                                           logVar,
                                           debug);
 
-        //TODO: The level I am seeing is nto agreeing with the CPU one atm.
-        if (threadIdx.x == 0 && row == 1){
-            printf("GPU> lp_emission_m %f\n", lp_emission_m);
-            printf("GPU> level being used to calculate emission: %f\n", event_mean);
-        }
+
         float lp_emission_b = BAD_EVENT_PENALTY;
 
         // Get all the scores for a match
@@ -192,12 +186,18 @@ __global__ void getScores(float * eventData,
         float HMT_FROM_PREV_B = lp_bm_next + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
         float HMT_FROM_PREV_K = lp_km + prevProbabilities[prevBlockOffset + PSR9_KMER_SKIP];
 
+
+
         // m_s is the probability of going from the start state
         // to this kmer. The start state is (currently) only
         // allowed to go to the first kmer. If ALLOW_PRE_CLIP
         // is defined, we allow all events before this one to be skipped,
         // with a penalty;
-        float HMT_FROM_SOFT = (kmerIdx == 0 && (event_idx == e_start)) ? lp_sm  : -INFINITY; // TODO: Add the pre-flank to this calculation. Also flags and HAF_ALLOW_PRE_CLIP
+        float HMT_FROM_SOFT = (kmerIdx == 0 &&
+                               (event_idx == e_start ||
+                                (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TEST! TODO: Add the pre-flank to this calculation. Also flags and HAF_ALLOW_PRE_CLIP. For now this is left out and should not have a big effect
+
+
 
         // calculate the score
         float sum = HMT_FROM_SAME_M;
@@ -226,6 +226,18 @@ __global__ void getScores(float * eventData,
         float newMatchScore = sum;
         // Here need to calculate the bad event score
 
+        if (debug==true){
+            printf("GPU> lp_emission_m for row %i and thread %i %f\n", row, threadIdx.x, lp_emission_m);
+            printf("GPU> level being used to calculate emission for thread 0: %f\n", event_mean);
+            printf("GPU> match score for row %i and thread %i %f\\n\", row, threadIdx.x", newMatchScore);
+            printf("GPU> HMT_FROM_SAME_M: %f\n", HMT_FROM_SAME_M);
+            printf("GPU> HMT_FROM_PREV_M: %f\n", HMT_FROM_PREV_M);
+            printf("GPU> HMT_FROM_SAME_B: %f\n", HMT_FROM_SAME_B);
+            printf("GPU> HMT_FROM_PREV_B: %f\n", HMT_FROM_PREV_B);
+            printf("GPU> HMT_FROM_PREV_K: %f\n", HMT_FROM_PREV_K);
+            printf("GPU> HMT_FROM_SOFT: %f\n", HMT_FROM_SOFT);
+
+        }
         // state PSR9_BAD_EVENT
         HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
         HMT_FROM_PREV_M = -INFINITY; // not allowed
@@ -244,7 +256,7 @@ __global__ void getScores(float * eventData,
 
         float newBadEventScore = sum;
 
-        // Write row out
+        // Write row out. prevProbabilities now becomes "current probabilities" for evaluating skips.
         prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
         prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
         __syncthreads();
@@ -254,7 +266,6 @@ __global__ void getScores(float * eventData,
         HMT_FROM_PREV_M = lp_mk + prevProbabilities[prevBlockOffset + PSR9_MATCH];
         HMT_FROM_SAME_B = -INFINITY;
         HMT_FROM_PREV_B = lp_bk + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
-
         HMT_FROM_SOFT = -INFINITY;
 
         sum = HMT_FROM_SAME_M;
@@ -273,23 +284,26 @@ __global__ void getScores(float * eventData,
         //Now need to do the skip-skip transition, which is serial.
         if (threadIdx.x == 0){
             for (int blkidx = 2;blkidx <= blockDim.x; blkidx++){
+                auto skipIdx = blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP;
                 //calculate the skipscore using the previous
                 //Current skip score for block blkidx:
-                float curSkipScore = prevProbabilities[blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP];
+                float prevSkipScore = prevProbabilities[skipIdx - PSR9_NUM_STATES];
+                float curSkipScore = prevProbabilities[skipIdx];
                 //printf("Current skip score for block %i is %f",blkidx, curSkipScore);
                 //new score to add - TODO: use the correct lp_kk score
 
-                HMT_FROM_PREV_K = lp_kk + newSkipScore;
+                HMT_FROM_PREV_K = lp_kk + prevSkipScore;
                 newSkipScore = logsumexpf(curSkipScore, HMT_FROM_PREV_K);
                 //add it
-                prevProbabilities[blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP] = newSkipScore;
+                prevProbabilities[skipIdx] = newSkipScore;
+                __syncthreads();
             }
         }
 
         // Now do the end state
         __syncthreads();
 
-        if ((threadIdx.x == 1) && (row == 1)){
+        if ((threadIdx.x == 0) && (row == 3)){
             printf("rank %i\n", rank);
             printf("event mean %f\n", event_mean);
             printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
@@ -306,7 +320,7 @@ __global__ void getScores(float * eventData,
         }
 
 
-        if ((threadIdx.x == 0) && (row == 1)) {
+        if ((threadIdx.x == 0) && (row == 3)) {
             printf("Number of states is %i\n", n_states);
             for (int c = 0; c < n_states; c++) {
                 printf("GPU> Value for row %i and col %i is %f\n",row, c, prevProbabilities[c]);
@@ -360,7 +374,10 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
 
     std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1)
     std::vector<uint32_t> e_starts; //event starts
-    std::vector<uint32_t> event_strides;
+    std::vector<int> event_strides;
+
+    std::vector<std::vector<float>> pre_flanks;
+    std::vector<std::vector<float>> post_flanks;
 
     for(auto e: event_sequences){
         uint32_t e_start = e.event_start_idx;
@@ -377,6 +394,12 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             n_events = e_start - e_end + 1;
 
         n_rows.push_back(n_events + 1);
+
+        std::vector<float> pre_flank = make_pre_flanking(e, e_start, n_events);
+        std::vector<float> post_flank = make_post_flanking(e, e_start, n_events);
+
+        pre_flanks.push_back(pre_flank);
+        post_flanks.push_back(post_flank);
     }
 
     std::vector<uint32_t> kmer_ranks(n_kmers);
@@ -404,20 +427,28 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
         numEventsTotal += numEvents;
     }
 
-    //Allocate a host buffer to store the event means
+
+    //Allocate a host buffer to store the event means, pre and post-flank data
     float * eventMeans;
     size_t eventMeansSize = numEventsTotal * sizeof(float);
     cudaHostAlloc(&eventMeans, eventMeansSize , cudaHostAllocDefault);
 
+    //Allocate a host buffer to store the event means, pre and post-flank data
+    float * preFlankingHost;
+    cudaHostAlloc(&preFlankingHost, numEventsTotal * sizeof(float) , cudaHostAllocDefault);
+
     std::vector<int> eventOffsets;
     size_t offset = 0;
-    for (auto ev: event_sequences){
+    for(int j=0;j<event_sequences.size();j++){
+        auto ev = event_sequences[j];
         eventOffsets.push_back(offset);
         size_t num_events = ev.read->events->size();
         for (int i=0;i<num_events;i++) {
-            auto scaled = ev.read->get_drift_scaled_level(i, ev.strand); // send the data in drift scaled
+            auto event_idx =  e_starts[j] + i * event_strides[0];
+            auto scaled = ev.read->get_drift_scaled_level(event_idx, ev.strand); // send the data in drift scaled
             //auto unscaled = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
             eventMeans[offset + i] = scaled;
+            preFlankingHost[offset + i] = pre_flanks[j][i]; //also copy over the pre-flanking data, since it has a 1-1 correspondence with events
         }
         offset += num_events;
     }
@@ -485,6 +516,10 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc( (void**)&eventMeansDev, eventMeansSize);
     cudaMemcpyAsync( eventMeansDev, eventMeans, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
 
+    float* preFlankingDev;
+    cudaMalloc( (void**)&preFlankingDev, eventMeansSize);
+    cudaMemcpyAsync( preFlankingDev, preFlankingHost, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
+
     int* numRowsDev;
     cudaMalloc( (void**)&numRowsDev, n_rows.size() * sizeof(int));
     cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
@@ -536,6 +571,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             shiftDev,
             varDev,
             logVarDev,
+            preFlankingDev,
             returnValues);
 
     //cudaDeviceSynchronize();
@@ -557,6 +593,8 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaFree(shiftDev);
     cudaFree(varDev);
     cudaFree(logVarDev);
+    cudaFree(preFlankingDev);
+
 
     //Free host memory
     cudaFreeHost(eventMeans);
