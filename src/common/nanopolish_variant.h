@@ -118,6 +118,15 @@ class VariantKeyComp
         }
 };
 
+class VariantKeyEqualityComp
+{
+    public: 
+        inline bool operator()(const Variant& a, const Variant& b)
+        {
+            return a.key() == b.key();
+        }
+};
+
 // Read a collection of variants from a VCF file
 std::vector<Variant> read_variants_from_file(const std::string& filename);
 std::vector<Variant> read_variants_for_region(const std::string& filename,

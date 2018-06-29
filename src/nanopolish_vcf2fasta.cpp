@@ -85,13 +85,13 @@ void parse_vcf2fasta_options(int argc, char** argv)
                 exit(EXIT_SUCCESS);
         }
     }
-    
+
     if (argc - optind < 1) {
         std::cerr << SUBPROGRAM ": not enough arguments\n";
         die = true;
     }
 
-    if (die) 
+    if (die)
     {
         std::cout << "\n" << VCF2FASTA_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
@@ -129,7 +129,7 @@ int vcf2fasta_main(int argc, char** argv)
                     std::vector<std::string> fields = split(line, '=');
                     assert(fields.size() == 2);
                     window_str = fields[1];
-                } 
+                }
             } else {
                 Variant v(line);
                 variants_by_contig[v.ref_name].push_back(v);
@@ -156,7 +156,7 @@ int vcf2fasta_main(int argc, char** argv)
         // Confirm that all windows on this contig have been polished
         bool window_check_ok = true;
         auto& windows = windows_by_contig[contig];
-        
+
         std::sort(windows.begin(), windows.end());
         if(windows[0].first != 0) {
             fprintf(stderr, "error: first %d bases are not covered by a polished window for contig %s.\n", windows[0].first, contig.c_str());
@@ -184,29 +184,85 @@ int vcf2fasta_main(int argc, char** argv)
             fprintf(stderr, "error: one or more polishing windows are missing. Please check that all nanopolish variants --consensus jobs ran to completion\n");
             exit(EXIT_FAILURE);
         }
-        
+
         int length;
         char* seq = fai_fetch(fai, contig.c_str(), &length);
         if(length < 0) {
             fprintf(stderr, "error: could not fetch contig %s\n", contig.c_str());
             exit(EXIT_FAILURE);
         }
-        std::string seq_str(seq);
-        free(seq);
-        seq = NULL;
 
-
-        Haplotype derived_haplotype(contig, 0, seq_str);
         auto& variants = variants_by_contig[contig];
         std::sort(variants.begin(), variants.end(), sortByPosition);
 
-        size_t applied_variants = 0;
-        for(size_t variant_idx = 0; variant_idx < variants.size(); ++variant_idx) {
-            applied_variants += derived_haplotype.apply_variant(variants[variant_idx]);
+        // remove duplicate variants
+        VariantKeyEqualityComp vkec;
+        auto last = std::unique(variants.begin(), variants.end(), vkec);
+        variants.erase(last, variants.end());
+
+        assert(variants.size() < (1 << 30));
+        uint32_t deleted_tag = 1 << 30;
+        uint32_t variant_tag = 1 << 31;
+
+        // make a vector holding either a literal character or an index to the variant that needs to be applied
+        std::vector<uint32_t> consensus_record(length);
+        for(size_t i = 0; i < length; ++i) {
+            consensus_record[i] = seq[i];
         }
 
-        fprintf(stderr, "contig: %s %zu/%zu successfully added\n", contig.c_str(), applied_variants, variants.size());
-        fprintf(stdout, ">%s\n%s\n", contig.c_str(), derived_haplotype.get_sequence().c_str());
+        size_t num_skipped = 0;
+        size_t num_subs = 0;
+        size_t num_insertions = 0;
+        size_t num_deletions = 0;
+
+        // update the consensus record according to the variants for this contig
+        size_t applied_variants = 0;
+        for(size_t variant_idx = 0; variant_idx < variants.size(); ++variant_idx) {
+            const Variant& v = variants[variant_idx];
+
+            // check if the variant record matches the reference sequence
+            bool matches_ref = true;
+            for(size_t i = 0; i < v.ref_seq.length(); ++i) {
+                matches_ref = matches_ref && v.ref_seq[i] == consensus_record[v.ref_position + i];
+            }
+
+            if(!matches_ref) {
+                num_skipped += 1;
+                continue;
+            }
+
+            // mark the first base of the reference sequence as a variant and set the index
+            consensus_record[v.ref_position] = variant_tag | variant_idx;
+
+            // mark the subsequent bases of the reference as deleted
+            for(size_t i = 1; i < v.ref_seq.length(); ++i) {
+                consensus_record[v.ref_position + i] = deleted_tag;
+            }
+
+            num_subs += v.ref_seq.length() == v.alt_seq.length();
+            num_insertions += v.ref_seq.length() < v.alt_seq.length();
+            num_deletions += v.ref_seq.length() > v.alt_seq.length();
+        }
+
+        // write out the consensus record
+        std::string out;
+        out.reserve(length);
+        for(size_t i = 0; i < length; ++i) {
+            uint32_t r = consensus_record[i];
+            if(r & variant_tag) {
+                out.append(variants[r & ~variant_tag].alt_seq);
+            } else if(r & ~deleted_tag) {
+                out.append(1, r);
+            } else {
+                assert(r & deleted_tag);
+            }
+        }
+
+        fprintf(stderr, "[vcf2fasta] rewrote contig %s with %zu subs, %zu ins, %zu dels (%zu skipped)\n", contig.c_str(), num_subs, num_insertions, num_deletions, num_skipped);
+        fprintf(stdout, ">%s\n%s\n", contig.c_str(), out.c_str());
+
+        free(seq);
+        seq = NULL;
     }
 
     return 0;
