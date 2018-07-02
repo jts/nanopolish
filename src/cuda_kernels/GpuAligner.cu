@@ -14,7 +14,6 @@ __device__ float logsumexpf(float x, float y){
     return result;
 }
 
-//TODO: Implement, inc pore model
 __device__ float lp_match_r9(int rank,
                              float mean,
                              float * poreModelLevelLogStdv,
@@ -42,18 +41,6 @@ __device__ float lp_match_r9(int rank,
 
     float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a); // log_inv_sqrt_2pi is defined in a comment above
 
-    if (debug == true) {
-        if (threadIdx.x == 0) {
-            printf(">GPU: kmer rank is %i\n", rank);
-            printf(">GPU: level %f\n", level);
-            printf(">GPU: gaussian mean %f\n", gaussian_mean);
-            printf(">GPU: gaussian stdv %f\n", gaussian_stdv);
-            printf(">GPU: gaussian log level stdv %f\n", gaussian_log_level_stdv);
-            printf(">GPU a: %f\n", a);
-            printf(">GPU emission: %f\n", emission);
-        }
-    }
-
     return emission; // log_inv_sqrt_2pi is defined in a comment above
 
 }
@@ -74,14 +61,24 @@ __global__ void getScores(float * eventData,
                           float * varDev,
                           float * logVarDev,
                           float * preFlankingDev,
+                          float * postFlankingDev,
                           float * returnValues) {
 
     // Initialise the prev probability row, which is the row of the DP table
+    int n_kmers = blockDim.x; // Question: How does this deal with the case where the block is bigger than the sequence, such as if one variant is a deletion?
+    int n_states = n_kmers * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
 
-    int n_states = blockDim.x * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
+    //initialise the return value
+    returnValues[blockIdx.x] = -INFINITY;
+
     __shared__ float prevProbabilities[MAX_STATES];
-    for (int i = 0; i < n_states; i++) {
+
+    // Initialise the previous probabilities
+    for (int i = 0; i < n_states - PSR9_NUM_STATES; i++) {
         prevProbabilities[i] = -INFINITY;
+    }
+    for (int i = n_states - PSR9_NUM_STATES; i < n_states; i++) {
+        prevProbabilities[i] = 0; // Is this correct?
     }
 
     //Step 1: calculate transitions. For now we are going to use external params.
@@ -92,14 +89,8 @@ __global__ void getScores(float * eventData,
     int e_stride = eventStrides[readIdx];
     int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
 
-
-    if (threadIdx.x == 0){
-        printf(">GPU e_start %i\n", e_start);
-    }
-
     int kmerIdx = threadIdx.x;
     uint32_t rank = kmer_ranks[kmerIdx]; // lexical rank of a kmer
-    printf("Kmer idx %i, Rank: %i\n", kmerIdx, rank);
 
     float p_stay = 1 - (1 / read_events_per_base);
     float p_skip = 0.0025;
@@ -158,10 +149,11 @@ __global__ void getScores(float * eventData,
         int event_idx = e_start + (row - 1) * e_stride;
         float event_mean = eventData[e_offset + row - 1];
         float preFlank = preFlankingDev[e_offset + row - 1];
+        float postFlank = postFlankingDev[e_offset + row - 1];
 
         bool debug = false;
 
-        if (threadIdx.x == 0 && row == 3){
+        if (threadIdx.x == 0 && (row == numRows -1) && blockIdx.x == 0){
             debug = true;
         }
 
@@ -195,49 +187,22 @@ __global__ void getScores(float * eventData,
         // with a penalty;
         float HMT_FROM_SOFT = (kmerIdx == 0 &&
                                (event_idx == e_start ||
-                                (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TEST! TODO: Add the pre-flank to this calculation. Also flags and HAF_ALLOW_PRE_CLIP. For now this is left out and should not have a big effect
-
-
+                                (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TODO: Add flag for HAF ALLOW_PRE_CLIP
 
         // calculate the score
         float sum = HMT_FROM_SAME_M;
-
         sum = logsumexpf(sum, HMT_FROM_SOFT);
-        if (debug == true){
-            printf("Sum1 is : %f\n", sum);
-        }
         sum = logsumexpf(sum, HMT_FROM_PREV_M);
-        if (debug == true){
-            printf("Sum2 is : %f\n", sum);
-        }
-
         sum = logsumexpf(sum, HMT_FROM_SAME_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
-        if (debug == true){
-            printf("Sum3 is : %f\n", sum);
-        }
-
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
         sum += lp_emission_m;
-        if (debug == true){
-            printf("Sum4 is : %f\n", sum);
-        }
+
 
         float newMatchScore = sum;
         // Here need to calculate the bad event score
 
-        if (debug==true){
-            printf("GPU> lp_emission_m for row %i and thread %i %f\n", row, threadIdx.x, lp_emission_m);
-            printf("GPU> level being used to calculate emission for thread 0: %f\n", event_mean);
-            printf("GPU> match score for row %i and thread %i %f\\n\", row, threadIdx.x", newMatchScore);
-            printf("GPU> HMT_FROM_SAME_M: %f\n", HMT_FROM_SAME_M);
-            printf("GPU> HMT_FROM_PREV_M: %f\n", HMT_FROM_PREV_M);
-            printf("GPU> HMT_FROM_SAME_B: %f\n", HMT_FROM_SAME_B);
-            printf("GPU> HMT_FROM_PREV_B: %f\n", HMT_FROM_PREV_B);
-            printf("GPU> HMT_FROM_PREV_K: %f\n", HMT_FROM_PREV_K);
-            printf("GPU> HMT_FROM_SOFT: %f\n", HMT_FROM_SOFT);
 
-        }
         // state PSR9_BAD_EVENT
         HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
         HMT_FROM_PREV_M = -INFINITY; // not allowed
@@ -281,29 +246,52 @@ __global__ void getScores(float * eventData,
         prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] = newSkipScore;
         __syncthreads();
 
-        //Now need to do the skip-skip transition, which is serial.
+        //Now need to do the skip-skip transition, which is serial so for now letting one thread execute it.
         if (threadIdx.x == 0){
             for (int blkidx = 2;blkidx <= blockDim.x; blkidx++){
                 auto skipIdx = blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP;
-                //calculate the skipscore using the previous
-                //Current skip score for block blkidx:
                 float prevSkipScore = prevProbabilities[skipIdx - PSR9_NUM_STATES];
                 float curSkipScore = prevProbabilities[skipIdx];
-                //printf("Current skip score for block %i is %f",blkidx, curSkipScore);
-                //new score to add - TODO: use the correct lp_kk score
-
                 HMT_FROM_PREV_K = lp_kk + prevSkipScore;
                 newSkipScore = logsumexpf(curSkipScore, HMT_FROM_PREV_K);
-                //add it
                 prevProbabilities[skipIdx] = newSkipScore;
                 __syncthreads();
             }
         }
 
+        __syncthreads();
+
+        int lastKmerIdx = n_kmers -1;
+        int lastRowIdx = numRows -1;
+        float end;
+        // Now do the post-clip transition
+        if(kmerIdx == lastKmerIdx && ( (HAF_ALLOW_POST_CLIP) || row == lastRowIdx)) {
+            float lp1 = lp_ms + prevProbabilities[curBlockOffset + PSR9_MATCH] + postFlank;
+            float lp2 = lp_ms + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] + postFlank;
+            float lp3 = lp_ms + prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] + postFlank;
+
+            printf(">GPU Post-clip transition on row %i, read %i, threadIdx is %i\n"
+                           "LP1=%f\n"
+                           "LP2=%f\n"
+                           "LP3=%f\n",
+                   row,
+                   blockIdx.x,
+                   threadIdx.x,
+                   lp1,
+                   lp2,
+                   lp3);
+
+            end = returnValues[blockIdx.x];
+            end = logsumexpf(end, lp1);
+            end = logsumexpf(end, lp2);
+            end = logsumexpf(end, lp3);
+            returnValues[blockIdx.x] = end;
+        }
         // Now do the end state
         __syncthreads();
 
-        if ((threadIdx.x == 0) && (row == 3)){
+        // DIAGNOSTIC
+        if (debug == true){
             printf("rank %i\n", rank);
             printf("event mean %f\n", event_mean);
             printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
@@ -317,10 +305,6 @@ __global__ void getScores(float * eventData,
             printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
             printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
             printf(">GPU newSkipScore is %f\n", newSkipScore);
-        }
-
-
-        if ((threadIdx.x == 0) && (row == 3)) {
             printf("Number of states is %i\n", n_states);
             for (int c = 0; c < n_states; c++) {
                 printf("GPU> Value for row %i and col %i is %f\n",row, c, prevProbabilities[c]);
@@ -328,8 +312,6 @@ __global__ void getScores(float * eventData,
         }
     }
 
-
-    returnValues[blockIdx.x] = 0.356;
     __syncthreads();
 }
 
@@ -342,9 +324,9 @@ GpuAligner::GpuAligner()
         n[i] = i;
 }
 
-double scoreKernel(std::vector<HMMInputSequence> sequences,
-                   std::vector<HMMInputData> event_sequences,
-                   uint32_t alignment_flags){
+std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
+                    std::vector<HMMInputData> event_sequences,
+                    uint32_t alignment_flags){
 
     // Extract the pore model.
     //Let's assume that every event sequence has the same pore model
@@ -435,7 +417,9 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
 
     //Allocate a host buffer to store the event means, pre and post-flank data
     float * preFlankingHost;
+    float * postFlankingHost;
     cudaHostAlloc(&preFlankingHost, numEventsTotal * sizeof(float) , cudaHostAllocDefault);
+    cudaHostAlloc(&postFlankingHost, numEventsTotal * sizeof(float) , cudaHostAllocDefault);
 
     std::vector<int> eventOffsets;
     size_t offset = 0;
@@ -449,6 +433,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             //auto unscaled = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
             eventMeans[offset + i] = scaled;
             preFlankingHost[offset + i] = pre_flanks[j][i]; //also copy over the pre-flanking data, since it has a 1-1 correspondence with events
+            postFlankingHost[offset + i] = post_flanks[j][i]; //also copy over the pre-flanking data, since it has a 1-1 correspondence with events
         }
         offset += num_events;
     }
@@ -461,7 +446,7 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
 
     //TODO: Fix this.
     for(int st=0; st<num_states; st++){
-        auto params = event_sequences[0].pore_model->states[st]; //let's just initially get the params for AAAAAA
+        auto params = event_sequences[0].pore_model->states[st]; //TODO: Is this OK?
         pore_model_level_log_stdv[st] = params.level_log_stdv;
         pore_model_level_mean[st] = params.level_mean;
         pore_model_level_stdv[st] = params.level_stdv;
@@ -520,6 +505,10 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc( (void**)&preFlankingDev, eventMeansSize);
     cudaMemcpyAsync( preFlankingDev, preFlankingHost, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
 
+    float* postFlankingDev;
+    cudaMalloc( (void**)&postFlankingDev, eventMeansSize);
+    cudaMemcpyAsync( postFlankingDev, postFlankingHost, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
+
     int* numRowsDev;
     cudaMalloc( (void**)&numRowsDev, n_rows.size() * sizeof(int));
     cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
@@ -544,18 +533,18 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     int num_blocks = n_states / PSR9_NUM_STATES;
-    uint32_t num_kmers = num_blocks - 2; // two terminal blocks
+    uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
 
     dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
-    dim3 dimGrid(1); // Only looking at first event at the moment
+    dim3 dimGrid(num_reads); // let's look at only the first read
 
-    float * returnValues;
-    cudaMalloc((void **) &returnValues, sizeof(float) * num_reads); //one score per read
+    float * returnValuesDev;
+    cudaMalloc((void **) &returnValuesDev, sizeof(float) * num_reads); //one score per read
 
-    float* returnedValues;// = new float[num_reads];
-    //size_t eventMeansSize = numEventsTotal * sizeof(float);
+    float* returnedValues;
     cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
 
+    printf("About to run getscores...\n");
     getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
             eventsPerBaseDev,
             numRowsDev,
@@ -572,10 +561,11 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
             varDev,
             logVarDev,
             preFlankingDev,
-            returnValues);
+            postFlankingDev,
+            returnValuesDev);
 
-    //cudaDeviceSynchronize();
-    cudaMemcpyAsync(returnedValues, returnValues, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaMemcpyAsync(returnedValues, returnValuesDev, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
 
     // Free device memory
     cudaFree(eventMeansDev);
@@ -594,14 +584,15 @@ double scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaFree(varDev);
     cudaFree(logVarDev);
     cudaFree(preFlankingDev);
-
+    cudaFree(postFlankingDev);
 
     //Free host memory
     cudaFreeHost(eventMeans);
 
-    float r = 0.0;
+    //Send all the scores back
+    std::vector<double> r(num_reads);
     for(int i=0; i<num_reads;i++){
-        r += returnedValues[i];
+        r[i]= (double) returnedValues[i];
     }
 
     return r;
@@ -628,20 +619,27 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
                                                                                     methylation_types);
     std::vector<std::vector<HMMInputSequence>> variant_sequences;
 
-    //for (auto v: variant_haplotypes){
-    //    auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
-    //    variant_sequences.push_back(variant_sequence);
-    //}
+    for (auto v: variant_haplotypes){
+        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
+        variant_sequences.push_back(variant_sequence);
+    }
 
     assert(base_sequences.size() == 1);
 
     // return the sum of the score for the base sequences over all the event sequences
-    double base_score = scoreKernel(base_sequences, event_sequences, alignment_flags);
+    auto base_scores = scoreKernel(base_sequences, event_sequences, alignment_flags);
 
     std::vector<double> v(variant_sequences.size());
     for (int i=0; i<variant_sequences.size(); i++){
-        double score = scoreKernel(variant_sequences[i], event_sequences, alignment_flags); //TODO: Base sequence needs to be replaced with the variant itself
-        v[i] = (score - base_score);
+        auto scores = scoreKernel(variant_sequences[i], event_sequences, alignment_flags); //TODO: Base sequence needs to be replaced with the variant itself
+
+        double totalScore = 0.0;
+        for(int k=0; k<scores.size(); k++){
+            if (fabs(totalScore) < screen_score_threshold){ //threshold, hardcoded. TODO: Make this an argument, although the thresholding doesn't make much sense on GPU
+                totalScore += (scores[k] - base_scores[k]);
+            }
+        }
+        v[i] = totalScore;
     }
 
     return v;

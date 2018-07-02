@@ -328,9 +328,9 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
 
         //printf("======\n");
         //diagnostics - after match and bad event have been applied
-        if (row == 4) { // row 1 has been computed so we can have a peek
+        if (row == 29) { // row 1 has been computed so we can have a peek
             auto nc = output.get_num_columns();
-            int rw = 3;
+            int rw = 28;
             for (int i = 0; i < nc; i++) {
                 printf("CPU> Value for row %i col %i is %f\n", rw, i, output.get(rw, i));
             }
@@ -399,7 +399,9 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             // If POST_CLIP is enabled we allow the last kmer to transition directly
             // to the end after any event. Otherwise we only allow it from the 
             // last kmer/event match.
+
             if(kmer_idx == last_kmer_idx && ( (flags & HAF_ALLOW_POST_CLIP) || row == last_event_row_idx)) {
+                printf(">CPU Post-clip transition on row %i\n", row);
                 float lp1 = lp_ms + output.get(row, curr_block_offset + PSR9_MATCH) + post_flank[row - 1];
                 float lp2 = lp_ms + output.get(row, curr_block_offset + PSR9_BAD_EVENT) + post_flank[row - 1];
                 float lp3 = lp_ms + output.get(row, curr_block_offset + PSR9_KMER_SKIP) + post_flank[row - 1];
@@ -407,6 +409,12 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
                 output.update_end(lp1, row, curr_block_offset + PSR9_MATCH);
                 output.update_end(lp2, row, curr_block_offset + PSR9_BAD_EVENT);
                 output.update_end(lp3, row, curr_block_offset + PSR9_KMER_SKIP);
+
+                printf(">LP1 %f\n", lp1);
+                printf(">LP2 %f\n", lp2);
+                printf(">LP3 %f\n", lp3);
+                printf(">end %f\n", output.get_end());
+
             }
 
 #ifdef DEBUG_LOCAL_ALIGNMENT
