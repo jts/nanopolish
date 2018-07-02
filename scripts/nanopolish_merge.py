@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import sys
 import glob
-from Bio import SeqIO
+from Bio.SeqIO.FastaIO import SimpleFastaParser
 from Bio import pairwise2
 
 def merge_into_consensus(consensus, incoming, overlap_length):
@@ -69,14 +69,15 @@ segments_by_name = dict()
 
 # Load the polished segments into a dictionary keyed by the start coordinate
 for fn in sys.argv[1:]:
-    for rec in SeqIO.parse(open(fn), "fasta"):
-        (contig, segment_range) = rec.name.split(":")
+    with open(fn) as handle:
+        for title, seq in SimpleFastaParser(handle):
+            (contig, segment_range) = title.split(None, 1)[0].split(":")
 
-        if contig not in segments_by_name:
-            segments_by_name[contig] = dict()
+            if contig not in segments_by_name:
+                segments_by_name[contig] = dict()
 
-        segment_start, segment_end = segment_range.split("-")
-        segments_by_name[contig][int(segment_start)] = str(rec.seq)
+            segment_start, segment_end = segment_range.split("-")
+            segments_by_name[contig][int(segment_start)] = seq
 
 # Assemble while making sure every segment is present
 for contig_name in sorted(segments_by_name.keys()):
