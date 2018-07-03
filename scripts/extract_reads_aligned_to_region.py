@@ -9,7 +9,7 @@ from __future__ import print_function
 
 try:
 	from Bio.SeqIO.FastaIO import SimpleFastaParser
-        from Bio.SeqIO.QualityIO import FastqGeneralIterator
+	from Bio.SeqIO.QualityIO import FastqGeneralIterator
 	import pysam
 	import argparse
 	import subprocess
