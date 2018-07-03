@@ -352,9 +352,8 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
         // get the scaled levels.
 
         std::vector<double> scores = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
-                                                       alignment_flags, 10,//opt::screen_score_threshold,
+                                                       alignment_flags, opt::screen_score_threshold,
                                                        opt::methylation_types);
-
         auto tf_gpu = std::chrono::high_resolution_clock::now();
         gpu_exec += tf_gpu - t0_gpu;
 
@@ -364,7 +363,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                                test_haplotype,
                                                                event_sequences,
                                                                alignment_flags,
-                                                               10,//opt::screen_score_threshold,
+                                                               opt::screen_score_threshold,
                                                                opt::methylation_types);
             auto t1 = std::chrono::high_resolution_clock::now();
             scoring += t1-t0;

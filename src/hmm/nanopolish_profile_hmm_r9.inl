@@ -283,7 +283,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
 
     uint32_t e_start = data.event_start_idx;
 
-    printf(">CPU e_start: %i\n", e_start);
+    //printf(">CPU e_start: %i\n", e_start);
     // Calculate number of blocks
     // A block of the HMM is a set of states for one kmer
     uint32_t num_blocks = output.get_num_columns() / PSR9_NUM_STATES; // num_columns is the number of HMM STATES
@@ -303,8 +303,8 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki) {
-        int kr = sequence.get_kmer_rank(ki, k, data.rc);
-        printf("Kmer rank: %i\n", kr);
+        int kr = sequence.get_kmer_rank(ki, k, data.rc); // can * -1 here to see if 3rd is correct
+        printf(">CPU Kmer rank: %i\n", kr);
         kmer_ranks[ki] = kr;
     }
 
@@ -326,16 +326,6 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     // Fill in matrix
     for(uint32_t row = 1; row < output.get_num_rows(); row++) {
 
-        //printf("======\n");
-        //diagnostics - after match and bad event have been applied
-        if (row == 29) { // row 1 has been computed so we can have a peek
-            auto nc = output.get_num_columns();
-            int rw = 28;
-            for (int i = 0; i < nc; i++) {
-                printf("CPU> Value for row %i col %i is %f\n", rw, i, output.get(rw, i));
-            }
-        }
-
         // Skip the first block which is the start state, it was initialized above
         // Similarily skip the last block, which is calculated in the terminate() function
         for(uint32_t block = 1; block < num_blocks - 1; block++) {
@@ -352,7 +342,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
             float lp_emission_m = log_probability_match_r9(*data.read, *data.pore_model, rank, event_idx, data.strand, true);
-            printf("CPU> lp_emission_m %f\n", lp_emission_m);
+            //printf("CPU> lp_emission_m %f\n", lp_emission_m);
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;
@@ -364,6 +354,8 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_PREV_B] = bt.lp_bm_next + output.get(row - 1, prev_block_offset + PSR9_BAD_EVENT);
             scores.x[HMT_FROM_PREV_K] = bt.lp_km + output.get(row - 1, prev_block_offset + PSR9_KMER_SKIP);
 
+            scores.x[HMT_FROM_PREV_B] = bt.lp_bm_next + output.get(row - 1, prev_block_offset + PSR9_BAD_EVENT);
+
             // m_s is the probability of going from the start state
             // to this kmer. The start state is (currently) only 
             // allowed to go to the first kmer. If ALLOW_PRE_CLIP
@@ -372,7 +364,18 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             scores.x[HMT_FROM_SOFT] = (kmer_idx == 0 &&
                                         (event_idx == e_start ||
                                              (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
-            printf("lp_emission_m is %f\n", lp_emission_m);
+
+            if (row == 2) {
+                printf("Working with matches in row 2\n");
+                printf("HMT_FROM_SOFT IS %f\n", scores.x[HMT_FROM_SOFT]);
+                printf("Strand is %i\n", data.strand);
+                printf("bt.lp_mm_self %f\n", bt.lp_mm_self);
+                printf("bt.lp_mm_next %f\n", bt.lp_mm_next);
+                printf("bt.lp_bm_self %f\n", bt.lp_bm_self);
+                printf("bt.lp_bm_next %f\n", bt.lp_bm_next);
+                printf("bt.lp_km %f\n", bt.lp_km);
+            }
+
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
              // state PSR9_BAD_EVENT
@@ -401,7 +404,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             // last kmer/event match.
 
             if(kmer_idx == last_kmer_idx && ( (flags & HAF_ALLOW_POST_CLIP) || row == last_event_row_idx)) {
-                printf(">CPU Post-clip transition on row %i\n", row);
+                //printf(">CPU Post-clip transition on row %i\n", row);
                 float lp1 = lp_ms + output.get(row, curr_block_offset + PSR9_MATCH) + post_flank[row - 1];
                 float lp2 = lp_ms + output.get(row, curr_block_offset + PSR9_BAD_EVENT) + post_flank[row - 1];
                 float lp3 = lp_ms + output.get(row, curr_block_offset + PSR9_KMER_SKIP) + post_flank[row - 1];
@@ -410,12 +413,13 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
                 output.update_end(lp2, row, curr_block_offset + PSR9_BAD_EVENT);
                 output.update_end(lp3, row, curr_block_offset + PSR9_KMER_SKIP);
 
-                printf(">LP1 %f\n", lp1);
-                printf(">LP2 %f\n", lp2);
-                printf(">LP3 %f\n", lp3);
-                printf(">end %f\n", output.get_end());
+                //printf(">LP1 %f\n", lp1);
+                //printf(">LP2 %f\n", lp2);
+                //printf(">LP3 %f\n", lp3);
+                //printf(">end %f\n", output.get_end());
 
             }
+
 
 #ifdef DEBUG_LOCAL_ALIGNMENT
             printf("[%d %d] start: %.2lf  pre: %.2lf fm: %.2lf\n", event_idx, kmer_idx, m_s + lp_emission_m, pre_flank[row - 1], output.get(row, curr_block_offset + PSR9_MATCH));
@@ -451,7 +455,13 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
         }
     }
 
-    
-    return output.get_end();
+    for(uint32_t row = 1; row < output.get_num_rows(); row++) {
+        //for (int col=0; col<output.get_num_columns(); col++) {
+        //    printf("CPU> Value for row %i and col %i is %f\n", row, col, output.get(row, col));
+       // }
+    }
+
+
+        return output.get_end();
 }
 

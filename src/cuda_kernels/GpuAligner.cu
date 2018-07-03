@@ -87,10 +87,25 @@ __global__ void getScores(float * eventData,
     int numRows = numRowsPerRead[readIdx]; // Number of rows in this DP table.
     int e_start = eventStarts[readIdx]; // Event start for read
     int e_stride = eventStrides[readIdx];
+    bool rc = false;
+    if (e_stride == -1){
+        rc = true;
+    }
     int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
 
+    if(blockIdx.x==2){ // read 2 is an RC read
+        printf("Block IDX is %i and stride is %i\n", blockIdx.x, e_stride);
+    }
+
     int kmerIdx = threadIdx.x;
-    uint32_t rank = kmer_ranks[kmerIdx]; // lexical rank of a kmer
+    uint32_t rank;
+
+    if (rc == true) {
+        rank = kmer_ranks_rc[kmerIdx];
+        //printf("Using an RC rank of %i\n", rank);
+    }else{
+        rank = kmer_ranks[kmerIdx];
+    }
 
     float p_stay = 1 - (1 / read_events_per_base);
     float p_skip = 0.0025;
@@ -112,7 +127,7 @@ __global__ void getScores(float * eventData,
     float p_kk = p_skip_self;
     float p_km = 1.0f - p_kk;
 
-    // We assign some transition probabilities. I believe this is correct and they don't vary by location in the sequence (why would they)
+    // We assign some transition probabilities. I believe this is correct and they don't vary by location in the sequence
     float lp_mk = log(p_mk);
     float lp_mb = log(p_mb);
     float lp_mm_self = log(p_mm_self);
@@ -153,7 +168,7 @@ __global__ void getScores(float * eventData,
 
         bool debug = false;
 
-        if (threadIdx.x == 0 && (row == numRows -1) && blockIdx.x == 0){
+        if (threadIdx.x == 0 && (row == numRows -1) && blockIdx.x == 2){
             debug = true;
         }
 
@@ -188,6 +203,12 @@ __global__ void getScores(float * eventData,
         float HMT_FROM_SOFT = (kmerIdx == 0 &&
                                (event_idx == e_start ||
                                 (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TODO: Add flag for HAF ALLOW_PRE_CLIP
+
+        if (blockIdx.x == 2 && threadIdx.x == 0 && row == 2){
+            printf("HMT_FROM_SOFT should be (?) -5.99 but is in fact %f\n", HMT_FROM_SOFT);
+            printf("event IDX is %i\n", event_idx);
+            printf("e_start is %i\n", e_start);
+        }
 
         // calculate the score
         float sum = HMT_FROM_SAME_M;
@@ -269,17 +290,17 @@ __global__ void getScores(float * eventData,
             float lp1 = lp_ms + prevProbabilities[curBlockOffset + PSR9_MATCH] + postFlank;
             float lp2 = lp_ms + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] + postFlank;
             float lp3 = lp_ms + prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] + postFlank;
-
-            printf(">GPU Post-clip transition on row %i, read %i, threadIdx is %i\n"
-                           "LP1=%f\n"
-                           "LP2=%f\n"
-                           "LP3=%f\n",
-                   row,
-                   blockIdx.x,
-                   threadIdx.x,
-                   lp1,
-                   lp2,
-                   lp3);
+//
+//            printf(">GPU Post-clip transition on row %i, read %i, threadIdx is %i\n"
+//                           "LP1=%f\n"
+//                           "LP2=%f\n"
+//                           "LP3=%f\n",
+//                   row,
+//                   blockIdx.x,
+//                   threadIdx.x,
+//                   lp1,
+//                   lp2,
+//                   lp3);
 
             end = returnValues[blockIdx.x];
             end = logsumexpf(end, lp1);
@@ -290,29 +311,39 @@ __global__ void getScores(float * eventData,
         // Now do the end state
         __syncthreads();
 
-        // DIAGNOSTIC
-        if (debug == true){
-            printf("rank %i\n", rank);
-            printf("event mean %f\n", event_mean);
-            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
-            printf("poreModelLevelStdv %f\n", poreModelLevelStdv[0]);
-            printf("poreModelLevelMean %f\n", poreModelLevelMean[0]);
-            printf("lp_emission_m is %f\n", lp_emission_m);
-            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
-            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
-            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
-            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
-            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
-            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
-            printf(">GPU newSkipScore is %f\n", newSkipScore);
-            printf("Number of states is %i\n", n_states);
-            for (int c = 0; c < n_states; c++) {
-                printf("GPU> Value for row %i and col %i is %f\n",row, c, prevProbabilities[c]);
-            }
-        }
-    }
+        if ((blockIdx.x == 2) && (threadIdx.x == 0)){
+//            printf("rank %i\n", rank);
+//            printf("event mean %f\n", event_mean);
+//            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
+//            printf("poreModelLevelStdv %f\n", poreModelLevelStdv[0]);
+//            printf("poreModelLevelMean %f\n", poreModelLevelMean[0]);
+//            printf("lp_emission_m is %f\n", lp_emission_m);
+//            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+//            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
+//            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
+//            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
+//            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
+//            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
+//            printf(">GPU newSkipScore is %f\n", newSkipScore);
+//            printf("Number of states is %i\n", n_states);
+                for (int c = 0; c < n_states; c++) {
+                    printf("GPU> Value for row %i and col %i is %f\n", row, c, prevProbabilities[c]);
+                }
+            printf("HMT_FROM_SOFT = %f\n", HMT_FROM_SOFT);
+            printf("lp_mk = %f\n", lp_mk);
+            printf("lp_mb = %f\n", lp_mb);
+            printf("lp_mm_self = %f\n", lp_mm_self);
+            printf("lp_mm_next = %f\n", lp_mm_next);
+            printf("lp_bb = %f\n", lp_bb);
+            printf("lp_bk = %f\n", lp_bk);
+            printf("lp_bm_next = %f\n", lp_bm_next);
+            printf("lp_bm_self = %f\n", lp_bm_self);
+            printf("lp_kk = %f\n", lp_kk);
+            printf("lp_km = %f\n", lp_km);
 
-    __syncthreads();
+        }
+        }
+        __syncthreads();
 }
 
 
@@ -426,9 +457,9 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     for(int j=0;j<event_sequences.size();j++){
         auto ev = event_sequences[j];
         eventOffsets.push_back(offset);
-        size_t num_events = ev.read->events->size();
+        size_t num_events = 100;//TODO: FIX! ev.read->events->size();
         for (int i=0;i<num_events;i++) {
-            auto event_idx =  e_starts[j] + i * event_strides[0];
+            auto event_idx =  e_starts[j] + i * event_strides[j];
             auto scaled = ev.read->get_drift_scaled_level(event_idx, ev.strand); // send the data in drift scaled
             //auto unscaled = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
             eventMeans[offset + i] = scaled;
@@ -458,10 +489,11 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     std::vector<float> log_var(num_reads);
 
     for (int i=0;i<num_reads;i++){
-        scale[i] = event_sequences[i].read->scalings->scale;
-        shift[i] = event_sequences[i].read->scalings->shift;
-        var[i] = event_sequences[i].read->scalings->var;
-        log_var[i] = event_sequences[i].read->scalings->log_var;
+        auto read = event_sequences[i];
+        scale[i] = event_sequences[i].read->scalings[read.strand].scale;
+        shift[i] = event_sequences[i].read->scalings[read.strand].shift;
+        var[i] = event_sequences[i].read->scalings[read.strand].var;
+        log_var[i] = event_sequences[i].read->scalings[read.strand].log_var;
     }
 
     float* scaleDev;
