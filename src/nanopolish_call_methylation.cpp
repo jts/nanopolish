@@ -110,7 +110,7 @@ namespace opt
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
-    static std::string methylation_type;
+    static std::string methylation_type = "cpg";
     static std::string models_fofn;
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
