@@ -8,7 +8,8 @@ in draft genome assembly.
 from __future__ import print_function
 
 try:
-	from Bio import SeqIO
+	from Bio.SeqIO.FastaIO import SimpleFastaParser
+	from Bio.SeqIO.QualityIO import FastqGeneralIterator
 	import pysam
 	import argparse
 	import subprocess
@@ -146,27 +147,27 @@ def main():
 		if ".gz" in file_type:
 			with gzip.open(o_fa, "rt") as fin:
 				if "fasta.gz" in file_type:
-					for record in SeqIO.parse(fin, "fasta"):
+					for title, seq in SimpleFastaParser(handle):
+						name = title.split(None, 1)[0]
 						if record.id in region_read_ids:
-							fout.write(">" + record.id + "\n")
-							fout.write(str(record.seq) + "\n")
+							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq.gz" in file_type:
-					for record in SeqIO.parse(fin, "fastq"):
+					for title, seq, qual in FastqGeneralIterator(handle):
+						name = title.split(None, 1)[0]
 						if record.id in region_read_ids:
-							fout.write(">" + record.id + "\n")
-							fout.write(str(record.seq) + "\n")
+							fout.write(">%s\n%s\n" % (name, seq))
 		else:
 			with open(o_fa, "rt") as fin:
 				if "fasta" in file_type:
-					for record in SeqIO.parse(fin, "fasta"):
+					for title, seq in SimpleFastaParser(handle):
+						name = title.split(None, 1)[0]
 						if record.id in region_read_ids:
-							fout.write(">" + record.id + "\n")
-							fout.write(str(record.seq) + "\n")
+							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq" in file_type:
-					for record in SeqIO.parse(fin, "fastq"):
+					for title, seq, qual in FastqGeneralIterator(handle):
+						name = title.split(None, 1)[0]
 						if record.id in region_read_ids:
-							fout.write(">" + record.id + "\n")
-							fout.write(str(record.seq) + "\n")
+							fout.write(">%s\n%s\n" % (name, seq))
 
 	# --------------------------------------------------------
 	# PART 7: 	Let's get to tarring
