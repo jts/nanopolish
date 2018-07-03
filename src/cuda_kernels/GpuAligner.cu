@@ -93,9 +93,9 @@ __global__ void getScores(float * eventData,
     }
     int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
 
-    if(blockIdx.x==2){ // read 2 is an RC read
-        printf("Block IDX is %i and stride is %i\n", blockIdx.x, e_stride);
-    }
+    //if(blockIdx.x==2){ // read 2 is an RC read
+    //    printf("Block IDX is %i and stride is %i\n", blockIdx.x, e_stride);
+    //}
 
     int kmerIdx = threadIdx.x;
     uint32_t rank;
@@ -204,11 +204,11 @@ __global__ void getScores(float * eventData,
                                (event_idx == e_start ||
                                 (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TODO: Add flag for HAF ALLOW_PRE_CLIP
 
-        if (blockIdx.x == 2 && threadIdx.x == 0 && row == 2){
-            printf("HMT_FROM_SOFT should be (?) -5.99 but is in fact %f\n", HMT_FROM_SOFT);
-            printf("event IDX is %i\n", event_idx);
-            printf("e_start is %i\n", e_start);
-        }
+        //if (blockIdx.x == 2 && threadIdx.x == 0 && row == 2){
+        //    printf("HMT_FROM_SOFT should be (?) -5.99 but is in fact %f\n", HMT_FROM_SOFT);
+        //    printf("event IDX is %i\n", event_idx);
+        //    printf("e_start is %i\n", e_start);
+        //}
 
         // calculate the score
         float sum = HMT_FROM_SAME_M;
@@ -311,37 +311,37 @@ __global__ void getScores(float * eventData,
         // Now do the end state
         __syncthreads();
 
-        if ((blockIdx.x == 2) && (threadIdx.x == 0)){
-//            printf("rank %i\n", rank);
-//            printf("event mean %f\n", event_mean);
-//            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
-//            printf("poreModelLevelStdv %f\n", poreModelLevelStdv[0]);
-//            printf("poreModelLevelMean %f\n", poreModelLevelMean[0]);
-//            printf("lp_emission_m is %f\n", lp_emission_m);
-//            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
-//            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
-//            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
-//            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
-//            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
-//            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
-//            printf(">GPU newSkipScore is %f\n", newSkipScore);
-//            printf("Number of states is %i\n", n_states);
-                for (int c = 0; c < n_states; c++) {
-                    printf("GPU> Value for row %i and col %i is %f\n", row, c, prevProbabilities[c]);
-                }
-            printf("HMT_FROM_SOFT = %f\n", HMT_FROM_SOFT);
-            printf("lp_mk = %f\n", lp_mk);
-            printf("lp_mb = %f\n", lp_mb);
-            printf("lp_mm_self = %f\n", lp_mm_self);
-            printf("lp_mm_next = %f\n", lp_mm_next);
-            printf("lp_bb = %f\n", lp_bb);
-            printf("lp_bk = %f\n", lp_bk);
-            printf("lp_bm_next = %f\n", lp_bm_next);
-            printf("lp_bm_self = %f\n", lp_bm_self);
-            printf("lp_kk = %f\n", lp_kk);
-            printf("lp_km = %f\n", lp_km);
-
-        }
+//        if ((blockIdx.x == 2) && (threadIdx.x == 0)){
+////            printf("rank %i\n", rank);
+////            printf("event mean %f\n", event_mean);
+////            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[0]);
+////            printf("poreModelLevelStdv %f\n", poreModelLevelStdv[0]);
+////            printf("poreModelLevelMean %f\n", poreModelLevelMean[0]);
+////            printf("lp_emission_m is %f\n", lp_emission_m);
+////            printf("PSR9_MATCH is %i\n", PSR9_MATCH);
+////            printf(">GPU score HMT_FROM_SAME_M is %f\n", HMT_FROM_SAME_M);
+////            printf(">GPU score HMT_FROM_PREV_M is %f\n", HMT_FROM_PREV_M);
+////            printf(">GPU score HMT_FROM_SAME_B is %f\n", HMT_FROM_SAME_B);
+////            printf(">GPU score HMT_FROM_PREV_B is %f\n", HMT_FROM_PREV_B);
+////            printf(">GPU score HMT_FROM_PREV_K is %f\n", HMT_FROM_PREV_K);
+////            printf(">GPU newSkipScore is %f\n", newSkipScore);
+////            printf("Number of states is %i\n", n_states);
+//                for (int c = 0; c < n_states; c++) {
+//                    printf("GPU> Value for row %i and col %i is %f\n", row, c, prevProbabilities[c]);
+//                }
+//            printf("HMT_FROM_SOFT = %f\n", HMT_FROM_SOFT);
+//            printf("lp_mk = %f\n", lp_mk);
+//            printf("lp_mb = %f\n", lp_mb);
+//            printf("lp_mm_self = %f\n", lp_mm_self);
+//            printf("lp_mm_next = %f\n", lp_mm_next);
+//            printf("lp_bb = %f\n", lp_bb);
+//            printf("lp_bk = %f\n", lp_bk);
+//            printf("lp_bm_next = %f\n", lp_bm_next);
+//            printf("lp_bm_self = %f\n", lp_bm_self);
+//            printf("lp_kk = %f\n", lp_kk);
+//            printf("lp_km = %f\n", lp_km);
+//
+//        }
         }
         __syncthreads();
 }
@@ -576,7 +576,7 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     float* returnedValues;
     cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
 
-    printf("About to run getscores...\n");
+    //printf("About to run getscores...\n");
     getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
             eventsPerBaseDev,
             numRowsDev,
@@ -663,11 +663,11 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
 
     std::vector<double> v(variant_sequences.size());
     for (int i=0; i<variant_sequences.size(); i++){
-        auto scores = scoreKernel(variant_sequences[i], event_sequences, alignment_flags); //TODO: Base sequence needs to be replaced with the variant itself
+        auto scores = scoreKernel(variant_sequences[i], event_sequences, alignment_flags);
 
         double totalScore = 0.0;
         for(int k=0; k<scores.size(); k++){
-            if (fabs(totalScore) < screen_score_threshold){ //threshold, hardcoded. TODO: Make this an argument, although the thresholding doesn't make much sense on GPU
+            if (fabs(totalScore) < screen_score_threshold){
                 totalScore += (scores[k] - base_scores[k]);
             }
         }

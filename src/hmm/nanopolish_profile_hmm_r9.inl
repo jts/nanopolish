@@ -304,7 +304,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki) {
         int kr = sequence.get_kmer_rank(ki, k, data.rc); // can * -1 here to see if 3rd is correct
-        printf(">CPU Kmer rank: %i\n", kr);
+        //printf(">CPU Kmer rank: %i\n", kr);
         kmer_ranks[ki] = kr;
     }
 
@@ -365,16 +365,16 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
                                         (event_idx == e_start ||
                                              (flags & HAF_ALLOW_PRE_CLIP))) ? lp_sm + pre_flank[row - 1] : -INFINITY;
 
-            if (row == 2) {
-                printf("Working with matches in row 2\n");
-                printf("HMT_FROM_SOFT IS %f\n", scores.x[HMT_FROM_SOFT]);
-                printf("Strand is %i\n", data.strand);
-                printf("bt.lp_mm_self %f\n", bt.lp_mm_self);
-                printf("bt.lp_mm_next %f\n", bt.lp_mm_next);
-                printf("bt.lp_bm_self %f\n", bt.lp_bm_self);
-                printf("bt.lp_bm_next %f\n", bt.lp_bm_next);
-                printf("bt.lp_km %f\n", bt.lp_km);
-            }
+            //if (row == 2) {
+            //    printf("Working with matches in row 2\n");
+            //    printf("HMT_FROM_SOFT IS %f\n", scores.x[HMT_FROM_SOFT]);
+            //    printf("Strand is %i\n", data.strand);
+            //    printf("bt.lp_mm_self %f\n", bt.lp_mm_self);
+            //    printf("bt.lp_mm_next %f\n", bt.lp_mm_next);
+            //    printf("bt.lp_bm_self %f\n", bt.lp_bm_self);
+            //    printf("bt.lp_bm_next %f\n", bt.lp_bm_next);
+            //    printf("bt.lp_km %f\n", bt.lp_km);
+            //}
 
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 

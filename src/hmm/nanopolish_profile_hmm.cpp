@@ -31,7 +31,7 @@ float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& da
 
 float profile_hmm_score_set(const std::vector<HMMInputSequence>& sequences, const HMMInputData& data, const uint32_t flags)
 {
-    printf("In profile_hmm_score set function...\n");
+    //printf("In profile_hmm_score set function...\n");
     assert(!sequences.empty());
     assert(std::string(sequences[0].get_alphabet()->get_name()) == "nucleotide");
     assert(std::string(data.pore_model->pmalphabet->get_name()) == "nucleotide");
