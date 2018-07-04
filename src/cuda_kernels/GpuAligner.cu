@@ -526,7 +526,6 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     float* returnedValues;
     cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
 
-    //printf("About to run getscores...\n");
     getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
             eventsPerBaseDev,
             numRowsDev,
