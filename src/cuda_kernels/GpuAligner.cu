@@ -303,9 +303,9 @@ GpuAligner::GpuAligner()
         n[i] = i;
 }
 
-std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
-                    std::vector<HMMInputData> event_sequences,
-                    uint32_t alignment_flags){
+std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
+                                             std::vector<HMMInputData> event_sequences,
+                                             uint32_t alignment_flags){
 
     // Extract the pore model.
     //Let's assume that every event sequence has the same pore model
@@ -324,14 +324,11 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     size_t num_models = sequences.size();
     double num_model_penalty = log(num_models);
 
-    assert(num_models == 1); //this is temporary
+    assert(num_models != 1); //this is temporary
 
-    auto sequence = sequences[0]; // temporary. We are only going to score one sequence against a set of events for now.
+    //auto sequence = sequences[0]; // temporary. We are only going to score one sequence against a set of events for now.
 
     const uint32_t k = event_sequences[0].pore_model->k; //k is the kmerity
-    uint32_t n_kmers = sequence.length() - k + 1; //number of kmers in the sequence
-
-    uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
 
     std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1)
     std::vector<uint32_t> e_starts; //event starts
@@ -365,13 +362,6 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
         post_flanks.push_back(post_flank);
     }
 
-    std::vector<uint32_t> kmer_ranks(n_kmers);
-    std::vector<uint32_t> kmer_ranks_rc(n_kmers);
-    for(size_t ki = 0; ki < n_kmers; ++ki) {
-        kmer_ranks[ki] = sequences[0].get_kmer_rank(ki, k, false);
-        kmer_ranks_rc[ki] = sequences[0].get_kmer_rank(ki, k, true);
-    }
-
     // Prepare raw data and send it over to the score calculator kernel
 
     // Buffer 1: Raw event data and associated starts and stops
@@ -383,11 +373,8 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     for (auto e: event_sequences){
         size_t numEvents = e.read->events->size();
         float readEventsPerBase = e.read->events_per_base[e.strand];
-
         //eventLengths.push_back(numEvents);
         eventsPerBase.push_back(readEventsPerBase);
-
-        //numEventsTotal += numEvents;
     }
 
 
@@ -461,7 +448,6 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice );
 
-
     float* poreModelLevelLogStdvDev;
     cudaMalloc( (void**)&poreModelLevelLogStdvDev, pore_model_level_log_stdv.size() * sizeof(float)); // for some reason this malloc is slow
     cudaMemcpyAsync( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
@@ -495,13 +481,6 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc( (void**)&numRowsDev, n_rows.size() * sizeof(int));
     cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-    int* kmerRanksDev;
-    int* kmerRanksRCDev;
-    cudaMalloc( (void**)&kmerRanksDev, kmer_ranks.size() * sizeof(int));
-    cudaMalloc( (void**)&kmerRanksRCDev, kmer_ranks_rc.size() * sizeof(int));
-    cudaMemcpyAsync( kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int), cudaMemcpyHostToDevice );
-
     int* eventStartsDev;
     cudaMalloc( (void**)&eventStartsDev, e_starts.size() * sizeof(int));
     cudaMemcpyAsync( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice );
@@ -514,39 +493,78 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaMalloc( (void**)&eventOffsetsDev, eventOffsets.size() * sizeof(int));
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-    int num_blocks = n_states / PSR9_NUM_STATES;
-    uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
-
-    dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
-    dim3 dimGrid(num_reads); // let's look at only the first read
-
     float * returnValuesDev;
     cudaMalloc((void **) &returnValuesDev, sizeof(float) * num_reads); //one score per read
 
     float* returnedValues;
     cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
 
-    getScores<<<dimGrid, dimBlock>>>(eventMeansDev,
-            eventsPerBaseDev,
-            numRowsDev,
-            eventStartsDev,
-            eventStridesDev,
-            kmerRanksDev,
-            kmerRanksRCDev,
-            eventOffsetsDev,
-            poreModelLevelLogStdvDev,
-            poreModelLevelStdvDev,
-            poreModelLevelMeanDev,
-            scaleDev,
-            shiftDev,
-            varDev,
-            logVarDev,
-            preFlankingDev,
-            postFlankingDev,
-            returnValuesDev);
+    uint8_t num_streams = sequences.size();
+    cudaStream_t streams[num_streams];
+    //float *data[num_streams];
 
-    cudaDeviceSynchronize();
-    cudaMemcpyAsync(returnedValues, returnValuesDev, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::vector<std::vector<double>> results(sequences.size());
+    for (int i =0; i<sequences.size();i++) {
+        auto sequence = sequences[i];
+        uint32_t n_kmers = sequence.length() - k + 1; //number of kmers in the sequence
+        uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
+
+        std::vector<uint32_t> kmer_ranks(n_kmers);
+        std::vector<uint32_t> kmer_ranks_rc(n_kmers);
+
+        for(size_t ki = 0; ki < n_kmers; ++ki) {
+            kmer_ranks[ki] = sequence.get_kmer_rank(ki, k, false);
+            kmer_ranks_rc[ki] = sequence.get_kmer_rank(ki, k, true);
+        }
+
+        int num_blocks = n_states / PSR9_NUM_STATES;
+        uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
+
+        dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
+        dim3 dimGrid(num_reads); // let's look at only the first read
+
+        int *kmerRanksDev;
+        int *kmerRanksRCDev;
+        cudaMalloc((void **) &kmerRanksDev, kmer_ranks.size() * sizeof(int));
+        cudaMalloc((void **) &kmerRanksRCDev, kmer_ranks_rc.size() * sizeof(int));
+        cudaMemcpyAsync(kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int),
+                        cudaMemcpyHostToDevice);
+
+        getScores <<< dimGrid, dimBlock, 0>>> (eventMeansDev,
+                eventsPerBaseDev,
+                numRowsDev,
+                eventStartsDev,
+                eventStridesDev,
+                kmerRanksDev,
+                kmerRanksRCDev,
+                eventOffsetsDev,
+                poreModelLevelLogStdvDev,
+                poreModelLevelStdvDev,
+                poreModelLevelMeanDev,
+                scaleDev,
+                shiftDev,
+                varDev,
+                logVarDev,
+                preFlankingDev,
+                postFlankingDev,
+                returnValuesDev);
+
+        cudaDeviceSynchronize();
+        cudaMemcpyAsync(returnedValues, returnValuesDev, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+
+        cudaFree(kmerRanksDev);
+        cudaFree(kmerRanksRCDev);
+
+        //Send all the scores back
+        //std::vector<double> r(num_reads);
+        results[i].resize(num_reads);
+        for(int readIdx=0; readIdx<num_reads;readIdx++){
+            results[i][readIdx]= (double) returnedValues[readIdx];
+        }
+    }
 
     // Free device memory
     cudaFree(eventMeansDev);
@@ -554,8 +572,6 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     cudaFree(numRowsDev);
     cudaFree(eventStartsDev);
     cudaFree(eventStridesDev);
-    cudaFree(kmerRanksDev);
-    cudaFree(kmerRanksRCDev);
     cudaFree(eventOffsetsDev);
     cudaFree(poreModelLevelLogStdvDev);
     cudaFree(poreModelLevelStdvDev);
@@ -569,14 +585,11 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
 
     //Free host memory
     cudaFreeHost(eventMeans);
+    cudaFreeHost(preFlankingHost);
+    cudaFreeHost(postFlankingHost);
+    cudaFreeHost(returnedValues);
 
-    //Send all the scores back
-    std::vector<double> r(num_reads);
-    for(int i=0; i<num_reads;i++){
-        r[i]= (double) returnedValues[i];
-    }
-
-    return r;
+    return results;
 }
 
 std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
@@ -596,31 +609,40 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
     }
 
     // Make methylated versions of each input sequence. Once for the base haplotype and once each for each variant
-    std::vector<HMMInputSequence> base_sequences = generate_methylated_alternatives(base_haplotype.get_sequence(),
-                                                                                    methylation_types);
-    std::vector<std::vector<HMMInputSequence>> variant_sequences;
+
+    std::vector<HMMInputSequence> sequences;
+
+    HMMInputSequence base_sequence = generate_methylated_alternatives(base_haplotype.get_sequence(),
+                                                                                    methylation_types)[0]; //TODO: always 0?
+
+    sequences.push_back(base_sequence);
+
+    //std::vector<std::vector<HMMInputSequence>> variant_sequences;
 
     for (auto v: variant_haplotypes){
-        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types);
-        variant_sequences.push_back(variant_sequence);
+        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];
+        sequences.push_back(variant_sequence);
     }
 
-    assert(base_sequences.size() == 1);
+    //assert(base_sequences.size() == 1);
 
     // return the sum of the score for the base sequences over all the event sequences
-    auto base_scores = scoreKernel(base_sequences, event_sequences, alignment_flags);
+    //auto base_scores = scoreKernel(base_sequences, event_sequences, alignment_flags);
 
-    std::vector<double> v(variant_sequences.size());
-    for (int i=0; i<variant_sequences.size(); i++){
-        auto scores = scoreKernel(variant_sequences[i], event_sequences, alignment_flags);
+    std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
 
+    std::vector<double> v(numVariants); // Thresholded score for each //(variant_sequences.size()); //TODO: Fix - temporary
+
+    uint32_t  numScores = scores[0].size();
+    for (int variantIndex=0; variantIndex<numVariants; variantIndex++){ //0 is the base scores
         double totalScore = 0.0;
-        for(int k=0; k<scores.size(); k++){
+        for(int k=0; k<numScores; k++){
             if (fabs(totalScore) < screen_score_threshold){
-                totalScore += (scores[k] - base_scores[k]);
+                double baseScore = scores[0][k];
+                totalScore += (scores[variantIndex + 1][k] - baseScore);
             }
         }
-        v[i] = totalScore;
+        v[variantIndex] = totalScore;
     }
 
     return v;
