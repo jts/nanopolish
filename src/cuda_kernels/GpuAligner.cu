@@ -392,6 +392,7 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     std::vector<std::vector<float>> pre_flanks;
     std::vector<std::vector<float>> post_flanks;
 
+    int numEventsTotal = 0;
     for(auto e: event_sequences){
         uint32_t e_start = e.event_start_idx;
         e_starts.push_back(e_start);
@@ -407,6 +408,7 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
             n_events = e_start - e_end + 1;
 
         n_rows.push_back(n_events + 1);
+        numEventsTotal += n_events + 1; // TODO: is +1 necessary?
 
         std::vector<float> pre_flank = make_pre_flanking(e, e_start, n_events);
         std::vector<float> post_flank = make_post_flanking(e, e_start, n_events);
@@ -426,18 +428,18 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
 
     // Buffer 1: Raw event data and associated starts and stops
 
-    size_t numEventsTotal = 0;
+   // size_t numEventsTotal;
     //1. Count the total number of events across all reads
-    std::vector<int> eventLengths;
+    //std::vector<int> eventLengths;
     std::vector<float> eventsPerBase;
     for (auto e: event_sequences){
         size_t numEvents = e.read->events->size();
         float readEventsPerBase = e.read->events_per_base[e.strand];
 
-        eventLengths.push_back(numEvents);
+        //eventLengths.push_back(numEvents);
         eventsPerBase.push_back(readEventsPerBase);
 
-        numEventsTotal += numEvents;
+        //numEventsTotal += numEvents;
     }
 
 
@@ -457,7 +459,7 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
     for(int j=0;j<event_sequences.size();j++){
         auto ev = event_sequences[j];
         eventOffsets.push_back(offset);
-        size_t num_events = 100;//TODO: FIX! ev.read->events->size();
+        size_t num_events = n_rows[j];//TODO: is this sometimes causing a segfault? is it correct?
         for (int i=0;i<num_events;i++) {
             auto event_idx =  e_starts[j] + i * event_strides[j];
             auto scaled = ev.read->get_drift_scaled_level(event_idx, ev.strand); // send the data in drift scaled
@@ -513,7 +515,7 @@ std::vector<double> scoreKernel(std::vector<HMMInputSequence> sequences,
 
 
     float* poreModelLevelLogStdvDev;
-    cudaMalloc( (void**)&poreModelLevelLogStdvDev, pore_model_level_log_stdv.size() * sizeof(float));
+    cudaMalloc( (void**)&poreModelLevelLogStdvDev, pore_model_level_log_stdv.size() * sizeof(float)); // for some reason this malloc is slow
     cudaMemcpyAsync( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
 
     float* poreModelLevelMeanDev;
