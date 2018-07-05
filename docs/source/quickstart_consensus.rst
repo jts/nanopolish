@@ -73,13 +73,9 @@ We used the following parameters with `canu <http://canu.readthedocs.io/en/lates
 Compute a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started! 
+Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started!
 
-First step, is to index the draft genome assembly. We can do that with the following command: ::
-
-    minimap2 -d draft.mmi draft.fa
-
-Next, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
+First, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
 
     minimap2 -ax map-ont -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
