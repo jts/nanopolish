@@ -81,7 +81,7 @@ First step, is to index the draft genome assembly. We can do that with the follo
 
 Next, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
 
-    minimap2 -ax map-ont -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
+    minimap2 -ax map-ont -t 8 draft.mmi reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
 **Checkpoint**: we can do a quick check to see if this step worked. The bam file should not be empty. ::
