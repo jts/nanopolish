@@ -48,7 +48,7 @@ csv_reader = csv.DictReader(in_fh, delimiter='\t')
 
 for record in csv_reader:
     
-    num_sites = int(record['num_cpgs']) 
+    num_sites = int(record['num_motifs']) 
     llr = float(record['log_lik_ratio'])
 
     # Skip ambiguous call
@@ -77,7 +77,7 @@ for record in csv_reader:
         update_call_stats(key, num_sites, is_methylated, sequence)
 
 # header
-print("\t".join(["chromosome", "start", "end", "num_cpgs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"]))
+print("\t".join(["chromosome", "start", "end", "num_motifs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"]))
 
 sorted_keys = sorted(sites.keys(), key = lambda x: split_key(x))
 
