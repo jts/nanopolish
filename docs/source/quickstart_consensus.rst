@@ -77,7 +77,7 @@ Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a d
 
 First, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
 
-    minimap2 -ax map-ont -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
+    minimap2 -ax map-ont -t 8 draft.mmi reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
 **Checkpoint**: we can do a quick check to see if this step worked. The bam file should not be empty. ::
