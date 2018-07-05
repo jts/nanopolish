@@ -9,13 +9,13 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 
 #Basic flags every build needs
 LIBS=-lz
-CXXFLAGS ?= -O3# -g
+CXXFLAGS ?= -O3 -g
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
 CFLAGS ?= -std=c99 -O3
 CXX ?= g++
 CC ?= gcc
 NVCC = nvcc
-NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0/include -O3# -g
+NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0/include -O3 --default-stream per-thread -g -G
 CURTFLAGS ?= -L/usr/local/cuda-9.0/lib64 -lcudart
 
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
@@ -69,8 +69,10 @@ EIGEN_INCLUDE=-I./eigen/
 # Include the src subdirectories
 NP_INCLUDE=$(addprefix -I./, $(SUBDIRS))
 
+CUDA_INCLUDE=-I/usr/local/cuda-9.0/include
+
 # Add include flags
-CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE) $(CUDA_INCLUDE)
 
 # Main programs to build
 PROGRAM=nanopolish

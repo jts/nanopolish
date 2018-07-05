@@ -37,6 +37,8 @@
 #include "progress.h"
 #include "stdaln.h"
 #include <chrono>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #ifndef GPU_ALIGNER_H
 #define GPU_ALIGNER_H1
@@ -44,18 +46,42 @@
 class GpuAligner
 {
 public:
-    int n[20];
-    int y;
-    int asize;
-
     GpuAligner();
-    int calculateSum();
-    void setY(int);
+    ~GpuAligner();
 
     std::vector<double>
     variantScoresThresholded(std::vector<Variant> tmp_variants, Haplotype haplotype, std::vector<HMMInputData> event_sequences,
-              uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);// {
-        //return std::vector<double>();
-    //}
+              uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);
+
+    std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
+    std::vector<HMMInputData> event_sequences,
+            uint32_t alignment_flags);
+private:
+    float* poreModelLevelMeanDev;
+    float* scaleDev;
+    float* shiftDev;
+    float* varDev;
+    float* logVarDev;
+    float * eventMeans;
+    float * preFlankingHost;
+    float * postFlankingHost;
+    int* eventOffsetsDev;
+    int* eventStridesDev;
+    int* eventStartsDev;
+    int* numRowsDev;
+    float* postFlankingDev;
+    float* preFlankingDev;
+    float* eventMeansDev;
+    float* eventsPerBaseDev;
+    float* poreModelLevelStdvDev;
+    float* poreModelLevelLogStdvDev;
+    // Allocate arrays for storing results, kmerRanksDev and kmerRanksRCDev
+
+    std::vector<int*> kmerRanksDevPointers;
+    std::vector<int*> kmerRanksRCDevPointers;
+    std::vector<float*> returnValuesDevResultsPointers;
+    std::vector<float*> returnValuesHostResultsPointers;
+
+    cudaStream_t streams[8]; // TODO 8 should not be hardcoded here
 };
 #endif // GPU_ALIGNER_H

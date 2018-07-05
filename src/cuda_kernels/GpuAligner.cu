@@ -4,7 +4,7 @@
 #include <vector>
 #include "nanopolish_profile_hmm_r9.h"
 
-#define MAX_STATES 1024
+#define MAX_STATES 128
 
 __device__ float logsumexpf(float x, float y){
     if(x == -INFINITY && y == -INFINITY){
@@ -65,7 +65,7 @@ __global__ void getScores(float * eventData,
                           float * returnValues) {
 
     // Initialise the prev probability row, which is the row of the DP table
-    int n_kmers = blockDim.x; // Question: How does this deal with the case where the block is bigger than the sequence, such as if one variant is a deletion?
+    int n_kmers = blockDim.x;
     int n_states = n_kmers * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
 
     //initialise the return value
@@ -98,7 +98,6 @@ __global__ void getScores(float * eventData,
 
     if (rc == true) {
         rank = kmer_ranks_rc[kmerIdx];
-        //printf("Using an RC rank of %i\n", rank);
     }else{
         rank = kmer_ranks[kmerIdx];
     }
@@ -231,7 +230,7 @@ __global__ void getScores(float * eventData,
         sum += lp_emission_b;
 
         float newBadEventScore = sum;
-
+        __syncthreads();
         // Write row out. prevProbabilities now becomes "current probabilities" for evaluating skips.
         prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
         prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
@@ -295,24 +294,111 @@ __global__ void getScores(float * eventData,
 }
 
 
+//Default constructor
 GpuAligner::GpuAligner()
 {
-    y = 20;
-    asize = y*sizeof(int);
-    for (int i=0; i<y; i++)
-        n[i] = i;
+    int numModelElements = 4096;
+    int max_num_reads = 300;
+    int maxEventsPerBase = 100;
+    int totalEvents = maxEventsPerBase * max_num_reads;
+
+    cudaMalloc( (void**)&poreModelLevelMeanDev, numModelElements * sizeof(float));
+    cudaMalloc( (void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float));
+    cudaMalloc( (void**)&poreModelLevelStdvDev, numModelElements * sizeof(float));
+
+    cudaMalloc( (void**)&scaleDev, max_num_reads * sizeof(float));
+    cudaMalloc( (void**)&shiftDev, max_num_reads * sizeof(float));
+    cudaMalloc( (void**)&varDev, max_num_reads * sizeof(float));
+    cudaMalloc( (void**)&logVarDev, max_num_reads * sizeof(float));
+
+    cudaMalloc( (void**)&eventsPerBaseDev, max_num_reads * sizeof(float));
+
+    int max_n_rows = 100;
+    int maxBuffer = 50000 * sizeof(float);  //TODO: allocate more smartly
+
+    cudaMalloc( (void**)&numRowsDev, max_n_rows * sizeof(int));
+    cudaMalloc( (void**)&eventStartsDev, maxBuffer);
+    cudaMalloc( (void**)&eventStridesDev, maxBuffer);
+    cudaMalloc( (void**)&eventOffsetsDev, maxBuffer);
+
+    cudaMalloc( (void**)&eventMeansDev, maxBuffer);
+    cudaMalloc( (void**)&preFlankingDev, maxBuffer);
+    cudaMalloc( (void**)&postFlankingDev, maxBuffer);
+
+    //Allocate a host buffer to store the event means, pre and post-flank data
+    cudaHostAlloc(&eventMeans, maxBuffer , cudaHostAllocDefault);
+    cudaHostAlloc(&preFlankingHost, maxBuffer, cudaHostAllocDefault);
+    cudaHostAlloc(&postFlankingHost, maxBuffer, cudaHostAllocDefault);
+
+    int max_num_sequences = 8;
+    kmerRanksDevPointers.resize(max_num_sequences);
+    kmerRanksRCDevPointers.resize(max_num_sequences);
+    returnValuesDevResultsPointers.resize(max_num_sequences);
+    returnValuesHostResultsPointers.resize(max_num_sequences);
+
+    uint8_t num_streams = max_num_sequences;
+
+
+    for (int i =0; i<max_num_sequences;i++){
+        int *kmerRanksDev;
+        int *kmerRanksRCDev;
+        float * returnValuesDev;
+        float* returnedValues;
+
+        cudaMalloc((void **) &returnValuesDev, sizeof(float) * max_num_reads); //one score per read
+        cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault);
+
+        cudaMalloc((void **) &kmerRanksDev, max_n_rows * sizeof(int));
+        cudaMalloc((void **) &kmerRanksRCDev, max_n_rows * sizeof(int));
+
+        kmerRanksDevPointers[i] = kmerRanksDev;
+        kmerRanksRCDevPointers[i] = kmerRanksRCDev;
+        returnValuesDevResultsPointers[i] = returnValuesDev;
+        returnValuesHostResultsPointers[i] = returnedValues;
+
+        //create a stream per sequence
+        cudaStreamCreate(&streams[i]);
+    }
 }
 
-std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
-                                             std::vector<HMMInputData> event_sequences,
-                                             uint32_t alignment_flags){
+//Destructor
+GpuAligner::~GpuAligner() {
+    cudaFree(poreModelLevelMeanDev);
+    cudaFree(scaleDev);
+    cudaFree(shiftDev);
+    cudaFree(varDev);
+    cudaFree(logVarDev);
+    cudaFree(eventMeansDev);
+    cudaFree(eventsPerBaseDev);
+    cudaFree(numRowsDev);
+    cudaFree(eventStartsDev);
+    cudaFree(eventStridesDev);
+    cudaFree(eventOffsetsDev);
+    cudaFree(poreModelLevelLogStdvDev);
+    cudaFree(poreModelLevelStdvDev);
+    cudaFree(preFlankingDev);
+    cudaFree(postFlankingDev);
 
-    // Extract the pore model.
-    //Let's assume that every event sequence has the same pore model
-    //event_sequences[0].pore_model.
+    cudaFreeHost(eventMeans);
+    cudaFreeHost(preFlankingHost);
+    cudaFreeHost(postFlankingHost);
 
-    int num_reads = event_sequences.size();
-    // These asserts are here during the development phase
+    int max_num_sequences = 8; // should be a private variable
+    // Free device and host memory
+    for (int i =0; i<max_num_sequences; i++) {
+        cudaStreamDestroy(streams[i]);
+        cudaFree(kmerRanksRCDevPointers[i]);
+        cudaFree(kmerRanksDevPointers[i]);
+        cudaFree(returnValuesDevResultsPointers[i]);
+        cudaFreeHost(returnValuesHostResultsPointers[i]);
+    }
+
+}
+
+std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSequence> sequences,
+                                                std::vector<HMMInputData> event_sequences,
+                                                uint32_t alignment_flags){
+    // pre-running asserts
     assert(!sequences.empty());
     assert(std::string(sequences[0].get_alphabet()->get_name()) == "nucleotide");
     for (auto e: event_sequences) {
@@ -321,22 +407,21 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
         assert( (e.rc && e.event_stride == -1) || (!e.rc && e.event_stride == 1));
     }
 
-    size_t num_models = sequences.size();
-    double num_model_penalty = log(num_models);
+    int num_reads = event_sequences.size();
 
-    assert(num_models != 1); //this is temporary
+    // Extract the pore model.
+    // Assume that every event sequence has the same pore model
+    // event_sequences[0].pore_model.
+    const uint32_t k = event_sequences[0].pore_model->k; //k is the length of a kmer
 
-    //auto sequence = sequences[0]; // temporary. We are only going to score one sequence against a set of events for now.
-
-    const uint32_t k = event_sequences[0].pore_model->k; //k is the kmerity
-
-    std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1)
-    std::vector<uint32_t> e_starts; //event starts
-    std::vector<int> event_strides;
-
+    std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1) for each read
+    std::vector<uint32_t> e_starts; //event starts in the read for each read
+    std::vector<int> event_strides; //event strides for each read
     std::vector<std::vector<float>> pre_flanks;
     std::vector<std::vector<float>> post_flanks;
+    std::vector<float> eventsPerBase;
 
+    //Populate per-read vectors
     int numEventsTotal = 0;
     for(auto e: event_sequences){
         uint32_t e_start = e.event_start_idx;
@@ -352,53 +437,30 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
         else
             n_events = e_start - e_end + 1;
 
-        n_rows.push_back(n_events + 1);
-        numEventsTotal += n_events + 1; // TODO: is +1 necessary?
+        // TODO: is a +1 necessary here?
+        n_rows.push_back(n_events);
+        numEventsTotal += n_events;
 
         std::vector<float> pre_flank = make_pre_flanking(e, e_start, n_events);
         std::vector<float> post_flank = make_post_flanking(e, e_start, n_events);
 
         pre_flanks.push_back(pre_flank);
         post_flanks.push_back(post_flank);
-    }
 
-    // Prepare raw data and send it over to the score calculator kernel
-
-    // Buffer 1: Raw event data and associated starts and stops
-
-   // size_t numEventsTotal;
-    //1. Count the total number of events across all reads
-    //std::vector<int> eventLengths;
-    std::vector<float> eventsPerBase;
-    for (auto e: event_sequences){
-        size_t numEvents = e.read->events->size();
         float readEventsPerBase = e.read->events_per_base[e.strand];
-        //eventLengths.push_back(numEvents);
         eventsPerBase.push_back(readEventsPerBase);
     }
 
-
-    //Allocate a host buffer to store the event means, pre and post-flank data
-    float * eventMeans;
-    size_t eventMeansSize = numEventsTotal * sizeof(float);
-    cudaHostAlloc(&eventMeans, eventMeansSize , cudaHostAllocDefault);
-
-    //Allocate a host buffer to store the event means, pre and post-flank data
-    float * preFlankingHost;
-    float * postFlankingHost;
-    cudaHostAlloc(&preFlankingHost, numEventsTotal * sizeof(float) , cudaHostAllocDefault);
-    cudaHostAlloc(&postFlankingHost, numEventsTotal * sizeof(float) , cudaHostAllocDefault);
-
+    //Populate buffers for flanks and scaled means data
     std::vector<int> eventOffsets;
     size_t offset = 0;
-    for(int j=0;j<event_sequences.size();j++){
-        auto ev = event_sequences[j];
+    for(int j=0; j<num_reads; j++){
+        auto e = event_sequences[j];
         eventOffsets.push_back(offset);
-        size_t num_events = n_rows[j];//TODO: is this sometimes causing a segfault? is it correct?
+        size_t num_events = n_rows[j];
         for (int i=0;i<num_events;i++) {
             auto event_idx =  e_starts[j] + i * event_strides[j];
-            auto scaled = ev.read->get_drift_scaled_level(event_idx, ev.strand); // send the data in drift scaled
-            //auto unscaled = ev.read->events[0][i].mean; //taking the first element. Not sure what the second one is..
+            auto scaled = e.read->get_drift_scaled_level(event_idx, e.strand); // send the data in drift scaled
             eventMeans[offset + i] = scaled;
             preFlankingHost[offset + i] = pre_flanks[j][i]; //also copy over the pre-flanking data, since it has a 1-1 correspondence with events
             postFlankingHost[offset + i] = post_flanks[j][i]; //also copy over the pre-flanking data, since it has a 1-1 correspondence with events
@@ -408,23 +470,22 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
 
     int num_states = event_sequences[0].pore_model->states.size();
 
+    // Populate pore model buffers
     std::vector<float> pore_model_level_log_stdv(num_states);
     std::vector<float> pore_model_level_mean(num_states);
     std::vector<float> pore_model_level_stdv(num_states);
-
-    //TODO: Fix this.
     for(int st=0; st<num_states; st++){
-        auto params = event_sequences[0].pore_model->states[st]; //TODO: Is this OK?
+        auto params = event_sequences[0].pore_model->states[st];
         pore_model_level_log_stdv[st] = params.level_log_stdv;
         pore_model_level_mean[st] = params.level_mean;
         pore_model_level_stdv[st] = params.level_stdv;
     }
 
+    //Populating read-statistics buffers
     std::vector<float> scale(num_reads);
     std::vector<float> shift(num_reads);
     std::vector<float> var(num_reads);
     std::vector<float> log_var(num_reads);
-
     for (int i=0;i<num_reads;i++){
         auto read = event_sequences[i];
         scale[i] = event_sequences[i].read->scalings[read.strand].scale;
@@ -433,79 +494,31 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
         log_var[i] = event_sequences[i].read->scalings[read.strand].log_var;
     }
 
-    float* scaleDev;
-    float* shiftDev;
-    float* varDev;
-    float* logVarDev;
-
-    cudaMalloc( (void**)&scaleDev, scale.size() * sizeof(float));
-    cudaMalloc( (void**)&shiftDev, shift.size() * sizeof(float));
-    cudaMalloc( (void**)&varDev, var.size() * sizeof(float));
-    cudaMalloc( (void**)&logVarDev, log_var.size() * sizeof(float));
-
+    // Copy to the device all buffers shared across kmer sequences.
     cudaMemcpyAsync( scaleDev, scale.data(), scale.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( shiftDev, shift.data(), shift.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice );
-
-    float* poreModelLevelLogStdvDev;
-    cudaMalloc( (void**)&poreModelLevelLogStdvDev, pore_model_level_log_stdv.size() * sizeof(float)); // for some reason this malloc is slow
     cudaMemcpyAsync( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
-
-    float* poreModelLevelMeanDev;
-    cudaMalloc( (void**)&poreModelLevelMeanDev, pore_model_level_mean.size() * sizeof(float));
     cudaMemcpyAsync( poreModelLevelMeanDev, pore_model_level_mean.data(), pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice );
-
-    float* poreModelLevelStdvDev;
-    cudaMalloc( (void**)&poreModelLevelStdvDev, pore_model_level_stdv.size() * sizeof(float));
     cudaMemcpyAsync( poreModelLevelStdvDev, pore_model_level_stdv.data(), pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
-
-
-    float* eventsPerBaseDev;
-    cudaMalloc( (void**)&eventsPerBaseDev, eventsPerBase.size() * sizeof(float));
     cudaMemcpyAsync( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice );
-
-    float* eventMeansDev;
-    cudaMalloc( (void**)&eventMeansDev, eventMeansSize);
-    cudaMemcpyAsync( eventMeansDev, eventMeans, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
-
-    float* preFlankingDev;
-    cudaMalloc( (void**)&preFlankingDev, eventMeansSize);
-    cudaMemcpyAsync( preFlankingDev, preFlankingHost, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
-
-    float* postFlankingDev;
-    cudaMalloc( (void**)&postFlankingDev, eventMeansSize);
-    cudaMemcpyAsync( postFlankingDev, postFlankingHost, eventMeansSize, cudaMemcpyHostToDevice ); //malloc is taking 300us
-
-    int* numRowsDev;
-    cudaMalloc( (void**)&numRowsDev, n_rows.size() * sizeof(int));
+    cudaMemcpyAsync( eventMeansDev, eventMeans, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( preFlankingDev, preFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( postFlankingDev, postFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
-
-    int* eventStartsDev;
-    cudaMalloc( (void**)&eventStartsDev, e_starts.size() * sizeof(int));
     cudaMemcpyAsync( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice );
-
-    int* eventStridesDev;
-    cudaMalloc( (void**)&eventStridesDev, event_strides.size() * sizeof(int));
     cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
-
-    int* eventOffsetsDev;
-    cudaMalloc( (void**)&eventOffsetsDev, eventOffsets.size() * sizeof(int));
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-    float * returnValuesDev;
-    cudaMalloc((void **) &returnValuesDev, sizeof(float) * num_reads); //one score per read
+    uint8_t  MAX_NUM_KMERS = 100;
 
-    float* returnedValues;
-    cudaHostAlloc(&returnedValues, num_reads * sizeof(float) , cudaHostAllocDefault);
-
-    uint8_t num_streams = sequences.size();
-    cudaStream_t streams[num_streams];
-    //float *data[num_streams];
-
-
-    std::vector<std::vector<double>> results(sequences.size());
     for (int i =0; i<sequences.size();i++) {
+
+        int * kmerRanksDev = kmerRanksDevPointers[i];
+        int * kmerRanksRCDev = kmerRanksDevPointers[i];
+        float * returnValuesDev = returnValuesDevResultsPointers[i];
+
         auto sequence = sequences[i];
         uint32_t n_kmers = sequence.length() - k + 1; //number of kmers in the sequence
         uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
@@ -518,21 +531,19 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
             kmer_ranks_rc[ki] = sequence.get_kmer_rank(ki, k, true);
         }
 
+        assert(kmer_ranks.size() < MAX_NUM_KMERS);
+        cudaMemcpyAsync(kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int),
+                        cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int),
+                        cudaMemcpyHostToDevice);
+
         int num_blocks = n_states / PSR9_NUM_STATES;
         uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
 
         dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
         dim3 dimGrid(num_reads); // let's look at only the first read
 
-        int *kmerRanksDev;
-        int *kmerRanksRCDev;
-        cudaMalloc((void **) &kmerRanksDev, kmer_ranks.size() * sizeof(int));
-        cudaMalloc((void **) &kmerRanksRCDev, kmer_ranks_rc.size() * sizeof(int));
-        cudaMemcpyAsync(kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpyAsync(kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int),
-                        cudaMemcpyHostToDevice);
-
-        getScores <<< dimGrid, dimBlock, 0>>> (eventMeansDev,
+        getScores <<< dimGrid, dimBlock, 0, streams[i]>>> (eventMeansDev,
                 eventsPerBaseDev,
                 numRowsDev,
                 eventStartsDev,
@@ -550,44 +561,18 @@ std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> seque
                 preFlankingDev,
                 postFlankingDev,
                 returnValuesDev);
-
-        cudaDeviceSynchronize();
-        cudaMemcpyAsync(returnedValues, returnValuesDev, num_reads *sizeof(float), cudaMemcpyDeviceToHost);
-        cudaDeviceSynchronize();
-
-        cudaFree(kmerRanksDev);
-        cudaFree(kmerRanksRCDev);
-
-        //Send all the scores back
-        //std::vector<double> r(num_reads);
-        results[i].resize(num_reads);
-        for(int readIdx=0; readIdx<num_reads;readIdx++){
-            results[i][readIdx]= (double) returnedValues[readIdx];
-        }
     }
 
-    // Free device memory
-    cudaFree(eventMeansDev);
-    cudaFree(eventsPerBaseDev);
-    cudaFree(numRowsDev);
-    cudaFree(eventStartsDev);
-    cudaFree(eventStridesDev);
-    cudaFree(eventOffsetsDev);
-    cudaFree(poreModelLevelLogStdvDev);
-    cudaFree(poreModelLevelStdvDev);
-    cudaFree(poreModelLevelMeanDev);
-    cudaFree(scaleDev);
-    cudaFree(shiftDev);
-    cudaFree(varDev);
-    cudaFree(logVarDev);
-    cudaFree(preFlankingDev);
-    cudaFree(postFlankingDev);
+    cudaDeviceSynchronize();
 
-    //Free host memory
-    cudaFreeHost(eventMeans);
-    cudaFreeHost(preFlankingHost);
-    cudaFreeHost(postFlankingHost);
-    cudaFreeHost(returnedValues);
+    std::vector<std::vector<double>> results(sequences.size());
+    for (int i =0; i<sequences.size();i++) {
+        cudaMemcpy(returnValuesHostResultsPointers[i], returnValuesDevResultsPointers[i], num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+        for(int readIdx=0; readIdx<num_reads;readIdx++) {
+            results[i].resize(num_reads);
+            results[i][readIdx] = (double) returnValuesHostResultsPointers[i][readIdx];
+        }
+    }
 
     return results;
 }

@@ -130,7 +130,7 @@ namespace opt
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
-    static int screen_score_threshold = 100;
+    static int screen_score_threshold = 1000;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
     static std::vector<std::string> methylation_types;
@@ -294,6 +294,8 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     auto scoring = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
     auto gpu_exec = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
 
+    GpuAligner aligner;
+
     for(size_t i = region_start; i < region_end; ++i) {
 
         int calling_start = i - opt::screen_flanking_sequence;
@@ -347,12 +349,11 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                  calling_start,
                                  alignments.get_reference_substring(contig, calling_start, calling_end));
 
-        GpuAligner aligner;
         auto t0_gpu = std::chrono::high_resolution_clock::now();
         // get the scaled levels.
 
         std::vector<double> scores = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
-                                                       alignment_flags, 100000,//opt::screen_score_threshold,
+                                                       alignment_flags, opt::screen_score_threshold,
                                                        opt::methylation_types);
         auto tf_gpu = std::chrono::high_resolution_clock::now();
         gpu_exec += tf_gpu - t0_gpu;
@@ -363,7 +364,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                                test_haplotype,
                                                                event_sequences,
                                                                alignment_flags,
-                                                               100000,//opt::screen_score_threshold,
+                                                               opt::screen_score_threshold,
                                                                opt::methylation_types);
             auto t1 = std::chrono::high_resolution_clock::now();
             scoring += t1-t0;
