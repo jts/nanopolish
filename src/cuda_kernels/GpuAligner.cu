@@ -87,16 +87,6 @@ __global__ void getScores(float * eventData,
         prevProbabilities[i] = 0.0f; // Is this correct?
     }
 
-    if(debug==true){
-        printf("Number of kmers is: %i\n", n_kmers);
-        printf("n_states is: %i\n", n_states);
-        printf("***\n");
-        printf("Prev probabilities row has been intialised to: \n");
-        for (int i = 0; i < n_states; i++) {
-            printf("Element %i = %f\n", i, prevProbabilities[i]);
-        }
-    }
-
     //Step 1: calculate transitions. For now we are going to use external params.
     int readIdx = blockIdx.x;
     float read_events_per_base = readEventsPerBase[readIdx];
@@ -171,32 +161,12 @@ __global__ void getScores(float * eventData,
     float var = varDev[readIdx];
     float logVar = logVarDev[readIdx];
 
-    if (debug==true){
-        printf("Number of rows is : %i\n", numRows);
-        printf("Event data offset is : %i\n", e_offset);
-        printf("Event start is %i\n", e_start);
-        printf("Stride: %i\n", e_stride);
-        printf("RC: %d\n", rc);
-        printf("First Kmer (should be 6 something and *not* 295) %i\n", kmer_ranks[0]);
-    }
-
     for(int row=1; row<numRows + 1;row++){
         // Emission probabilities
         int event_idx = e_start + (row - 1) * e_stride;
         float event_mean = eventData[e_offset + row - 1];
         float preFlank = preFlankingDev[e_offset + row - 1];
         float postFlank = postFlankingDev[e_offset + row - 1];
-
-        //if(debug==true) {
-        //    printf("Row %i, event IDX = %i, event mean = %f, preFlank = %f, postFlank = %f\n", row, event_idx, event_mean,
-        //           preFlank, postFlank);
-        //}
-
-        if(debug==true) {
-            for (int col = 0; col < n_states; col++) {
-                printf("Row = %i, col = %i, val = %f\n", row - 1, col, prevProbabilities[col]);
-            }
-        }
 
         float lp_emission_m = lp_match_r9(rank,
                                           event_mean,
@@ -239,28 +209,7 @@ __global__ void getScores(float * eventData,
 
         float newMatchScore = sum;
 
-        if(debug && (row == 1)){
-            printf("event IDX is %i\n", event_idx);
-            printf("rank %i\n", rank);
-            printf("This is thread %i\n", threadIdx.x);
-            printf("Writing out value for match of %f \n", newMatchScore);
-            printf("lp_emission_m is %f\n", lp_emission_m);
-            printf("event_mean %f\n", event_mean);
-            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[rank]);
-            printf("poreModelLevelStdv %f\n", poreModelLevelLogStdv[rank]);
-            printf("poreModelLevelMean %f\n", poreModelLevelMean[rank]);
-            printf("scale %f\n", scale);
-            printf("shift %f\n", shift);
-            printf("var %f\n", var);
-            printf("logVar %f\n", logVar);
-
-            printf("Analysing pore model...\n");
-            for (int i=0;i<4096;i++){
-                printf("Pore model level mean %i = %f\n", i, poreModelLevelMean[i]);
-            }
-        }
-        // Here need to calculate the bad event score
-
+        // Calculate the bad event scores
         // state PSR9_BAD_EVENT
         HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
         HMT_FROM_PREV_M = -INFINITY; // not allowed
@@ -559,7 +508,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     cudaDeviceSynchronize();
     uint8_t  MAX_NUM_KMERS = 30;
 
-    for (int i =0; i<1;i++) { //i<sequences.size()  //TODO: This is temporary, we are only invoking one stream at the moment
+    for (size_t i =0; i < sequences.size();i++){
 
         int * kmerRanksDev = kmerRanksDevPointers[i];
         int * kmerRanksRCDev = kmerRanksRCDevPointers[i];

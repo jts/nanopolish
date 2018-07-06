@@ -686,7 +686,6 @@ Variant score_variant_thresholded(const Variant& input_variant,
         if(fabs(total_score) < score_threshold) {
 
             // Calculate scores using the base nucleotide model
-            //printf("Working with input %i\n", j);
             double base_score = profile_hmm_score_set(base_sequences, input[j], alignment_flags);
             double variant_score = profile_hmm_score_set(variant_sequences, input[j], alignment_flags);
 
