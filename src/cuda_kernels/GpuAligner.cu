@@ -64,21 +64,37 @@ __global__ void getScores(float * eventData,
                           float * postFlankingDev,
                           float * returnValues) {
 
+    bool debug = false;
+    if(threadIdx.x==0 && blockIdx.x==0){
+        debug=true;
+    }
     // Initialise the prev probability row, which is the row of the DP table
+
     int n_kmers = blockDim.x;
     int n_states = n_kmers * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
 
-    //initialise the return value
+    //initialise the return value// Better to do this in a register
     returnValues[blockIdx.x] = -INFINITY;
+    __syncthreads();
 
     __shared__ float prevProbabilities[MAX_STATES];
 
-    // Initialise the previous probabilities
+    // Initialise the previous probabilities - this may not be quite correct as the intialization is different to the C++ version but I don't think it matter
     for (int i = 0; i < n_states - PSR9_NUM_STATES; i++) {
         prevProbabilities[i] = -INFINITY;
     }
     for (int i = n_states - PSR9_NUM_STATES; i < n_states; i++) {
-        prevProbabilities[i] = 0; // Is this correct?
+        prevProbabilities[i] = 0.0f; // Is this correct?
+    }
+
+    if(debug==true){
+        printf("Number of kmers is: %i\n", n_kmers);
+        printf("n_states is: %i\n", n_states);
+        printf("***\n");
+        printf("Prev probabilities row has been intialised to: \n");
+        for (int i = 0; i < n_states; i++) {
+            printf("Element %i = %f\n", i, prevProbabilities[i]);
+        }
     }
 
     //Step 1: calculate transitions. For now we are going to use external params.
@@ -87,11 +103,12 @@ __global__ void getScores(float * eventData,
     int numRows = numRowsPerRead[readIdx]; // Number of rows in this DP table.
     int e_start = eventStarts[readIdx]; // Event start for read
     int e_stride = eventStrides[readIdx];
+    int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
+
     bool rc = false;
     if (e_stride == -1){
         rc = true;
     }
-    int e_offset = eventOffsets[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
 
     int kmerIdx = threadIdx.x;
     uint32_t rank;
@@ -154,17 +171,31 @@ __global__ void getScores(float * eventData,
     float var = varDev[readIdx];
     float logVar = logVarDev[readIdx];
 
-    for(int row=1; row<numRows;row++){
+    if (debug==true){
+        printf("Number of rows is : %i\n", numRows);
+        printf("Event data offset is : %i\n", e_offset);
+        printf("Event start is %i\n", e_start);
+        printf("Stride: %i\n", e_stride);
+        printf("RC: %d\n", rc);
+        printf("First Kmer (should be 6 something and *not* 295) %i\n", kmer_ranks[0]);
+    }
+
+    for(int row=1; row<numRows + 1;row++){
         // Emission probabilities
         int event_idx = e_start + (row - 1) * e_stride;
         float event_mean = eventData[e_offset + row - 1];
         float preFlank = preFlankingDev[e_offset + row - 1];
         float postFlank = postFlankingDev[e_offset + row - 1];
 
-        bool debug = false;
+        //if(debug==true) {
+        //    printf("Row %i, event IDX = %i, event mean = %f, preFlank = %f, postFlank = %f\n", row, event_idx, event_mean,
+        //           preFlank, postFlank);
+        //}
 
-        if (threadIdx.x == 0 && (row == numRows -1) && blockIdx.x == 2){
-            debug = true;
+        if(debug==true) {
+            for (int col = 0; col < n_states; col++) {
+                printf("Row = %i, col = %i, val = %f\n", row - 1, col, prevProbabilities[col]);
+            }
         }
 
         float lp_emission_m = lp_match_r9(rank,
@@ -188,8 +219,6 @@ __global__ void getScores(float * eventData,
         float HMT_FROM_PREV_B = lp_bm_next + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
         float HMT_FROM_PREV_K = lp_km + prevProbabilities[prevBlockOffset + PSR9_KMER_SKIP];
 
-
-
         // m_s is the probability of going from the start state
         // to this kmer. The start state is (currently) only
         // allowed to go to the first kmer. If ALLOW_PRE_CLIP
@@ -208,10 +237,29 @@ __global__ void getScores(float * eventData,
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
         sum += lp_emission_m;
 
-
         float newMatchScore = sum;
-        // Here need to calculate the bad event score
 
+        if(debug && (row == 1)){
+            printf("event IDX is %i\n", event_idx);
+            printf("rank %i\n", rank);
+            printf("This is thread %i\n", threadIdx.x);
+            printf("Writing out value for match of %f \n", newMatchScore);
+            printf("lp_emission_m is %f\n", lp_emission_m);
+            printf("event_mean %f\n", event_mean);
+            printf("poreModelLevelLogStdv %f\n", poreModelLevelLogStdv[rank]);
+            printf("poreModelLevelStdv %f\n", poreModelLevelLogStdv[rank]);
+            printf("poreModelLevelMean %f\n", poreModelLevelMean[rank]);
+            printf("scale %f\n", scale);
+            printf("shift %f\n", shift);
+            printf("var %f\n", var);
+            printf("logVar %f\n", logVar);
+
+            printf("Analysing pore model...\n");
+            for (int i=0;i<4096;i++){
+                printf("Pore model level mean %i = %f\n", i, poreModelLevelMean[i]);
+            }
+        }
+        // Here need to calculate the bad event score
 
         // state PSR9_BAD_EVENT
         HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
@@ -249,7 +297,7 @@ __global__ void getScores(float * eventData,
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
         sum = logsumexpf(sum, HMT_FROM_SOFT);
-        sum += 0.0;//No emission. redundant.
+        sum += 0.0; //No emission. redundant.
 
         float newSkipScore = sum;
 
@@ -258,7 +306,7 @@ __global__ void getScores(float * eventData,
 
         //Now need to do the skip-skip transition, which is serial so for now letting one thread execute it.
         if (threadIdx.x == 0){
-            for (int blkidx = 2;blkidx <= blockDim.x; blkidx++){
+            for (int blkidx=2; blkidx <= blockDim.x; blkidx++){
                 auto skipIdx = blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP;
                 float prevSkipScore = prevProbabilities[skipIdx - PSR9_NUM_STATES];
                 float curSkipScore = prevProbabilities[skipIdx];
@@ -409,12 +457,9 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
 
     int num_reads = event_sequences.size();
 
-    // Extract the pore model.
-    // Assume that every event sequence has the same pore model
-    // event_sequences[0].pore_model.
     const uint32_t k = event_sequences[0].pore_model->k; //k is the length of a kmer
 
-    std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events + 1) for each read
+    std::vector<uint32_t> n_rows; //number of rows in the DP table (n_events) for each read
     std::vector<uint32_t> e_starts; //event starts in the read for each read
     std::vector<int> event_strides; //event strides for each read
     std::vector<std::vector<float>> pre_flanks;
@@ -468,17 +513,17 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
         offset += num_events;
     }
 
-    int num_states = event_sequences[0].pore_model->states.size();
-
     // Populate pore model buffers
+    // Assume that every event sequence has the same pore model
+    int num_states = event_sequences[0].pore_model->states.size();
     std::vector<float> pore_model_level_log_stdv(num_states);
     std::vector<float> pore_model_level_mean(num_states);
     std::vector<float> pore_model_level_stdv(num_states);
     for(int st=0; st<num_states; st++){
         auto params = event_sequences[0].pore_model->states[st];
-        pore_model_level_log_stdv[st] = params.level_log_stdv;
-        pore_model_level_mean[st] = params.level_mean;
+        pore_model_level_log_stdv[st] = params.level_log_stdv; //TODO: I am seeing level log stdv and level stdv return the same value. need to investigate this.
         pore_model_level_stdv[st] = params.level_stdv;
+        pore_model_level_mean[st] = params.level_mean;
     }
 
     //Populating read-statistics buffers
@@ -511,12 +556,13 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-    uint8_t  MAX_NUM_KMERS = 100;
+    cudaDeviceSynchronize();
+    uint8_t  MAX_NUM_KMERS = 30;
 
-    for (int i =0; i<sequences.size();i++) {
+    for (int i =0; i<1;i++) { //i<sequences.size()  //TODO: This is temporary, we are only invoking one stream at the moment
 
         int * kmerRanksDev = kmerRanksDevPointers[i];
-        int * kmerRanksRCDev = kmerRanksDevPointers[i];
+        int * kmerRanksRCDev = kmerRanksRCDevPointers[i];
         float * returnValuesDev = returnValuesDevResultsPointers[i];
 
         auto sequence = sequences[i];

@@ -326,6 +326,10 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
     // Fill in matrix
     for(uint32_t row = 1; row < output.get_num_rows(); row++) {
 
+        for (int col = 0; col< output.get_num_columns();col++){
+            printf("Row = %i, col = %i, val = %f\n", row - 1, col, output.get(row -1,col));
+        }
+
         // Skip the first block which is the start state, it was initialized above
         // Similarily skip the last block, which is calculated in the terminate() function
         for(uint32_t block = 1; block < num_blocks - 1; block++) {
@@ -342,7 +346,7 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             uint32_t event_idx = e_start + (row - 1) * data.event_stride;
             uint32_t rank = kmer_ranks[kmer_idx];
             float lp_emission_m = log_probability_match_r9(*data.read, *data.pore_model, rank, event_idx, data.strand, true);
-            //printf("CPU> lp_emission_m %f\n", lp_emission_m);
+
             float lp_emission_b = BAD_EVENT_PENALTY;
             
             HMMUpdateScores scores;
@@ -375,6 +379,11 @@ inline float profile_hmm_fill_generic_r9(const HMMInputSequence& _sequence,
             //    printf("bt.lp_bm_next %f\n", bt.lp_bm_next);
             //    printf("bt.lp_km %f\n", bt.lp_km);
             //}
+
+            if(row==1 && block == 1) {
+                printf("CPU> lp_emission_m %f\n", lp_emission_m);
+                printf("Rank is %i\n", rank);
+            }
 
             output.update_cell(row, curr_block_offset + PSR9_MATCH, scores, lp_emission_m);
 
