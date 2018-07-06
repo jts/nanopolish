@@ -75,6 +75,8 @@ private:
     float* eventsPerBaseDev;
     float* poreModelLevelStdvDev;
     float* poreModelLevelLogStdvDev;
+
+    bool poreModelInitialized;
     // Allocate arrays for storing results, kmerRanksDev and kmerRanksRCDev
 
     std::vector<int*> kmerRanksDevPointers;

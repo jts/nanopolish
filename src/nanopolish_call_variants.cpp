@@ -280,7 +280,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                           int region_end,
                                                           uint32_t alignment_flags)
 {
-    std::cout << "CHECKPOINT 13" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
 
     std::vector<Variant> out_variants;
@@ -374,8 +373,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             }
         }
     }
-
-    std::cout << "CHECKPOINT 14 - Region end - start ength= " << region_end - region_start << std::endl;
 
     auto end = std::chrono::high_resolution_clock::now();
 

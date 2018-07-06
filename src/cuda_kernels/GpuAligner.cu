@@ -299,6 +299,8 @@ GpuAligner::GpuAligner()
     int maxEventsPerBase = 100;
     int totalEvents = maxEventsPerBase * max_num_reads;
 
+    poreModelInitialized = false;
+
     cudaMalloc( (void**)&poreModelLevelMeanDev, numModelElements * sizeof(float));
     cudaMalloc( (void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float));
     cudaMalloc( (void**)&poreModelLevelStdvDev, numModelElements * sizeof(float));
@@ -493,9 +495,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     cudaMemcpyAsync( shiftDev, shift.data(), shift.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(), pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( poreModelLevelMeanDev, pore_model_level_mean.data(), pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( poreModelLevelStdvDev, pore_model_level_stdv.data(), pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( eventMeansDev, eventMeans, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( preFlankingDev, preFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
@@ -505,9 +504,17 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
-    cudaDeviceSynchronize();
-    uint8_t  MAX_NUM_KMERS = 30;
+    if (poreModelInitialized == false) {
+        cudaMemcpyAsync(poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(),
+                        pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(poreModelLevelMeanDev, pore_model_level_mean.data(),
+                        pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(poreModelLevelStdvDev, pore_model_level_stdv.data(),
+                        pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice);
+        poreModelInitialized = true;
+    }
 
+    uint8_t  MAX_NUM_KMERS = 30;
     for (size_t i =0; i < sequences.size();i++){
 
         int * kmerRanksDev = kmerRanksDevPointers[i];
@@ -528,9 +535,9 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
 
         assert(kmer_ranks.size() < MAX_NUM_KMERS);
         cudaMemcpyAsync(kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int),
-                        cudaMemcpyHostToDevice);
+                        cudaMemcpyHostToDevice, streams[i]);
         cudaMemcpyAsync(kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int),
-                        cudaMemcpyHostToDevice);
+                        cudaMemcpyHostToDevice, streams[i]);
 
         int num_blocks = n_states / PSR9_NUM_STATES;
         uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
@@ -556,15 +563,21 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                 preFlankingDev,
                 postFlankingDev,
                 returnValuesDev);
+
+        cudaMemcpyAsync(returnValuesHostResultsPointers[i], returnValuesDevResultsPointers[i], num_reads *sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
+    }
+
+    std::vector<std::vector<double>> results(sequences.size());
+    for (size_t i =0; i<sequences.size();i++) {
+        for(int readIdx=0; readIdx<num_reads;readIdx++) {
+            results[i].resize(num_reads);
+        }
     }
 
     cudaDeviceSynchronize();
 
-    std::vector<std::vector<double>> results(sequences.size());
-    for (int i =0; i<sequences.size();i++) {
-        cudaMemcpy(returnValuesHostResultsPointers[i], returnValuesDevResultsPointers[i], num_reads *sizeof(float), cudaMemcpyDeviceToHost);
+    for (size_t i =0; i<sequences.size();i++) {
         for(int readIdx=0; readIdx<num_reads;readIdx++) {
-            results[i].resize(num_reads);
             results[i][readIdx] = (double) returnValuesHostResultsPointers[i][readIdx];
         }
     }
@@ -597,24 +610,17 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
 
     sequences.push_back(base_sequence);
 
-    //std::vector<std::vector<HMMInputSequence>> variant_sequences;
-
     for (auto v: variant_haplotypes){
         auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];
         sequences.push_back(variant_sequence);
     }
 
-    //assert(base_sequences.size() == 1);
-
-    // return the sum of the score for the base sequences over all the event sequences
-    //auto base_scores = scoreKernel(base_sequences, event_sequences, alignment_flags);
-
     std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
 
-    std::vector<double> v(numVariants); // Thresholded score for each //(variant_sequences.size()); //TODO: Fix - temporary
+    std::vector<double> v(numVariants);
 
     uint32_t  numScores = scores[0].size();
-    for (int variantIndex=0; variantIndex<numVariants; variantIndex++){ //0 is the base scores
+    for (int variantIndex=0; variantIndex<numVariants; variantIndex++){ // index 0 is the base scores
         double totalScore = 0.0;
         for(int k=0; k<numScores; k++){
             if (fabs(totalScore) < screen_score_threshold){
