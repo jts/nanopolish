@@ -29,9 +29,6 @@ __device__ float lp_match_r9(int rank,
 
     // STEP 1: GET DRIFT-SCALED LEVEL:
     float level = mean;
-    // TODO: Apply scaling to these 3 model values as is done in the CPP implementation
-    //these can just be pulled from the model
-
     float gaussian_mean = scale * poreModelLevelMean[rank] + shift;
     float gaussian_stdv = poreModelLevelStdv[rank] * var;
     float gaussian_log_level_stdv = poreModelLevelLogStdv[rank] + logVar;
@@ -399,6 +396,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                                                 uint32_t alignment_flags){
     // pre-running asserts
     assert(!sequences.empty());
+    assert(!event_sequences.empty());
     assert(std::string(sequences[0].get_alphabet()->get_name()) == "nucleotide");
     for (auto e: event_sequences) {
         assert(std::string(e.pore_model->pmalphabet->get_name()) == "nucleotide");
@@ -585,7 +583,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     return results;
 }
 
-std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
+std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
                                                         Haplotype base_haplotype,
                                                         std::vector<HMMInputData> event_sequences,
                                                         uint32_t alignment_flags,
@@ -606,29 +604,31 @@ std::vector<double> GpuAligner::variantScoresThresholded(std::vector<Variant> in
     std::vector<HMMInputSequence> sequences;
 
     HMMInputSequence base_sequence = generate_methylated_alternatives(base_haplotype.get_sequence(),
-                                                                                    methylation_types)[0]; //TODO: always 0?
+                                                                                    methylation_types)[0]; //TODO: fix for non-zero
 
     sequences.push_back(base_sequence);
 
     for (auto v: variant_haplotypes){
-        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];
+        auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];  //TODO: fix for non-zero
         sequences.push_back(variant_sequence);
     }
 
-    std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
+    std::vector<Variant> v = input_variants;
 
-    std::vector<double> v(numVariants);
-
-    uint32_t  numScores = scores[0].size();
-    for (int variantIndex=0; variantIndex<numVariants; variantIndex++){ // index 0 is the base scores
-        double totalScore = 0.0;
-        for(int k=0; k<numScores; k++){
-            if (fabs(totalScore) < screen_score_threshold){
-                double baseScore = scores[0][k];
-                totalScore += (scores[variantIndex + 1][k] - baseScore);
+    if (!event_sequences.empty()) {
+        std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
+        uint32_t numScores = scores[0].size();
+        for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
+            double totalScore = 0.0;
+            for (int k = 0; k < numScores; k++) {
+                if (fabs(totalScore) < screen_score_threshold) {
+                    double baseScore = scores[0][k];
+                    totalScore += (scores[variantIndex + 1][k] - baseScore);
+                }
             }
+            v[variantIndex].quality = totalScore;
+            v[variantIndex].info = "";
         }
-        v[variantIndex] = totalScore;
     }
 
     return v;

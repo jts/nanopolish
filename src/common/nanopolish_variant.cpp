@@ -664,7 +664,7 @@ std::vector<Variant> multi_call(VariantGroup& variant_group,
 //
 Variant score_variant_thresholded(const Variant& input_variant,
                                   Haplotype base_haplotype, 
-                                  const std::vector<HMMInputData>& input, // raw reads (I think)
+                                  const std::vector<HMMInputData>& input,
                                   const uint32_t alignment_flags,
                                   const uint32_t score_threshold,
                                   const std::vector<std::string>& methylation_types)

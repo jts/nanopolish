@@ -49,7 +49,7 @@ public:
     GpuAligner();
     ~GpuAligner();
 
-    std::vector<double>
+    std::vector<Variant>
     variantScoresThresholded(std::vector<Variant> tmp_variants, Haplotype haplotype, std::vector<HMMInputData> event_sequences,
               uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);
 

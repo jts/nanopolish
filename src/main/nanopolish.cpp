@@ -64,7 +64,6 @@ int main(int argc, char** argv)
 {
     // Turn off HDF's exception printing, which is generally unhelpful for users
     H5Eset_auto(0, NULL, NULL);
-    std::cout << "CHECKPOINT 1\n";
 
     int ret = 0;
     if(argc <= 1) {
@@ -75,7 +74,6 @@ int main(int argc, char** argv)
         std::string command(argv[1]);
         auto iter = programs.find(command);
         if (iter != programs.end()) {
-            std::cout << "CHECKPOINT 2: " << iter->first <<std::endl;
             ret = iter->second(argc - 1, argv + 1);
         }
        else
