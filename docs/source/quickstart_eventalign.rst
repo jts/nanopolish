@@ -47,13 +47,7 @@ You will need the E. coli reference genome: ::
 Align the reads with minimap2
 --------------------------------
 
-In order to run minimap2 we first need to index the reference genome: ::
-
-    minimap2 -d ref.mmi ref.fa
-
-**Output files**: ``ref.mmi``.
-
-We will need to index the reads as well: ::
+We first need to index the reads: ::
 
     nanopolish index -d fast5_files/ reads.fasta
 

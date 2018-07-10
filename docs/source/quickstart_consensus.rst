@@ -49,7 +49,6 @@ Analysis workflow
 The pipeline below describes the recommended analysis workflow for larger datasets. In this tutorial, we will run through the basic steps of the pipeline for this smaller (2kb) dataset.
 
 .. figure:: _static/nanopolish-workflow.png
-  :scale: 70%
   :alt: nanopolish-tutorial-workflow
 
 Data preprocessing
@@ -65,7 +64,7 @@ Compute the draft genome assembly using canu
 -----------------------------------------------
 
 As computing the draft genome assembly takes a few hours we have included the pre-assembled data for you (``draft.fa``).
-We used the following parameters with `canu <canu.readthedocs.io>`_: ::
+We used the following parameters with `canu <http://canu.readthedocs.io/en/latest/>`_: ::
 
     canu \
         -p ecoli -d outdir genomeSize=4.6m \
@@ -74,13 +73,9 @@ We used the following parameters with `canu <canu.readthedocs.io>`_: ::
 Compute a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started! 
+Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started!
 
-First step, is to index the draft genome assembly. We can do that with the following command: ::
-
-    minimap2 -d draft.mmi draft.fa
-
-Next, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
+First, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
 
     minimap2 -ax map-ont -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
