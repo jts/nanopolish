@@ -64,13 +64,11 @@ __global__ void getScores(float * eventData,
         debug=true;
     }
     // Initialise the prev probability row, which is the row of the DP table
-
     int n_kmers = blockDim.x;
     int n_states = n_kmers * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
 
-    //initialise the return value// Better to do this in a register
-    returnValues[blockIdx.x] = -INFINITY;
-    __syncthreads();
+    __shared__ float returnValue;
+    returnValue = -INFINITY;
 
     __shared__ float prevProbabilities[MAX_STATES];
 
@@ -222,7 +220,7 @@ __global__ void getScores(float * eventData,
         sum += lp_emission_b;
 
         float newBadEventScore = sum;
-        __syncthreads();
+
         // Write row out. prevProbabilities now becomes "current probabilities" for evaluating skips.
         prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
         prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
@@ -241,7 +239,6 @@ __global__ void getScores(float * eventData,
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
         sum = logsumexpf(sum, HMT_FROM_SOFT);
-        sum += 0.0; //No emission. redundant.
 
         float newSkipScore = sum;
 
@@ -249,19 +246,20 @@ __global__ void getScores(float * eventData,
         __syncthreads();
 
         //Now need to do the skip-skip transition, which is serial so for now letting one thread execute it.
+
         if (threadIdx.x == 0){
-            for (int blkidx=2; blkidx <= blockDim.x; blkidx++){
+            int firstBlockIdx = 2;
+            float prevSkipScore; prevSkipScore = prevProbabilities[(firstBlockIdx - 1) * PSR9_NUM_STATES + PSR9_KMER_SKIP];
+            for (int blkidx = firstBlockIdx; blkidx <= blockDim.x; blkidx++){
                 auto skipIdx = blkidx * PSR9_NUM_STATES + PSR9_KMER_SKIP;
-                float prevSkipScore = prevProbabilities[skipIdx - PSR9_NUM_STATES];
-                float curSkipScore = prevProbabilities[skipIdx];
+                float curSkipScore = prevProbabilities[skipIdx + PSR9_KMER_SKIP];
                 HMT_FROM_PREV_K = lp_kk + prevSkipScore;
                 newSkipScore = logsumexpf(curSkipScore, HMT_FROM_PREV_K);
                 prevProbabilities[skipIdx] = newSkipScore;
+                prevSkipScore = newSkipScore;
                 __syncthreads();
             }
         }
-
-        __syncthreads();
 
         int lastKmerIdx = n_kmers -1;
         int lastRowIdx = numRows -1;
@@ -272,17 +270,16 @@ __global__ void getScores(float * eventData,
             float lp2 = lp_ms + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] + postFlank;
             float lp3 = lp_ms + prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] + postFlank;
 
-            end = returnValues[blockIdx.x];
+            end = returnValue;
             end = logsumexpf(end, lp1);
             end = logsumexpf(end, lp2);
             end = logsumexpf(end, lp3);
-            returnValues[blockIdx.x] = end;
+            returnValue = end;
         }
-        // Now do the end state
-        __syncthreads();
 
-        }
-        __syncthreads();
+    }
+    returnValues[blockIdx.x] = returnValue;
+    __syncthreads();
 }
 
 
