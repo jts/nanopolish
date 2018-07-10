@@ -22,8 +22,7 @@ __device__ float lp_match_r9(int rank,
                              float scale,
                              float shift,
                              float var,
-                             float logVar,
-                             bool debug = false){
+                             float logVar){
 
     float log_inv_sqrt_2pi = log(0.3989422804014327);
 
@@ -33,9 +32,7 @@ __device__ float lp_match_r9(int rank,
     float gaussian_log_level_stdv = poreModelLevelLogStdv[rank] + logVar;
 
     float a = (level - gaussian_mean) / gaussian_stdv;
-
     float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a);
-
     return emission;
 
 }
@@ -59,10 +56,6 @@ __global__ void getScores(float * eventData,
                           float * postFlankingDev,
                           float * returnValues) {
 
-    bool debug = false;
-    if(threadIdx.x==0 && blockIdx.x==0){
-        debug=true;
-    }
     // Initialise the prev probability row, which is the row of the DP table
     int n_kmers = blockDim.x;
     int n_states = n_kmers * PSR9_NUM_STATES + 2 * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
@@ -169,8 +162,7 @@ __global__ void getScores(float * eventData,
                                           scale,
                                           shift,
                                           var,
-                                          logVar,
-                                          debug);
+                                          logVar);
 
 
         float lp_emission_b = BAD_EVENT_PENALTY;
@@ -189,7 +181,7 @@ __global__ void getScores(float * eventData,
         // with a penalty;
         float HMT_FROM_SOFT = (kmerIdx == 0 &&
                                (event_idx == e_start ||
-                                (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY; // TODO: Add flag for HAF ALLOW_PRE_CLIP
+                                (HAF_ALLOW_PRE_CLIP)))  ? lp_sm  + preFlank : -INFINITY;
 
         // calculate the score
         float sum = HMT_FROM_SAME_M;
@@ -205,19 +197,19 @@ __global__ void getScores(float * eventData,
         // Calculate the bad event scores
         // state PSR9_BAD_EVENT
         HMT_FROM_SAME_M = lp_mb + prevProbabilities[curBlockOffset + PSR9_MATCH];
-        HMT_FROM_PREV_M = -INFINITY; // not allowed
+        HMT_FROM_PREV_M = -INFINITY;
         HMT_FROM_SAME_B = lp_bb + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT];
         HMT_FROM_PREV_B = -INFINITY;
         HMT_FROM_PREV_K = -INFINITY;
         HMT_FROM_SOFT = -INFINITY;
 
         sum = HMT_FROM_SAME_M;
-        sum = logsumexpf(sum, HMT_FROM_PREV_M);
         sum = logsumexpf(sum, HMT_FROM_SAME_B);
-        sum = logsumexpf(sum, HMT_FROM_PREV_B);
-        sum = logsumexpf(sum, HMT_FROM_PREV_K);
-        sum = logsumexpf(sum, HMT_FROM_SOFT);
         sum += lp_emission_b;
+        //sum = logsumexpf(sum, HMT_FROM_PREV_B);
+        //sum = logsumexpf(sum, HMT_FROM_PREV_K);
+        //sum = logsumexpf(sum, HMT_FROM_SOFT);
+        //sum = logsumexpf(sum, HMT_FROM_PREV_M);
 
         float newBadEventScore = sum;
 
@@ -233,12 +225,12 @@ __global__ void getScores(float * eventData,
         HMT_FROM_PREV_B = lp_bk + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
         HMT_FROM_SOFT = -INFINITY;
 
-        sum = HMT_FROM_SAME_M;
-        sum = logsumexpf(sum, HMT_FROM_PREV_M);
-        sum = logsumexpf(sum, HMT_FROM_SAME_B);
+        sum = HMT_FROM_PREV_M;
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
-        sum = logsumexpf(sum, HMT_FROM_SOFT);
+        //sum = logsumexpf(sum, HMT_FROM_SAME_M);
+        //sum = logsumexpf(sum, HMT_FROM_SAME_B);
+        //sum = logsumexpf(sum, HMT_FROM_SOFT);
 
         float newSkipScore = sum;
 
@@ -246,7 +238,6 @@ __global__ void getScores(float * eventData,
         __syncthreads();
 
         //Now need to do the skip-skip transition, which is serial so for now letting one thread execute it.
-
         if (threadIdx.x == 0){
             int firstBlockIdx = 2;
             float prevSkipScore; prevSkipScore = prevProbabilities[(firstBlockIdx - 1) * PSR9_NUM_STATES + PSR9_KMER_SKIP];
@@ -257,7 +248,6 @@ __global__ void getScores(float * eventData,
                 newSkipScore = logsumexpf(curSkipScore, HMT_FROM_PREV_K);
                 prevProbabilities[skipIdx] = newSkipScore;
                 prevSkipScore = newSkipScore;
-                __syncthreads();
             }
         }
 
@@ -290,28 +280,28 @@ GpuAligner::GpuAligner()
 
     poreModelInitialized = false;
 
-    cudaMalloc( (void**)&poreModelLevelMeanDev, numModelElements * sizeof(float));
-    cudaMalloc( (void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float));
-    cudaMalloc( (void**)&poreModelLevelStdvDev, numModelElements * sizeof(float));
+    cudaMalloc((void**)&poreModelLevelMeanDev, numModelElements * sizeof(float));
+    cudaMalloc((void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float));
+    cudaMalloc((void**)&poreModelLevelStdvDev, numModelElements * sizeof(float));
 
-    cudaMalloc( (void**)&scaleDev, max_num_reads * sizeof(float));
-    cudaMalloc( (void**)&shiftDev, max_num_reads * sizeof(float));
-    cudaMalloc( (void**)&varDev, max_num_reads * sizeof(float));
-    cudaMalloc( (void**)&logVarDev, max_num_reads * sizeof(float));
+    cudaMalloc((void**)&scaleDev, max_num_reads * sizeof(float));
+    cudaMalloc((void**)&shiftDev, max_num_reads * sizeof(float));
+    cudaMalloc((void**)&varDev, max_num_reads * sizeof(float));
+    cudaMalloc((void**)&logVarDev, max_num_reads * sizeof(float));
 
     cudaMalloc( (void**)&eventsPerBaseDev, max_num_reads * sizeof(float));
 
     int max_n_rows = 100;
     int maxBuffer = 50000 * sizeof(float);  //TODO: allocate more smartly
 
-    cudaMalloc( (void**)&numRowsDev, max_n_rows * sizeof(int));
-    cudaMalloc( (void**)&eventStartsDev, maxBuffer);
-    cudaMalloc( (void**)&eventStridesDev, maxBuffer);
-    cudaMalloc( (void**)&eventOffsetsDev, maxBuffer);
+    cudaMalloc((void**)&numRowsDev, max_n_rows * sizeof(int));
+    cudaMalloc((void**)&eventStartsDev, maxBuffer);
+    cudaMalloc((void**)&eventStridesDev, maxBuffer);
+    cudaMalloc((void**)&eventOffsetsDev, maxBuffer);
 
-    cudaMalloc( (void**)&eventMeansDev, maxBuffer);
-    cudaMalloc( (void**)&preFlankingDev, maxBuffer);
-    cudaMalloc( (void**)&postFlankingDev, maxBuffer);
+    cudaMalloc((void**)&eventMeansDev, maxBuffer);
+    cudaMalloc((void**)&preFlankingDev, maxBuffer);
+    cudaMalloc((void**)&postFlankingDev, maxBuffer);
 
     //Allocate a host buffer to store the event means, pre and post-flank data
     cudaHostAlloc(&eventMeans, maxBuffer , cudaHostAllocDefault);
@@ -325,16 +315,16 @@ GpuAligner::GpuAligner()
     returnValuesHostResultsPointers.resize(max_num_sequences);
 
     for (int i =0; i<max_num_sequences;i++){
-        int *kmerRanksDev;
-        int *kmerRanksRCDev;
+        int * kmerRanksDev;
+        int * kmerRanksRCDev;
         float * returnValuesDev;
-        float* returnedValues;
+        float * returnedValues;
 
-        cudaMalloc((void **) &returnValuesDev, sizeof(float) * max_num_reads); //one score per read
+        cudaMalloc((void**)&returnValuesDev, sizeof(float) * max_num_reads); //one score per read
         cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault);
 
-        cudaMalloc((void **) &kmerRanksDev, max_n_rows * sizeof(int));
-        cudaMalloc((void **) &kmerRanksRCDev, max_n_rows * sizeof(int));
+        cudaMalloc((void**)&kmerRanksDev, max_n_rows * sizeof(int));
+        cudaMalloc((void**)&kmerRanksRCDev, max_n_rows * sizeof(int));
 
         kmerRanksDevPointers[i] = kmerRanksDev;
         kmerRanksRCDevPointers[i] = kmerRanksRCDev;
