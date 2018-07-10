@@ -4,7 +4,7 @@
 
 This branch adds CUDA-enabled GPU acceleration to the nanopolish consensus improvement algorithm. To try this feature run with the `--gpu` flag e.g:
 ```
-../nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -r reads.fasta -b reads.sorted.bam -g draft.fa --threads=8 --gpu=1
+nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -r reads.fasta -b reads.sorted.bam -g draft.fa --threads=8 --gpu=1
 ```
 
 [![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
