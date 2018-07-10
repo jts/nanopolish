@@ -25,20 +25,18 @@ __device__ float lp_match_r9(int rank,
                              float logVar,
                              bool debug = false){
 
-    float log_inv_sqrt_2pi = log(0.3989422804014327); // no need to calculate this every time. better solutions available..
+    float log_inv_sqrt_2pi = log(0.3989422804014327);
 
-    // STEP 1: GET DRIFT-SCALED LEVEL:
     float level = mean;
     float gaussian_mean = scale * poreModelLevelMean[rank] + shift;
     float gaussian_stdv = poreModelLevelStdv[rank] * var;
     float gaussian_log_level_stdv = poreModelLevelLogStdv[rank] + logVar;
 
-    // Step 3: calculate log-normal PDF
-    float a = (level - gaussian_mean) / gaussian_stdv; // g is the gaussian parameters
+    float a = (level - gaussian_mean) / gaussian_stdv;
 
-    float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a); // log_inv_sqrt_2pi is defined in a comment above
+    float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a);
 
-    return emission; // log_inv_sqrt_2pi is defined in a comment above
+    return emission;
 
 }
 
@@ -288,13 +286,10 @@ __global__ void getScores(float * eventData,
 }
 
 
-//Default constructor
 GpuAligner::GpuAligner()
 {
     int numModelElements = 4096;
     int max_num_reads = 300;
-    int maxEventsPerBase = 100;
-    int totalEvents = maxEventsPerBase * max_num_reads;
 
     poreModelInitialized = false;
 
@@ -331,9 +326,6 @@ GpuAligner::GpuAligner()
     kmerRanksRCDevPointers.resize(max_num_sequences);
     returnValuesDevResultsPointers.resize(max_num_sequences);
     returnValuesHostResultsPointers.resize(max_num_sequences);
-
-    uint8_t num_streams = max_num_sequences;
-
 
     for (int i =0; i<max_num_sequences;i++){
         int *kmerRanksDev;
@@ -431,7 +423,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
         else
             n_events = e_start - e_end + 1;
 
-        // TODO: is a +1 necessary here?
         n_rows.push_back(n_events);
         numEventsTotal += n_events;
 
@@ -538,7 +529,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                         cudaMemcpyHostToDevice, streams[i]);
 
         int num_blocks = n_states / PSR9_NUM_STATES;
-        uint32_t num_kmers = num_blocks - 2; // two terminal blocks. Not currently used but left here for now.
 
         dim3 dimBlock(num_blocks - 2); // One thread per state, not including Start and Terminal state.
         dim3 dimGrid(num_reads); // let's look at only the first read
