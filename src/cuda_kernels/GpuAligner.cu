@@ -132,8 +132,6 @@ __global__ void getScores(float * eventData,
 
     // Start filling out the "DP table"
     // Each thread is going to work on an individual P-HMM Block
-    // WRONG - need to use threadIdx & think carefully. we have one thread per block/kmer. each block has 3 states tho.
-    //int kmerIdx = blockIdx.x;
     int curBlockIdx = kmerIdx + 1; // Accounts for fact that we are not working with start block.
     int prevBlockIdx = curBlockIdx -1;
     int prevBlockOffset = PSR9_NUM_STATES * prevBlockIdx;
