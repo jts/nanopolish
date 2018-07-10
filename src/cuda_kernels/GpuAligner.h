@@ -41,7 +41,7 @@
 #include <cuda_runtime.h>
 
 #ifndef GPU_ALIGNER_H
-#define GPU_ALIGNER_H1
+#define GPU_ALIGNER_H
 
 class GpuAligner
 {
