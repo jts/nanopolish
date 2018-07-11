@@ -307,10 +307,16 @@ GpuAligner::GpuAligner()
     cudaHostAlloc(&postFlankingHost, maxBuffer, cudaHostAllocDefault);
 
     int max_num_sequences = 8;
+    int max_sequence_length = 50;
     kmerRanksDevPointers.resize(max_num_sequences);
     kmerRanksRCDevPointers.resize(max_num_sequences);
     returnValuesDevResultsPointers.resize(max_num_sequences);
     returnValuesHostResultsPointers.resize(max_num_sequences);
+
+    // Populate host buffer with kmer ranks
+    int numKmers = max_sequence_length * max_num_sequences;
+    cudaHostAlloc(&kmerRanks, numKmers  * 2 * sizeof(int), cudaHostAllocDefault);
+    cudaMalloc((void**)&kmerRanksDev, numKmers  * 2 * sizeof(int));
 
     for (int i =0; i<max_num_sequences;i++){
         int * kmerRanksDev;
@@ -488,30 +494,44 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
         poreModelInitialized = true;
     }
 
+    //Let's populate a host buffer with all the sequences.
+    size_t  numKmers = 0;
+    for (auto sequence: sequences) {
+        numKmers += sequence.length();
+    }
+
+    size_t kmerOffset = 0;
+    for (int i = 0; i<sequences.size(); i++) {
+        auto sequence = sequences[i];
+
+        size_t sequenceLength = sequence.length();
+        for(size_t ki = 0; ki < sequenceLength; ++ki) {
+            kmerRanks[ki + kmerOffset] = sequence.get_kmer_rank(ki, k, false);
+        }
+        kmerRanksDevPointers[i] = kmerRanksDev + kmerOffset;
+        kmerOffset += sequenceLength;
+
+        for(size_t ki = 0; ki < sequenceLength; ++ki) {
+            kmerRanks[ki + kmerOffset] = sequence.get_kmer_rank(ki, k, true);
+        }
+        kmerRanksRCDevPointers[i] = kmerRanksDev + kmerOffset;
+        kmerOffset += sequenceLength;
+    }
+
+    cudaMemcpyAsync(kmerRanksDev, kmerRanks, numKmers * sizeof(int) * 2,
+                    cudaMemcpyHostToDevice);
+
     uint8_t  MAX_NUM_KMERS = 30;
     for (size_t i =0; i < sequences.size();i++){
 
-        int * kmerRanksDev = kmerRanksDevPointers[i];
-        int * kmerRanksRCDev = kmerRanksRCDevPointers[i];
+        int * kmerRanksDevPtr = kmerRanksDevPointers[i];
+        int * kmerRanksRCDevPtr = kmerRanksRCDevPointers[i];
+
         float * returnValuesDev = returnValuesDevResultsPointers[i];
 
         auto sequence = sequences[i];
         uint32_t n_kmers = sequence.length() - k + 1; //number of kmers in the sequence
         uint32_t n_states = PSR9_NUM_STATES * (n_kmers + 2); // + 2 for explicit terminal states
-
-        std::vector<uint32_t> kmer_ranks(n_kmers);
-        std::vector<uint32_t> kmer_ranks_rc(n_kmers);
-
-        for(size_t ki = 0; ki < n_kmers; ++ki) {
-            kmer_ranks[ki] = sequence.get_kmer_rank(ki, k, false);
-            kmer_ranks_rc[ki] = sequence.get_kmer_rank(ki, k, true);
-        }
-
-        assert(kmer_ranks.size() < MAX_NUM_KMERS);
-        cudaMemcpyAsync(kmerRanksDev, kmer_ranks.data(), kmer_ranks.size() * sizeof(int),
-                        cudaMemcpyHostToDevice, streams[i]);
-        cudaMemcpyAsync(kmerRanksRCDev, kmer_ranks_rc.data(), kmer_ranks_rc.size() * sizeof(int),
-                        cudaMemcpyHostToDevice, streams[i]);
 
         int num_blocks = n_states / PSR9_NUM_STATES;
 
@@ -523,8 +543,8 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                 numRowsDev,
                 eventStartsDev,
                 eventStridesDev,
-                kmerRanksDev,
-                kmerRanksRCDev,
+                kmerRanksDevPtr,
+                kmerRanksRCDevPtr,
                 eventOffsetsDev,
                 poreModelLevelLogStdvDev,
                 poreModelLevelStdvDev,
@@ -536,10 +556,11 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                 preFlankingDev,
                 postFlankingDev,
                 returnValuesDev);
-
-        cudaMemcpyAsync(returnValuesHostResultsPointers[i], returnValuesDevResultsPointers[i], num_reads *sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
     }
-
+    for (int i = 0; i<8;i++) {
+        cudaMemcpyAsync(returnValuesHostResultsPointers[i], returnValuesDevResultsPointers[i],
+                        num_reads * sizeof(float), cudaMemcpyDeviceToHost, streams[i]);
+    }
     std::vector<std::vector<double>> results(sequences.size());
     for (size_t i =0; i<sequences.size();i++) {
         for(int readIdx=0; readIdx<num_reads;readIdx++) {

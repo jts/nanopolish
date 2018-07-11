@@ -57,7 +57,6 @@ public:
     std::vector<HMMInputData> event_sequences,
             uint32_t alignment_flags);
 private:
-    float* poreModelLevelMeanDev;
     float* scaleDev;
     float* shiftDev;
     float* varDev;
@@ -75,6 +74,9 @@ private:
     float* eventsPerBaseDev;
     float* poreModelLevelStdvDev;
     float* poreModelLevelLogStdvDev;
+    float* poreModelLevelMeanDev;
+    int * kmerRanks;
+    int * kmerRanksDev;
 
     bool poreModelInitialized;
     // Allocate arrays for storing results, kmerRanksDev and kmerRanksRCDev
