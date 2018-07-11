@@ -124,7 +124,7 @@ depend: .depend
 
 .depend: $(CPP_SRC) $(C_SRC) $(CU_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(NVCCFLAGS) $(NVCC) -MM $(CPP_SRC) $(C_SRC) $(CU_SRC) > ./.depend;
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
 
 include .depend
 
