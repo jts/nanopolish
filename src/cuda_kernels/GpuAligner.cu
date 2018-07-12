@@ -20,7 +20,7 @@ __device__ float logsumexpf(float x, float y){
 
 __device__ float lp_match_r9(int rank,
                              float mean,
-                             float * poreModelDev,
+                             const float * poreModelDev,
                              float scale,
                              float shift,
                              float var,
@@ -47,7 +47,7 @@ __global__ void getScores(float * eventData,
                           int * kmer_ranks,
                           int * kmer_ranks_rc,
                           int * eventOffsets, // Offset to use for getting an event IDX for a specific read (read obtained by block IDX)
-			              float * poreModelDev,
+			              const float * poreModelDev,
                           float * scaleDev,
                           float * shiftDev,
                           float * varDev,
