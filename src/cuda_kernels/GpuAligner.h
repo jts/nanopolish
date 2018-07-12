@@ -75,6 +75,9 @@ private:
     float* poreModelLevelStdvDev;
     float* poreModelLevelLogStdvDev;
     float* poreModelLevelMeanDev;
+    float* poreModelDev;
+    float* poreModelHost;
+
     int * kmerRanks;
     int * kmerRanksDev;
 

@@ -20,9 +20,7 @@ __device__ float logsumexpf(float x, float y){
 
 __device__ float lp_match_r9(int rank,
                              float mean,
-                             float * poreModelLevelLogStdv,
-                             float * poreModelLevelStdv,
-                             float * poreModelLevelMean,
+                             float * poreModelDev,
                              float scale,
                              float shift,
                              float var,
@@ -31,9 +29,9 @@ __device__ float lp_match_r9(int rank,
     float log_inv_sqrt_2pi = log(0.3989422804014327);
 
     float level = mean;
-    float gaussian_mean = scale * poreModelLevelMean[rank] + shift;
-    float gaussian_stdv = poreModelLevelStdv[rank] * var;
-    float gaussian_log_level_stdv = poreModelLevelLogStdv[rank] + logVar;
+    float gaussian_mean = scale * poreModelDev[rank * 3] + shift;
+    float gaussian_stdv = poreModelDev[rank * 3 + 1] * var;
+    float gaussian_log_level_stdv = poreModelDev[rank * 3 + 2] + logVar;
 
     float a = (level - gaussian_mean) / gaussian_stdv;
     float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a);
@@ -49,9 +47,7 @@ __global__ void getScores(float * eventData,
                           int * kmer_ranks,
                           int * kmer_ranks_rc,
                           int * eventOffsets, // Offset to use for getting an event IDX for a specific read (read obtained by block IDX)
-                          float * poreModelLevelLogStdv,
-                          float * poreModelLevelStdv,
-                          float * poreModelLevelMean,
+			              float * poreModelDev,
                           float * scaleDev,
                           float * shiftDev,
                           float * varDev,
@@ -156,11 +152,9 @@ __global__ void getScores(float * eventData,
         float preFlank = preFlankingDev[e_offset + row - 1];
         float postFlank = postFlankingDev[e_offset + row - 1];
 
-        float lp_emission_m = lp_match_r9(rank,
+	    float lp_emission_m = lp_match_r9(rank,
                                           event_mean,
-                                          poreModelLevelLogStdv,
-                                          poreModelLevelStdv,
-                                          poreModelLevelMean,
+                                          poreModelDev,
                                           scale,
                                           shift,
                                           var,
@@ -282,15 +276,15 @@ GpuAligner::GpuAligner()
 
     poreModelInitialized = false;
 
-    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelMeanDev, numModelElements * sizeof(float)));
-    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float)));
-    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelStdvDev, numModelElements * sizeof(float)));
     CU_CHECK_ERR(cudaMalloc((void**)&scaleDev, max_num_reads * sizeof(float)));
     CU_CHECK_ERR(cudaMalloc((void**)&shiftDev, max_num_reads * sizeof(float)));
     CU_CHECK_ERR(cudaMalloc((void**)&varDev, max_num_reads * sizeof(float)));
     CU_CHECK_ERR(cudaMalloc((void**)&logVarDev, max_num_reads * sizeof(float)));
     CU_CHECK_ERR(cudaMalloc( (void**)&eventsPerBaseDev, max_num_reads * sizeof(float)));
 
+    // Allocate Device memory for pore model
+    CU_CHECK_ERR(cudaMalloc((void**)&poreModelDev, numModelElements * 3 * sizeof(float)));
+    
     int max_n_rows = 100;
     int maxBuffer = 50000 * sizeof(float);  //TODO: allocate more smartly
 
@@ -305,6 +299,8 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaHostAlloc(&preFlankingHost, maxBuffer, cudaHostAllocDefault));
     CU_CHECK_ERR(cudaHostAlloc(&postFlankingHost, maxBuffer, cudaHostAllocDefault));
 
+    // Allocate host memory for model
+    CU_CHECK_ERR(cudaHostAlloc(&poreModelHost, numModelElements * sizeof(float) * 3, cudaHostAllocDefault));
     int max_num_sequences = 8;
     int max_sequence_length = 50;
     kmerRanksDevPointers.resize(max_num_sequences);
@@ -340,7 +336,6 @@ GpuAligner::GpuAligner()
 
 //Destructor
 GpuAligner::~GpuAligner() {
-    CU_CHECK_ERR(cudaFree(poreModelLevelMeanDev));
     CU_CHECK_ERR(cudaFree(scaleDev));
     CU_CHECK_ERR(cudaFree(shiftDev));
     CU_CHECK_ERR(cudaFree(varDev));
@@ -351,15 +346,16 @@ GpuAligner::~GpuAligner() {
     CU_CHECK_ERR(cudaFree(eventStartsDev));
     CU_CHECK_ERR(cudaFree(eventStridesDev));
     CU_CHECK_ERR(cudaFree(eventOffsetsDev));
-    CU_CHECK_ERR(cudaFree(poreModelLevelLogStdvDev));
-    CU_CHECK_ERR(cudaFree(poreModelLevelStdvDev));
     CU_CHECK_ERR(cudaFree(preFlankingDev));
     CU_CHECK_ERR(cudaFree(postFlankingDev));
     CU_CHECK_ERR(cudaFree(kmerRanksDev));
+    CU_CHECK_ERR(cudaFree(poreModelDev));
+
     CU_CHECK_ERR(cudaFreeHost(eventMeans));
     CU_CHECK_ERR(cudaFreeHost(preFlankingHost));
     CU_CHECK_ERR(cudaFreeHost(postFlankingHost));
     CU_CHECK_ERR(cudaFreeHost(kmerRanks));
+    CU_CHECK_ERR(cudaFreeHost(poreModelHost));
 
     int max_num_sequences = 8; // should be a private variable
     // Free device and host memory
@@ -444,16 +440,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     // Populate pore model buffers
     // Assume that every event sequence has the same pore model
     int num_states = event_sequences[0].pore_model->states.size();
-    std::vector<float> pore_model_level_log_stdv(num_states);
-    std::vector<float> pore_model_level_mean(num_states);
-    std::vector<float> pore_model_level_stdv(num_states);
-    for(int st=0; st<num_states; st++){
-        auto params = event_sequences[0].pore_model->states[st];
-        pore_model_level_log_stdv[st] = params.level_log_stdv; //TODO: I am seeing level log stdv and level stdv return the same value. need to investigate this.
-        pore_model_level_stdv[st] = params.level_stdv;
-        pore_model_level_mean[st] = params.level_mean;
-    }
-
     //Populating read-statistics buffers
     std::vector<float> scale(num_reads);
     std::vector<float> shift(num_reads);
@@ -482,13 +468,17 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
 
     if (poreModelInitialized == false) {
-        cudaMemcpyAsync(poreModelLevelLogStdvDev, pore_model_level_log_stdv.data(),
-                        pore_model_level_log_stdv.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpyAsync(poreModelLevelMeanDev, pore_model_level_mean.data(),
-                        pore_model_level_mean.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpyAsync(poreModelLevelStdvDev, pore_model_level_stdv.data(),
-                        pore_model_level_stdv.size() * sizeof(float), cudaMemcpyHostToDevice);
-        poreModelInitialized = true;
+          int poreModelEntriesPerState = 3;
+	  for(int st=0; st<num_states; st++){
+	    auto params = event_sequences[0].pore_model->states[st];
+	    poreModelHost[st * poreModelEntriesPerState] = params.level_mean;
+	    poreModelHost[st * poreModelEntriesPerState + 1] = params.level_stdv;
+	    poreModelHost[st * poreModelEntriesPerState + 2] = params.level_log_stdv;
+	  }
+        // copy over the pore model
+	  cudaMemcpyAsync(poreModelDev, poreModelHost,
+			  poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice); // TODO don't hardcode num kmers
+	  poreModelInitialized = true;
     }
 
     //Let's populate a host buffer with all the sequences.
@@ -543,9 +533,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                 kmerRanksDevPtr,
                 kmerRanksRCDevPtr,
                 eventOffsetsDev,
-                poreModelLevelLogStdvDev,
-                poreModelLevelStdvDev,
-                poreModelLevelMeanDev,
+                poreModelDev,							   
                 scaleDev,
                 shiftDev,
                 varDev,
