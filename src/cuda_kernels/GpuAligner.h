@@ -82,10 +82,8 @@ private:
     int * kmerRanksDev;
 
     bool poreModelInitialized;
-    // Allocate arrays for storing results, kmerRanksDev and kmerRanksRCDev
 
     std::vector<int*> kmerRanksDevPointers;
-    std::vector<int*> kmerRanksRCDevPointers;
     std::vector<float*> returnValuesDevResultsPointers;
     std::vector<float*> returnValuesHostResultsPointers;
 

@@ -20,18 +20,20 @@ __device__ float logsumexpf(float x, float y){
 
 __device__ float lp_match_r9(int rank,
                              float mean,
-                             const float * poreModelDev,
+                             float pore_mean,
+                             float pore_stdv,
+                             float pore_log_level_stdv,
                              float scale,
                              float shift,
                              float var,
                              float logVar){
 
-    float log_inv_sqrt_2pi = log(0.3989422804014327);
+    float log_inv_sqrt_2pi = logf(0.3989422804014327);
 
     float level = mean;
-    float gaussian_mean = scale * poreModelDev[rank * 3] + shift;
-    float gaussian_stdv = poreModelDev[rank * 3 + 1] * var;
-    float gaussian_log_level_stdv = poreModelDev[rank * 3 + 2] + logVar;
+    float gaussian_mean = scale * pore_mean + shift;
+    float gaussian_stdv = pore_stdv * var;
+    float gaussian_log_level_stdv = pore_log_level_stdv + logVar;
 
     float a = (level - gaussian_mean) / gaussian_stdv;
     float emission = log_inv_sqrt_2pi - gaussian_log_level_stdv + (-0.5f * a * a);
@@ -39,21 +41,20 @@ __device__ float lp_match_r9(int rank,
 
 }
 
-__global__ void getScores(float * eventData,
-                          float * readEventsPerBase,
-                          int * numRowsPerRead,
-                          int * eventStarts,
-                          int * eventStrides,
-                          int * kmer_ranks,
-                          int * kmer_ranks_rc,
-                          int * eventOffsets, // Offset to use for getting an event IDX for a specific read (read obtained by block IDX)
-			              const float * poreModelDev,
-                          float * scaleDev,
-                          float * shiftDev,
-                          float * varDev,
-                          float * logVarDev,
-                          float * preFlankingDev,
-                          float * postFlankingDev,
+__global__ void getScores(float * const eventData,
+                          float * const readEventsPerBase,
+                          int * const numRowsPerRead,
+                          int * const eventStarts,
+                          int * const eventStrides,
+                          int * const kmerRanks,
+                          int * const eventOffsets, // Offset to use for getting an event IDX for a specific read (read obtained by block IDX)
+			              float * const poreModelDev,
+                          float * const scaleDev,
+                          float * const shiftDev,
+                          float * const varDev,
+                          float * const logVarDev,
+                          float * const preFlankingDev,
+                          float * const postFlankingDev,
                           float * returnValues) {
 
     // Initialise the prev probability row, which is the row of the DP table
@@ -90,10 +91,15 @@ __global__ void getScores(float * eventData,
     uint32_t rank;
 
     if (rc == true) {
-        rank = kmer_ranks_rc[kmerIdx];
+        rank = kmerRanks[kmerIdx + n_kmers];
     }else{
-        rank = kmer_ranks[kmerIdx];
+        rank = kmerRanks[kmerIdx];
     }
+
+    float pore_mean = poreModelDev[rank * 3];
+    float pore_stdv = poreModelDev[rank * 3 + 1];
+    float pore_log_level_stdv = poreModelDev[rank * 3 + 2];
+
 
     float p_stay = 1 - (1 / read_events_per_base);
     float p_skip = 0.0025;
@@ -116,16 +122,16 @@ __global__ void getScores(float * eventData,
     float p_km = 1.0f - p_kk;
 
     // We assign some transition probabilities. I believe this is correct and they don't vary by location in the sequence
-    float lp_mk = log(p_mk);
-    float lp_mb = log(p_mb);
-    float lp_mm_self = log(p_mm_self);
-    float lp_mm_next = log(p_mm_next);
-    float lp_bb = log(p_bb);
-    float lp_bk = log(p_bk);
-    float lp_bm_next = log(p_bm_next);
-    float lp_bm_self = log(p_bm_self);
-    float lp_kk = log(p_kk);
-    float lp_km = log(p_km);
+    float lp_mk = logf(p_mk);
+    float lp_mb = logf(p_mb);
+    float lp_mm_self = logf(p_mm_self);
+    float lp_mm_next = logf(p_mm_next);
+    float lp_bb = logf(p_bb);
+    float lp_bk = logf(p_bk);
+    float lp_bm_next = logf(p_bm_next);
+    float lp_bm_self = logf(p_bm_self);
+    float lp_kk = logf(p_kk);
+    float lp_km = logf(p_km);
 
     float lp_sm, lp_ms;
     lp_sm = lp_ms = 0.0f;
@@ -152,9 +158,11 @@ __global__ void getScores(float * eventData,
         float preFlank = preFlankingDev[e_offset + row - 1];
         float postFlank = postFlankingDev[e_offset + row - 1];
 
-	    float lp_emission_m = lp_match_r9(rank,
+        float lp_emission_m = lp_match_r9(rank,
                                           event_mean,
-                                          poreModelDev,
+                                          pore_mean,
+                                          pore_stdv,
+                                          pore_log_level_stdv,
                                           scale,
                                           shift,
                                           var,
@@ -304,7 +312,6 @@ GpuAligner::GpuAligner()
     int max_num_sequences = 8;
     int max_sequence_length = 50;
     kmerRanksDevPointers.resize(max_num_sequences);
-    kmerRanksRCDevPointers.resize(max_num_sequences);
     returnValuesDevResultsPointers.resize(max_num_sequences);
     returnValuesHostResultsPointers.resize(max_num_sequences);
 
@@ -315,17 +322,14 @@ GpuAligner::GpuAligner()
 
     for (int i =0; i<max_num_sequences;i++){
         int * kmerRanksDev;
-        int * kmerRanksRCDev;
         float * returnValuesDev;
         float * returnedValues;
 
         CU_CHECK_ERR(cudaMalloc((void**)&returnValuesDev, sizeof(float) * max_num_reads)); //one score per read
         CU_CHECK_ERR(cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault));
         CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, max_n_rows * sizeof(int)));
-        CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksRCDev, max_n_rows * sizeof(int)));
 
         kmerRanksDevPointers[i] = kmerRanksDev;
-        kmerRanksRCDevPointers[i] = kmerRanksRCDev;
         returnValuesDevResultsPointers[i] = returnValuesDev;
         returnValuesHostResultsPointers[i] = returnedValues;
 
@@ -501,7 +505,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
         for(size_t ki = 0; ki < sequenceLength; ++ki) {
             kmerRanks[ki + kmerOffset] = sequence.get_kmer_rank(ki, k, true);
         }
-        kmerRanksRCDevPointers[i] = kmerRanksDev + kmerOffset;
         kmerOffset += sequenceLength;
     }
 
@@ -512,7 +515,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     for (size_t i =0; i < sequences.size();i++){
 
         int * kmerRanksDevPtr = kmerRanksDevPointers[i];
-        int * kmerRanksRCDevPtr = kmerRanksRCDevPointers[i];
 
         float * returnValuesDev = returnValuesDevResultsPointers[i];
 
@@ -531,7 +533,6 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
                 eventStartsDev,
                 eventStridesDev,
                 kmerRanksDevPtr,
-                kmerRanksRCDevPtr,
                 eventOffsetsDev,
                 poreModelDev,							   
                 scaleDev,

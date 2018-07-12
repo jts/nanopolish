@@ -287,18 +287,12 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                           int region_end,
                                                           uint32_t alignment_flags)
 {
-    auto start = std::chrono::high_resolution_clock::now();
-
+    printf("In the outer loop, %i, %i\n",region_start, region_end);
     std::vector<Variant> out_variants;
-    std::vector<Variant> out_variants_gpu;
 
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
-
-
-    auto scoring = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
-    auto gpu_exec = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
 
     GpuAligner aligner;
 
@@ -355,8 +349,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                  calling_start,
                                  alignments.get_reference_substring(contig, calling_start, calling_end));
 
-        auto t0_gpu = std::chrono::high_resolution_clock::now();
-
         if (opt::gpu){
             std::vector<Variant> scoredVariants = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
                                                                           alignment_flags, opt::screen_score_threshold,
@@ -375,7 +367,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                                    alignment_flags,
                                                                    opt::screen_score_threshold,
                                                                    opt::methylation_types);
-                auto t1 = std::chrono::high_resolution_clock::now();
                 scored_variant.info = "";
                 if (scored_variant.quality > 0) {
                     out_variants.push_back(scored_variant);
@@ -383,15 +374,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             }
         }
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
-
-    auto screening = std::chrono::duration_cast<std::chrono::milliseconds>(scoring).count();
-
-    auto gpu_screening = std::chrono::duration_cast<std::chrono::milliseconds>(gpu_exec).count();
-
     return out_variants;
 }
 
