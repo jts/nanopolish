@@ -287,7 +287,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                           int region_end,
                                                           uint32_t alignment_flags)
 {
-    printf("In the outer loop, %i, %i\n",region_start, region_end);
     std::vector<Variant> out_variants;
 
     std::string contig = alignments.get_region_contig();
