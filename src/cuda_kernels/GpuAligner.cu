@@ -6,6 +6,10 @@
 
 #define MAX_STATES 128
 
+#define EXPAND_TO_STRING(X) #X
+#define TO_STRING(X) EXPAND_TO_STRING(X)
+#define CU_CHECK_ERR(X) if (X != cudaSuccess){printf("CUDA error: %s at line %s\n", cudaGetErrorString(X), TO_STRING(__LINE__));}
+
 __device__ float logsumexpf(float x, float y){
     if(x == -INFINITY && y == -INFINITY){
         return -INFINITY;
@@ -278,33 +282,28 @@ GpuAligner::GpuAligner()
 
     poreModelInitialized = false;
 
-    cudaMalloc((void**)&poreModelLevelMeanDev, numModelElements * sizeof(float));
-    cudaMalloc((void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float));
-    cudaMalloc((void**)&poreModelLevelStdvDev, numModelElements * sizeof(float));
-
-    cudaMalloc((void**)&scaleDev, max_num_reads * sizeof(float));
-    cudaMalloc((void**)&shiftDev, max_num_reads * sizeof(float));
-    cudaMalloc((void**)&varDev, max_num_reads * sizeof(float));
-    cudaMalloc((void**)&logVarDev, max_num_reads * sizeof(float));
-
-    cudaMalloc( (void**)&eventsPerBaseDev, max_num_reads * sizeof(float));
+    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelMeanDev, numModelElements * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelLogStdvDev, numModelElements * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&poreModelLevelStdvDev, numModelElements * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&scaleDev, max_num_reads * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&shiftDev, max_num_reads * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&varDev, max_num_reads * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc((void**)&logVarDev, max_num_reads * sizeof(float)));
+    CU_CHECK_ERR(cudaMalloc( (void**)&eventsPerBaseDev, max_num_reads * sizeof(float)));
 
     int max_n_rows = 100;
     int maxBuffer = 50000 * sizeof(float);  //TODO: allocate more smartly
 
-    cudaMalloc((void**)&numRowsDev, max_n_rows * sizeof(int));
-    cudaMalloc((void**)&eventStartsDev, maxBuffer);
-    cudaMalloc((void**)&eventStridesDev, maxBuffer);
-    cudaMalloc((void**)&eventOffsetsDev, maxBuffer);
-
-    cudaMalloc((void**)&eventMeansDev, maxBuffer);
-    cudaMalloc((void**)&preFlankingDev, maxBuffer);
-    cudaMalloc((void**)&postFlankingDev, maxBuffer);
-
-    //Allocate a host buffer to store the event means, pre and post-flank data
-    cudaHostAlloc(&eventMeans, maxBuffer , cudaHostAllocDefault);
-    cudaHostAlloc(&preFlankingHost, maxBuffer, cudaHostAllocDefault);
-    cudaHostAlloc(&postFlankingHost, maxBuffer, cudaHostAllocDefault);
+    CU_CHECK_ERR(cudaMalloc((void**)&numRowsDev, max_n_rows * sizeof(int)));
+    CU_CHECK_ERR(cudaMalloc((void**)&eventStartsDev, maxBuffer));
+    CU_CHECK_ERR(cudaMalloc((void**)&eventStridesDev, maxBuffer));
+    CU_CHECK_ERR(cudaMalloc((void**)&eventOffsetsDev, maxBuffer));
+    CU_CHECK_ERR(cudaMalloc((void**)&eventMeansDev, maxBuffer));
+    CU_CHECK_ERR(cudaMalloc((void**)&preFlankingDev, maxBuffer));
+    CU_CHECK_ERR(cudaMalloc((void**)&postFlankingDev, maxBuffer));
+    CU_CHECK_ERR(cudaHostAlloc(&eventMeans, maxBuffer , cudaHostAllocDefault));
+    CU_CHECK_ERR(cudaHostAlloc(&preFlankingHost, maxBuffer, cudaHostAllocDefault));
+    CU_CHECK_ERR(cudaHostAlloc(&postFlankingHost, maxBuffer, cudaHostAllocDefault));
 
     int max_num_sequences = 8;
     int max_sequence_length = 50;
@@ -324,11 +323,10 @@ GpuAligner::GpuAligner()
         float * returnValuesDev;
         float * returnedValues;
 
-        cudaMalloc((void**)&returnValuesDev, sizeof(float) * max_num_reads); //one score per read
-        cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault);
-
-        cudaMalloc((void**)&kmerRanksDev, max_n_rows * sizeof(int));
-        cudaMalloc((void**)&kmerRanksRCDev, max_n_rows * sizeof(int));
+        CU_CHECK_ERR(cudaMalloc((void**)&returnValuesDev, sizeof(float) * max_num_reads)); //one score per read
+        CU_CHECK_ERR(cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault));
+        CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, max_n_rows * sizeof(int)));
+        CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksRCDev, max_n_rows * sizeof(int)));
 
         kmerRanksDevPointers[i] = kmerRanksDev;
         kmerRanksRCDevPointers[i] = kmerRanksRCDev;
@@ -342,34 +340,33 @@ GpuAligner::GpuAligner()
 
 //Destructor
 GpuAligner::~GpuAligner() {
-    cudaFree(poreModelLevelMeanDev);
-    cudaFree(scaleDev);
-    cudaFree(shiftDev);
-    cudaFree(varDev);
-    cudaFree(logVarDev);
-    cudaFree(eventMeansDev);
-    cudaFree(eventsPerBaseDev);
-    cudaFree(numRowsDev);
-    cudaFree(eventStartsDev);
-    cudaFree(eventStridesDev);
-    cudaFree(eventOffsetsDev);
-    cudaFree(poreModelLevelLogStdvDev);
-    cudaFree(poreModelLevelStdvDev);
-    cudaFree(preFlankingDev);
-    cudaFree(postFlankingDev);
-
-    cudaFreeHost(eventMeans);
-    cudaFreeHost(preFlankingHost);
-    cudaFreeHost(postFlankingHost);
+    CU_CHECK_ERR(cudaFree(poreModelLevelMeanDev));
+    CU_CHECK_ERR(cudaFree(scaleDev));
+    CU_CHECK_ERR(cudaFree(shiftDev));
+    CU_CHECK_ERR(cudaFree(varDev));
+    CU_CHECK_ERR(cudaFree(logVarDev));
+    CU_CHECK_ERR(cudaFree(eventMeansDev));
+    CU_CHECK_ERR(cudaFree(eventsPerBaseDev));
+    CU_CHECK_ERR(cudaFree(numRowsDev));
+    CU_CHECK_ERR(cudaFree(eventStartsDev));
+    CU_CHECK_ERR(cudaFree(eventStridesDev));
+    CU_CHECK_ERR(cudaFree(eventOffsetsDev));
+    CU_CHECK_ERR(cudaFree(poreModelLevelLogStdvDev));
+    CU_CHECK_ERR(cudaFree(poreModelLevelStdvDev));
+    CU_CHECK_ERR(cudaFree(preFlankingDev));
+    CU_CHECK_ERR(cudaFree(postFlankingDev));
+    CU_CHECK_ERR(cudaFree(kmerRanksDev));
+    CU_CHECK_ERR(cudaFreeHost(eventMeans));
+    CU_CHECK_ERR(cudaFreeHost(preFlankingHost));
+    CU_CHECK_ERR(cudaFreeHost(postFlankingHost));
+    CU_CHECK_ERR(cudaFreeHost(kmerRanks));
 
     int max_num_sequences = 8; // should be a private variable
     // Free device and host memory
     for (int i =0; i<max_num_sequences; i++) {
-        cudaStreamDestroy(streams[i]);
-        cudaFree(kmerRanksRCDevPointers[i]);
-        cudaFree(kmerRanksDevPointers[i]);
-        cudaFree(returnValuesDevResultsPointers[i]);
-        cudaFreeHost(returnValuesHostResultsPointers[i]);
+      CU_CHECK_ERR(cudaStreamDestroy(streams[i]));
+      CU_CHECK_ERR(cudaFree(returnValuesDevResultsPointers[i]));
+      CU_CHECK_ERR(cudaFreeHost(returnValuesHostResultsPointers[i]));
     }
 
 }
