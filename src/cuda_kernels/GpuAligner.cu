@@ -458,18 +458,18 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     }
 
     // Copy to the device all buffers shared across kmer sequences.
-    cudaMemcpyAsync( scaleDev, scale.data(), scale.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( shiftDev, shift.data(), shift.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( eventMeansDev, eventMeans, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( preFlankingDev, preFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( postFlankingDev, postFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice );
-    cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice );
+    cudaMemcpyAsync( scaleDev, scale.data(), scale.size() * sizeof(float), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( shiftDev, shift.data(), shift.size() * sizeof(float), cudaMemcpyHostToDevice,  streams[0]);
+    cudaMemcpyAsync( varDev, var.data(), var.size() * sizeof(float), cudaMemcpyHostToDevice, streams[0]);
+    cudaMemcpyAsync( logVarDev, log_var.data(), log_var.size() * sizeof(float), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( eventsPerBaseDev, eventsPerBase.data(), eventsPerBase.size() * sizeof(float), cudaMemcpyHostToDevice, streams[0]);
+    cudaMemcpyAsync( eventMeansDev, eventMeans, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( preFlankingDev, preFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( postFlankingDev, postFlankingHost, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( numRowsDev, n_rows.data(), n_rows.size() * sizeof(int), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( eventStartsDev, e_starts.data(), e_starts.size() * sizeof(int), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( eventStridesDev, event_strides.data(), event_strides.size() * sizeof(int), cudaMemcpyHostToDevice, streams[0] );
+    cudaMemcpyAsync( eventOffsetsDev, eventOffsets.data(), eventOffsets.size() * sizeof(int), cudaMemcpyHostToDevice, streams[0] );
 
     if (poreModelInitialized == false) {
           int poreModelEntriesPerState = 3;
@@ -481,7 +481,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
 	  }
         // copy over the pore model
 	  cudaMemcpyAsync(poreModelDev, poreModelHost,
-			  poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice); // TODO don't hardcode num kmers
+			  poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice, streams[0]); // TODO don't hardcode num kmers
 	  poreModelInitialized = true;
     }
 
@@ -509,7 +509,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     }
 
     cudaMemcpyAsync(kmerRanksDev, kmerRanks, numKmers * sizeof(int) * 2,
-                    cudaMemcpyHostToDevice);
+                    cudaMemcpyHostToDevice, streams[0]);
 
     uint8_t  MAX_NUM_KMERS = 30;
     for (size_t i =0; i < sequences.size();i++){
@@ -554,7 +554,9 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
         }
     }
 
-    cudaDeviceSynchronize();
+    for (size_t i = 0; i<sequences.size();i++){
+      cudaStreamSynchronize(streams[i]);
+    }
 
     for (size_t i =0; i<sequences.size();i++) {
         for(int readIdx=0; readIdx<num_reads;readIdx++) {
