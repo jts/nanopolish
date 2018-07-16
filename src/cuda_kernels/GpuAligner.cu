@@ -210,10 +210,6 @@ __global__ void getScores(float * const eventData,
         sum = HMT_FROM_SAME_M;
         sum = logsumexpf(sum, HMT_FROM_SAME_B);
         sum += lp_emission_b;
-        //sum = logsumexpf(sum, HMT_FROM_PREV_B);
-        //sum = logsumexpf(sum, HMT_FROM_PREV_K);
-        //sum = logsumexpf(sum, HMT_FROM_SOFT);
-        //sum = logsumexpf(sum, HMT_FROM_PREV_M);
 
         float newBadEventScore = sum;
 
@@ -232,9 +228,6 @@ __global__ void getScores(float * const eventData,
         sum = HMT_FROM_PREV_M;
         sum = logsumexpf(sum, HMT_FROM_PREV_B);
         sum = logsumexpf(sum, HMT_FROM_PREV_K);
-        //sum = logsumexpf(sum, HMT_FROM_SAME_M);
-        //sum = logsumexpf(sum, HMT_FROM_SAME_B);
-        //sum = logsumexpf(sum, HMT_FROM_SOFT);
 
         float newSkipScore = sum;
 
