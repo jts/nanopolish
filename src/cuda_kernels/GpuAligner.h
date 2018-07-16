@@ -43,6 +43,12 @@
 #ifndef GPU_ALIGNER_H
 #define GPU_ALIGNER_H
 
+//Data to be scored
+typedef struct {
+    std::vector<HMMInputSequence> stateSequences;
+    std::vector<HMMInputData> rawData;
+} ScoreSet;
+
 class GpuAligner
 {
 public:
@@ -56,6 +62,8 @@ public:
     std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
     std::vector<HMMInputData> event_sequences,
             uint32_t alignment_flags);
+    std::vector<std::vector<std::vector<double>>> scoreKernelMod(std::vector<ScoreSet> scoreSets,
+                                                                             uint32_t alignment_flags);
 private:
     float* scaleDev;
     float* shiftDev;
@@ -89,4 +97,5 @@ private:
 
     cudaStream_t streams[8]; // TODO 8 should not be hardcoded here
 };
+
 #endif // GPU_ALIGNER_H

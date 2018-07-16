@@ -364,6 +364,75 @@ GpuAligner::~GpuAligner() {
 
 }
 
+std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::vector<ScoreSet> scoreSets,
+                                                                      uint32_t alignment_flags){
+    std::vector<std::vector<std::vector<double>>> result(scoreSets.size());
+
+    int numScores = 0;
+    int numScoreSets = scoreSets.size(); // the number of sequence/read sets to be scored
+
+    std::vector<std::vector<int>> read_lengths(numScoreSets);
+    std::vector<std::vector<int>> e_starts(numScoreSets);
+    std::vector<std::vector<int>> event_strides(numScoreSets);
+
+    //Each sequence-event combination is its own thread and requires the following information:
+    //1. Event offsets (raw data offset)
+    //2. Sequence offset
+    //3. Event length (How long it will need to run before computing the score)
+    //4. Other sequence/event specific data
+
+    // STEP1. Unpack read data.
+    // STEP2. Unpack sequence data.
+    // STEP3. Prepare buffers for job (thread) - specific data e.g read lengths, sequence lengths, read and sequence indexes etc. This can also be done on the fly.
+
+    size_t rawReadOffset = 0;
+    size_t numEventsTotal = 0;
+    std::vector<int> eventOffsets; //offsets of all the raw reads
+
+    for (int scoreSetIdx=0; scoreSetIdx < numScoreSets; scoreSetIdx++){
+        auto &scoreSet = scoreSets[scoreSetIdx];
+
+        //First unpack per-read data from the scoreSet
+        for (int eventSequenceIdx=0; eventSequenceIdx < scoreSet.rawData.size();eventSequenceIdx++){
+            auto e = scoreSet.rawData[eventSequenceIdx];
+            int e_start = e.event_start_idx;
+
+            e_starts[scoreSetIdx].push_back(e_start);
+
+            int e_stride = e.event_stride;
+            event_strides[scoreSetIdx].push_back(e_stride);
+
+            uint32_t e_end = e.event_stop_idx;
+            uint32_t n_events = 0;
+            if(e_end > e_start)
+                n_events = e_end - e_start + 1;
+            else
+                n_events = e_start - e_end + 1;
+
+            read_lengths[scoreSetIdx].push_back(n_events);
+            numEventsTotal += n_events;
+
+            eventOffsets.push_back(rawReadOffset);
+
+            std::vector<float> pre_flank = make_pre_flanking(e, e_start, n_events);
+            std::vector<float> post_flank = make_post_flanking(e, e_start, n_events);
+
+            for (int i=0;i<n_events;i++) {
+                auto event_idx =  e_start + i * e_stride;
+                auto scaled = e.read->get_drift_scaled_level(event_idx, e.strand); // send the data in drift scaled
+                eventMeans[rawReadOffset + i] = scaled;
+
+                //populate the pre/post-flanking data, since it has a 1-1 correspondence with events
+                preFlankingHost[rawReadOffset + i] = pre_flank[i];
+                postFlankingHost[rawReadOffset + i] = post_flank[i];
+                }
+            rawReadOffset += n_events;
+        }
+    }
+
+    return result;
+}
+
 std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSequence> sequences,
                                                 std::vector<HMMInputData> event_sequences,
                                                 uint32_t alignment_flags){
@@ -560,6 +629,7 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
     return results;
 }
 
+
 std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
                                                         Haplotype base_haplotype,
                                                         std::vector<HMMInputData> event_sequences,
@@ -594,6 +664,23 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> i
 
     if (!event_sequences.empty()) {
         std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
+
+        // Now try it with the new method
+        ScoreSet s = {
+                sequences,
+                event_sequences
+        };
+
+        std::vector<ScoreSet>  scoreSets(1,s);
+
+        std::vector<std::vector<std::vector<double>>> scoresMod = scoreKernelMod(scoreSets, alignment_flags);
+
+//        for (int i=0; i<scores[0].size();i++){
+//            printf("Index: %i score (normal): %f\n", i, scores[0][i]);
+//            printf("Index: %i score (modified): %f\n", i, scoresMod[0][0][i]);
+//        }
+
+
         uint32_t numScores = scores[0].size();
         for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
             double totalScore = 0.0;
