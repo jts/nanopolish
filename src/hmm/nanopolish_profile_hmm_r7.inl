@@ -306,9 +306,13 @@ inline float profile_hmm_fill_generic_r7(const HMMInputSequence& _sequence,
     assert( data.pore_model->states.size() == sequence.get_num_kmer_ranks(k) );
 
     std::vector<uint32_t> kmer_ranks(num_kmers);
-    for(size_t ki = 0; ki < num_kmers; ++ki)
-        kmer_ranks[ki] = sequence.get_kmer_rank(ki, k, data.rc);
-
+    for(size_t ki = 0; ki < num_kmers; ++ki) {
+        int rank = sequence.get_kmer_rank(ki, k, data.rc);
+        if(rank>4096){
+            printf("Rank: %i", rank);
+        }
+        kmer_ranks[ki] = rank;
+    }
     size_t num_events = output.get_num_rows() - 1;
 
     std::vector<float> pre_flank = make_pre_flanking_r7(data, parameters, e_start, num_events);

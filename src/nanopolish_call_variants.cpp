@@ -292,16 +292,16 @@ void singleLocusBaseEditCandidate(int i,
                                   GpuAligner &aligner,
                                   std::mutex &outVariantsMutex
 ){
-
+try {
     int calling_start = i - opt::screen_flanking_sequence;
     int calling_end = i + 1 + opt::screen_flanking_sequence;
 
-    if(!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
+    if (!alignments.are_coordinates_valid(contig, calling_start, calling_end)) {
         return;
     }
 
     std::vector<Variant> tmp_variants;
-    for(size_t j = 0; j < 4; ++j) {
+    for (size_t j = 0; j < 4; ++j) {
         // Substitutions
         Variant v;
         v.ref_name = contig;
@@ -309,14 +309,14 @@ void singleLocusBaseEditCandidate(int i,
         v.ref_seq = alignments.get_reference_substring(contig, i, i);
         v.alt_seq = "ACGT"[j];
 
-        if(v.ref_seq != v.alt_seq) {
+        if (v.ref_seq != v.alt_seq) {
             tmp_variants.push_back(v);
         }
 
         // Insertions
         v.alt_seq = v.ref_seq + "ACGT"[j];
         // ignore insertions of the type "A" -> "AA" as these are redundant
-        if(v.alt_seq[1] != v.ref_seq[0]) {
+        if (v.alt_seq[1] != v.ref_seq[0]) {
             tmp_variants.push_back(v);
         }
     }
@@ -329,7 +329,7 @@ void singleLocusBaseEditCandidate(int i,
     del.alt_seq = del.ref_seq[0];
 
     // ignore deletions of the type "AA" -> "A" as these are redundant
-    if(del.alt_seq[0] != del.ref_seq[1]) {
+    if (del.alt_seq[0] != del.ref_seq[1]) {
         tmp_variants.push_back(del);
     }
 
@@ -344,16 +344,18 @@ void singleLocusBaseEditCandidate(int i,
                              calling_start,
                              alignments.get_reference_substring(contig, calling_start, calling_end));
 
-    if (opt::gpu){
-      std::vector<Variant> scoredVariants = aligner.variantScoresThresholded(tmp_variants, test_haplotype, event_sequences,
-                                                                               alignment_flags, opt::screen_score_threshold,
+    if (opt::gpu) {
+        std::vector<Variant> scoredVariants = aligner.variantScoresThresholded(tmp_variants, test_haplotype,
+                                                                               event_sequences,
+                                                                               alignment_flags,
+                                                                               opt::screen_score_threshold,
                                                                                opt::methylation_types);
-      for (auto variant: scoredVariants){
-          if (variant.quality > 0) {
-            std::lock_guard<std::mutex> lock(outVariantsMutex);
-            out_variants.push_back(variant);
-          }
-      }
+        for (auto variant: scoredVariants) {
+            if (variant.quality > 0) {
+                std::lock_guard<std::mutex> lock(outVariantsMutex);
+                out_variants.push_back(variant);
+            }
+        }
     } else {
         for (const Variant &v : tmp_variants) {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -369,6 +371,9 @@ void singleLocusBaseEditCandidate(int i,
             }
         }
     }
+}catch (std::exception &e){
+    printf("Exception in thread! %s\n", e.what());
+}
 }
 
 // Given the input region, calculate all single base edits to the current assembly
@@ -376,74 +381,79 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
                                                           int region_start,
                                                           int region_end,
                                                           uint32_t alignment_flags){
-    std::vector<Variant> out_variants;
-    std::string contig = alignments.get_region_contig();
-    std::mutex outVariantsMutex;
+    try {
+        std::vector<Variant> out_variants;
+        std::string contig = alignments.get_region_contig();
+        std::mutex outVariantsMutex;
 
-    // Add all positively-scoring single-base changes into the candidate set
-    if (opt::gpu){
-        size_t num_workers = 1;
-        std::vector<GpuAligner> gpuAligners(num_workers);
+        // Add all positively-scoring single-base changes into the candidate set
+        if (opt::gpu) {
+            size_t num_workers = 1;
+            std::vector<GpuAligner> gpuAligners(num_workers);
 
-        //std::vector<std::thread> workerThreads(num_workers);
-        std::vector<std::future<void>> handles(num_workers);
-        int nextLocus = region_start;
+            //std::vector<std::thread> workerThreads(num_workers);
+            std::vector<std::future<void>> handles(num_workers);
+            int nextLocus = region_start;
 
-        //Initialise workers
-        for (int workerIdx=0; workerIdx<num_workers; workerIdx++) {
-          auto aligner = std::ref(gpuAligners[workerIdx]);
-          if (nextLocus < region_end){
-              handles[workerIdx] = std::async(std::launch::async,
-                         singleLocusBaseEditCandidate,
-                         nextLocus,
-                         std::ref(alignments),
-                         alignment_flags,
-                         std::ref(out_variants),
-                         std::ref(contig),
-                         aligner,
-                         std::ref(outVariantsMutex));
-          nextLocus++;
-          }
-        }
-
-        //Round robin the workers until done
-        while(nextLocus < region_end){
-          for (int i = 0; i<num_workers; i++){
-              auto status = handles[i].wait_for(std::chrono::microseconds(100));
-              if (status == std::future_status::ready && (nextLocus < region_end)) {
-                  auto aligner = std::ref(gpuAligners[i]);
-                  handles[i].get();
-                  handles[i] = std::async(std::launch::async,
-                             singleLocusBaseEditCandidate,
-                             nextLocus,
-                             std::ref(alignments),
-                             alignment_flags,
-                             std::ref(out_variants),
-                             std::ref(contig),
-                             aligner,
-                             std::ref(outVariantsMutex));
-                  nextLocus++;
+            //Initialise workers
+            for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
+                auto aligner = std::ref(gpuAligners[workerIdx]);
+                if (nextLocus < region_end) {
+                    handles[workerIdx] = std::async(std::launch::async,
+                                                    singleLocusBaseEditCandidate,
+                                                    nextLocus,
+                                                    std::ref(alignments),
+                                                    alignment_flags,
+                                                    std::ref(out_variants),
+                                                    std::ref(contig),
+                                                    aligner,
+                                                    std::ref(outVariantsMutex));
+                    nextLocus++;
                 }
             }
-        }
 
-        //Synchronize the remaining ones
-        for (int workerIdx=0; workerIdx<num_workers; workerIdx++) {
-            handles[workerIdx].wait();
+            //Round robin the workers until done
+            while (nextLocus < region_end) {
+                for (int i = 0; i < num_workers; i++) {
+                    auto status = handles[i].wait_for(std::chrono::microseconds(100));
+                    if (status == std::future_status::ready && (nextLocus < region_end)) {
+                        auto aligner = std::ref(gpuAligners[i]);
+                        handles[i].get();
+                        handles[i] = std::async(std::launch::async,
+                                                singleLocusBaseEditCandidate,
+                                                nextLocus,
+                                                std::ref(alignments),
+                                                alignment_flags,
+                                                std::ref(out_variants),
+                                                std::ref(contig),
+                                                aligner,
+                                                std::ref(outVariantsMutex));
+                        nextLocus++;
+                    }
+                }
+            }
+
+            //Synchronize the remaining ones
+            for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
+                handles[workerIdx].wait();
+            }
+        } else {
+            GpuAligner aligner; //TODO: temporary - refactor to get rid of this
+            for (size_t i = region_start; i < region_end; ++i) {
+                singleLocusBaseEditCandidate(i,
+                                             std::ref(alignments),
+                                             alignment_flags,
+                                             std::ref(out_variants),
+                                             std::ref(contig),
+                                             std::ref(aligner),
+                                             std::ref(outVariantsMutex));
+            }
         }
-    } else{
-      GpuAligner aligner; //TODO: temporary - refactor to get rid of this
-      for(size_t i = region_start; i < region_end; ++i){
-	    singleLocusBaseEditCandidate(i,
-				     std::ref(alignments),
-				     alignment_flags,
-				     std::ref(out_variants),
-				     std::ref(contig),
-                     std::ref(aligner),
-				     std::ref(outVariantsMutex));
-      }
+        return out_variants;
     }
-    return out_variants;
+    catch(std::exception &e){
+        printf("Excpetion in calling thread: %s\n", e.what());
+    }
 }
 
 // Given the input set of variants, calculate the variants that have a positive score

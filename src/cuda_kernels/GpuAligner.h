@@ -45,8 +45,8 @@
 
 //Data to be scored
 typedef struct {
-    std::vector<HMMInputSequence> stateSequences;
-    std::vector<HMMInputData> rawData;
+    std::vector<HMMInputSequence> &stateSequences;
+    std::vector<HMMInputData> &rawData;
 } ScoreSet;
 
 class GpuAligner
@@ -85,6 +85,30 @@ private:
     float* poreModelLevelMeanDev;
     float* poreModelDev;
     float* poreModelHost;
+    int * sequenceOffsetsDev;
+
+    // NEW - for MOD kernel
+    int * readLengthsHost;
+    int * eventStartsHost;
+    int * eventStridesHost;
+    float * eventsPerBaseHost;
+    float * scaleHost;
+    float * shiftHost;
+    float * varHost;
+    float * logVarHost;
+    int * sequenceLengthsHost;
+    int * eventOffsetsHost;
+    int * sequenceOffsetsHost;
+    int * readIdxHost;
+    int * seqIdxHost;
+
+    int * readLengthsDev;
+    int * sequenceLengthsDev;
+    int * readIdxDev;
+    int * seqIdxDev;
+
+    float * returnValuesHost;
+    float * scoresDev;
 
     int * kmerRanks;
     int * kmerRanksDev;
