@@ -15,7 +15,7 @@ CFLAGS ?= -std=c99 -O0
 CXX ?= g++
 CC ?= gcc
 NVCC = nvcc
-NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0include -O0 -use_fast_math --default-stream per-thread -restrict -g -G
+NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0include -O0 -use_fast_math --default-stream per-thread -restrict -g
 CURTFLAGS ?= -L/usr/local/cuda-9.0/lib64 -lcudart
 
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
