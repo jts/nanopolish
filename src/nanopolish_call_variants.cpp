@@ -388,7 +388,7 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
 
         // Add all positively-scoring single-base changes into the candidate set
         if (opt::gpu) {
-            size_t num_workers = 1;
+            size_t num_workers = 8;
             std::vector<GpuAligner> gpuAligners(num_workers);
 
             //std::vector<std::thread> workerThreads(num_workers);

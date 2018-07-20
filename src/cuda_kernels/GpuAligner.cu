@@ -4,7 +4,7 @@
 #include <vector>
 #include "nanopolish_profile_hmm_r9.h"
 
-#define MAX_STATES 512
+#define MAX_STATES 256
 
 #define EXPAND_TO_STRING(X) #X
 #define TO_STRING(X) EXPAND_TO_STRING(X)
@@ -59,6 +59,7 @@ __global__ void getScoresMod (float * poreModelDev,
                               int * kmerRanksDev,
                               int * seqIdxDev,
                               int * readIdxDev,
+                              int numScores,
                               float * returnValuesDev){
 
     bool debug = false;
@@ -67,213 +68,218 @@ __global__ void getScoresMod (float * poreModelDev,
     }
 
     // get buffer indices
-    int scoreIdx = threadIdx.x;
-    int readIdx = readIdxDev[scoreIdx];
-    int seqIdx = seqIdxDev[scoreIdx];
+    int scoreIdx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // get read statistics
-    int numEvents = readLengthsDev[readIdx];
-    int readOffset = eventOffsetsDev[readIdx];
-    float read_events_per_base = eventsPerBaseDev[readIdx];
-    int e_start = eventStartsDev[readIdx]; // Event start for read
-    int e_stride = eventStridesDev[readIdx];
-    int e_offset = eventOffsetsDev[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
-    float scale = scaleDev[readIdx];
-    float shift = shiftDev[readIdx];
-    float var = varDev[readIdx];
-    float logVar = logVarDev[readIdx];
+    if (scoreIdx < numScores) {
 
-    // get sequence statistics
-    int numKmers = sequenceLengthsDev[seqIdx];
-    int seqOffset = sequenceOffsetsDev[seqIdx];
+        int readIdx = readIdxDev[scoreIdx];
+        int seqIdx = seqIdxDev[scoreIdx];
 
-    printf("This is thread %i, seqIdx is %i, readIdx is %i, numKmers is %i, seqOffset is %i\n", threadIdx.x, seqIdx, readIdx, numKmers, seqOffset);
+        // get read statistics
+        int numEvents = readLengthsDev[readIdx];
+        int readOffset = eventOffsetsDev[readIdx];
+        float read_events_per_base = eventsPerBaseDev[readIdx];
+        int e_start = eventStartsDev[readIdx]; // Event start for read
+        int e_stride = eventStridesDev[readIdx];
+        int e_offset = eventOffsetsDev[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
+        float scale = scaleDev[readIdx];
+        float shift = shiftDev[readIdx];
+        float var = varDev[readIdx];
+        float logVar = logVarDev[readIdx];
 
-    int lastRowIdx = numEvents -1;
-    int lastKmerIdx = numKmers - 1;
+        // get sequence statistics
+        int numKmers = sequenceLengthsDev[seqIdx];
+        int seqOffset = sequenceOffsetsDev[seqIdx];
 
-    float returnValue = -INFINITY; //Used to sum over the last column.
-    float prevProbabilities[MAX_STATES];
+        int lastRowIdx = numEvents - 1;
+        int lastKmerIdx = numKmers - 1;
 
-    int numBlocks = numKmers + 2;
-    int numStates = numBlocks * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
+        float returnValue = -INFINITY; //Used to sum over the last column.
+        float prevProbabilities[MAX_STATES];
 
-    if(debug){
-        printf("Kernel 1 >>> Num Kmers is %i\n", numKmers);
-        printf("Kernel 1 >>> n_states %i\n", numStates);
-        printf("Kernel 1 >>> num events in read is  %i\n", numEvents);
-        printf("Kernel 1 >>> event offset is  %i\n", e_offset);
-    }
+        int numBlocks = numKmers + 2;
+        int numStates = numBlocks * PSR9_NUM_STATES; // 3 blocks per kmer and then 3 each for start and end state.
 
-    // Initialise the prev probabilities vector
-    for (int i = 0; i < numStates - PSR9_NUM_STATES; i++) {
-        prevProbabilities[i] = -INFINITY;
-    }
-    for (int i = numStates - PSR9_NUM_STATES; i < numStates; i++) {
-        prevProbabilities[i] = 0.0f;
-    }
+        if (debug) {
+            printf("Kernel 1 >>> Num Kmers is %i\n", numKmers);
+            printf("Kernel 1 >>> n_states %i\n", numStates);
+            printf("Kernel 1 >>> num events in read is  %i\n", numEvents);
+            printf("Kernel 1 >>> event offset is  %i\n", e_offset);
+        }
 
-    bool rc = false;
-    if (e_stride == -1){
-        rc = true;
-    }
+        // Initialise the prev probabilities vector
+        for (int i = 0; i < numStates - PSR9_NUM_STATES; i++) {
+            prevProbabilities[i] = -INFINITY;
+        }
+        for (int i = numStates - PSR9_NUM_STATES; i < numStates; i++) {
+            prevProbabilities[i] = 0.0f;
+        }
 
-    float p_stay = 1 - (1 / read_events_per_base);
-    float p_skip = 0.0025;
-    float p_bad = 0.001;
-    float p_bad_self = p_bad;
-    float p_skip_self = 0.3;
-    float p_mk = p_skip; // probability of not observing an event at all
-    float p_mb = p_bad; // probabilty of observing a bad event
-    float p_mm_self = p_stay; // probability of observing additional events from this k-mer
-    float p_mm_next = 1.0f - p_mm_self - p_mk - p_mb; // normal movement from state to state
-    // transitions from event split state in previous block
-    float p_bb = p_bad_self;
-    float p_bk, p_bm_next, p_bm_self;
-    p_bk = p_bm_next = p_bm_self = (1.0f - p_bb) / 3;
-    // transitions from kmer skip state in previous block
-    float p_kk = p_skip_self;
-    float p_km = 1.0f - p_kk;
-    // We assign some transition probabilities. I believe this is correct and they don't vary by location in the sequence
-    float lp_mk = logf(p_mk);
-    float lp_mb = logf(p_mb);
-    float lp_mm_self = logf(p_mm_self);
-    float lp_mm_next = logf(p_mm_next);
-    float lp_bb = logf(p_bb);
-    float lp_bk = logf(p_bk);
-    float lp_bm_next = logf(p_bm_next);
-    float lp_bm_self = logf(p_bm_self);
-    float lp_kk = logf(p_kk);
-    float lp_km = logf(p_km);
-    float lp_sm, lp_ms;
-    lp_sm = lp_ms = 0.0f;
+        bool rc = false;
+        if (e_stride == -1) {
+            rc = true;
+        }
 
-    // the penalty is controlled by the transition probability
-    float BAD_EVENT_PENALTY = 0.0f;
+        float p_stay = 1 - (1 / read_events_per_base);
+        float p_skip = 0.0025;
+        float p_bad = 0.001;
+        float p_bad_self = p_bad;
+        float p_skip_self = 0.3;
+        float p_mk = p_skip; // probability of not observing an event at all
+        float p_mb = p_bad; // probabilty of observing a bad event
+        float p_mm_self = p_stay; // probability of observing additional events from this k-mer
+        float p_mm_next = 1.0f - p_mm_self - p_mk - p_mb; // normal movement from state to state
+        // transitions from event split state in previous block
+        float p_bb = p_bad_self;
+        float p_bk, p_bm_next, p_bm_self;
+        p_bk = p_bm_next = p_bm_self = (1.0f - p_bb) / 3;
+        // transitions from kmer skip state in previous block
+        float p_kk = p_skip_self;
+        float p_km = 1.0f - p_kk;
+        // We assign some transition probabilities. I believe this is correct and they don't vary by location in the sequence
+        float lp_mk = logf(p_mk);
+        float lp_mb = logf(p_mb);
+        float lp_mm_self = logf(p_mm_self);
+        float lp_mm_next = logf(p_mm_next);
+        float lp_bb = logf(p_bb);
+        float lp_bk = logf(p_bk);
+        float lp_bm_next = logf(p_bm_next);
+        float lp_bm_self = logf(p_bm_self);
+        float lp_kk = logf(p_kk);
+        float lp_km = logf(p_km);
+        float lp_sm, lp_ms;
+        lp_sm = lp_ms = 0.0f;
 
-    //Fill out the dynamic programming table
-    for(int row=1; row<numEvents + 1;row++) {//TODO: check that numRows is correct value.
-        //row-specific values
-        int event_idx = e_start + (row - 1) * e_stride;
-        float eventMean = eventMeansDev[e_offset + row - 1];
-        float preFlank = preFlankingDev[e_offset + row - 1];
-        float postFlank = postFlankingDev[e_offset + row - 1];
+        // the penalty is controlled by the transition probability
+        float BAD_EVENT_PENALTY = 0.0f;
 
-        float lp_emission_b = BAD_EVENT_PENALTY; //TODO: Can this be taken out of the inner loop?
+        //Fill out the dynamic programming table
+        for (int row = 1; row < numEvents + 1; row++) {//TODO: check that numRows is correct value.
+            //row-specific values
+            int event_idx = e_start + (row - 1) * e_stride;
+            float eventMean = eventMeansDev[e_offset + row - 1];
+            float preFlank = preFlankingDev[e_offset + row - 1];
+            float postFlank = postFlankingDev[e_offset + row - 1];
 
-        //Initialise temp registers
-        float prevMatch = prevProbabilities[PSR9_MATCH];;
-        float prevSkip = prevProbabilities[PSR9_KMER_SKIP];
-        float prevBad = prevProbabilities[PSR9_BAD_EVENT];
+            float lp_emission_b = BAD_EVENT_PENALTY; //TODO: Can this be taken out of the inner loop?
 
-        for (int blkIdx = 1; blkIdx<numBlocks - 1; blkIdx++) {
-            int curBlockIdx = blkIdx;
-            int prevBlockIdx = curBlockIdx - 1;
-            int prevBlockOffset = PSR9_NUM_STATES * prevBlockIdx;
-            int curBlockOffset = PSR9_NUM_STATES * curBlockIdx;
+            //Initialise temp registers
+            float prevMatch = prevProbabilities[PSR9_MATCH];;
+            float prevSkip = prevProbabilities[PSR9_KMER_SKIP];
+            float prevBad = prevProbabilities[PSR9_BAD_EVENT];
 
-            int kmerIdx = blkIdx - 1; // because there is a start block with no associated kmer
-            uint32_t rank = kmerRanksDev[seqOffset + kmerIdx + (numKmers * rc)]; // TODO understand why this is segfaulting sometimes, why does kmerIdx sometimes exceed 4096
+            for (int blkIdx = 1; blkIdx < numBlocks - 1; blkIdx++) {
+                int curBlockIdx = blkIdx;
+                int prevBlockIdx = curBlockIdx - 1;
+                int prevBlockOffset = PSR9_NUM_STATES * prevBlockIdx;
+                int curBlockOffset = PSR9_NUM_STATES * curBlockIdx;
 
-            float pore_mean = poreModelDev[rank * 3];
-            float pore_stdv = poreModelDev[rank * 3 + 1];
-            float pore_log_level_stdv = poreModelDev[rank * 3 + 2];
+                int kmerIdx = blkIdx - 1; // because there is a start block with no associated kmer
+                uint32_t rank = kmerRanksDev[seqOffset + kmerIdx + (numKmers *
+                                                                    rc)]; // TODO understand why this is segfaulting sometimes, why does kmerIdx sometimes exceed 4096
 
-            float lp_emission_m = lp_match_r9(rank,
-                                              eventMean,
-                                              pore_mean,
-                                              pore_stdv,
-                                              pore_log_level_stdv,
-                                              scale,
-                                              shift,
-                                              var,
-                                              logVar);
+                float pore_mean = poreModelDev[rank * 3];
+                float pore_stdv = poreModelDev[rank * 3 + 1];
+                float pore_log_level_stdv = poreModelDev[rank * 3 + 2];
 
-            // Get all the scores for a match
-            float curMatch = prevProbabilities[curBlockOffset + PSR9_MATCH];
-            float curBad = prevProbabilities[curBlockOffset + PSR9_BAD_EVENT];
-            float curSkip = prevProbabilities[curBlockOffset + PSR9_KMER_SKIP];
+                float lp_emission_m = lp_match_r9(rank,
+                                                  eventMean,
+                                                  pore_mean,
+                                                  pore_stdv,
+                                                  pore_log_level_stdv,
+                                                  scale,
+                                                  shift,
+                                                  var,
+                                                  logVar);
 
-            float HMT_FROM_SAME_M = lp_mm_self + curMatch;
-            float HMT_FROM_PREV_M = lp_mm_next + prevMatch;
-            float HMT_FROM_SAME_B = lp_bm_self + curBad;
-            float HMT_FROM_PREV_B = lp_bm_next + prevBad;
-            float HMT_FROM_PREV_K = lp_km + prevSkip;
+                // Get all the scores for a match
+                float curMatch = prevProbabilities[curBlockOffset + PSR9_MATCH];
+                float curBad = prevProbabilities[curBlockOffset + PSR9_BAD_EVENT];
+                float curSkip = prevProbabilities[curBlockOffset + PSR9_KMER_SKIP];
 
-            // m_s is the probability of going from the start state
-            // to this kmer. The start state is (currently) only
-            // allowed to go to the first kmer. If ALLOW_PRE_CLIP
-            // is defined, we allow all events before this one to be skipped,
-            // with a penalty;
-            float HMT_FROM_SOFT = (kmerIdx == 0 &&
-                                   (event_idx == e_start ||
-                                    (HAF_ALLOW_PRE_CLIP))) ? lp_sm + preFlank : -INFINITY;
+                float HMT_FROM_SAME_M = lp_mm_self + curMatch;
+                float HMT_FROM_PREV_M = lp_mm_next + prevMatch;
+                float HMT_FROM_SAME_B = lp_bm_self + curBad;
+                float HMT_FROM_PREV_B = lp_bm_next + prevBad;
+                float HMT_FROM_PREV_K = lp_km + prevSkip;
 
-            // calculate the score
-            float sum = HMT_FROM_SAME_M;
-            sum = logsumexpf(sum, HMT_FROM_SOFT);
-            sum = logsumexpf(sum, HMT_FROM_PREV_M);
-            sum = logsumexpf(sum, HMT_FROM_SAME_B);
-            sum = logsumexpf(sum, HMT_FROM_PREV_B);
-            sum = logsumexpf(sum, HMT_FROM_PREV_K);
-            sum += lp_emission_m;
+                // m_s is the probability of going from the start state
+                // to this kmer. The start state is (currently) only
+                // allowed to go to the first kmer. If ALLOW_PRE_CLIP
+                // is defined, we allow all events before this one to be skipped,
+                // with a penalty;
+                float HMT_FROM_SOFT = (kmerIdx == 0 &&
+                                       (event_idx == e_start ||
+                                        (HAF_ALLOW_PRE_CLIP))) ? lp_sm + preFlank : -INFINITY;
 
-            float newMatchScore = sum;
+                // calculate the score
+                float sum = HMT_FROM_SAME_M;
+                sum = logsumexpf(sum, HMT_FROM_SOFT);
+                sum = logsumexpf(sum, HMT_FROM_PREV_M);
+                sum = logsumexpf(sum, HMT_FROM_SAME_B);
+                sum = logsumexpf(sum, HMT_FROM_PREV_B);
+                sum = logsumexpf(sum, HMT_FROM_PREV_K);
+                sum += lp_emission_m;
 
-            // Calculate the bad event scores
-            // state PSR9_BAD_EVENT
-            HMT_FROM_SAME_M = lp_mb + curMatch;
-            HMT_FROM_PREV_M = -INFINITY;
-            HMT_FROM_SAME_B = lp_bb + prevBad;
-            HMT_FROM_PREV_B = -INFINITY;
-            HMT_FROM_PREV_K = -INFINITY;
-            HMT_FROM_SOFT = -INFINITY;
+                float newMatchScore = sum;
 
-            sum = HMT_FROM_SAME_M;
-            sum = logsumexpf(sum, HMT_FROM_SAME_B);
-            sum += lp_emission_b;
+                // Calculate the bad event scores
+                // state PSR9_BAD_EVENT
+                HMT_FROM_SAME_M = lp_mb + curMatch;
+                HMT_FROM_PREV_M = -INFINITY;
+                HMT_FROM_SAME_B = lp_bb + prevBad;
+                HMT_FROM_PREV_B = -INFINITY;
+                HMT_FROM_PREV_K = -INFINITY;
+                HMT_FROM_SOFT = -INFINITY;
 
-            float newBadEventScore = sum;
+                sum = HMT_FROM_SAME_M;
+                sum = logsumexpf(sum, HMT_FROM_SAME_B);
+                sum += lp_emission_b;
 
-            // Write row out. prevProbabilities now becomes "current probabilities" for evaluating skips.
-            prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
-            prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
+                float newBadEventScore = sum;
 
-            //Update tmp vars
-            prevMatch = curMatch;
-            prevSkip = curSkip;
-            prevBad = prevBad;
+                // Write row out. prevProbabilities now becomes "current probabilities" for evaluating skips.
+                prevProbabilities[curBlockOffset + PSR9_MATCH] = newMatchScore;
+                prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] = newBadEventScore;
 
-            //Now do the non-skip-skip transition. This relies on the updated vector values.
-            // state PSR9_KMER_SKIP
-            HMT_FROM_PREV_M = lp_mk + prevProbabilities[prevBlockOffset + PSR9_MATCH];
-            HMT_FROM_PREV_B = lp_bk + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
-            HMT_FROM_PREV_K = lp_kk + prevProbabilities[prevBlockOffset + PSR9_KMER_SKIP];
+                //Update tmp vars
+                prevMatch = curMatch;
+                prevSkip = curSkip;
+                prevBad = prevBad;
 
-            sum = HMT_FROM_PREV_M;
-            sum = logsumexpf(sum, HMT_FROM_PREV_B);
-            sum = logsumexpf(sum, HMT_FROM_PREV_K); //TODO - this is in the 'normal' kernel instead of HMT_FROM_PREV_M - is it wrong?
-            sum = logsumexpf(sum, HMT_FROM_PREV_M); //TODO - assume this should probably be in there, but not in current
+                //Now do the non-skip-skip transition. This relies on the updated vector values.
+                // state PSR9_KMER_SKIP
+                HMT_FROM_PREV_M = lp_mk + prevProbabilities[prevBlockOffset + PSR9_MATCH];
+                HMT_FROM_PREV_B = lp_bk + prevProbabilities[prevBlockOffset + PSR9_BAD_EVENT];
+                HMT_FROM_PREV_K = lp_kk + prevProbabilities[prevBlockOffset + PSR9_KMER_SKIP];
 
-            float newSkipScore = sum;
+                sum = HMT_FROM_PREV_M;
+                sum = logsumexpf(sum, HMT_FROM_PREV_B);
+                sum = logsumexpf(sum,
+                                 HMT_FROM_PREV_K); //TODO - this is in the 'normal' kernel instead of HMT_FROM_PREV_M - is it wrong?
+                sum = logsumexpf(sum,
+                                 HMT_FROM_PREV_M); //TODO - assume this should probably be in there, but not in current
 
-            prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] = newSkipScore;
+                float newSkipScore = sum;
 
-            //post-clip transition
-            if(kmerIdx == lastKmerIdx && ( (HAF_ALLOW_POST_CLIP) || row == lastRowIdx)) {
-                float lp1 = lp_ms + prevProbabilities[curBlockOffset + PSR9_MATCH] + postFlank;
-                float lp2 = lp_ms + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] + postFlank;
-                float lp3 = lp_ms + prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] + postFlank;
+                prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] = newSkipScore;
 
-                float end = returnValue;
-                end = logsumexpf(end, lp1);
-                end = logsumexpf(end, lp2);
-                end = logsumexpf(end, lp3);
-                returnValue = end;
+                //post-clip transition
+                if (kmerIdx == lastKmerIdx && ((HAF_ALLOW_POST_CLIP) || row == lastRowIdx)) {
+                    float lp1 = lp_ms + prevProbabilities[curBlockOffset + PSR9_MATCH] + postFlank;
+                    float lp2 = lp_ms + prevProbabilities[curBlockOffset + PSR9_BAD_EVENT] + postFlank;
+                    float lp3 = lp_ms + prevProbabilities[curBlockOffset + PSR9_KMER_SKIP] + postFlank;
+
+                    float end = returnValue;
+                    end = logsumexpf(end, lp1);
+                    end = logsumexpf(end, lp2);
+                    end = logsumexpf(end, lp3);
+                    returnValue = end;
+                }
             }
         }
+        returnValuesDev[scoreIdx] = returnValue;
     }
-    returnValuesDev[scoreIdx] = returnValue;
 }
 
 __global__ void getScores(float * const eventData,
@@ -520,7 +526,7 @@ GpuAligner::GpuAligner()
     int max_num_reads = 1000;
     int readsSizeBuffer = max_num_reads * sizeof(int);
     int max_n_rows = 100;
-    int maxBuffer = 50000 * sizeof(float);  //TODO: allocate more smartly
+    int maxBuffer = 100000 * sizeof(float);  //TODO: allocate more smartly
     int max_num_sequences = 8;
     int max_sequence_length = 50;
 
@@ -586,8 +592,8 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaHostAlloc(&readIdxHost, maxBuffer, cudaHostAllocDefault));
 
     int numKmers = max_sequence_length * max_num_sequences;
-    CU_CHECK_ERR(cudaHostAlloc(&kmerRanks, numKmers  * 2 * sizeof(int), cudaHostAllocDefault));
-    CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, numKmers  * 2 * sizeof(int)));
+    CU_CHECK_ERR(cudaHostAlloc(&kmerRanks, maxBuffer , cudaHostAllocDefault));
+    CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, maxBuffer ));
 
     // Allocate host memory for model
     returnValuesHostResultsPointers.resize(max_num_sequences);
@@ -769,7 +775,6 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
             globalSequenceIdx++;
             }
-
     }
 
     // All data is now in host buffers - perform memcpys
@@ -825,11 +830,13 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
     // Launch Kernels
 
-    dim3 dimBlock(globalScoreIdx); // TODO: divide work into smaller blocks
-    dim3 dimGrid(1);
+    int blockSize = 32;
+    int numBlocks =  (globalScoreIdx + blockSize - 1 ) / blockSize;
+    dim3 dimBlock(blockSize);
+    dim3 dimGrid(numBlocks);
 
     //printf("Launching get scores mod kernel\n");
-    getScoresMod <<< dimGrid, dimBlock, MAX_STATES * sizeof(int), streams[0]>>> (poreModelDev,
+    getScoresMod <<< dimGrid, dimBlock, 0, streams[0]>>> (poreModelDev,
                                                           readLengthsDev,
                                                           eventStartsDev,
                                                           eventStridesDev,
@@ -847,6 +854,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                                                           kmerRanksDev,
                                                           seqIdxDev,
                                                           readIdxDev,
+                                                          globalScoreIdx,
                                                           scoresDev);
     cudaError_t err = cudaGetLastError();
 
@@ -866,12 +874,15 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
         int numSequences = scoreSet.stateSequences.size();
         int numReads = scoreSet.rawData.size();
         for (int seqIdx=0; seqIdx<numSequences; seqIdx++){
-            std::vector<double> seqScores;
+
+            std::vector<double> seqScores(numReads);
+
             for (int readIdx=0; readIdx<numReads; readIdx++){
                 float score = returnValuesHost[k];
-                seqScores.push_back(score);
+                seqScores[readIdx] = score;
                 k++;
             }
+
             result[scoreSetIdx].push_back(seqScores);
         }
     }
@@ -1114,17 +1125,24 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> i
     std::vector<Variant> v = input_variants;
 
     if (!event_sequences.empty()) {
-        std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
-        //std::vector<std::vector<double>> scores;
+        //std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
+
         // Now try it with the new method
         ScoreSet s = {
                 sequences,
                 event_sequences
         };
 
-        std::vector<ScoreSet>  scoreSets(1,s);
+        std::vector<ScoreSet> scoreSets;
+        scoreSets.push_back(s);
+        //scoreSets.push_back(s);
+        //scoreSets.push_back(s);
+        //scoreSets.push_back(s);
+        //scoreSets.push_back(s);
+        //scoreSets.push_back(s);
 
-        std::vector<std::vector<std::vector<double>>> scoresMod = scoreKernelMod(scoreSets, alignment_flags);
+        auto scoresMod = scoreKernelMod(scoreSets, alignment_flags);
+        std::vector<std::vector<double>> scores = scoresMod[0];
 
         uint32_t numScores = scores[0].size();
         for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
@@ -1138,7 +1156,7 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> i
             v[variantIndex].quality = totalScore;
             v[variantIndex].info = "";
         }
-    }
 
+    }
     return v;
 }
