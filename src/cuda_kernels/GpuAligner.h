@@ -45,8 +45,8 @@
 
 //Data to be scored
 typedef struct {
-    std::vector<HMMInputSequence> &stateSequences;
-    std::vector<HMMInputData> &rawData;
+    std::vector<HMMInputSequence> stateSequences;
+    std::vector<HMMInputData> rawData;
 } ScoreSet;
 
 class GpuAligner
@@ -56,13 +56,15 @@ public:
     ~GpuAligner();
 
     std::vector<Variant>
-    variantScoresThresholded(std::vector<Variant> tmp_variants, Haplotype haplotype, std::vector<HMMInputData> event_sequences,
+      variantScoresThresholded(std::vector<std::vector<Variant>>,
+			       std::vector<Haplotype>,
+			       std::vector<std::vector<HMMInputData>>,
               uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);
 
     std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
     std::vector<HMMInputData> event_sequences,
             uint32_t alignment_flags);
-    std::vector<std::vector<std::vector<double>>> scoreKernelMod(std::vector<ScoreSet> scoreSets,
+    std::vector<std::vector<std::vector<double>>> scoreKernelMod(std::vector<ScoreSet> &scoreSets,
                                                                              uint32_t alignment_flags);
 private:
     float* scaleDev;

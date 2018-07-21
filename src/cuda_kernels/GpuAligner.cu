@@ -653,7 +653,7 @@ GpuAligner::~GpuAligner() {
 
 }
 
-std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::vector<ScoreSet> scoreSets,
+std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::vector<ScoreSet> &scoreSets,
                                                                          uint32_t alignment_flags){
 
     int numEventsTotal = 0; // The number of events across all scoreSets
@@ -669,7 +669,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
     //Loop over every scoreset, filling out buffers and counters
     for (int scoreSetIdx=0; scoreSetIdx < numScoreSets; scoreSetIdx++){
-        auto &scoreSet = scoreSets[scoreSetIdx];
+        auto scoreSet = scoreSets[scoreSetIdx];
         int firstReadIdxinScoreSet = globalReadIdx;
         //Read data
         for (int eventSequenceIdx=0; eventSequenceIdx < scoreSet.rawData.size();eventSequenceIdx++){
@@ -1092,12 +1092,22 @@ std::vector<std::vector<double>> GpuAligner::scoreKernel(std::vector<HMMInputSeq
 }
 
 
-std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> input_variants,
-                                                          Haplotype base_haplotype,
-                                                          std::vector<HMMInputData> event_sequences,
+std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vector<Variant>> input_variants_vector,
+                                                          std::vector<Haplotype> base_haplotypes,
+                                                          std::vector<std::vector<HMMInputData>> event_sequences_vector,
                                                           uint32_t alignment_flags,
                                                           int screen_score_threshold,
                                                           std::vector<std::string> methylation_types) {
+  int numScoreSets = base_haplotypes.size();
+  std::vector<ScoreSet> scoreSets;
+  scoreSets.resize(numScoreSets);
+
+  for(int scoreSetIdx=0; scoreSetIdx<numScoreSets;scoreSetIdx++){
+
+    auto input_variants = input_variants_vector[scoreSetIdx];
+    auto base_haplotype = base_haplotypes[scoreSetIdx];
+    auto event_sequences = event_sequences_vector[scoreSetIdx];
+
     int numVariants = input_variants.size();
 
     std::vector<Variant> out_variants = input_variants;
@@ -1122,41 +1132,42 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<Variant> i
         sequences.push_back(variant_sequence);
     }
 
-    std::vector<Variant> v = input_variants;
+    ScoreSet s = {
+      sequences,
+      event_sequences
+    };
 
-    if (!event_sequences.empty()) {
-        //std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
+    scoreSets[scoreSetIdx] = s;
 
-        // Now try it with the new method
-        ScoreSet s = {
-                sequences,
-                event_sequences
-        };
+  }
 
-        std::vector<ScoreSet> scoreSets;
-        scoreSets.push_back(s);
-        //scoreSets.push_back(s);
-        //scoreSets.push_back(s);
-        //scoreSets.push_back(s);
-        //scoreSets.push_back(s);
-        //scoreSets.push_back(s);
+  std::vector<Variant> v;
+  if (!event_sequences_vector.empty()) {
+    //std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
 
-        auto scoresMod = scoreKernelMod(scoreSets, alignment_flags);
-        std::vector<std::vector<double>> scores = scoresMod[0];
+    auto scoresMod = scoreKernelMod(scoreSets, alignment_flags);
 
-        uint32_t numScores = scores[0].size();
-        for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
-            double totalScore = 0.0;
-            for (int k = 0; k < numScores; k++) {
-                if (fabs(totalScore) < screen_score_threshold) {
-                    double baseScore = scores[0][k];
-                    totalScore += (scores[variantIndex + 1][k] - baseScore);
-                }
-            }
-            v[variantIndex].quality = totalScore;
-            v[variantIndex].info = "";
-        }
+    // results are now ready, need to unpack them
+    for (int scoreSetIdx=0; scoreSetIdx<numScoreSets; scoreSetIdx++){
+      std::vector<std::vector<double>> scores = scoresMod[scoreSetIdx]; // scores for this candidate, including all variants and base(zeroth)
+      int numVariants = scores.size() - 1; // subtract one for the base
+      int numScores = scores[0].size();
 
+      for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
+	double totalScore = 0.0;
+	for (int k = 0; k < numScores; k++) {
+	  if (fabs(totalScore) < screen_score_threshold) {
+	    double baseScore = scores[0][k];
+	    totalScore += (scores[variantIndex + 1][k] - baseScore);
+	  }
+	}
+	// get the old variant:
+	auto unScoredVariant = input_variants_vector[scoreSetIdx][variantIndex];
+	unScoredVariant.quality = totalScore;
+	unScoredVariant.info = "";
+	v.push_back(unScoredVariant);
+      }
     }
-    return v;
+  }
+  return v;
 }
