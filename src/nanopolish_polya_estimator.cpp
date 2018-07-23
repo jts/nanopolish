@@ -505,6 +505,39 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     ViterbiOutputs v_out = segment_read_into_regions(sr);
     RegionIxs region_indices = get_region_indices(v_out.labels);
 
+    //----- compute duration profile for the read
+    EventAlignmentParameters params;
+    params.sr = &sr;
+    params.fai = fai;
+    params.hdr = hdr;
+    params.record = record;
+    params.strand_idx = 0;
+    params.read_idx = read_idx;
+
+    std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+
+    // collect durations, collapsing by k-mer
+    std::vector<double> durations_per_kmer;
+
+    size_t prev_ref_position = -1;
+    for(const auto& ea : alignment_output) {
+        float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
+        size_t ref_position = ea.ref_position;
+        if(ref_position == prev_ref_position) {
+            assert(!durations_per_kmer.empty());
+            durations_per_kmer.back() += event_duration;
+        } else {
+            durations_per_kmer.push_back(event_duration);
+            prev_ref_position = ref_position;
+        }
+    }
+    std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
+    double median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
+
+    // this is our estimator of read rate, currently we use the median duration
+    // per k-mer as its more robust to outliers caused by stalls
+    double read_rate = 1.0 / median_duration;
+
     //----- compute output values:
     // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
     // (n.b.: everything in 5'->3' order due to inversion in SquiggleRead constructor, but our
@@ -514,13 +547,22 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     double polya_sample_end = region_indices.polya;
     double adapter_sample_start = region_indices.leader;
     double leader_sample_start = region_indices.start;
+
     // calculate duration of poly(A) region (in seconds)
-    double duration = (region_indices.polya - (region_indices.adapter + 1)) / sr.sample_rate;
-    // calculate read duration (length of transcript, in seconds) and read rate:
-    double read_duration = (num_samples - polya_sample_end) / sr.sample_rate;
-    double read_rate = (sequenced_transcript.length() - suffix_clip) / read_duration;
+    double polya_duration = (region_indices.polya - (region_indices.adapter + 1)) / sr.sample_rate;
+
+    // this is an empirically determined offset to handle segmentation issues
+    // at the end of the poly-a region. On average this number of bases is
+    // erroneously deleted (positive value) or added (negative value) to the poly-A region.
+    // We need to correct the estimate by this value.
+    double segmentation_error_offset = -3;
+
     // length of the poly(A) tail, in nucleotides:
-    double polya_length = duration * read_rate;
+    double polya_length = polya_duration * read_rate + segmentation_error_offset;
+
+    // clamp length at 0
+    polya_length = std::max(0.0, polya_length);
+
     // number of cliffs observed:
     size_t num_cliffs = region_indices.cliffs;
     // estimated adapter length, in nucleotides:
