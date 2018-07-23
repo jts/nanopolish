@@ -515,6 +515,9 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     params.read_idx = read_idx;
 
     std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
+    if(alignment_output.empty()) {
+        return;
+    }
 
     // collect durations, collapsing by k-mer
     std::vector<double> durations_per_kmer;
@@ -531,6 +534,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
             prev_ref_position = ref_position;
         }
     }
+
     std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
     double median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
 
