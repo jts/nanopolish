@@ -8,7 +8,7 @@
 
 #define EXPAND_TO_STRING(X) #X
 #define TO_STRING(X) EXPAND_TO_STRING(X)
-#define CU_CHECK_ERR(X) if (X != cudaSuccess){printf("CUDA error: %s at line %s\n", cudaGetErrorString(X), TO_STRING(__LINE__));throw std::runtime_error("CUDA ERRROR");}
+#define CU_CHECK_ERR(X) if (X != cudaSuccess){printf("CUDA error: <<%s>> at line %s\n", cudaGetErrorString(X), TO_STRING(__LINE__));throw std::runtime_error("CUDA ERROR");}
 
 __device__ float logsumexpf(float x, float y){
     if(x == -INFINITY && y == -INFINITY){
@@ -523,10 +523,10 @@ __global__ void getScores(float * const eventData,
 GpuAligner::GpuAligner()
 {
     int numModelElements = 4096;
-    int max_num_reads = 1000;
+    int max_num_reads = 5000;
     int readsSizeBuffer = max_num_reads * sizeof(int);
     int max_n_rows = 100;
-    int maxBuffer = 100000 * sizeof(float);  //TODO: allocate more smartly
+    int maxBuffer = 500000 * sizeof(float);  //TODO: allocate more smartly
     int max_num_sequences = 8;
     int max_sequence_length = 50;
 
@@ -550,13 +550,11 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaMalloc( (void**)&readLengthsDev, readsSizeBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&readLengthsHost, readsSizeBuffer, cudaHostAllocDefault));
 
-
     // Allocate Device memory for pore model
     CU_CHECK_ERR(cudaMalloc((void**)&poreModelDev, numModelElements * 3 * sizeof(float)));
     CU_CHECK_ERR(cudaHostAlloc(&poreModelHost, numModelElements * sizeof(float) * 3, cudaHostAllocDefault));
 
-
-    CU_CHECK_ERR(cudaMalloc((void**)&numRowsDev, max_n_rows * sizeof(int)));
+    CU_CHECK_ERR(cudaMalloc((void**)&numRowsDev, readsSizeBuffer * sizeof(int)));
 
     CU_CHECK_ERR(cudaMalloc((void**)&eventStartsDev, readsSizeBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&eventStartsHost, readsSizeBuffer, cudaHostAllocDefault));
@@ -782,9 +780,6 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
     CU_CHECK_ERR(cudaMemcpyAsync(eventStartsDev, eventStartsHost,
                     numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
 
-    CU_CHECK_ERR(cudaMemcpyAsync(eventStridesDev, eventStridesHost,
-                    numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
-
     CU_CHECK_ERR(cudaMemcpyAsync(eventsPerBaseDev, eventsPerBaseHost,
                     numReads * sizeof(float), cudaMemcpyHostToDevice, streams[0]));
 
@@ -793,6 +788,9 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
     CU_CHECK_ERR(cudaMemcpyAsync(shiftDev, shiftHost,
                     numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
+
+    CU_CHECK_ERR(cudaMemcpyAsync(eventStridesDev, eventStridesHost,
+                                 numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
 
     CU_CHECK_ERR(cudaMemcpyAsync(varDev, varHost,
                     numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
