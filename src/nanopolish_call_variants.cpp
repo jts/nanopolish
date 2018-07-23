@@ -405,68 +405,69 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             //std::vector<std::thread> workerThreads(num_workers);
             std::vector<std::future<void>> handles(num_workers);
 
-	    int lociPerWorker = 12;
+            int lociPerWorker = 12;
             int nextLocusBegin = region_start;
-	    int nextLocusEnd = region_start;
+            int nextLocusEnd = nextLocusBegin + lociPerWorker;
+            bool finished = false;
 
-	    //printf("Initialising workers\n");
-            //Initialise workers
             for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
                 auto aligner = std::ref(gpuAligners[workerIdx]);
-                if (nextLocusEnd < region_end) { //TODO: Check this is correct. May be leaving some off at the end. May want to put icrements at start and redo this whole block.
+                if (!finished) {
+                    if (nextLocusEnd == region_end) {
+                        finished = true;
+                    }
                     handles[workerIdx] = std::async(std::launch::async,
                                                     locusRangeBaseEditCandidate,
                                                     nextLocusBegin,
-						    nextLocusEnd,
+                                                    nextLocusEnd,
                                                     std::ref(alignments),
                                                     alignment_flags,
                                                     std::ref(out_variants),
                                                     std::ref(contig),
                                                     aligner,
                                                     std::ref(outVariantsMutex));
-		    if ((nextLocusEnd + lociPerWorker) < region_end){
-		      nextLocusBegin = nextLocusEnd + 1;
-		      nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
-		    }else{
-		      nextLocusBegin = nextLocusEnd + 1;
-		      nextLocusEnd = region_end;
-		    }
+                    if ((nextLocusEnd + lociPerWorker) < region_end){
+                      nextLocusBegin = nextLocusEnd + 1;
+                      nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
+                    }else{
+                      nextLocusBegin = nextLocusEnd + 1;
+                      nextLocusEnd = region_end;
+                    }
                 }
             }
-	    //printf("Workers initialised\n");
 
             //Round robin the workers until done
-            while (nextLocusEnd < region_end) {
+            while (!finished) {
                 for (int i = 0; i < num_workers; i++) {
                     auto status = handles[i].wait_for(std::chrono::microseconds(100));
-		    //printf("Got status\n");
-                    if (status == std::future_status::ready && (nextLocusEnd < region_end)) {
-		      //printf("Entering the event loop, locus start is %i and end is %i\n", nextLocusBegin, nextLocusEnd);
+                    if (status == std::future_status::ready && (!finished)) {
+                        if (nextLocusEnd == region_end){
+                            finished = true;
+                        }
                         auto aligner = std::ref(gpuAligners[i]);
-			//printf("Sending work to a worker\n");
                         handles[i].get();
                         handles[i] = std::async(std::launch::async,
-						locusRangeBaseEditCandidate,
-						nextLocusBegin,
-						nextLocusEnd,
+                                                locusRangeBaseEditCandidate,
+                                                nextLocusBegin,
+                                                nextLocusEnd,
                                                 std::ref(alignments),
                                                 alignment_flags,
                                                 std::ref(out_variants),
                                                 std::ref(contig),
                                                 aligner,
                                                 std::ref(outVariantsMutex));
-			if ((nextLocusEnd + lociPerWorker) < region_end){
-			  nextLocusBegin = nextLocusEnd + 1;
-			  nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
-			}else{
-			  nextLocusBegin = nextLocusEnd + 1;
-			  nextLocusEnd = region_end;
-			}
+                        if ((nextLocusEnd + lociPerWorker) < region_end){
+                          nextLocusBegin = nextLocusEnd + 1;
+                          nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
+                        }else{
+                          nextLocusBegin = nextLocusEnd + 1;
+                          nextLocusEnd = region_end;
+                        }
                     }
                 }
             }
 
-            //Synchronize the remaining ones
+            //Block until all workers are complete
             for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
                 handles[workerIdx].wait();
             }
