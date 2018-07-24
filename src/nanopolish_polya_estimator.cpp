@@ -470,6 +470,8 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
                                         int region_start,
                                         int region_end)
 {
+    size_t strand_idx = 0;
+
     //----- load a squiggle read
     std::string read_name = bam_get_qname(record);
     std::string ref_name(hdr->target_name[record->core.tid]);
@@ -497,7 +499,7 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     }
 
     //----- QC: skip if no events:
-    if (sr.events[0].empty()) {
+    if (sr.events[strand_idx].empty()) {
         return;
     }
 
@@ -514,28 +516,27 @@ void estimate_polya_for_single_read_hmm(const ReadDB& read_db,
     params.strand_idx = 0;
     params.read_idx = read_idx;
 
-    std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
-    if(alignment_output.empty()) {
-        return;
-    }
+    size_t basecalled_k = sr.get_base_model(strand_idx)->k;
+    size_t num_kmers = sr.read_sequence.length() - basecalled_k + 1;
+    std::vector<double> durations_per_kmer(num_kmers);
 
-    // collect durations, collapsing by k-mer
-    std::vector<double> durations_per_kmer;
+    for(size_t i = 0; i < sr.base_to_event_map.size(); ++i) {
+        size_t start_idx = sr.base_to_event_map[i].indices[strand_idx].start;
+        size_t end_idx = sr.base_to_event_map[i].indices[strand_idx].stop;
 
-    size_t prev_ref_position = -1;
-    for(const auto& ea : alignment_output) {
-        float event_duration = sr.get_duration(ea.event_idx, ea.strand_idx);
-        size_t ref_position = ea.ref_position;
-        if(ref_position == prev_ref_position) {
-            assert(!durations_per_kmer.empty());
-            durations_per_kmer.back() += event_duration;
-        } else {
-            durations_per_kmer.push_back(event_duration);
-            prev_ref_position = ref_position;
+        // no events for this k-mer
+        if(start_idx == -1) {
+            continue;
+        }
+        assert(start_idx <= end_idx);
+
+        for(size_t j = start_idx; j <= end_idx; ++j) {
+            durations_per_kmer[i] += sr.get_duration(j, strand_idx);
         }
     }
 
     std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
+    assert(durations_per_kmer.size() > 0);
     double median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
 
     // this is our estimator of read rate, currently we use the median duration
