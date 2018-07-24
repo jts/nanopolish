@@ -40,7 +40,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2018 Ontario Institute for Cancer Research\n";
 
 static const char *VCF2FASTA_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] segment1.vcf segment2.vcf ...\n"
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " -g draft.fa segment1.vcf segment2.vcf ...\n"
 "Write a new genome sequence by introducing variants from the input files\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
@@ -84,6 +84,11 @@ void parse_vcf2fasta_options(int argc, char** argv)
                 std::cout << VCF2FASTA_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
         }
+    }
+
+    if(opt::genome_file.empty()) {
+        std::cerr << SUBPROGRAM ": -g/--genome file is required\n";
+        die = true;
     }
 
     if (argc - optind < 1) {
