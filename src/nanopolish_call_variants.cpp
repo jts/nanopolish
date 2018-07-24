@@ -435,15 +435,14 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
-    size_t num_workers = 16;
+    size_t num_workers = 4;
     std::vector<GpuAligner> gpuAligners(num_workers);
 
     //std::vector<std::thread> workerThreads(num_workers);
     std::vector<std::future<void>> handles(num_workers);
 
-    int lociPerWorker = 12;
     int nextLocusBegin = region_start;
-    int nextLocusEnd = nextLocusBegin + lociPerWorker;
+    int nextLocusEnd = nextLocusBegin + LOCI_PER_WORKER;
     bool finished = false;
 
     for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
@@ -462,9 +461,9 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
                                             std::ref(contig),
                                             aligner,
                                             std::ref(outVariantsMutex));
-            if ((nextLocusEnd + lociPerWorker) < region_end){
+            if ((nextLocusEnd + LOCI_PER_WORKER) < region_end){
                 nextLocusBegin = nextLocusEnd + 1;
-                nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
+                nextLocusEnd = nextLocusBegin + LOCI_PER_WORKER - 1;
             }else{
                 nextLocusBegin = nextLocusEnd + 1;
                 nextLocusEnd = region_end;
@@ -492,9 +491,9 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
                                         std::ref(contig),
                                         aligner,
                                         std::ref(outVariantsMutex));
-                if ((nextLocusEnd + lociPerWorker) < region_end){
+                if ((nextLocusEnd + LOCI_PER_WORKER) < region_end){
                     nextLocusBegin = nextLocusEnd + 1;
-                    nextLocusEnd = nextLocusBegin + lociPerWorker - 1;
+                    nextLocusEnd = nextLocusBegin + LOCI_PER_WORKER - 1;
                 }else{
                     nextLocusBegin = nextLocusEnd + 1;
                     nextLocusEnd = region_end;

@@ -43,6 +43,10 @@
 #ifndef GPU_ALIGNER_H
 #define GPU_ALIGNER_H
 
+#define LOCI_PER_WORKER 64
+#define MAX_COVERAGE 500
+#define MAX_SEQUENCE_LENGTH 100
+
 //Data to be scored
 typedef struct {
     std::vector<HMMInputSequence> stateSequences;

@@ -522,13 +522,15 @@ __global__ void getScores(float * const eventData,
 
 GpuAligner::GpuAligner()
 {
-    int numModelElements = 4096;
-    int max_num_reads = 5000;
-    int readsSizeBuffer = max_num_reads * sizeof(int);
-    int max_n_rows = 100;
-    int maxBuffer = 500000 * sizeof(float);  //TODO: allocate more smartly
+    size_t numModelElements = 4096;
+    size_t max_reads_per_worker = LOCI_PER_WORKER * MAX_COVERAGE;
+    int readsSizeBuffer = max_reads_per_worker * sizeof(int);
+    int maxBuffer = max_reads_per_worker * MAX_SEQUENCE_LENGTH * sizeof(int);  //4MB buffer
+
+    //OLD
     int max_num_sequences = 8;
     int max_sequence_length = 50;
+    int max_n_rows = 100;
 
     poreModelInitialized = false;
 
@@ -544,11 +546,11 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaMalloc((void**)&logVarDev, readsSizeBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&logVarHost, readsSizeBuffer, cudaHostAllocDefault));
 
-    CU_CHECK_ERR(cudaMalloc( (void**)&eventsPerBaseDev, maxBuffer));
-    CU_CHECK_ERR(cudaHostAlloc(&eventsPerBaseHost, maxBuffer, cudaHostAllocDefault));
-
     CU_CHECK_ERR(cudaMalloc( (void**)&readLengthsDev, readsSizeBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&readLengthsHost, readsSizeBuffer, cudaHostAllocDefault));
+
+    CU_CHECK_ERR(cudaMalloc( (void**)&eventsPerBaseDev, maxBuffer));
+    CU_CHECK_ERR(cudaHostAlloc(&eventsPerBaseHost, maxBuffer, cudaHostAllocDefault));
 
     // Allocate Device memory for pore model
     CU_CHECK_ERR(cudaMalloc((void**)&poreModelDev, numModelElements * 3 * sizeof(float)));
@@ -605,8 +607,8 @@ GpuAligner::GpuAligner()
         float * returnValuesDev;
         float * returnedValues;
 
-        CU_CHECK_ERR(cudaMalloc((void**)&returnValuesDev, sizeof(float) * max_num_reads)); //one score per read
-        CU_CHECK_ERR(cudaHostAlloc(&returnedValues, max_num_reads * sizeof(float) , cudaHostAllocDefault));
+        CU_CHECK_ERR(cudaMalloc((void**)&returnValuesDev, sizeof(float) * 50)); //one score per read
+        CU_CHECK_ERR(cudaHostAlloc(&returnedValues, 59 * sizeof(float) , cudaHostAllocDefault));
         CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, max_n_rows * sizeof(int)));
 
         kmerRanksDevPointers[i] = kmerRanksDev;
