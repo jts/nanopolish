@@ -75,7 +75,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "      --snps                           only call SNPs\n"
-"      --consensus=FILE                 run in consensus calling mode and write polished sequence to FILE\n"
+"      --consensus                      run in consensus calling mode\n"
 "      --fix-homopolymers               run the experimental homopolymer caller\n"
 "      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
 "  -w, --window=STR                     find variants in window STR (format: <chromsome_name>:<start>-<end>)\n"
@@ -180,7 +180,7 @@ static const struct option longopts[] = {
     { "p-skip-self",               required_argument, NULL, OPT_P_SKIP_SELF },
     { "p-bad",                     required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",                required_argument, NULL, OPT_P_BAD_SELF },
-    { "consensus",                 required_argument, NULL, OPT_CONSENSUS },
+    { "consensus",                 no_argument,       NULL, OPT_CONSENSUS },
     { "faster",                    no_argument,       NULL, OPT_FASTER },
     { "fix-homopolymers",          no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",     no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
@@ -714,6 +714,11 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
         int size_diff = call - hp_length;
         std::string contig = fixed_haplotype.get_reference_name();
+        Variant v;
+        v.ref_name = contig;
+        v.add_info("TotalReads", event_sequences.size());
+        v.add_info("AlleleCount", 1);
+
         if(size_diff > 0) {
             // add a 1bp insertion in this region
             // the variant might conflict with other variants in the region
@@ -721,12 +726,12 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
             // NB: it is intended that if the call is a 2bp (or greater) insertion
             // we only insert 1bp (for now)
             for(size_t k = hap_hp_start; k <= hap_hp_end; ++k) {
-                Variant v;
-                v.ref_name = contig;
                 v.ref_position = input_haplotype.get_reference_position_for_haplotype_base(k);
+
                 if(v.ref_position == std::string::npos) {
                     continue;
                 }
+
                 v.ref_seq = fixed_haplotype.substr_by_reference(v.ref_position, v.ref_position).get_sequence();
                 if(v.ref_seq.size() == 1 && v.ref_seq[0] == hp_base) {
                     v.alt_seq = v.ref_seq + hp_base;
@@ -741,10 +746,9 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
         } else if(size_diff < 0) {
             // add a 1bp deletion at this position
             for(size_t k = hap_hp_start; k <= hap_hp_end; ++k) {
-                Variant v;
-                v.ref_name = contig;
                 v.ref_position = input_haplotype.get_reference_position_for_haplotype_base(k);
                 v.quality = score;
+
                 if(v.ref_position == std::string::npos) {
                     continue;
                 }
@@ -860,13 +864,11 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
             // Apply them to the final haplotype
             for(size_t vi = 0; vi < called_variants.size(); vi++) {
                 derived_haplotype.apply_variant(called_variants[vi]);
-                called_variants[vi].write_vcf(vcf_out);
             }
         }
     }
     return derived_haplotype;
 }
-
 
 Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end, FILE* out_fp)
 {
@@ -984,13 +986,6 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             called_haplotype = fix_homopolymers(called_haplotype, alignments);
         }
 
-        // write consensus result
-        FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
-        fprintf(consensus_fp, ">%s:%d-%d\n%s\n", contig.c_str(),
-                                  alignments.get_region_start(),
-                                  alignments.get_region_end(),
-                                  called_haplotype.get_sequence().c_str());
-        fclose(consensus_fp);
     } else {
         //
         // Calling strategy in reference-based variant calling mode
@@ -1027,7 +1022,7 @@ void parse_call_variants_options(int argc, char** argv)
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
-            case OPT_CONSENSUS: arg >> opt::consensus_output; opt::consensus_mode = 1; break;
+            case OPT_CONSENSUS: opt::consensus_mode = 1; break;
             case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
             case OPT_EFFORT: arg >> opt::screen_score_threshold; break;
             case OPT_FASTER: opt::screen_score_threshold = 25; break;
@@ -1158,43 +1153,63 @@ int call_variants_main(int argc, char** argv)
     }
 
     // Build the VCF header
-    std::vector<std::string> tag_fields;
+    std::vector<std::string> header_fields;
+
+    std::stringstream polish_window;
+    polish_window << contig << ":" << start_base << "-" << end_base;
+    header_fields.push_back(Variant::make_vcf_header_key_value("nanopolish_window", polish_window.str()));
 
     //
-    tag_fields.push_back(
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
                                       "The number of event-space reads used to call the variant"));
 
-    tag_fields.push_back(
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "SupportFraction", 1, "Float",
                                       "The fraction of event-space reads that support the variant"));
 
-    tag_fields.push_back(
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "BaseCalledReadsWithVariant", 1, "Integer",
                                       "The number of base-space reads that support the variant"));
 
-    tag_fields.push_back(
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "BaseCalledFraction", 1, "Float",
                                       "The fraction of base-space reads that support the variant"));
 
-    tag_fields.push_back(
+    header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
                 "The inferred number of copies of the allele"));
 
     if(opt::calculate_all_support) {
-        tag_fields.push_back(
+        header_fields.push_back(
                 Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
                     "The fraction of reads supporting A,C,G,T at this position"));
 
     }
-    tag_fields.push_back(
+    header_fields.push_back(
             Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
                 "Genotype"));
 
-    Variant::write_vcf_header(out_fp, tag_fields);
+    Variant::write_vcf_header(out_fp, header_fields);
 
     Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, out_fp);
 
+    // write the consensus result as a fasta file if requested
+    if(!opt::consensus_output.empty()) {
+        FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
+        fprintf(consensus_fp, ">%s:%d-%d\n%s\n", contig.c_str(),
+                                  start_base,
+                                  end_base,
+                                  haplotype.get_sequence().c_str());
+        fclose(consensus_fp);
+    }
+
+    // write the variants
+    for(const auto& v : haplotype.get_variants()) {
+        v.write_vcf(out_fp);
+    }
+
+    //
     if(out_fp != stdout) {
         fclose(out_fp);
     }
