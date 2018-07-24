@@ -10,7 +10,7 @@ Modules available: ::
     nanopolish variants: detect SNPs and indels with respect to a reference genome
     nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
     nanopolish eventalign: align signal-level events to k-mers of a reference genome
-
+    nanopolish phase-reads: Phase reads using heterozygous SNVs with respect to a reference genome 
 |
 
 extract
@@ -167,7 +167,7 @@ Usage example
    * - ``-r``, ``--reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b``, ``--bam=FILE``
      - Y
@@ -253,7 +253,7 @@ Usage example
    * - ``-r``, ``--reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b``, ``--bam=FILE``
      - Y
@@ -365,7 +365,7 @@ Usage example
    * - ``-r, --reads=FILE``
      - Y
      - NA
-     - the 2D ONT reads are in fasta FILE
+     - the ONT reads are in fasta FILE
 
    * - ``-b, --bam=FILE``
      - Y
@@ -411,3 +411,78 @@ Usage example
      - N
      - NA
      - read alternative k-mer models from FILE
+
+
+phase-reads - (experimental)
+--------------------
+
+Overview
+"""""""""""""""""""""""
+
+Phase reads using heterozygous SNVs with respect to a reference genome 
+
+Input
+"""""""""""""""""""""""
+
+    * basecalled reads
+    * alignment information
+    * assembled genome
+    * variants (from nanopolish variants or from other sources eg. Illumina VCF)
+
+Usage example
+"""""""""""""""""""""""
+
+::
+
+   nanopolish phase-reads [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa variants.vcf
+
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
+
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - ``-v``
+     - N
+     - NA
+     - write verbose output
+
+   * - ``-w, --window=STR``
+     - N
+     - NA
+     - Only phase reads in the window STR (format : ctg:start_id-end_id)
+
+   * - ``-r, --reads=FILE``
+     - Y
+     - NA
+     - the ONT reads are in fasta FILE
+
+   * - ``-b, --bam=FILE``
+     - Y
+     - NA
+     - the reads aligned to the genome assembly are in bam FILE
+
+   * - ``-g, --genome=FILE``
+     - Y
+     - NA
+     - the genome we are computing a consensus for is in FILE
+
+   * - ``variants.vcf``
+     - Y
+     - NA
+     - the variants (from nanopolish variants or Illumina in VCF format) to be phased are in FILE
+
+   * - ``-t, --threads=NUM``
+     - N
+     - 1
+     - use NUM threads
+
+    * - ``--progress``
+     - N
+     - NA
+     - print out a progress message
+
+ 

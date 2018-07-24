@@ -63,6 +63,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"  -q, --min-mapping-quality=NUM        only use reads with mapping quality at least NUM (default: 0)\n"
 "      --scale-events                   scale events to the model, rather than vice-versa\n"
 "      --progress                       print out a progress message\n"
 "  -n, --print-read-names               print read names instead of indexes\n"
@@ -85,31 +86,33 @@ namespace opt
     static int num_threads = 1;
     static int scale_events = 0;
     static int batch_size = 512;
+    static int min_mapping_quality = 0;
     static bool print_read_names;
     static bool full_output;
     static bool write_samples = false;
 }
 
-static const char* shortopts = "r:b:g:t:w:vn";
+static const char* shortopts = "r:b:g:t:w:q:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_MODELS_FOFN, OPT_SAMPLES };
 
 static const struct option longopts[] = {
-    { "verbose",          no_argument,       NULL, 'v' },
-    { "reads",            required_argument, NULL, 'r' },
-    { "bam",              required_argument, NULL, 'b' },
-    { "genome",           required_argument, NULL, 'g' },
-    { "window",           required_argument, NULL, 'w' },
-    { "threads",          required_argument, NULL, 't' },
-    { "summary",          required_argument, NULL, OPT_SUMMARY },
-    { "models-fofn",      required_argument, NULL, OPT_MODELS_FOFN },
-    { "print-read-names", no_argument,       NULL, 'n' },
-    { "samples",          no_argument,       NULL, OPT_SAMPLES },
-    { "scale-events",     no_argument,       NULL, OPT_SCALE_EVENTS },
-    { "sam",              no_argument,       NULL, OPT_SAM },
-    { "progress",         no_argument,       NULL, OPT_PROGRESS },
-    { "help",             no_argument,       NULL, OPT_HELP },
-    { "version",          no_argument,       NULL, OPT_VERSION },
+    { "verbose",             no_argument,       NULL, 'v' },
+    { "reads",               required_argument, NULL, 'r' },
+    { "bam",                 required_argument, NULL, 'b' },
+    { "genome",              required_argument, NULL, 'g' },
+    { "window",              required_argument, NULL, 'w' },
+    { "threads",             required_argument, NULL, 't' },
+    { "min-mapping-quality", required_argument, NULL, 'q' },
+    { "summary",             required_argument, NULL, OPT_SUMMARY },
+    { "models-fofn",         required_argument, NULL, OPT_MODELS_FOFN },
+    { "print-read-names",    no_argument,       NULL, 'n' },
+    { "samples",             no_argument,       NULL, OPT_SAMPLES },
+    { "scale-events",        no_argument,       NULL, OPT_SCALE_EVENTS },
+    { "sam",                 no_argument,       NULL, OPT_SAM },
+    { "progress",            no_argument,       NULL, OPT_PROGRESS },
+    { "help",                no_argument,       NULL, OPT_HELP },
+    { "version",             no_argument,       NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
 };
 
@@ -807,6 +810,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
+            case 'q': arg >> opt::min_mapping_quality; break;
             case 'n': opt::print_read_names = true; break;
             case 'f': opt::full_output = true; break;
             case OPT_SAMPLES: opt::write_samples = true; break;
@@ -843,7 +847,7 @@ void parse_eventalign_options(int argc, char** argv)
         std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
         die = true;
     }
-    
+
     if(opt::genome_file.empty()) {
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
@@ -900,6 +904,7 @@ int eventalign_main(int argc, char** argv)
     // bind the other parameters the worker function needs here
     auto f = std::bind(realign_read, std::ref(read_db), std::ref(fai), std::ref(writer), _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
+    processor.set_min_mapping_quality(opt::min_mapping_quality);
 
     // Copy the bam header to std
     if(opt::output_sam) {

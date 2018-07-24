@@ -58,7 +58,7 @@ static const char *SCOREREADS_USAGE_MESSAGE =
 "  -c  --calibrate                      recalibrate aligned reads to model before scoring\n"
 "  -z  --zero-drift                     if recalibrating, keep drift at 0\n"
 "  -i  --individual-reads=READ,READ     optional comma-delimited list of readnames to score\n"
-"  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -w, --window=STR                     score reads in the window STR (format: ctg:start-end)\n"

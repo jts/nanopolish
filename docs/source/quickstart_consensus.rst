@@ -7,9 +7,9 @@ The original purpose of nanopolish was to improve the consensus accuracy of an a
 
 **Requirements**:
 
-* `nanopolish v0.8.4 <installation.html>`_
-* `samtools v1.2 <https://htslib.org>`_
-* `bwa v0.7.12 <https://github.com/lh3/bwa>`_
+* `nanopolish <installation.html>`_
+* `samtools <https://htslib.org>`_
+* `minimap2 <https://github.com/lh3/minimap2>`_
 * `MUMmer <https://github.com/mummer4/mummer>`_
 
 Download example dataset
@@ -29,8 +29,7 @@ You can download the example dataset we will use here: ::
 * Region: "tig00000001:200000-202000"
 * Note: Ligation-mediated PCR amplification performed
 
-This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly. To see how we generated these files please refer to the tutorial :ref:`creati
-ng_example_dataset <here>`.
+This is a subset of reads that aligned to a 2kb region in the E. coli draft assembly. To see how we generated these files please refer to the tutorial :ref:`creating_example_dataset <here>`.
 
 You should find the following files:
 
@@ -42,7 +41,7 @@ You should find the following files:
 
 For the evaluation step you will need the reference genome: ::
 
-    wget -O ref.fa ftp://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
+    curl -o ref.fa https://ftp.ncbi.nih.gov/genomes/archive/old_genbank/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid225/U00096.ffn
 
 Analysis workflow
 -------------------------------
@@ -50,7 +49,6 @@ Analysis workflow
 The pipeline below describes the recommended analysis workflow for larger datasets. In this tutorial, we will run through the basic steps of the pipeline for this smaller (2kb) dataset.
 
 .. figure:: _static/nanopolish-workflow.png
-  :scale: 90%
   :alt: nanopolish-tutorial-workflow
 
 Data preprocessing
@@ -66,24 +64,20 @@ Compute the draft genome assembly using canu
 -----------------------------------------------
 
 As computing the draft genome assembly takes a few hours we have included the pre-assembled data for you (``draft.fa``).
-We used the following parameters with `canu <canu.readthedocs.io>`_: ::
+We used the following parameters with `canu <http://canu.readthedocs.io/en/latest/>`_: ::
 
     canu \
         -p ecoli -d outdir genomeSize=4.6m \
-        -nanopore-raw albacore-2.0.1-merged.fastq \
+        -nanopore-raw albacore-2.0.1-merged.fastq
 
 Compute a new consensus sequence for a draft assembly
 ------------------------------------------------------------------------
 
-Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started! 
+Now that we have ``reads.fasta`` indexed with ``nanopolish index``, and have a draft genome assembly ``draft.fa``, we can begin to improve the assembly with nanopolish. Let us get started!
 
-First step, is to index the draft genome assembly. We can do that with the following command: ::
+First, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
 
-    bwa index draft.fa
-
-Next, we align the original reads (``reads.fasta``) to the draft assembly (``draft.fa``) and sort alignments: ::
-
-    bwa mem -x ont2d -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
+    minimap2 -ax map-ont -t 8 draft.fa reads.fasta | samtools sort -o reads.sorted.bam -T reads.tmp
     samtools index reads.sorted.bam
 
 **Checkpoint**: we can do a quick check to see if this step worked. The bam file should not be empty. ::

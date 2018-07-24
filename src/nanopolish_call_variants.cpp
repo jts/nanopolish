@@ -79,7 +79,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --fix-homopolymers               run the experimental homopolymer caller\n"
 "      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
 "  -w, --window=STR                     find variants in window STR (format: <chromsome_name>:<start>-<end>)\n"
-"  -r, --reads=FILE                     the 2D ONT reads are in fasta FILE\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
 "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome is in FILE\n"
@@ -91,6 +91,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
 "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
 "  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
+"      --min-flanking-sequence=N        distance from alignment end to calculate variants (default: 30)\n"
 "      --max-rounds=N                   perform N rounds of consensus sequence improvement (default: 50)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
 "  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
@@ -151,7 +152,8 @@ enum { OPT_HELP = 1,
        OPT_P_SKIP,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
-       OPT_P_BAD_SELF };
+       OPT_P_BAD_SELF,
+       OPT_MIN_FLANKING_SEQUENCE };
 
 static const struct option longopts[] = {
     { "verbose",                   no_argument,       NULL, 'v' },
@@ -169,6 +171,7 @@ static const struct option longopts[] = {
     { "ploidy",                    required_argument, NULL, 'p' },
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
     { "methylation-aware",         required_argument, NULL, 'q' },
+    { "min-flanking-sequence",     required_argument, NULL, OPT_MIN_FLANKING_SEQUENCE },
     { "effort",                    required_argument, NULL, OPT_EFFORT },
     { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
@@ -1038,6 +1041,7 @@ void parse_call_variants_options(int argc, char** argv)
             case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
             case OPT_P_BAD: arg >> g_p_bad; break;
             case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
+            case OPT_MIN_FLANKING_SEQUENCE: arg >> opt::min_flanking_sequence; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);

@@ -104,7 +104,7 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
-                if( (record->core.flag & BAM_FUNMAP) == 0) {
+                if( (record->core.flag & BAM_FUNMAP) == 0 && record->core.qual >= m_min_mapping_quality) {
                     func(m_hdr, record, read_idx, clip_start, clip_end);
                 }
             }
