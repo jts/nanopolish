@@ -38,7 +38,6 @@
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
-#include <chrono>
 #include <cuda_kernels/GpuAligner.h>
 #include <thread>
 #include <chrono>
@@ -410,7 +409,6 @@ void locusRangeBaseEditCandidate(int start,
         auto test_haplotype = haplotypes[haplotypeIDX];
         auto event_sequences = event_sequences_vector[haplotypeIDX];
         for (const Variant &v : variants) {
-            auto t0 = std::chrono::high_resolution_clock::now();
             Variant scored_variant = score_variant_thresholded(v,
                                                                test_haplotype,
                                                                event_sequences,
@@ -435,7 +433,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
-    size_t num_workers = 4;
+    size_t num_workers = 8;
     std::vector<GpuAligner> gpuAligners(num_workers);
 
     //std::vector<std::thread> workerThreads(num_workers);
@@ -474,7 +472,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     //Round robin the workers until done
     while (!finished) {
         for (int i = 0; i < num_workers; i++) {
-            auto status = handles[i].wait_for(std::chrono::microseconds(100));
+            auto status = handles[i].wait_for(std::chrono::microseconds(0));
             if (status == std::future_status::ready && (!finished)) {
                 if (nextLocusEnd == region_end){
                     finished = true;
