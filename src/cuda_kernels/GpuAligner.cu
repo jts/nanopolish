@@ -660,6 +660,8 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
     auto base_haplotype = base_haplotypes[scoreSetIdx];
     auto event_sequences = event_sequences_vector[scoreSetIdx];
 
+    event_sequences.resize(40);
+
     int numVariants = input_variants.size();
 
     std::vector<Variant> out_variants = input_variants;

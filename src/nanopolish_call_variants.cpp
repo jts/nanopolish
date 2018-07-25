@@ -132,7 +132,8 @@ namespace opt
     static int min_flanking_sequence = 30;
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
-    static int screen_score_threshold = 1000;
+    static int screen_score_threshold = 100;
+    static int max_coverage_gpu = 40;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
     static std::vector<std::string> methylation_types;
@@ -433,7 +434,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
-    size_t num_workers = 8;
+    size_t num_workers = opt::num_threads;
     std::vector<GpuAligner> gpuAligners(num_workers);
 
     //std::vector<std::thread> workerThreads(num_workers);
@@ -1085,10 +1086,14 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         std::vector<Variant> single_base_edits;
         if(opt::gpu) {
-            single_base_edits = generate_candidate_single_base_edits_gpu(alignments, region_start, region_end,
+            single_base_edits = generate_candidate_single_base_edits_gpu(alignments,
+									 region_start,
+									 region_end,
                                                                          alignment_flags);
         } else {
-            single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end,
+            single_base_edits = generate_candidate_single_base_edits(alignments,
+								     region_start,
+								     region_end,
                                                                      alignment_flags);
         }
         // insert these into the candidate set

@@ -1,6 +1,3 @@
-//
-// Created by mike on 05/06/18.
-//
 #include <vector>
 #include "nanopolish_variant.h"
 #include <stdio.h>
@@ -43,7 +40,7 @@
 #ifndef GPU_ALIGNER_H
 #define GPU_ALIGNER_H
 
-#define LOCI_PER_WORKER 64
+#define LOCI_PER_WORKER 32
 #define MAX_COVERAGE 500
 #define MAX_SEQUENCE_LENGTH 100
 
