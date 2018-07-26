@@ -44,6 +44,7 @@
 #define MAX_COVERAGE 300
 #define MAX_SEQUENCE_LENGTH 50
 #define MAX_NUM_VARIANTS_PER_LOCUS 10
+#define MAX_NUM_WORKERS 16
 
 //Data to be scored
 typedef struct {

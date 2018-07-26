@@ -434,7 +434,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     std::string contig = alignments.get_region_contig();
 
     // Add all positively-scoring single-base changes into the candidate set
-    size_t num_workers = opt::num_threads;
+    size_t num_workers = (opt::num_threads < MAX_NUM_WORKERS) ? opt::num_threads : MAX_NUM_WORKERS;
     std::vector<GpuAligner> gpuAligners(num_workers);
 
     //std::vector<std::thread> workerThreads(num_workers);
