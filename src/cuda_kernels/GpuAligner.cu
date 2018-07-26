@@ -286,13 +286,13 @@ __global__ void getScoresMod (float * poreModelDev,
 GpuAligner::GpuAligner()
 {
     size_t numModelElements = 4096;
-    size_t max_reads_per_worker = LOCI_PER_WORKER * MAX_COVERAGE;
+    size_t max_reads_per_worker = LOCI_PER_WORKER * MAX_COVERAGE * MAX_NUM_VARIANTS_PER_LOCUS;
     int readsSizeBuffer = max_reads_per_worker * sizeof(int);
-    int maxBuffer = max_reads_per_worker * MAX_SEQUENCE_LENGTH * sizeof(int);  //4MB buffer
+    int maxBuffer = max_reads_per_worker * MAX_SEQUENCE_LENGTH * sizeof(int);
 
     //OLD
     int max_num_sequences = 1; //TODO can get rid of this
-    int max_sequence_length = 50;
+    int max_sequence_length = 100;
     int max_n_rows = 100;
 
     poreModelInitialized = false;
@@ -660,7 +660,9 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
     auto base_haplotype = base_haplotypes[scoreSetIdx];
     auto event_sequences = event_sequences_vector[scoreSetIdx];
 
-    event_sequences.resize(40);
+    if (event_sequences.size() > MAX_COVERAGE) {
+        event_sequences.resize(MAX_COVERAGE);
+    }
 
     int numVariants = input_variants.size();
 
