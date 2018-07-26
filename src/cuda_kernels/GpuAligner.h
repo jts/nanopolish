@@ -41,8 +41,8 @@
 #define GPU_ALIGNER_H
 
 #define LOCI_PER_WORKER 32
-#define MAX_COVERAGE 400
-#define MAX_SEQUENCE_LENGTH 100
+#define MAX_COVERAGE 300
+#define MAX_SEQUENCE_LENGTH 50
 #define MAX_NUM_VARIANTS_PER_LOCUS 10
 
 //Data to be scored
