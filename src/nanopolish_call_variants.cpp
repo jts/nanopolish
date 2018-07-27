@@ -473,7 +473,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     //Round robin the workers until done
     while (!finished) {
         for (int i = 0; i < num_workers; i++) {
-            auto status = handles[i].wait_for(std::chrono::microseconds(0));
+            auto status = handles[i].wait_for(std::chrono::microseconds(100));
             if (status == std::future_status::ready && (!finished)) {
                 if (nextLocusEnd == region_end){
                     finished = true;
