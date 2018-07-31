@@ -172,13 +172,6 @@ void parse_polya_options(int argc, char** argv)
 //   + segment_squiggle
 //   + log_probas
 // ================================================================================
-// struct ViterbiOutputs composed of viterbi probs
-// and a vector of integers from {0,1,2,3,4,5} == {S,L,A,P,C,T}.
-struct ViterbiOutputs {
-    std::vector<float> scores;
-    std::vector<uint8_t> labels;
-};
-
 // Segmentation struct holds endpoints of distinct regions from a segmented squiggle:
 struct Segmentation {
     size_t start;   // final index of S; might not exist if skipped over
@@ -190,10 +183,27 @@ struct Segmentation {
 
 // Basic HMM struct with fixed parameters and viterbi/segmentation methods.
 // (N.B.: all of the below is relative to a **scaled & shifted** set of events.)
+enum HMMState
+{
+    HMM_START = 0,
+    HMM_LEADER = 1,
+    HMM_ADAPTER = 2,
+    HMM_POLYA = 3,
+    HMM_CLIFF = 4,
+    HMM_TRANSCRIPT = 5,
+    HMM_INIT = 6  // initial NULL dummy state for viterbi loop
+};
+
+// struct ViterbiOutputs composed of viterbi probs
+// and a vector of integers from {0,1,2,3,4,5} == {S,L,A,P,C,T}.
+struct ViterbiOutputs {
+    std::vector<float> scores;
+    std::vector<HMMState> labels;
+};
+
 class SegmentationHMM {
 private:
     // ----- state space parameters:
-    // State labels: [S]TART => 0 ; [L]EADER => 1 ; [A]DAPTER => 2; [P]OLYA => 3; [C]LIFF => 4; [T]RANSCRIPT => 5
     // N.B.: `state transitions` is used to compute log probabilities, as viterbi decoding is done in log-space.
     // state transition probabilities (S->L->A->[P<->C]->T):
     float state_transitions[6][6] = { {0.10f, 0.90f, 0.00f, 0.00f, 0.00f, 0.00f},     // S -> S (10%), S -> L (90%)
@@ -231,7 +241,7 @@ private:
     // ----- inlined computation of emission log-probabilities:
     // Get the log-probability of seeing `x` given we're in state `state` of the HMM
     // N.B.: we scale the emission parameters (events are **not** scaled).
-    inline float emit_log_proba(const float x, const uint8_t state) const
+    inline float emit_log_proba(const float x, const HMMState state) const
     {
         // sometimes samples can exceed reasonable bounds due to mechanical issues;
         // in that case, we should clamp it to 100:
@@ -244,25 +254,25 @@ private:
 
         // compute on a case-by-case basis to handle heterogeneous probability distributions
         float log_probs;
-        if (state == 0) {
+        if (state == HMM_START) {
             // START state:
             log_probs = log_normal_pdf(xx, this->s_emission);
         }
-        if (state == 1) {
+        if (state == HMM_LEADER) {
             // LEADER state:
             log_probs = log_normal_pdf(xx, this->l_emission);
         }
-        if (state == 2) {
+        if (state == HMM_ADAPTER) {
             // ADAPTER state: compute log of gaussian mixture probability
             float mixture_proba = (this->a0_coeff*normal_pdf(xx,this->a0_emission)) + \
                 (this->a1_coeff*normal_pdf(xx, this->a1_emission));
             log_probs = std::log(mixture_proba);
         }
-        if (state == 3) {
+        if (state == HMM_POLYA) {
             // POLYA state:
             log_probs = log_normal_pdf(xx, this->p_emission);
         }
-        if (state == 4) {
+        if (state == HMM_CLIFF) {
             // CLIFF state: middle-out uniform distribution
             if ((xx > this->c_begin) && (xx <  this->c_end)) {
                 log_probs = this->c_log_prob;
@@ -270,7 +280,7 @@ private:
                 log_probs = -INFINITY;
             }
         }
-        if (state == 5) {
+        if (state == HMM_TRANSCRIPT) {
             // TRANSCRIPT state: compute log of gaussian mixture probability
             float mixture_proba = (this->t0_coeff*normal_pdf(xx, this->t0_emission)) + \
                 (this->t1_coeff*normal_pdf(xx, this->t1_emission));
@@ -292,7 +302,6 @@ public:
                     this->log_state_transitions[i][j] = -INFINITY;
                 }
             }
-
             if (this->start_probs[i] > 0.00f) {
                 this->log_start_probs[i] = std::log(this->start_probs[i]);
             } else {
@@ -308,7 +317,7 @@ public:
         this->l_emission.mean = shift + scale*(this->l_emission.mean);
         this->l_emission.stdv = var * this->l_emission.stdv;
         this->l_emission.log_stdv = std::log(this->l_emission.stdv);
-	// ADAPTER emissions:
+        // ADAPTER emissions:
         this->a0_emission.mean = shift + scale*(this->a0_emission.mean);
         this->a0_emission.stdv = var * this->a0_emission.stdv;
         this->a0_emission.log_stdv = std::log(this->a0_emission.stdv);
@@ -333,9 +342,9 @@ public:
     // ----- for a given sample value and shift/scale parameters, return log-probs for each state:
     std::vector<float> log_probas(const float x) const
     {
-	std::vector<float> log_proba(6);
+        std::vector<float> log_proba(6);
         for (uint8_t k = 0; k < 6; ++k) {
-            log_proba[k] = this->emit_log_proba(x, k);
+            log_proba[k] = this->emit_log_proba(x, static_cast<HMMState>(k));
         }
         return log_proba;
     }
@@ -351,83 +360,83 @@ public:
 
         // create/initialize viterbi scores and backpointers:
         std::vector<float> init_scores(6, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
-        std::vector<uint8_t> init_bptrs(6, 6); // 6 == INIT symbol
+        std::vector<HMMState> init_bptrs(6, HMM_INIT);
         std::vector< std::vector<float> > viterbi_scores(num_samples, init_scores);
-        std::vector< std::vector<uint8_t> > viterbi_bptrs(num_samples, init_bptrs);
+        std::vector< std::vector<HMMState> > viterbi_bptrs(num_samples, init_bptrs);
 
         // forward viterbi pass; fill up backpointers:
-        // weight initially distributed between S and L:
-        viterbi_scores[0][0] = this->log_start_probs[0] + this->emit_log_proba(sr.samples[num_samples-1], 0);
-        viterbi_scores[0][1] = this->log_start_probs[1] + this->emit_log_proba(sr.samples[num_samples-1], 1);
+        // weight initially distributed between START and LEADER:
+        viterbi_scores[0][HMM_START] = this->log_start_probs[HMM_START] + this->emit_log_proba(sr.samples[num_samples-1], HMM_START);
+        viterbi_scores[0][HMM_LEADER] = this->log_start_probs[HMM_LEADER] + this->emit_log_proba(sr.samples[num_samples-1], HMM_LEADER);
         for (size_t i = 1; i < num_samples; ++i) {
             // `t` moves from 3'->5' on the vector of samples, in opposite direction of `i`:
             size_t t = (num_samples-1-i);
             // get individual incoming state scores:
-            float s_to_s = viterbi_scores.at(i-1)[0] + this->log_state_transitions[0][0];
-            float s_to_l = viterbi_scores.at(i-1)[0] + this->log_state_transitions[0][1];
-            float l_to_l = viterbi_scores.at(i-1)[1] + this->log_state_transitions[1][1];
-            float l_to_a = viterbi_scores.at(i-1)[1] + this->log_state_transitions[1][2];
-            float a_to_a = viterbi_scores.at(i-1)[2] + this->log_state_transitions[2][2];
-            float a_to_p = viterbi_scores.at(i-1)[2] + this->log_state_transitions[2][3];
-            float p_to_p = viterbi_scores.at(i-1)[3] + this->log_state_transitions[3][3];
-            float p_to_c = viterbi_scores.at(i-1)[3] + this->log_state_transitions[3][4];
-            float p_to_t = viterbi_scores.at(i-1)[3] + this->log_state_transitions[3][5];
-            float c_to_c = viterbi_scores.at(i-1)[4] + this->log_state_transitions[4][4];
-            float c_to_p = viterbi_scores.at(i-1)[4] + this->log_state_transitions[4][3];
-            float t_to_t = viterbi_scores.at(i-1)[5] + this->log_state_transitions[5][5];
+            float s_to_s = viterbi_scores.at(i-1)[HMM_START] + this->log_state_transitions[HMM_START][HMM_START];
+            float s_to_l = viterbi_scores.at(i-1)[HMM_START] + this->log_state_transitions[HMM_START][HMM_LEADER];
+            float l_to_l = viterbi_scores.at(i-1)[HMM_LEADER] + this->log_state_transitions[HMM_LEADER][HMM_LEADER];
+            float l_to_a = viterbi_scores.at(i-1)[HMM_LEADER] + this->log_state_transitions[HMM_LEADER][HMM_ADAPTER];
+            float a_to_a = viterbi_scores.at(i-1)[HMM_ADAPTER] + this->log_state_transitions[HMM_ADAPTER][HMM_ADAPTER];
+            float a_to_p = viterbi_scores.at(i-1)[HMM_ADAPTER] + this->log_state_transitions[HMM_ADAPTER][HMM_POLYA];
+            float p_to_p = viterbi_scores.at(i-1)[HMM_POLYA] + this->log_state_transitions[HMM_POLYA][HMM_POLYA];
+            float p_to_c = viterbi_scores.at(i-1)[HMM_POLYA] + this->log_state_transitions[HMM_POLYA][HMM_CLIFF];
+            float p_to_t = viterbi_scores.at(i-1)[HMM_POLYA] + this->log_state_transitions[HMM_POLYA][HMM_TRANSCRIPT];
+            float c_to_c = viterbi_scores.at(i-1)[HMM_CLIFF] + this->log_state_transitions[HMM_CLIFF][HMM_CLIFF];
+            float c_to_p = viterbi_scores.at(i-1)[HMM_CLIFF] + this->log_state_transitions[HMM_CLIFF][HMM_POLYA];
+            float t_to_t = viterbi_scores.at(i-1)[HMM_TRANSCRIPT] + this->log_state_transitions[HMM_TRANSCRIPT][HMM_TRANSCRIPT];
 
             // update the viterbi scores for each state at this timestep:
-            viterbi_scores.at(i)[0] = s_to_s + this->emit_log_proba(sr.samples[t], 0);
-            viterbi_scores.at(i)[1] = std::max(l_to_l, s_to_l) + this->emit_log_proba(sr.samples[t], 1);
-            viterbi_scores.at(i)[2] = std::max(a_to_a, l_to_a) + this->emit_log_proba(sr.samples[t], 2);
-            viterbi_scores.at(i)[3] = std::max(p_to_p, std::max(a_to_p, c_to_p)) + this->emit_log_proba(sr.samples[t], 3);
-            viterbi_scores.at(i)[4] = std::max(c_to_c, p_to_c) + this->emit_log_proba(sr.samples[t], 4);
-            viterbi_scores.at(i)[5] = std::max(p_to_t, t_to_t) + this->emit_log_proba(sr.samples[t], 5);
+            viterbi_scores.at(i)[HMM_START] = s_to_s + this->emit_log_proba(sr.samples[t], HMM_START);
+            viterbi_scores.at(i)[HMM_LEADER] = std::max(l_to_l, s_to_l) + this->emit_log_proba(sr.samples[t], HMM_LEADER);
+            viterbi_scores.at(i)[HMM_ADAPTER] = std::max(a_to_a, l_to_a) + this->emit_log_proba(sr.samples[t], HMM_ADAPTER);
+            viterbi_scores.at(i)[HMM_POLYA] = std::max(p_to_p, std::max(a_to_p, c_to_p)) + this->emit_log_proba(sr.samples[t], HMM_POLYA);
+            viterbi_scores.at(i)[HMM_CLIFF] = std::max(c_to_c, p_to_c) + this->emit_log_proba(sr.samples[t], HMM_CLIFF);
+            viterbi_scores.at(i)[HMM_TRANSCRIPT] = std::max(p_to_t, t_to_t) + this->emit_log_proba(sr.samples[t], HMM_TRANSCRIPT);
 
             // backpointers:
             // START: S can only come from S
-            viterbi_bptrs.at(i)[0] = 0;
+            viterbi_bptrs.at(i)[HMM_START] = HMM_START;
             // LEADER: L->L or S->L
             if (s_to_l < l_to_l) {
-                viterbi_bptrs.at(i)[1] = 1;
+                viterbi_bptrs.at(i)[HMM_LEADER] = HMM_LEADER;
             } else {
-                viterbi_bptrs.at(i)[1] = 0;
+                viterbi_bptrs.at(i)[HMM_LEADER] = HMM_START;
             }
             // ADAPTER:
             if (l_to_a < a_to_a) {
-                viterbi_bptrs.at(i)[2] = 2;
+                viterbi_bptrs.at(i)[HMM_ADAPTER] = HMM_ADAPTER;
             } else {
-                viterbi_bptrs.at(i)[2] = 1;
+                viterbi_bptrs.at(i)[HMM_ADAPTER] = HMM_LEADER;
             }
             // POLYA:
             if ((a_to_p < p_to_p) && (c_to_p < p_to_p)) {
-                viterbi_bptrs.at(i)[3] = 3;
+                viterbi_bptrs.at(i)[HMM_POLYA] = HMM_POLYA;
             } else if ((p_to_p < a_to_p) && (c_to_p < a_to_p)) {
-                viterbi_bptrs.at(i)[3] = 2;
+                viterbi_bptrs.at(i)[HMM_POLYA] = HMM_ADAPTER;
             } else {
-                viterbi_bptrs.at(i)[3] = 4;
+                viterbi_bptrs.at(i)[HMM_POLYA] = HMM_CLIFF;
             }
             // CLIFF:
             if (p_to_c < c_to_c) {
-                viterbi_bptrs.at(i)[4] = 4;
+                viterbi_bptrs.at(i)[HMM_CLIFF] = HMM_CLIFF;
             } else {
-                viterbi_bptrs.at(i)[4] = 3;
+                viterbi_bptrs.at(i)[HMM_CLIFF] = HMM_POLYA;
             }
             // TRANSCRIPT:
             if (p_to_t < t_to_t) {
-                viterbi_bptrs.at(i)[5] = 5;
+                viterbi_bptrs.at(i)[HMM_TRANSCRIPT] = HMM_TRANSCRIPT;
             } else {
-                viterbi_bptrs.at(i)[5] = 3;
+                viterbi_bptrs.at(i)[HMM_TRANSCRIPT] = HMM_POLYA;
             }
         }
 
         // backwards viterbi pass:
         // allocate `regions` vector of same dimensions as sample sequence;
         // clamp final state to 'T' ~ transcript:
-        std::vector<uint8_t> regions(num_samples, 0);
+        std::vector<HMMState> regions(num_samples, HMM_START);
         std::vector<float> scores(num_samples, 0);
-        regions[num_samples-1] = 5;
-        scores[num_samples-1] = viterbi_scores.at(num_samples-1)[5];
+        regions[num_samples-1] = HMM_TRANSCRIPT;
+        scores[num_samples-1] = viterbi_scores.at(num_samples-1)[HMM_TRANSCRIPT];
         // loop backwards and keep appending best states:
         for (size_t j=(num_samples-2); j > 0; --j) {
             regions[j] = viterbi_bptrs.at(j)[regions.at(j+1)];
@@ -442,10 +451,10 @@ public:
     // ----- parse a squiggle's viterbi labels into a regional segmentation:
     Segmentation segment_squiggle(const SquiggleRead& sr) const
     {
-	ViterbiOutputs viterbi_outs = this->viterbi(sr);
+        ViterbiOutputs viterbi_outs = this->viterbi(sr);
 
         // compute final sample indices of each region:
-        std::vector<uint8_t>& region_labels = viterbi_outs.labels;
+        std::vector<HMMState>& region_labels = viterbi_outs.labels;
 
         // initial values for indices should preserve expected order:
         Segmentation ixs = { 0, 1, 2, 3, 0 };
@@ -453,23 +462,23 @@ public:
         // loop through sequence and collect values:
         for (std::vector<uint8_t>::size_type i = 0; i < region_labels.size(); ++i) {
             // call end of START:
-            if (region_labels[i] == 0 && region_labels[i+1] == 1) {
+            if (region_labels[i] == HMM_START && region_labels[i+1] == HMM_LEADER) {
                 ixs.start = static_cast<size_t>(i);
             }
             // call end of leader:
-            if (region_labels[i] == 1 && region_labels[i+1] == 2) {
+            if (region_labels[i] == HMM_LEADER && region_labels[i+1] == HMM_ADAPTER) {
                 ixs.leader = static_cast<size_t>(i);
             }
             // call end of adapter:
-            if (region_labels[i] == 2 && region_labels[i+1] == 3) {
+            if (region_labels[i] == HMM_ADAPTER && region_labels[i+1] == HMM_POLYA) {
                 ixs.adapter = static_cast<size_t>(i);
             }
             // call end of polya:
-            if (region_labels[i] == 3 && region_labels[i+1] == 5) {
+            if (region_labels[i] == HMM_POLYA && region_labels[i+1] == HMM_TRANSCRIPT) {
                 ixs.polya = static_cast<size_t>(i);
             }
             // increment cliff counter:
-            if (region_labels[i] == 4) {
+            if (region_labels[i] == HMM_CLIFF) {
                 ixs.cliffs++;
             }
         }
@@ -555,7 +564,7 @@ double estimate_unaligned_duration_profile(const SquiggleRead& sr,
         size_t start_idx = sr.base_to_event_map[i].indices[strand_idx].start;
         size_t end_idx = sr.base_to_event_map[i].indices[strand_idx].stop;
         // no events for this k-mer
-	if (start_idx == -1) {
+        if (start_idx == -1) {
             continue;
         }
         assert(start_idx <= end_idx);
@@ -563,7 +572,7 @@ double estimate_unaligned_duration_profile(const SquiggleRead& sr,
             durations_per_kmer[i] += sr.get_duration(j, strand_idx);
         }
     }
-    
+
     std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
     assert(durations_per_kmer.size() > 0);
     double median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
@@ -773,7 +782,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     //----- print annotations to TSV:
     double leader_sample_start = region_indices.start+1;
     double adapter_sample_start = region_indices.leader+1;
-    double polya_sample_start = region_indices.adapter+1;    
+    double polya_sample_start = region_indices.adapter+1;
     double polya_sample_end = region_indices.polya;
     double transcr_sample_start = region_indices.polya+1;
     #pragma omp critical
@@ -837,7 +846,7 @@ int polya_main(int argc, char** argv)
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
     // print header line:
-    fprintf(stdout, "readname\tcontig\tpos\tleader_start\tadapter_start\tpolya_start\ttranscr_start\tread_rate\tpolya_length\tqc_tag\n");
+    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tqc_tag\n");
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
