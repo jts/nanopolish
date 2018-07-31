@@ -191,7 +191,8 @@ enum HMMState
     HMM_POLYA = 3,
     HMM_CLIFF = 4,
     HMM_TRANSCRIPT = 5,
-    HMM_INIT = 6  // initial NULL dummy state for viterbi loop
+    HMM_INIT = 6,      // initial NULL dummy state for viterbi loop
+    HMM_NUM_STATES = 6 // number of non-NULL states in HMM
 };
 
 // struct ViterbiOutputs composed of viterbi probs
@@ -206,13 +207,22 @@ private:
     // ----- state space parameters:
     // N.B.: `state transitions` is used to compute log probabilities, as viterbi decoding is done in log-space.
     // state transition probabilities (S->L->A->[P<->C]->T):
-    float state_transitions[6][6] = { {0.10f, 0.90f, 0.00f, 0.00f, 0.00f, 0.00f},     // S -> S (10%), S -> L (90%)
-                                      {0.00f, 0.90f, 0.10f, 0.00f, 0.00f, 0.00f},     // L -> A (10%), L -> L (90%)
-                                      {0.00f, 0.00f, 0.95f, 0.05f, 0.00f, 0.00f},     // A -> P (05%), A -> A (95%)
-                                      {0.00f, 0.00f, 0.00f, 0.89f, 0.01f, 0.10f},     // P -> P (89%), P -> C (01%), P -> T (10%)
-                                      {0.00f, 0.00f, 0.00f, 0.99f, 0.01f, 0.00f},     // C -> P (99%), C -> C (01%)
-                                      {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 1.00f} };   // T -> T (100%)
-    float start_probs[6] = { 0.50f, 0.50f, 0.00f, 0.00f, 0.00f, 0.00f }; // 50/50 chance of starting on L or S
+    float state_transitions[HMM_NUM_STATES][HMM_NUM_STATES] = {
+        // S -> S (10%), S -> L (90%)
+        {0.10f, 0.90f, 0.00f, 0.00f, 0.00f, 0.00f},
+        // L -> A (10%), L -> L (90%)
+        {0.00f, 0.90f, 0.10f, 0.00f, 0.00f, 0.00f},
+        // A -> P (05%), A -> A (95%)
+        {0.00f, 0.00f, 0.95f, 0.05f, 0.00f, 0.00f},
+        // P -> P (89%), P -> C (01%), P -> T (10%)
+        {0.00f, 0.00f, 0.00f, 0.89f, 0.01f, 0.10f},
+        // C -> P (99%), C -> C (01%)
+        {0.00f, 0.00f, 0.00f, 0.99f, 0.01f, 0.00f},
+        // T -> T (100%)
+        {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 1.00f}
+    };
+    // 50/50 chance of starting on L or S
+    float start_probs[HMM_NUM_STATES] = { 0.50f, 0.50f, 0.00f, 0.00f, 0.00f, 0.00f };
 
     // ----- emission parameters:
     // emission parameters, from empirical MLE on manually-flagged reads:
@@ -235,8 +245,8 @@ private:
     float t1_coeff = 0.654f;
 
     // log-probabilities are computed in the constructor:
-    float log_state_transitions[6][6];
-    float log_start_probs[6];
+    float log_state_transitions[HMM_NUM_STATES][HMM_NUM_STATES];
+    float log_start_probs[HMM_NUM_STATES];
 
     // ----- inlined computation of emission log-probabilities:
     // Get the log-probability of seeing `x` given we're in state `state` of the HMM
@@ -294,8 +304,8 @@ public:
     SegmentationHMM(float scale, float shift, float var)
     {
         // - - - initialize log-probabilities:
-        for (int i = 0; i < 6; ++i) {
-            for (int j = 0; j < 6; ++j) {
+        for (int i = 0; i < HMM_NUM_STATES; ++i) {
+            for (int j = 0; j < HMM_NUM_STATES; ++j) {
                 if (this->state_transitions[i][j] > 0.00f) {
                     this->log_state_transitions[i][j] = std::log(this->state_transitions[i][j]);
                 } else {
@@ -342,8 +352,8 @@ public:
     // ----- for a given sample value and shift/scale parameters, return log-probs for each state:
     std::vector<float> log_probas(const float x) const
     {
-        std::vector<float> log_proba(6);
-        for (uint8_t k = 0; k < 6; ++k) {
+        std::vector<float> log_proba(HMM_NUM_STATES);
+        for (uint8_t k = 0; k < HMM_NUM_STATES; ++k) {
             log_proba[k] = this->emit_log_proba(x, static_cast<HMMState>(k));
         }
         return log_proba;
@@ -359,8 +369,8 @@ public:
         size_t num_samples = sr.samples.size();
 
         // create/initialize viterbi scores and backpointers:
-        std::vector<float> init_scores(6, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
-        std::vector<HMMState> init_bptrs(6, HMM_INIT);
+        std::vector<float> init_scores(HMM_NUM_STATES, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
+        std::vector<HMMState> init_bptrs(HMM_NUM_STATES, HMM_INIT);
         std::vector< std::vector<float> > viterbi_scores(num_samples, init_scores);
         std::vector< std::vector<HMMState> > viterbi_bptrs(num_samples, init_bptrs);
 
