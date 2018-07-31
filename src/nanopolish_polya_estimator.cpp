@@ -168,7 +168,9 @@ void parse_polya_options(int argc, char** argv)
 //   - start_probs
 //   - gaussian parameters defining emission distributions
 //   - log-probabilities
-//   + (...)
+//   + viterbi
+//   + segment_squiggle
+//   + log_probas
 // ================================================================================
 // struct ViterbiOutputs composed of viterbi probs
 // and a vector of integers from {0,1,2,3,4,5} == {S,L,A,P,C,T}.
@@ -488,8 +490,12 @@ public:
 //   Estimate the underlying read rate.
 // * estimate_eventalign_duration_profile : compute median read rate via collapsed-
 //     duration event-alignment.
+// * estimate_unaligned_duration_profile : compute median read rate via collapsed-
+//     durations, without event-alignment.
 // ================================================================================
-// compute a read-rate based on event-alignment, collapsed by consecutive 5mer identity:
+// Compute a read-rate based on event-alignment, collapsed by consecutive 5mer identity
+// (N.B.: deprecated; using non-eventaligned durations seems to work just as well
+// while being faster to run.)
 double estimate_eventalign_duration_profile(SquiggleRead& sr,
                                             const faidx_t* fai,
                                             const bam_hdr_t* hdr,
@@ -575,7 +581,7 @@ std::vector<double> fetch_event_durations(const SquiggleRead& sr,
                                           const bam_hdr_t* hdr,
                                           const bam1_t* record,
                                           const size_t read_idx,
-					  const size_t strand_idx)
+                                          const size_t strand_idx)
 {
     // get kmer stats:
     size_t basecalled_k = sr.get_base_model(strand_idx)->k;
@@ -587,7 +593,7 @@ std::vector<double> fetch_event_durations(const SquiggleRead& sr,
         size_t start_idx = sr.base_to_event_map[i].indices[strand_idx].start;
         size_t end_idx = sr.base_to_event_map[i].indices[strand_idx].stop;
         // no events for this k-mer
-	if (start_idx == -1) {
+        if (start_idx == -1) {
             continue;
         }
         assert(start_idx <= end_idx);
@@ -800,7 +806,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
                 }
                 float s = samples[i];
                 float scaled_s = (s - sr.scalings[0].shift) / sr.scalings[0].scale;
-		std::vector<float> s_probas = vhmm.log_probas(s);
+                std::vector<float> s_probas = vhmm.log_probas(s);
                 fprintf(out_fp, "polya-samples\t%s\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
                         read_name.substr(0,6).c_str(), ref_name.c_str(), i, s, scaled_s,
                         s_probas.at(0), s_probas.at(1), s_probas.at(2), s_probas.at(3), s_probas.at(4), s_probas.at(5),
