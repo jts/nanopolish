@@ -191,7 +191,6 @@ enum HMMState
     HMM_POLYA = 3,
     HMM_CLIFF = 4,
     HMM_TRANSCRIPT = 5,
-    HMM_INIT = 6,      // initial NULL dummy state for viterbi loop
     HMM_NUM_STATES = 6 // number of non-NULL states in HMM
 };
 
@@ -370,7 +369,7 @@ public:
 
         // create/initialize viterbi scores and backpointers:
         std::vector<float> init_scores(HMM_NUM_STATES, -std::numeric_limits<float>::infinity()); // log(0.0) == -INFTY
-        std::vector<HMMState> init_bptrs(HMM_NUM_STATES, HMM_INIT);
+        std::vector<HMMState> init_bptrs(HMM_NUM_STATES, HMM_NUM_STATES); // HMM_NUM_STATES used as a dummy value here
         std::vector< std::vector<float> > viterbi_scores(num_samples, init_scores);
         std::vector< std::vector<HMMState> > viterbi_bptrs(num_samples, init_bptrs);
 
