@@ -11,6 +11,10 @@ nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -
 
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
+## Release notes
+
+* 0.10.1: `nanopolish variants --consensus` now only outputs a VCF file instead of a fasta sequence. The VCF file describes the changes that need to be made to turn the draft sequence into the polished assembly. A new program, `nanopolish vcf2fasta`, is provided to generate the polished genome (this replaces `nanopolish_merge.py`, see usage instructions below). This change is to avoid issues when merging segments that end on repeat boundaries (reported by Michael Wykes and Chris Wright).
+
 ## Dependencies
 
 A compiler that supports C++11 is needed to build nanopolish. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
@@ -43,7 +47,7 @@ When major features have been added or bugs fixed, we will tag and release a new
 ```
 git clone --recursive https://github.com/jts/nanopolish.git
 cd nanopolish
-git checkout v0.7.1
+git checkout v0.9.2
 make
 ```
 
@@ -52,7 +56,6 @@ make
 The main subprograms of nanopolish are:
 
 ```
-nanopolish extract: extract reads in FASTA or FASTQ format from a directory of FAST5 files
 nanopolish call-methylation: predict genomic bases that may be methylated
 nanopolish variants: detect SNPs and indels with respect to a reference genome
 nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
@@ -89,7 +92,7 @@ Now, we use nanopolish to compute the consensus sequence (the genome is polished
 
 ```
 python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
-    nanopolish variants --consensus polished.{1}.fa -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
+    nanopolish variants --consensus -o polished.{1}.vcf -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
 ```
 
 This command will run the consensus algorithm on eight 50kbp segments of the genome at a time, using 4 threads each. Change the ```-P``` and ```--threads``` options as appropriate for the machines you have available.
@@ -97,7 +100,7 @@ This command will run the consensus algorithm on eight 50kbp segments of the gen
 After all polishing jobs are complete, you can merge the individual 50kb segments together back into the final assembly:
 
 ```
-python nanopolish_merge.py polished.*.fa > polished_genome.fa
+nanopolish vcf2fasta -g draft.fa polished.*.vcf > polished_genome.fa
 ```
 
 ## Calling Methylation

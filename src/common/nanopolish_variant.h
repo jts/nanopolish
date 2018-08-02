@@ -21,7 +21,9 @@ class AlignmentDB;
 struct Variant
 {
     static void write_vcf_header(FILE* fp, 
-                                 const std::vector<std::string>& tag_lines = std::vector<std::string>());
+                                 const std::vector<std::string>& header_lines = std::vector<std::string>());
+
+    static std::string make_vcf_header_key_value(const std::string& key, const std::string& value);
 
     static std::string make_vcf_tag_string(const std::string& tag,
                                            const std::string& id,
@@ -43,8 +45,8 @@ struct Variant
     void write_vcf(FILE* fp) const
     {
         assert(fp != NULL);
-        const char* gt_def = genotype.empty() ? NULL : "GT";
-        const char* gt_str = genotype.empty() ? NULL : genotype.c_str();
+        const char* gt_def = "GT";
+        const char* gt_str = genotype.empty() ? "." : genotype.c_str();
 
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
@@ -113,6 +115,15 @@ class VariantKeyComp
         inline bool operator()(const Variant& a, const Variant& b)
         {
             return a.key() < b.key();
+        }
+};
+
+class VariantKeyEqualityComp
+{
+    public: 
+        inline bool operator()(const Variant& a, const Variant& b)
+        {
+            return a.key() == b.key();
         }
 };
 
