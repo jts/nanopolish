@@ -1148,6 +1148,10 @@ int call_variants_main(int argc, char** argv)
     FILE* out_fp;
     if(!opt::output_file.empty()) {
         out_fp = fopen(opt::output_file.c_str(), "w");
+        if(out_fp == NULL) {
+            fprintf(stderr, "Error: could not open %s for write\n", opt::output_file.c_str());
+            exit(EXIT_FAILURE);
+        }
     } else {
         out_fp = stdout;
     }
