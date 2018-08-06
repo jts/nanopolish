@@ -69,6 +69,7 @@ static const char *EVENTALIGN_USAGE_MESSAGE =
 "  -n, --print-read-names               print read names instead of indexes\n"
 "      --summary=FILE                   summarize the alignment of each read/strand in FILE\n"
 "      --samples                        write the raw samples for the event to the tsv output\n"
+"      --signal-index                   write the raw signal start and end index values for the event to the tsv output\n"
 "      --models-fofn=FILE               read alternative k-mer models from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -90,11 +91,12 @@ namespace opt
     static bool print_read_names;
     static bool full_output;
     static bool write_samples = false;
+    static bool write_signal_index = false;
 }
 
 static const char* shortopts = "r:b:g:t:w:q:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_MODELS_FOFN, OPT_SAMPLES };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_MODELS_FOFN, OPT_SAMPLES, OPT_SIGNAL_INDEX };
 
 static const struct option longopts[] = {
     { "verbose",             no_argument,       NULL, 'v' },
@@ -108,6 +110,7 @@ static const struct option longopts[] = {
     { "models-fofn",         required_argument, NULL, OPT_MODELS_FOFN },
     { "print-read-names",    no_argument,       NULL, 'n' },
     { "samples",             no_argument,       NULL, OPT_SAMPLES },
+    { "signal-index",        no_argument,       NULL, OPT_SIGNAL_INDEX },
     { "scale-events",        no_argument,       NULL, OPT_SCALE_EVENTS },
     { "sam",                 no_argument,       NULL, OPT_SAM },
     { "progress",            no_argument,       NULL, OPT_PROGRESS },
@@ -227,6 +230,10 @@ void emit_tsv_header(FILE* fp)
             (not opt::print_read_names? "read_index" : "read_name"), "strand");
     fprintf(fp, "%s\t%s\t%s\t%s\t", "event_index", "event_level_mean", "event_stdv", "event_length");
     fprintf(fp, "%s\t%s\t%s\t%s", "model_kmer", "model_mean", "model_stdv", "standardized_level");
+
+    if(opt::write_signal_index) {
+        fprintf(fp, "\t%s\t%s", "start_idx", "end_idx");
+    }
 
     if(opt::write_samples) {
         fprintf(fp, "\t%s", "samples");
@@ -448,6 +455,11 @@ void emit_event_alignment_tsv(FILE* fp,
                                                model_stdv,
                                                standard_level);
 
+        if(opt::write_signal_index) {
+            std::pair<size_t, size_t> signal_idx = sr.get_event_sample_idx(ea.strand_idx, ea.event_idx);
+            fprintf(fp, "\t%zu\t%zu", signal_idx.first, signal_idx.second);
+        }
+
         if(opt::write_samples) {
             std::vector<float> samples = sr.get_scaled_samples_for_event(ea.strand_idx, ea.event_idx);
             std::stringstream sample_ss;
@@ -528,7 +540,16 @@ void realign_read(const ReadDB& read_db,
     std::string read_name = bam_get_qname(record);
 
     // load read
-    SquiggleRead sr(read_name, read_db, opt::write_samples ? SRF_LOAD_RAW_SAMPLES : 0);
+    int sr_flag;
+    if( opt::write_samples) {
+        sr_flag = 2;
+    } else  if( opt::write_signal_index ) {
+        sr_flag = 2; // Might be worth having a flag to avoid all samples loading
+    } else {
+        sr_flag = 0;
+    }
+
+    SquiggleRead sr(read_name, read_db, sr_flag);
 
     if(opt::verbose > 1) {
         fprintf(stderr, "Realigning %s [%zu %zu]\n",
@@ -813,6 +834,7 @@ void parse_eventalign_options(int argc, char** argv)
             case 'q': arg >> opt::min_mapping_quality; break;
             case 'n': opt::print_read_names = true; break;
             case 'f': opt::full_output = true; break;
+            case OPT_SIGNAL_INDEX: opt::write_signal_index = true; break;
             case OPT_SAMPLES: opt::write_samples = true; break;
             case 'v': opt::verbose++; break;
             case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
