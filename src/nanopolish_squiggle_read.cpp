@@ -336,6 +336,7 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     }
 
     if(flags & SRF_LOAD_RAW_SAMPLES) {
+        this->sample_start_time = 0;
         this->samples.resize(rt.n);
         for(size_t i = 0; i < this->samples.size(); ++i) {
             assert(rt.start + i < rt.n);
@@ -346,7 +347,6 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     // If sequencing RNA, reverse the events to be 5'->3'
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
-        std::reverse(this->samples.begin(), this->samples.end());
     }
 
     // clean up scrappie raw and event tables
