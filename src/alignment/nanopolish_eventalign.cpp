@@ -153,7 +153,7 @@ struct EventalignSummary
 };
 
 //
-const PoreModel* EventAlignmentParameters::get_model() const 
+const PoreModel* EventAlignmentParameters::get_model() const
 {
     if(this->alphabet == "") {
         return this->sr->get_base_model(this->strand_idx);
@@ -182,12 +182,12 @@ void trim_aligned_pairs_to_ref_region(std::vector<AlignedPair>& aligned_pairs, i
 {
     std::vector<AlignedPair> trimmed;
     for(size_t i = 0; i < aligned_pairs.size(); ++i) {
-        if(aligned_pairs[i].ref_pos >= ref_start && 
+        if(aligned_pairs[i].ref_pos >= ref_start &&
            aligned_pairs[i].ref_pos <= ref_end) {
             trimmed.push_back(aligned_pairs[i]);
         }
     }
-    
+
     aligned_pairs.swap(trimmed);
 }
 
@@ -200,7 +200,7 @@ int get_end_pair(const std::vector<AlignedPair>& aligned_pairs, int ref_pos_max,
             return pair_idx - 1;
         pair_idx += 1;
     }
-    
+
     return aligned_pairs.size() - 1;
 }
 
@@ -212,7 +212,7 @@ std::string get_reference_region_ts(const faidx_t* fai, const char* ref_name, in
     char* cref_seq;
     #pragma omp critical
     cref_seq = faidx_fetch_seq(fai, ref_name, start, end, fetched_len);
-    
+
     assert(cref_seq != NULL);
 
     std::string out(cref_seq);
@@ -294,7 +294,7 @@ std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>
             incoming = (r_step - 1) << BAM_CIGAR_SHIFT;
             incoming |= BAM_CDEL;
             out.push_back(incoming);
-            
+
             incoming = 1 << BAM_CIGAR_SHIFT;
             incoming |= BAM_CMATCH;
         } else {
@@ -306,7 +306,7 @@ std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>
         // If the operation matches the previous, extend the length
         // otherwise append a new op
         if(bam_cigar_op(out.back()) == bam_cigar_op(incoming)) {
-            uint32_t sum = bam_cigar_oplen(out.back()) + 
+            uint32_t sum = bam_cigar_oplen(out.back()) +
                            bam_cigar_oplen(incoming);
             out.back() = sum << BAM_CIGAR_SHIFT | bam_cigar_op(incoming);
         } else {
@@ -323,13 +323,13 @@ std::vector<uint32_t> event_alignment_to_cigar(const std::vector<EventAlignment>
 void emit_event_alignment_sam(htsFile* fp,
                               const SquiggleRead& sr,
                               const bam_hdr_t* base_hdr,
-                              const bam1_t* base_record, 
+                              const bam1_t* base_record,
                               const std::vector<EventAlignment>& alignments)
 {
     if(alignments.empty())
         return;
     bam1_t* event_record = bam_init1();
-    
+
     // Variable-length data
     std::string qname = sr.read_name + (alignments.front().strand_idx == 0 ? ".template" : ".complement");
 
@@ -342,7 +342,7 @@ void emit_event_alignment_sam(htsFile* fp,
     event_record->core.flag = alignments.front().rc ? 16 : 0;
 
     event_record->core.l_qseq = 0;
-    
+
     event_record->core.mtid = -1;
     event_record->core.mpos = -1;
     event_record->core.isize = 0;
@@ -355,23 +355,23 @@ void emit_event_alignment_sam(htsFile* fp,
                            event_record->core.n_cigar * 4 + // 4 bytes per cigar op
                            event_record->core.l_qseq + // query seq
                            event_record->core.l_qseq; // query quality
-        
+
     // nothing copied yet
     event_record->l_data = 0;
-    
+
     // allocate data
     event_record->data = (uint8_t*)malloc(event_record->m_data);
 
     // copy q name
     assert(event_record->core.l_qname <= event_record->m_data);
-    strncpy(bam_get_qname(event_record), 
+    strncpy(bam_get_qname(event_record),
             qname.c_str(),
             event_record->core.l_qname);
     event_record->l_data += event_record->core.l_qname;
-    
+
     // cigar
     assert(event_record->l_data + event_record->core.n_cigar * 4 <= event_record->m_data);
-    memcpy(bam_get_cigar(event_record), 
+    memcpy(bam_get_cigar(event_record),
            &cigar[0],
            event_record->core.n_cigar * 4);
     event_record->l_data += event_record->core.n_cigar * 4;
@@ -541,14 +541,11 @@ void realign_read(const ReadDB& read_db,
 
     // load read
     int sr_flag;
-    if( opt::write_samples) {
-        sr_flag = 2;
-    } else  if( opt::write_signal_index ) {
-        sr_flag = 2; // Might be worth having a flag to avoid all samples loading
+    if(( opt::write_samples) || (opt::write_signal_index)) {
+        sr_flag = SRF_LOAD_RAW_SAMPLES;
     } else {
         sr_flag = 0;
     }
-
     SquiggleRead sr(read_name, read_db, sr_flag);
 
     if(opt::verbose > 1) {
@@ -569,7 +566,7 @@ void realign_read(const ReadDB& read_db,
         params.hdr = hdr;
         params.record = record;
         params.strand_idx = strand_idx;
-        
+
         params.read_idx = read_idx;
         params.region_start = region_start;
         params.region_end = region_end;
@@ -620,12 +617,12 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
     int fetched_len = 0;
     int ref_offset = params.record->core.pos;
     std::string ref_name(params.hdr->target_name[params.record->core.tid]);
-    std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset, 
+    std::string ref_seq = get_reference_region_ts(params.fai, ref_name.c_str(), ref_offset,
                                                   bam_endpos(params.record), &fetched_len);
 
     // convert to upper case
     std::transform(ref_seq.begin(), ref_seq.end(), ref_seq.begin(), ::toupper);
-    
+
     // k from read pore model
     const uint32_t k = params.sr->get_model_k(params.strand_idx);
 
@@ -665,12 +662,12 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
         // get the event range of the read to re-align
         int read_kidx_start = aligned_pairs.front().read_pos;
         int read_kidx_end = aligned_pairs.back().read_pos;
-        
+
         if(do_base_rc) {
             read_kidx_start = params.sr->flip_k_strand(read_kidx_start, k);
             read_kidx_end = params.sr->flip_k_strand(read_kidx_end, k);
         }
-        
+
         assert(read_kidx_start >= 0);
         assert(read_kidx_end >= 0);
 
@@ -687,7 +684,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
 
             // Get the index of the aligned pair approximately align_stride away
             int end_pair_idx = get_end_pair(aligned_pairs, curr_start_ref + align_stride, curr_pair_idx);
-        
+
             int curr_end_ref = aligned_pairs[end_pair_idx].ref_pos;
             int curr_end_read = aligned_pairs[end_pair_idx].read_pos;
 
@@ -704,7 +701,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             assert(fwd_subseq.length() == rc_subseq.length());
 
             HMMInputSequence hmm_sequence(fwd_subseq, rc_subseq, pore_model->pmalphabet);
-            
+
             // Require a minimum amount of sequence to align to
             if(hmm_sequence.length() < 2 * k) {
                 break;
@@ -732,7 +729,7 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             input.rc = rc_flags[params.strand_idx];
 
             std::vector<HMMAlignmentState> event_alignment = profile_hmm_align(hmm_sequence, input);
-            
+
             // Output alignment
             size_t num_output = 0;
             size_t event_align_idx = 0;
@@ -760,14 +757,14 @@ std::vector<EventAlignment> align_read_to_ref(const EventAlignmentParameters& pa
             int last_event_output = 0;
             int last_ref_kmer_output = 0;
 
-            for(; event_align_idx < event_alignment.size() && 
+            for(; event_align_idx < event_alignment.size() &&
                   (num_output < output_stride || last_section); event_align_idx++) {
 
                 HMMAlignmentState& as = event_alignment[event_align_idx];
                 if(as.state != 'K' && (int)as.event_idx != curr_start_event) {
 
                     EventAlignment ea;
-                    
+
                     // ref
                     ea.ref_name = ref_name;
                     ea.ref_position = curr_start_ref + as.kmer_idx;
@@ -885,7 +882,7 @@ void parse_eventalign_options(int argc, char** argv)
         PoreModelSet::initialize(opt::models_fofn);
     }
 
-    if (die) 
+    if (die)
     {
         std::cout << "\n" << EVENTALIGN_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
