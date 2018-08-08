@@ -1114,6 +1114,18 @@ std::vector<float> SquiggleRead::get_scaled_samples_for_event(size_t strand_idx,
     return out;
 }
 
+// return a pair of value corresponding to the start and end index of a given index on the signal
+std::pair<size_t, size_t> SquiggleRead::get_event_sample_idx(size_t strand_idx, size_t event_idx) const
+{
+    double event_start_time = this->events[strand_idx][event_idx].start_time;
+    double event_duration = this->events[strand_idx][event_idx].duration;
+
+    size_t start_idx = this->get_sample_index_at_time(event_start_time * this->sample_rate);
+    size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
+
+    return std::make_pair (start_idx, end_idx);
+}
+
 void SquiggleRead::detect_pore_type()
 {
     assert(f_p and f_p->is_open());
