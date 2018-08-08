@@ -1087,20 +1087,16 @@ std::vector<EventAlignment> SquiggleRead::get_eventalignment_for_1d_basecalls(co
 
 size_t SquiggleRead::get_sample_index_at_time(size_t sample_time) const
 {
-    return sample_time - sample_start_time;
+    return sample_time - this->sample_start_time;
 }
 
 //
 std::vector<float> SquiggleRead::get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const
 {
-    double event_start_time = this->events[strand_idx][event_idx].start_time;
-    double event_duration = this->events[strand_idx][event_idx].duration;
-
-    size_t start_idx = this->get_sample_index_at_time(event_start_time * this->sample_rate);
-    size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
+    std::pair<size_t, size_t> sample_range = get_event_sample_idx(strand_idx, event_idx);
 
     std::vector<float> out;
-    for(size_t i = start_idx; i < end_idx; ++i) {
+    for(size_t i = sample_range.first; i < sample_range.second; ++i) {
         double curr_sample_time = (this->sample_start_time + i) / this->sample_rate;
         //fprintf(stderr, "event_start: %.5lf sample start: %.5lf curr: %.5lf rate: %.2lf\n", event_start_time, this->sample_start_time / this->sample_rate, curr_sample_time, this->sample_rate);
         double s = this->samples[i];
@@ -1123,7 +1119,7 @@ std::pair<size_t, size_t> SquiggleRead::get_event_sample_idx(size_t strand_idx, 
     size_t start_idx = this->get_sample_index_at_time(event_start_time * this->sample_rate);
     size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
 
-    return std::make_pair (start_idx, end_idx);
+    return std::make_pair(start_idx, end_idx);
 }
 
 void SquiggleRead::detect_pore_type()
