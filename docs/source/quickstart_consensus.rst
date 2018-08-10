@@ -87,13 +87,24 @@ First, we align the original reads (``reads.fasta``) to the draft assembly (``dr
 Then we run the consensus algorithm. For larger datasets we use ``nanopolish_makerange.py`` to split the draft genome assembly into 50kb segments, so that we can run the consensus algorithm on each segment in parallel. The output would be the polished segments in ``fasta`` format. 
 Since our dataset is only covering a 2kb region, we skip this step and use the following command: ::
 
-    nanopolish variants --consensus polished.fa \
+    nanopolish variants --consensus -o polished.vcf \
         -w "tig00000001:200000-202000" \
         -r reads.fasta \
         -b reads.sorted.bam \
         -g draft.fa
 
-We are left with our desired output: ``polished.fa``.
+We are left with: ``polished.vcf``.
+
+**Note**: As of v0.10.1, ``nanopolish variants --consensus`` only outputs a VCF file instead of a fasta sequence.
+
+To generate the polished genome in fasta format: ::
+
+    nanopolish vcf2fasta --skip-checks -g draft.fa polished.vcf > polished_genome.fa
+
+We only polished a 200kb region, so let's pull that out: :: 
+
+    samtools faidx polished_genome.fa
+    samtools faidx polished_genome.fa "tig00000001:200000-202000" > polished.fa
 
 Evaluate the assembly
 ---------------------------------
