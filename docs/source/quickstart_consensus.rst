@@ -101,7 +101,7 @@ To generate the polished genome in fasta format: ::
 
     nanopolish vcf2fasta --skip-checks -g draft.fa polished.vcf > polished_genome.fa
 
-We only polished a 200kb region, so let's pull that out: :: 
+We only polished a 2kb region, so let's pull that out: :: 
 
     samtools faidx polished_genome.fa
     samtools faidx polished_genome.fa "tig00000001:200000-202000" > polished.fa
