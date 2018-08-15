@@ -165,6 +165,10 @@ int vcf2fasta_main(int argc, char** argv)
         // Confirm that all windows on this contig have been polished
         bool window_check_ok = true;
         auto& windows = windows_by_contig[contig];
+        if(windows.empty()) {
+            fprintf(stderr, "error: no polishing windows found for %s\n", contig.c_str());
+            exit(EXIT_FAILURE);
+        }
 
         std::sort(windows.begin(), windows.end());
 
