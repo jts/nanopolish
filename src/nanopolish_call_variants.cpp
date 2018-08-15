@@ -1207,7 +1207,10 @@ int call_variants_main(int argc, char** argv)
 
     // write the variants
     for(const auto& v : haplotype.get_variants()) {
-        v.write_vcf(out_fp);
+
+        if(!opt::snps_only || v.is_snp()) {
+            v.write_vcf(out_fp);
+        }
     }
 
     //
