@@ -378,8 +378,6 @@ public:
         viterbi_scores[0][HMM_START] = this->log_start_probs[HMM_START] + this->emit_log_proba(sr.samples[num_samples-1], HMM_START);
         viterbi_scores[0][HMM_LEADER] = this->log_start_probs[HMM_LEADER] + this->emit_log_proba(sr.samples[num_samples-1], HMM_LEADER);
         for (size_t i = 1; i < num_samples; ++i) {
-            // `t` moves from 3'->5' on the vector of samples, in opposite direction of `i`:
-            size_t t = (num_samples-1-i);
             // get individual incoming state scores:
             float s_to_s = viterbi_scores.at(i-1)[HMM_START] + this->log_state_transitions[HMM_START][HMM_START];
             float s_to_l = viterbi_scores.at(i-1)[HMM_START] + this->log_state_transitions[HMM_START][HMM_LEADER];
@@ -395,12 +393,12 @@ public:
             float t_to_t = viterbi_scores.at(i-1)[HMM_TRANSCRIPT] + this->log_state_transitions[HMM_TRANSCRIPT][HMM_TRANSCRIPT];
 
             // update the viterbi scores for each state at this timestep:
-            viterbi_scores.at(i)[HMM_START] = s_to_s + this->emit_log_proba(sr.samples[t], HMM_START);
-            viterbi_scores.at(i)[HMM_LEADER] = std::max(l_to_l, s_to_l) + this->emit_log_proba(sr.samples[t], HMM_LEADER);
-            viterbi_scores.at(i)[HMM_ADAPTER] = std::max(a_to_a, l_to_a) + this->emit_log_proba(sr.samples[t], HMM_ADAPTER);
-            viterbi_scores.at(i)[HMM_POLYA] = std::max(p_to_p, std::max(a_to_p, c_to_p)) + this->emit_log_proba(sr.samples[t], HMM_POLYA);
-            viterbi_scores.at(i)[HMM_CLIFF] = std::max(c_to_c, p_to_c) + this->emit_log_proba(sr.samples[t], HMM_CLIFF);
-            viterbi_scores.at(i)[HMM_TRANSCRIPT] = std::max(p_to_t, t_to_t) + this->emit_log_proba(sr.samples[t], HMM_TRANSCRIPT);
+            viterbi_scores.at(i)[HMM_START] = s_to_s + this->emit_log_proba(sr.samples[i], HMM_START);
+            viterbi_scores.at(i)[HMM_LEADER] = std::max(l_to_l, s_to_l) + this->emit_log_proba(sr.samples[i], HMM_LEADER);
+            viterbi_scores.at(i)[HMM_ADAPTER] = std::max(a_to_a, l_to_a) + this->emit_log_proba(sr.samples[i], HMM_ADAPTER);
+            viterbi_scores.at(i)[HMM_POLYA] = std::max(p_to_p, std::max(a_to_p, c_to_p)) + this->emit_log_proba(sr.samples[i], HMM_POLYA);
+            viterbi_scores.at(i)[HMM_CLIFF] = std::max(c_to_c, p_to_c) + this->emit_log_proba(sr.samples[i], HMM_CLIFF);
+            viterbi_scores.at(i)[HMM_TRANSCRIPT] = std::max(p_to_t, t_to_t) + this->emit_log_proba(sr.samples[i], HMM_TRANSCRIPT);
 
             // backpointers:
             // START: S can only come from S
@@ -667,8 +665,12 @@ double estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_
 // false if QC-PASS.
 bool pre_segmentation_qc(uint32_t suffix_clip, uint32_t prefix_clip, double transcript_length, const SquiggleRead& sr)
 {
-    // skip this read if long skip at end or if most of transcript wasnt aligned:
-    if (suffix_clip > 200 || (double)(prefix_clip + suffix_clip) / transcript_length > 0.2) {
+    // skip this read if long skip at end:
+    if (suffix_clip > 200) {
+        return true;
+    }
+    // skip this read if most of transcript wasnt aligned:
+    if ((double)(prefix_clip + suffix_clip) / transcript_length > 0.2) {
         return true;
     }
     // skip if no events:
@@ -750,6 +752,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     uint32_t prefix_clip = bam_cigar_oplen(prefix_cigar);
     uint32_t suffix_clip = bam_cigar_oplen(suffix_cigar);
 
+    //----- construct SquiggleRead:
     SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
 
     //----- print clipping data if `verbose > 2` set:
@@ -803,13 +806,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
         // if `verbose == 1`, print the samples (picoAmps) of the read,
         // up to the first 1000 samples of transcript region:
         if (opt::verbose == 1) {
-            // copy 5'->3'-oriented samples from SquiggleRead and reverse back to 3'->5':
-            std::vector<float> samples(sr.samples);
-            std::reverse(samples.begin(), samples.end());
-            const SegmentationHMM vhmm(static_cast<float>(sr.scalings[0].scale),
-                                       static_cast<float>(sr.scalings[0].shift),
-                                       static_cast<float>(sr.scalings[0].var));
-            for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, samples.size()); ++i) {
+            for (size_t i = 0; i < std::min(static_cast<size_t>(polya_sample_end)+1000, sr.samples.size()); ++i) {
                 std::string tag;
                 if (i < leader_sample_start) {
                     tag = "START";
@@ -822,9 +819,9 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
                 } else {
                     tag = "TRANSCRIPT";
                 }
-                float s = samples[i];
+                float s = sr.samples[i];
                 float scaled_s = (s - sr.scalings[0].shift) / sr.scalings[0].scale;
-                std::vector<float> s_probas = vhmm.log_probas(s);
+                std::vector<float> s_probas = hmm.log_probas(s);
                 fprintf(out_fp, "polya-samples\t%s\t%s\t%zu\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%s\n",
                         read_name.substr(0,6).c_str(), ref_name.c_str(), i, s, scaled_s,
                         s_probas.at(0), s_probas.at(1), s_probas.at(2), s_probas.at(3), s_probas.at(4), s_probas.at(5),
