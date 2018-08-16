@@ -669,10 +669,6 @@ bool pre_segmentation_qc(uint32_t suffix_clip, uint32_t prefix_clip, double tran
     if (suffix_clip > 200) {
         return true;
     }
-    // skip this read if most of transcript wasnt aligned:
-    if ((double)(prefix_clip + suffix_clip) / transcript_length > 0.2) {
-        return true;
-    }
     // skip if no events:
     if (sr.events[0].empty()) {
         return true;
