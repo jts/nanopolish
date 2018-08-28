@@ -791,12 +791,12 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
 
     //----- Resolve QC flag based on priority:
     std::string qc_tag;
-    if (pre_segmentation_qc_flag.compare("PASS") != 0) {
-        qc_tag = pre_segmentation_qc_flag;
-    } else if (post_segmentation_qc_flag.compare("PASS") != 0) {
+    if (post_segmentation_qc_flag.compare("PASS") != 0) {
         qc_tag = post_segmentation_qc_flag;
     } else if (post_estimation_qc_flag.compare("PASS") != 0) {
         qc_tag = post_estimation_qc_flag;
+    } else if (pre_segmentation_qc_flag.compare("PASS") != 0) {
+        qc_tag = pre_segmentation_qc_flag;
     } else {
         qc_tag = "PASS";
     }
