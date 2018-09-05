@@ -93,7 +93,7 @@ lib/libhdf5.a:
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
 	if [ ! -e 3.2.5.tar.bz2 ]; then wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2; fi
-	tar -xjvf 3.2.5.tar.bz2 || exit 255
+	tar -xjf 3.2.5.tar.bz2 || exit 255
 	mv eigen-eigen-bdd17ee3b1b3 eigen || exit 255
 
 #
