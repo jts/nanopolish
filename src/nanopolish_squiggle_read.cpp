@@ -92,7 +92,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         //fprintf(stderr, "type: %s\n", experiment_type.c_str());
 
         // Try to detect whether this read is DNA or RNA
-        this->nucleotide_type = experiment_type == "rna" ? SRNT_RNA : SRNT_DNA;
+        this->nucleotide_type = experiment_type == "rna" || experiment_type == "internal_rna" ? SRNT_RNA : SRNT_DNA;
 
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
@@ -321,7 +321,7 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     assert(rt.n > 0);
     assert(et.n > 0);
 
-    // 
+    //
     this->scalings[strand_idx] = estimate_scalings_using_mom(this->read_sequence,
                                                              *this->base_model[strand_idx],
                                                              et);
@@ -336,7 +336,6 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     }
 
     if(flags & SRF_LOAD_RAW_SAMPLES) {
-
         this->sample_start_time = 0;
         this->samples.resize(rt.n);
         for(size_t i = 0; i < this->samples.size(); ++i) {
@@ -345,7 +344,7 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
         }
     }
 
-    // If sequencing RNA, reverse the events to be 3'->5'
+    // If sequencing RNA, reverse the events to be 5'->3'
     if(this->nucleotide_type == SRNT_RNA) {
         std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
     }
