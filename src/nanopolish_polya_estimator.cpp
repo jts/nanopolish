@@ -661,20 +661,18 @@ double estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_
 // * post_segmentation_qc: check the segmentation results for failures.
 // * post_estimation_qc: sanity check for estimates.
 // ================================================================================
-// Some basic sanity-check QC before segmentation; this returns true if QC-FAIL and
-// false if QC-PASS.
-bool pre_segmentation_qc(uint32_t suffix_clip, uint32_t prefix_clip, double transcript_length, const SquiggleRead& sr)
+// QC before segmentation; check if event-alignment passes.
+std::string pre_segmentation_qc(uint32_t suffix_clip, uint32_t prefix_clip, double transcript_length, const SquiggleRead& sr)
 {
-    // skip this read if long skip at end:
+    std::string qc_tag;
     if (suffix_clip > 200) {
-        return true;
+        // fail if this read has a long skip at end:
+        qc_tag = "SUFFCLIP";
+    } else {
+        // pass if none of the above fail:
+        qc_tag = "PASS";
     }
-    // skip if no events:
-    if (sr.events[0].empty()) {
-        return true;
-    }
-    // return false (i.e. dont skip) if none of the above fail:
-    return false;
+    return qc_tag;
 }
 
 // QC pass after constructing a segmentation; returns a QC flag represented as a string,
@@ -748,8 +746,24 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     uint32_t prefix_clip = bam_cigar_oplen(prefix_cigar);
     uint32_t suffix_clip = bam_cigar_oplen(suffix_cigar);
 
-    //----- construct SquiggleRead:
+    //----- construct SquiggleRead; if there are load issues, print -1's and skip compute:
     SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
+    if (sr.fast5_path == "" || sr.events[0].empty()) {
+        #pragma omp critical
+	{
+            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
+                read_name.c_str(), ref_name.c_str(), record->core.pos);
+            if (opt::verbose == 1) {
+                fprintf(out_fp,
+                    "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tREAD_FAILED_LOAD\n",
+                    read_name.substr(0,6).c_str(), ref_name.c_str());
+            }
+            if (opt::verbose == 2) {
+                fprintf(out_fp, "polya-durations\t%s\t-1\t-1.0\tREAD_FAILED_LOAD\n", read_name.substr(0,6).c_str());
+            }
+        }
+        return;
+    }
 
     //----- print clipping data if `verbose > 2` set:
     if (opt::verbose > 2) {
@@ -759,9 +773,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     std::string sequenced_transcript = sr.read_sequence;
 
     //----- Perform pre-segmentation QC:
-    if (pre_segmentation_qc(suffix_clip, prefix_clip, sequenced_transcript.length(), sr)) {
-        return;
-    }
+    std::string pre_segmentation_qc_flag = pre_segmentation_qc(suffix_clip, prefix_clip, sequenced_transcript.length(), sr);
 
     //----- perform HMM-based regional segmentation & post-segmentation QC:
     SegmentationHMM hmm(static_cast<float>(sr.scalings[0].scale),
@@ -783,6 +795,8 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
         qc_tag = post_segmentation_qc_flag;
     } else if (post_estimation_qc_flag.compare("PASS") != 0) {
         qc_tag = post_estimation_qc_flag;
+    } else if (pre_segmentation_qc_flag.compare("PASS") != 0) {
+        qc_tag = pre_segmentation_qc_flag;
     } else {
         qc_tag = "PASS";
     }
@@ -825,11 +839,12 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
             }
         }
         // if `verbose == 2`, print the raw event durations of the read:
-        if (opt::verbose >= 2) {
+        if (opt::verbose == 2) {
             std::vector<double> raw_durations = fetch_event_durations(sr, fai, hdr, record, read_idx, strand_idx);
             for (size_t i = 0; i < raw_durations.size(); ++i) {
                 double dura = raw_durations[i];
-                fprintf(out_fp, "polya-durations\t%s\t%zu\t%f\t%s\n", read_name.c_str(), i, dura, qc_tag.c_str());
+                fprintf(out_fp, "polya-durations\t%s\t%zu\t%f\t%s\n",
+                    read_name.substr(0,6).c_str(), i, dura, qc_tag.c_str());
             }
         }
     }
