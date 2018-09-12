@@ -5,23 +5,23 @@ sudo: false
 language: generic
 cache: apt
 git:
-  depth: 1
+    depth: 1
 
 matrix:
-  include:
+    include:
     # Set env for both nanoplish and the dependency hdf5.
     - env:
-      - CC=gcc-4.8
-      - CXX=g++-4.8
-      - AR=gcc-ar-4.8
-      - NM=gcc-nm-4.8
-      - RANLIB=gcc-ranlib-4.8
+        - CC=gcc-4.8
+        - CXX=g++-4.8
+        - AR=gcc-ar-4.8
+        - NM=gcc-nm-4.8
+        - RANLIB=gcc-ranlib-4.8
     - env:
-      - CC=gcc-8
-      - CXX=g++-8
-      - AR=gcc-ar-8
-      - NM=gcc-nm-8
-      - RANLIB=gcc-ranlib-8
+        - CC=gcc-8
+        - CXX=g++-8
+        - AR=gcc-ar-8
+        - NM=gcc-nm-8
+        - RANLIB=gcc-ranlib-8
 
 # Install and export newer gcc
 before_install:
@@ -29,18 +29,18 @@ before_install:
     - sudo apt-get update -qq
     - |
       if [[ "${CC}" =~ ^gcc- ]]; then
-        echo "Installing ${CC}."
-        sudo apt-get install -qq "${CC}"
+          echo "Installing ${CC}."
+          sudo apt-get install -qq "${CC}"
       fi
     - |
       if [[ "${CXX}" =~ ^g\+\+- ]]; then
-        echo "Installing ${CXX}."
-        sudo apt-get install -qq "${CXX}"
+          echo "Installing ${CXX}."
+          sudo apt-get install -qq "${CXX}"
       fi
 
 script:
-  # Suppress all compiler warnings for hdf5 Makefile
-  # to display the log without downloading the raw log on Travis log page.
-  # Travis finishs with error when exceeding the limit of 4 MB of log length.
-  - export H5_CFLAGS="-w"
-  - make nanopolish && make test
+    # Suppress all compiler warnings for hdf5 Makefile
+    # to display the log without downloading the raw log on Travis log page.
+    # Travis finishs with error when exceeding the limit of 4 MB of log length.
+    - export H5_CFLAGS="-w"
+    - make nanopolish && make test
