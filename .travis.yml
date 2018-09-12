@@ -43,4 +43,4 @@ script:
     # to display the log without downloading the raw log on Travis log page.
     # Travis finishs with error when exceeding the limit of 4 MB of log length.
     - export H5_CFLAGS="-w"
-    - make nanopolish && make test
+    - make && make test
