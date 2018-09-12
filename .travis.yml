@@ -1,11 +1,46 @@
 # travis.yml for github.com/jts/nanopolish
 
-language: cpp
+dist: trusty
+sudo: false
+language: generic
+cache: apt
+git:
+  depth: 1
+
+matrix:
+  include:
+    # Set env for both nanoplish and the dependency hdf5.
+    - env:
+      - CC=gcc-4.8
+      - CXX=g++-4.8
+      - AR=gcc-ar-4.8
+      - NM=gcc-nm-4.8
+      - RANLIB=gcc-ranlib-4.8
+    - env:
+      - CC=gcc-8
+      - CXX=g++-8
+      - AR=gcc-ar-8
+      - NM=gcc-nm-8
+      - RANLIB=gcc-ranlib-8
 
 # Install and export newer gcc
 before_install:
     - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     - sudo apt-get update -qq
-    - sudo apt-get install -qq g++-4.8
+    - |
+      if [[ "${CC}" =~ ^gcc- ]]; then
+        echo "Installing ${CC}."
+        sudo apt-get install -qq "${CC}"
+      fi
+    - |
+      if [[ "${CXX}" =~ ^g\+\+- ]]; then
+        echo "Installing ${CXX}."
+        sudo apt-get install -qq "${CXX}"
+      fi
 
-script: make CXX=g++-4.8 nanopolish && make CXX=g++-4.8 test
+script:
+  # Suppress all compiler warnings for hdf5 Makefile
+  # to display the log without downloading the raw log on Travis log page.
+  # Travis finishs with error when exceeding the limit of 4 MB of log length.
+  - export H5_CFLAGS="-w"
+  - make nanopolish && make test
