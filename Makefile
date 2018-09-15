@@ -20,6 +20,10 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
+HDF5_VERSION ?= 1.8.14
+HDF5_CONFIG_ARGS ?= --enable-threadsafe
+EIGEN_VERSION ?= 3.2.5
+
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
@@ -86,21 +90,22 @@ htslib/libhts.a:
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
 lib/libhdf5.a:
-	if [ ! -e hdf5-1.8.14.tar.gz ]; then \
-		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz; \
+	if [ ! -e hdf5-$(HDF5_VERSION).tar.gz ]; then \
+		version_major_minior=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
+		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$${version_major_minior}/hdf5-$(HDF5_VERSION)/src/hdf5-$(HDF5_VERSION).tar.gz; \
 	fi
-	tar -xzf hdf5-1.8.14.tar.gz || exit 255
-	cd hdf5-1.8.14 && \
-		./configure --enable-threadsafe --prefix=`pwd`/.. && \
+	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
+	cd hdf5-$(HDF5_VERSION) && \
+		./configure $(HDF5_CONFIG_ARGS) --prefix=`pwd`/.. && \
 		make && make install
 
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
-	if [ ! -e 3.2.5.tar.bz2 ]; then \
-		wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2; \
+	if [ ! -e $(EIGEN_VERSION).tar.bz2 ]; then \
+		wget http://bitbucket.org/eigen/eigen/get/$(EIGEN_VERSION).tar.bz2; \
 	fi
-	tar -xjf 3.2.5.tar.bz2 || exit 255
-	mv eigen-eigen-bdd17ee3b1b3 eigen || exit 255
+	tar -xjf $(EIGEN_VERSION).tar.bz2 || exit 255
+	mv eigen-eigen-* eigen || exit 255
 
 #
 # Source files
