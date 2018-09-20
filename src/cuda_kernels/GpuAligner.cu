@@ -154,14 +154,14 @@ __global__ void getScoresMod (float * poreModelDev,
 	float BAD_EVENT_PENALTY = 0.0f;
 
 	//Fill out the dynamic programming table
-	for (int row = 1; row < numEvents + 1; row++) {//TODO: check that numRows is correct value.
+	for (int row = 1; row < numEvents + 1; row++) {
 	    //row-specific values
 	    int event_idx = e_start + (row - 1) * e_stride;
 	    float eventMean = eventMeansDev[e_offset + row - 1];
 	    float preFlank = preFlankingDev[e_offset + row - 1];
 	    float postFlank = postFlankingDev[e_offset + row - 1];
 
-	    float lp_emission_b = BAD_EVENT_PENALTY; //TODO: Can this be taken out of the inner loop?
+	    float lp_emission_b = BAD_EVENT_PENALTY;
 
 	    //Initialise temp registers
 	    float prevMatch = prevProbabilities[PSR9_MATCH];;
@@ -176,7 +176,7 @@ __global__ void getScoresMod (float * poreModelDev,
 
 		int kmerIdx = blkIdx - 1; // because there is a start block with no associated kmer
 		uint32_t rank = kmerRanksDev[seqOffset + kmerIdx + (numKmers *
-								    rc)]; // TODO understand why this is segfaulting sometimes, why does kmerIdx sometimes exceed 4096
+								    rc)];
 
 		float pore_mean = poreModelDev[rank * 3];
 		float pore_stdv = poreModelDev[rank * 3 + 1];
@@ -255,10 +255,8 @@ __global__ void getScoresMod (float * poreModelDev,
 
 		sum = HMT_FROM_PREV_M;
 		sum = logsumexpf(sum, HMT_FROM_PREV_B);
-		sum = logsumexpf(sum,
-				 HMT_FROM_PREV_K); //TODO - this is in the 'normal' kernel instead of HMT_FROM_PREV_M - is it wrong?
-		sum = logsumexpf(sum,
-				 HMT_FROM_PREV_M); //TODO - assume this should probably be in there, but not in current
+		sum = logsumexpf(sum, HMT_FROM_PREV_K);
+		sum = logsumexpf(sum, HMT_FROM_PREV_M);
 
 		float newSkipScore = sum;
 
@@ -291,7 +289,7 @@ GpuAligner::GpuAligner()
     int maxBuffer = max_reads_per_worker * MAX_SEQUENCE_LENGTH * sizeof(int);
 
     //OLD
-    int max_num_sequences = 1; //TODO can get rid of this
+    int max_num_sequences = 1;
     int max_sequence_length = 100;
     int max_n_rows = 100;
 
@@ -400,7 +398,7 @@ GpuAligner::~GpuAligner() {
     CU_CHECK_ERR(cudaFreeHost(seqIdxHost));
     CU_CHECK_ERR(cudaFreeHost(readIdxHost));
 
-    int max_num_sequences = 1; //TODO can get rid of this
+    int max_num_sequences = 1;
     for (int i =0; i<max_num_sequences; i++) {
 	CU_CHECK_ERR(cudaStreamDestroy(streams[i]));
     }
@@ -484,7 +482,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 	    }
 	    // copy over the pore model
 	    CU_CHECK_ERR(cudaMemcpyAsync(poreModelDev, poreModelHost,
-					 poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice, streams[0])); // TODO don't hardcode num kmers
+					 poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice, streams[0]));
 	    poreModelInitialized = true;
 	}
 	auto & sequences = scoreSet.stateSequences;
@@ -675,12 +673,12 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
 	std::vector<HMMInputSequence> sequences;
 
 	HMMInputSequence base_sequence = generate_methylated_alternatives(base_haplotype.get_sequence(),
-									  methylation_types)[0]; //TODO: fix for non-zero
+									  methylation_types)[0];
 
 	sequences.push_back(base_sequence);
 
 	for (auto v: variant_haplotypes){
-	    auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];  //TODO: fix for non-zero
+	    auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];
 	    sequences.push_back(variant_sequence);
 	}
 
