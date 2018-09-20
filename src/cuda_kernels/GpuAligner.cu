@@ -487,8 +487,6 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                             poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice, streams[0])); // TODO don't hardcode num kmers
             poreModelInitialized = true;
         }
-        // Sequences
-        // Sequences
         auto & sequences = scoreSet.stateSequences;
         numSequences += sequences.size();
 
@@ -505,7 +503,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                 int rank = sequence.get_kmer_rank(ki, k, false);
                 kmerRanks[ki + kmerOffset] = rank;
             }
-            //kmerRanksDevPointers[i] = kmerRanksDev + kmerOffset;
+
             kmerOffset += numKmers;
 
             for(size_t ki = 0; ki < numKmers; ++ki) {
@@ -517,8 +515,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
             sequenceLengthsHost[globalSequenceIdx] = numKmers;
 
-            // Loop over the raw reads, producing a cartesian product of the two
-
+            // Loop over the raw reads, producing a cartesian product of reads and sequences
             auto numReadsInScoreSet = scoreSet.rawData.size();
             for (int r=0; r<numReadsInScoreSet; r++){
                 seqIdxHost[globalScoreIdx] = globalSequenceIdx;
@@ -614,8 +611,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
     if (err != cudaSuccess)
         printf("Errors during kernel execution: %s\n", cudaGetErrorString(err));
 
-    cudaMemcpyAsync(returnValuesHost, scoresDev,
-                    globalScoreIdx * sizeof(float), cudaMemcpyDeviceToHost, streams[0]);
+    cudaMemcpyAsync(returnValuesHost, scoresDev, globalScoreIdx * sizeof(float), cudaMemcpyDeviceToHost, streams[0]);
     cudaStreamSynchronize(streams[0]);
 
     //Unpack results
@@ -699,7 +695,6 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
 
   std::vector<Variant> v;
   if (!event_sequences_vector.empty()) {
-    //std::vector<std::vector<double>> scores = scoreKernel(sequences, event_sequences, alignment_flags);
 
     auto scoresMod = scoreKernelMod(scoreSets, alignment_flags);
 

@@ -444,6 +444,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     int nextLocusEnd = nextLocusBegin + LOCI_PER_WORKER;
     bool finished = false;
 
+    //Initialise the workers
     for (int workerIdx = 0; workerIdx < num_workers; workerIdx++) {
         auto aligner = std::ref(gpuAligners[workerIdx]);
         if (!finished) {
@@ -470,7 +471,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
         }
     }
 
-    //Round robin the workers until done
+    //Round robin - assigning work to the workers until out of candidates
     while (!finished) {
         for (int i = 0; i < num_workers; i++) {
             auto status = handles[i].wait_for(std::chrono::microseconds(100));
