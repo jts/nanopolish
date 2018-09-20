@@ -66,43 +66,43 @@ float g_p_skip, g_p_skip_self, g_p_bad, g_p_bad_self;
 #define SUBPROGRAM "variants"
 
 static const char *CONSENSUS_VERSION_MESSAGE =
-SUBPROGRAM " Version " PACKAGE_VERSION "\n"
-"Written by Jared Simpson.\n"
-"\n"
-"Copyright 2015 Ontario Institute for Cancer Research\n";
+    SUBPROGRAM " Version " PACKAGE_VERSION "\n"
+    "Written by Jared Simpson.\n"
+    "\n"
+    "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *CONSENSUS_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
-"Find SNPs using a signal-level HMM\n"
-"\n"
-"  -v, --verbose                        display verbose output\n"
-"      --version                        display version\n"
-"      --help                           display this help and exit\n"
-"      --snps                           only call SNPs\n"
-"      --consensus                      run in consensus calling mode\n"
-"      --fix-homopolymers               run the experimental homopolymer caller\n"
-"      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
-"  -w, --window=STR                     find variants in window STR (format: <chromsome_name>:<start>-<end>)\n"
-"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
-"  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
-"  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
-"  -g, --genome=FILE                    the reference genome is in FILE\n"
-"  -p, --ploidy=NUM                     the ploidy level of the sequenced genome\n"
-"  -q  --methylation-aware=STR          turn on methylation aware polishing and test motifs given in STR (example: -q dcm,dam)\n"
-"      --genotype=FILE                  call genotypes for the variants in the vcf FILE\n"
-"  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
-"  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
-"  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
-"  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
-"      --min-flanking-sequence=N        distance from alignment end to calculate variants (default: 30)\n"
-"      --max-rounds=N                   perform N rounds of consensus sequence improvement (default: 50)\n"
-"  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
-"  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
-"                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
-"      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
-"      --models-fofn=FILE               read alternative k-mer models from FILE\n"
-"\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
+    "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
+    "Find SNPs using a signal-level HMM\n"
+    "\n"
+    "  -v, --verbose                        display verbose output\n"
+    "      --version                        display version\n"
+    "      --help                           display this help and exit\n"
+    "      --snps                           only call SNPs\n"
+    "      --consensus                      run in consensus calling mode\n"
+    "      --fix-homopolymers               run the experimental homopolymer caller\n"
+    "      --faster                         minimize compute time while slightly reducing consensus accuracy\n"
+    "  -w, --window=STR                     find variants in window STR (format: <chromsome_name>:<start>-<end>)\n"
+    "  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
+    "  -b, --bam=FILE                       the reads aligned to the reference genome are in bam FILE\n"
+    "  -e, --event-bam=FILE                 the events aligned to the reference genome are in bam FILE\n"
+    "  -g, --genome=FILE                    the reference genome is in FILE\n"
+    "  -p, --ploidy=NUM                     the ploidy level of the sequenced genome\n"
+    "  -q  --methylation-aware=STR          turn on methylation aware polishing and test motifs given in STR (example: -q dcm,dam)\n"
+    "      --genotype=FILE                  call genotypes for the variants in the vcf FILE\n"
+    "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
+    "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+    "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
+    "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
+    "  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
+    "      --min-flanking-sequence=N        distance from alignment end to calculate variants (default: 30)\n"
+    "      --max-rounds=N                   perform N rounds of consensus sequence improvement (default: 50)\n"
+    "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
+    "  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
+    "                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
+    "      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
+    "      --models-fofn=FILE               read alternative k-mer models from FILE\n"
+    "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
@@ -289,8 +289,7 @@ void prepareForBaseEditCandidates(int start,
                                   std::string contig,
                                   std::vector<std::vector<Variant>> &tmp_variants_vector,
                                   std::vector<Haplotype> &haplotypes,
-                                  std::vector<std::vector<HMMInputData>> &event_sequences_vector
-){
+                                  std::vector<std::vector<HMMInputData>> &event_sequences_vector){
     for(int i = start; i<=end; i++){
         int calling_start = i - opt::screen_flanking_sequence;
         int calling_end = i + 1 + opt::screen_flanking_sequence;
@@ -388,7 +387,7 @@ void locusRangeBaseEditCandidateGPU(int start,
 
 void locusRangeBaseEditCandidate(int start,
                                  int end,
-				                 const AlignmentDB& alignments,
+				 const AlignmentDB& alignments,
                                  uint32_t alignment_flags,
                                  std::vector<Variant> &out_variants,
                                  std::string contig) {
@@ -843,7 +842,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
                     duration_likelihoods[var_sequence_length] += log_gamma;
                 }
                 if(opt::verbose > 3) {
-                   fprintf(stderr, "SUM_VAR\t%zu\t%zu\t%d\t%d\t%lu\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
+		    fprintf(stderr, "SUM_VAR\t%zu\t%zu\t%d\t%d\t%lu\t%.5lf\t%.2lf\n", ref_hp_start, hp_length, var_sequence_length, call_window, variant_offset_end - variant_offset_start, sum_duration, log_gamma);
                 }
             }
         }
@@ -960,7 +959,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         size_t end_variant_idx = curr_variant_idx + 1;
         while(end_variant_idx < candidate_variants.size()) {
             int distance = candidate_variants[end_variant_idx].ref_position -
-                           candidate_variants[end_variant_idx - 1].ref_position;
+		candidate_variants[end_variant_idx - 1].ref_position;
             if(distance > opt::min_distance_between_variants)
                 break;
             end_variant_idx++;
@@ -969,8 +968,8 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
         size_t num_variants = end_variant_idx - curr_variant_idx;
         int calling_start = candidate_variants[curr_variant_idx].ref_position - opt::min_flanking_sequence;
         int calling_end = candidate_variants[end_variant_idx - 1].ref_position +
-                          candidate_variants[end_variant_idx - 1].ref_seq.length() +
-                          opt::min_flanking_sequence;
+	    candidate_variants[end_variant_idx - 1].ref_seq.length() +
+	    opt::min_flanking_sequence;
 
         int calling_size = calling_end - calling_start;
 
@@ -1014,7 +1013,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
             }
         } else {
             fprintf(stderr, "Warning: %zu variants in span, region not called [%d %d]\n", num_variants, calling_start, calling_end);
-		}
+	}
 
         // advance to start of next region
         curr_variant_idx = end_variant_idx;
@@ -1070,11 +1069,11 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         fprintf(stderr, "input region: %s\n", alignments.get_reference_substring(contig, region_start - BUFFER, region_end + BUFFER).c_str());
     }
 
-/*
-    Haplotype called_haplotype(alignments.get_region_contig(),
-                               alignments.get_region_start(),
-                               alignments.get_reference());
-*/
+    /*
+      Haplotype called_haplotype(alignments.get_region_contig(),
+      alignments.get_region_start(),
+      alignments.get_reference());
+    */
     // Step 1. Discover putative variants across the whole region
     std::vector<Variant> candidate_variants;
     if(opt::candidates_file.empty()) {
@@ -1155,10 +1154,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             last_round_variant_keys = this_round_variant_keys;
             if(variant_set_changed) {
                 candidate_variants = expand_variants(alignments,
-                        called_variants,
-                        region_start,
-                        region_end,
-                        alignment_flags);
+						     called_variants,
+						     region_start,
+						     region_end,
+						     alignment_flags);
 
             } else {
                 break;
@@ -1190,44 +1189,44 @@ void parse_call_variants_options(int argc, char** argv)
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
-            case 'r': arg >> opt::reads_file; break;
-            case 'g': arg >> opt::genome_file; break;
-            case 'b': arg >> opt::bam_file; break;
-            case 'e': arg >> opt::event_bam_file; break;
-            case 'w': arg >> opt::window; break;
-            case 'o': arg >> opt::output_file; break;
-            case 'm': arg >> opt::min_candidate_frequency; break;
-            case 'd': arg >> opt::min_candidate_depth; break;
-            case 'x': arg >> opt::max_haplotypes; break;
-            case 'c': arg >> opt::candidates_file; break;
-            case 'p': arg >> opt::ploidy; break;
-            case 'q': arg >> methylation_motifs_str; break;
-            case 'a': arg >> opt::alternative_basecalls_bam; break;
-            case '?': die = true; break;
-            case 't': arg >> opt::num_threads; break;
-            case 'v': opt::verbose++; break;
-            case OPT_CONSENSUS: opt::consensus_mode = 1; break;
-            case OPT_GPU: opt::gpu = 1; break;
-            case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
-            case OPT_EFFORT: arg >> opt::screen_score_threshold; break;
-            case OPT_FASTER: opt::screen_score_threshold = 25; break;
-            case OPT_MAX_ROUNDS: arg >> opt::max_rounds; break;
-            case OPT_GENOTYPE: opt::genotype_only = 1; arg >> opt::candidates_file; break;
-            case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
-            case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
-            case OPT_SNPS_ONLY: opt::snps_only = 1; break;
-            case OPT_PROGRESS: opt::show_progress = 1; break;
-            case OPT_P_SKIP: arg >> g_p_skip; break;
-            case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
-            case OPT_P_BAD: arg >> g_p_bad; break;
-            case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
-            case OPT_MIN_FLANKING_SEQUENCE: arg >> opt::min_flanking_sequence; break;
-            case OPT_HELP:
-                std::cout << CONSENSUS_USAGE_MESSAGE;
-                exit(EXIT_SUCCESS);
-            case OPT_VERSION:
-                std::cout << CONSENSUS_VERSION_MESSAGE;
-                exit(EXIT_SUCCESS);
+	case 'r': arg >> opt::reads_file; break;
+	case 'g': arg >> opt::genome_file; break;
+	case 'b': arg >> opt::bam_file; break;
+	case 'e': arg >> opt::event_bam_file; break;
+	case 'w': arg >> opt::window; break;
+	case 'o': arg >> opt::output_file; break;
+	case 'm': arg >> opt::min_candidate_frequency; break;
+	case 'd': arg >> opt::min_candidate_depth; break;
+	case 'x': arg >> opt::max_haplotypes; break;
+	case 'c': arg >> opt::candidates_file; break;
+	case 'p': arg >> opt::ploidy; break;
+	case 'q': arg >> methylation_motifs_str; break;
+	case 'a': arg >> opt::alternative_basecalls_bam; break;
+	case '?': die = true; break;
+	case 't': arg >> opt::num_threads; break;
+	case 'v': opt::verbose++; break;
+	case OPT_CONSENSUS: opt::consensus_mode = 1; break;
+	case OPT_GPU: opt::gpu = 1; break;
+	case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
+	case OPT_EFFORT: arg >> opt::screen_score_threshold; break;
+	case OPT_FASTER: opt::screen_score_threshold = 25; break;
+	case OPT_MAX_ROUNDS: arg >> opt::max_rounds; break;
+	case OPT_GENOTYPE: opt::genotype_only = 1; arg >> opt::candidates_file; break;
+	case OPT_MODELS_FOFN: arg >> opt::models_fofn; break;
+	case OPT_CALC_ALL_SUPPORT: opt::calculate_all_support = 1; break;
+	case OPT_SNPS_ONLY: opt::snps_only = 1; break;
+	case OPT_PROGRESS: opt::show_progress = 1; break;
+	case OPT_P_SKIP: arg >> g_p_skip; break;
+	case OPT_P_SKIP_SELF: arg >> g_p_skip_self; break;
+	case OPT_P_BAD: arg >> g_p_bad; break;
+	case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
+	case OPT_MIN_FLANKING_SEQUENCE: arg >> opt::min_flanking_sequence; break;
+	case OPT_HELP:
+	    std::cout << CONSENSUS_USAGE_MESSAGE;
+	    exit(EXIT_SUCCESS);
+	case OPT_VERSION:
+	    std::cout << CONSENSUS_VERSION_MESSAGE;
+	    exit(EXIT_SUCCESS);
         }
     }
 
@@ -1281,10 +1280,10 @@ void parse_call_variants_options(int argc, char** argv)
     }
 
     if (die)
-    {
-        std::cout << "\n" << CONSENSUS_USAGE_MESSAGE;
-        exit(EXIT_FAILURE);
-    }
+	{
+	    std::cout << "\n" << CONSENSUS_USAGE_MESSAGE;
+	    exit(EXIT_FAILURE);
+	}
 }
 
 void print_invalid_window_error(int start_base, int end_base)
@@ -1346,34 +1345,34 @@ int call_variants_main(int argc, char** argv)
 
     //
     header_fields.push_back(
-        Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
-                                      "The number of event-space reads used to call the variant"));
+			    Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
+							 "The number of event-space reads used to call the variant"));
 
     header_fields.push_back(
-        Variant::make_vcf_tag_string("INFO", "SupportFraction", 1, "Float",
-                                      "The fraction of event-space reads that support the variant"));
+			    Variant::make_vcf_tag_string("INFO", "SupportFraction", 1, "Float",
+							 "The fraction of event-space reads that support the variant"));
 
     header_fields.push_back(
-        Variant::make_vcf_tag_string("INFO", "BaseCalledReadsWithVariant", 1, "Integer",
-                                      "The number of base-space reads that support the variant"));
+			    Variant::make_vcf_tag_string("INFO", "BaseCalledReadsWithVariant", 1, "Integer",
+							 "The number of base-space reads that support the variant"));
 
     header_fields.push_back(
-        Variant::make_vcf_tag_string("INFO", "BaseCalledFraction", 1, "Float",
-                                      "The fraction of base-space reads that support the variant"));
+			    Variant::make_vcf_tag_string("INFO", "BaseCalledFraction", 1, "Float",
+							 "The fraction of base-space reads that support the variant"));
 
     header_fields.push_back(
-            Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
-                "The inferred number of copies of the allele"));
+			    Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
+							 "The inferred number of copies of the allele"));
 
     if(opt::calculate_all_support) {
         header_fields.push_back(
-                Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
-                    "The fraction of reads supporting A,C,G,T at this position"));
+				Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
+							     "The fraction of reads supporting A,C,G,T at this position"));
 
     }
     header_fields.push_back(
-            Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
-                "Genotype"));
+			    Variant::make_vcf_tag_string("FORMAT", "GT", 1, "String",
+							 "Genotype"));
 
     Variant::write_vcf_header(out_fp, header_fields);
 
@@ -1383,9 +1382,9 @@ int call_variants_main(int argc, char** argv)
     if(!opt::consensus_output.empty()) {
         FILE* consensus_fp = fopen(opt::consensus_output.c_str(), "w");
         fprintf(consensus_fp, ">%s:%d-%d\n%s\n", contig.c_str(),
-                                  start_base,
-                                  end_base,
-                                  haplotype.get_sequence().c_str());
+		start_base,
+		end_base,
+		haplotype.get_sequence().c_str());
         fclose(consensus_fp);
     }
 
