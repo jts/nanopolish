@@ -47,6 +47,7 @@ static const char *VCF2FASTA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -g, --genome=FILE                    the input genome is in FILE\n"
+"      --skip-checks                    skip the sanity checks\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -54,16 +55,18 @@ namespace opt
     static unsigned int verbose;
     static std::vector<std::string> input_vcf_files;
     static std::string genome_file;
+    static bool skip_checks = false;
 }
 
 static const char* shortopts = "g:v";
 
-enum { OPT_HELP = 1, OPT_VERSION };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_SKIP_CHECKS };
 
 static const struct option longopts[] = {
-    { "verbose",     no_argument,       NULL, 'v' },
-    { "help",        no_argument,       NULL, OPT_HELP },
-    { "version",     no_argument,       NULL, OPT_VERSION },
+    { "verbose",       no_argument,       NULL, 'v' },
+    { "help",          no_argument,       NULL, OPT_HELP },
+    { "version",       no_argument,       NULL, OPT_VERSION },
+    { "skip-checks",   no_argument,       NULL, OPT_SKIP_CHECKS },
     { "genome",      required_argument, NULL, 'g' },
     { NULL, 0, NULL, 0 }
 };
@@ -77,6 +80,7 @@ void parse_vcf2fasta_options(int argc, char** argv)
             case '?': die = true; break;
             case 'v': opt::verbose++; break;
             case 'g': arg >> opt::genome_file; break;
+            case OPT_SKIP_CHECKS: opt::skip_checks = true; break;
             case OPT_HELP:
                 std::cout << VCF2FASTA_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -161,28 +165,36 @@ int vcf2fasta_main(int argc, char** argv)
         // Confirm that all windows on this contig have been polished
         bool window_check_ok = true;
         auto& windows = windows_by_contig[contig];
+        if(windows.empty()) {
+            fprintf(stderr, "error: no polishing windows found for %s\n", contig.c_str());
+            exit(EXIT_FAILURE);
+        }
 
         std::sort(windows.begin(), windows.end());
-        if(windows[0].first != 0) {
-            fprintf(stderr, "error: first %d bases are not covered by a polished window for contig %s.\n", windows[0].first, contig.c_str());
-            window_check_ok = false;
-        }
 
         for(size_t window_idx = 1; window_idx < windows.size(); ++window_idx) {
             int prev_start = windows[window_idx - 1].first;
             int prev_end = windows[window_idx - 1].second;
             int curr_start = windows[window_idx].first;
             int curr_end = windows[window_idx].second;
-            if(curr_start > prev_end) {
+            if(!opt::skip_checks && curr_start > prev_end) {
                 fprintf(stderr, "error: adjacent polishing windows do not overlap (%d-%d and %d-%d)\n", prev_start, prev_end, curr_start, curr_end);
                 window_check_ok = false;
             }
         }
 
-        int end_gap = contig_length - windows.back().second;
-        if(end_gap > 500) {
-            fprintf(stderr, "error: last %d bases are not covered by a polished window for contig %s.\n", end_gap, contig.c_str());
-            window_check_ok = false;
+        // check the first and last windows of the contig were polished
+        if(!opt::skip_checks) {
+            if(windows[0].first != 0) {
+                fprintf(stderr, "error: first %d bases are not covered by a polished window for contig %s.\n", windows[0].first, contig.c_str());
+                window_check_ok = false;
+            }
+
+            int end_gap = contig_length - windows.back().second;
+            if(end_gap > 500) {
+                fprintf(stderr, "error: last %d bases are not covered by a polished window for contig %s.\n", end_gap, contig.c_str());
+                window_check_ok = false;
+            }
         }
 
         if(!window_check_ok) {

@@ -244,6 +244,7 @@ class SquiggleRead
         // Sample-level access
         size_t get_sample_index_at_time(size_t sample_time) const;
         std::vector<float> get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const;
+        std::pair<size_t, size_t> get_event_sample_idx(size_t strand_idx, size_t event_idx) const;
 
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const

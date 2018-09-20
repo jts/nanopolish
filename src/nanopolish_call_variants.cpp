@@ -946,8 +946,7 @@ Haplotype fix_homopolymers(const Haplotype& input_haplotype,
 
 Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
                                          const std::vector<Variant>& candidate_variants,
-                                         uint32_t alignment_flags,
-                                         FILE* vcf_out)
+                                         uint32_t alignment_flags)
 {
     Haplotype derived_haplotype(alignments.get_region_contig(), alignments.get_region_start(), alignments.get_reference());
     VariantDB variant_db;
@@ -1045,7 +1044,7 @@ Haplotype call_haplotype_from_candidates(const AlignmentDB& alignments,
     return derived_haplotype;
 }
 
-Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end, FILE* out_fp)
+Haplotype call_variants_for_region(const std::string& contig, int region_start, int region_end)
 {
     const int BUFFER = opt::min_flanking_sequence + 10;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
@@ -1132,8 +1131,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
             // Combine variants into sets that maximize their haplotype score
             called_haplotype = call_haplotype_from_candidates(alignments,
                                                               filtered_variants,
-                                                              alignment_flags,
-                                                              out_fp);
+                                                              alignment_flags);
 
             // Expand the called variant set by adding nearby variants
             std::vector<Variant> called_variants = called_haplotype.get_variants();
@@ -1175,8 +1173,7 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         //
         called_haplotype = call_haplotype_from_candidates(alignments,
                                                           candidate_variants,
-                                                          alignment_flags,
-                                                          out_fp);
+                                                          alignment_flags);
     }
 
     return called_haplotype;
@@ -1332,6 +1329,10 @@ int call_variants_main(int argc, char** argv)
     FILE* out_fp;
     if(!opt::output_file.empty()) {
         out_fp = fopen(opt::output_file.c_str(), "w");
+        if(out_fp == NULL) {
+            fprintf(stderr, "Error: could not open %s for write\n", opt::output_file.c_str());
+            exit(EXIT_FAILURE);
+        }
     } else {
         out_fp = stdout;
     }
@@ -1376,7 +1377,7 @@ int call_variants_main(int argc, char** argv)
 
     Variant::write_vcf_header(out_fp, header_fields);
 
-    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base, out_fp);
+    Haplotype haplotype = call_variants_for_region(contig, start_base, end_base);
 
     // write the consensus result as a fasta file if requested
     if(!opt::consensus_output.empty()) {
@@ -1390,7 +1391,10 @@ int call_variants_main(int argc, char** argv)
 
     // write the variants
     for(const auto& v : haplotype.get_variants()) {
-        v.write_vcf(out_fp);
+
+        if(!opt::snps_only || v.is_snp()) {
+            v.write_vcf(out_fp);
+        }
     }
 
     //
