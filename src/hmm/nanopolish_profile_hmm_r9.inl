@@ -216,7 +216,6 @@ inline std::vector<float> make_pre_flanking(const HMMInputData& data,
         pre_flank[i] = log(TRANS_CLIP_SELF) + 
                        log_probability_background(*data.read, event_idx, data.strand) + // emit from background
                        pre_flank[i - 1]; // this accounts for the transition from the start & to the silent pre
-
     }
 
     return pre_flank;
