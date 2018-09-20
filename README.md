@@ -1,12 +1,5 @@
 # Nanopolish
 
-## GPU acceleration branch - experimental/Work in progress
-
-This branch adds CUDA-enabled GPU acceleration to the nanopolish consensus improvement algorithm. To try this feature run with the `--gpu` flag e.g:
-```
-nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -r reads.fasta -b reads.sorted.bam -g draft.fa --threads=8 --gpu=1
-```
-
 [![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
 
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
@@ -117,6 +110,13 @@ Note the uuid given upon successful build.
 Then you can run nanopolish from the image:
 ```
 docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
+```
+
+## GPU acceleration
+
+The nanopolish consensus improvement algorithm can be performed faster using CUDA-enabled GPU acceleration. This is an experimental feature, to try this feature run with the `--gpu` flag e.g:
+```
+nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -r reads.fasta -b reads.sorted.bam -g draft.fa --threads=8 --gpu=1
 ```
 
 ## Credits and Thanks
