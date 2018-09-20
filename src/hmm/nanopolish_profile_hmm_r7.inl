@@ -308,9 +308,6 @@ inline float profile_hmm_fill_generic_r7(const HMMInputSequence& _sequence,
     std::vector<uint32_t> kmer_ranks(num_kmers);
     for(size_t ki = 0; ki < num_kmers; ++ki) {
         int rank = sequence.get_kmer_rank(ki, k, data.rc);
-        if(rank>4096){
-            printf("Rank: %i", rank);
-        }
         kmer_ranks[ki] = rank;
     }
     size_t num_events = output.get_num_rows() - 1;
