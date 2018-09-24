@@ -134,10 +134,10 @@ int vcf2fasta_main(int argc, char** argv)
             if(line[0] == '#') {
 
                 // check for window coordinates
-                if(line.find("nanopolish_window") != std::string::npos) {
-                    std::vector<std::string> fields = split(line, '=');
-                    assert(fields.size() == 2);
-                    window_str = fields[1];
+                std::string window_key = "nanopolish_window=";
+                size_t key_pos = line.find(window_key);
+                if(key_pos != std::string::npos) {
+                    window_str = line.substr(key_pos + window_key.size());
                 }
             } else {
                 Variant v(line);
