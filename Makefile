@@ -74,7 +74,7 @@ PROGRAM = nanopolish
 TEST_PROGRAM = nanopolish_test
 
 .PHONY: all
-all: $(PROGRAM) $(TEST_PROGRAM)
+all: depend $(PROGRAM)
 
 #
 # Build libhts
@@ -122,8 +122,6 @@ depend: .depend
 .depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
-
-include .depend
 
 # Compile objects
 .cpp.o:
