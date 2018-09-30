@@ -1,27 +1,89 @@
 # travis.yml for github.com/jts/nanopolish
 
 dist: trusty
+services: docker
 sudo: false
 language: generic
 cache: apt
 git:
     depth: 1
 
+.nanopolish.ci.matrix-definitions:
+    - &cron-only
+      if: type = cron OR env(CI_CRON) = true
+    - &arch
+      before_install:
+          - |
+            sed -i "/^FROM / s/arm64/${ARCH}/" Dockerfile-arm
+          - |
+            docker run --rm --privileged \
+                multiarch/qemu-user-static:register --reset && \
+                docker build --rm -t nanopolish -f Dockerfile-arm .
+      script:
+          - |
+            docker run --rm -t \
+                -e HDF5="${HDF5:-install}" \
+                -e HDF5_VERSION="${HDF5_VERSION}" \
+                -e HDF5_CONFIG_ARGS="${HDF5_CONFIG_ARGS}" \
+                -e H5_CFLAGS="${H5_CFLAGS}" \
+                -e H5_INCLUDE="${H5_INCLUDE}" \
+                -e LDFLAGS="${LDFLAGS}" \
+                nanopolish
+
 matrix:
     include:
-    # Set env for both nanoplish and the dependency hdf5.
-    - env:
-        - CC=gcc-4.8
-        - CXX=g++-4.8
-        - AR=gcc-ar-4.8
-        - NM=gcc-nm-4.8
-        - RANLIB=gcc-ranlib-4.8
-    - env:
-        - CC=gcc-8
-        - CXX=g++-8
-        - AR=gcc-ar-8
-        - NM=gcc-nm-8
-        - RANLIB=gcc-ranlib-8
+        # Set env for both nanoplish and the dependency hdf5.
+        - env:
+              - CC=gcc-4.8
+              - CXX=g++-4.8
+              - AR=gcc-ar-4.8
+              - NM=gcc-nm-4.8
+              - RANLIB=gcc-ranlib-4.8
+        - env:
+              - CC=gcc-8
+              - CXX=g++-8
+              - AR=gcc-ar-8
+              - NM=gcc-nm-8
+              - RANLIB=gcc-ranlib-8
+        # aarch64 - ARM 64-bit
+        - name: aarch64
+          sudo: required
+          env:
+              - ARCH=arm64
+              - HDF5_VERSION=1.10.4
+              - HDF5_CONFIG_ARGS=""
+          <<: *arch
+          <<: *cron-only
+        - name: aarch64-system-hdf5
+          sudo: required
+          env:
+              - ARCH=arm64
+              - HDF5="system"
+              - H5_INCLUDE="-I/usr/include/hdf5/serial"
+              - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
+          <<: *arch
+        # armv7l - ARM 32-bit
+        - name: armv7l
+          sudo: required
+          env:
+              - ARCH=armhf
+              - HDF5_VERSION=1.10.4
+              - HDF5_CONFIG_ARGS=""
+          <<: *arch
+          <<: *cron-only
+        - name: armv7l-system-hdf5
+          sudo: required
+          env:
+              - ARCH=armhf
+              - HDF5="system"
+              - H5_INCLUDE="-I/usr/include/hdf5/serial"
+              - LDFLAGS="-L/usr/lib/arm-linux-gnueabihf/hdf5/serial"
+          <<: *arch
+    allow_failures:
+        # The jobs installing hdf5 from source in docker finishes with error
+        # because of the job exceeded the maximum time limit (50 minutes).
+        - name: aarch64
+        - name: armv7l
 
 # Install and export newer gcc
 before_install:
@@ -38,9 +100,11 @@ before_install:
           sudo apt-get install -qq "${CXX}"
       fi
 
-script:
+before_script:
     # Suppress all compiler warnings for hdf5 Makefile
     # to display the log without downloading the raw log on Travis log page.
     # Travis finishs with error when exceeding the limit of 4 MB of log length.
     - export H5_CFLAGS="-w"
+
+script:
     - make && make test
