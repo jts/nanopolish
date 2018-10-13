@@ -69,6 +69,16 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 #define move_down(curr_band) { curr_band.event_idx + 1, curr_band.kmer_idx }
 #define move_right(curr_band) { curr_band.event_idx, curr_band.kmer_idx + 1 }
 
+#define ALN_BANDWIDTH 100
+
+#ifdef ALIGN_CPP_VECTOR
+    #define BAND_ARRAY(r, c) ( bands[(r)][(c)] )
+    #define TRACE_ARRAY(r, c) ( trace[(r)][(c)] )
+#else
+    #define BAND_ARRAY(r, c) ( bands[((r)*(ALN_BANDWIDTH)+(c))] )
+    #define TRACE_ARRAY(r, c) ( trace[((r)*(ALN_BANDWIDTH)+(c))] )
+#endif
+
 std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
 {
     size_t strand_idx = 0;
@@ -87,7 +97,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     int max_gap_threshold = 50;
 
     // banding
-    int bandwidth = 100;
+    int bandwidth = ALN_BANDWIDTH;
     int half_bandwidth = bandwidth / 2;
  
     // transition penalties
@@ -115,6 +125,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         kmer_ranks[i] = alphabet->kmer_rank(sequence.substr(i, k).c_str(), k);
     }
 
+#ifdef ALIGN_CPP_VECTOR
     typedef std::vector<float> bandscore;
     typedef std::vector<uint8_t> bandtrace;
 
@@ -125,6 +136,24 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         bands[i].resize(bandwidth, -INFINITY);
         trace[i].resize(bandwidth, 0);
     }
+#else
+    float* bands = (float*)malloc(sizeof(float) * n_bands * bandwidth);
+    if(bands==NULL){
+        fprintf(stderr,"Memory allocation failed at %s\n",__func__);
+        exit(1);
+    }
+    uint8_t* trace = (uint8_t*)malloc(sizeof(uint8_t) * n_bands * bandwidth);
+    if(trace==NULL){
+        fprintf(stderr,"Memory allocation failed at %s\n",__func__);
+        exit(1);
+    }
+    for (size_t i = 0; i < n_bands; i++) {
+        for (int j = 0; j < bandwidth; j++) {
+            BAND_ARRAY(i,j) = -INFINITY;
+            TRACE_ARRAY(i,j) = 0;
+        }
+    }
+#endif
 
     // Keep track of the event/kmer index for the lower left corner of the band
     // these indices are updated at every iteration to perform the adaptive banding
@@ -146,18 +175,18 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     int start_cell_offset = band_kmer_to_offset(0, -1);
     assert(is_offset_valid(start_cell_offset));
     assert(band_event_to_offset(0, -1) == start_cell_offset);
-    bands[0][start_cell_offset] = 0.0f;
+    BAND_ARRAY(0,start_cell_offset) = 0.0f;
     
     // band 1: first event is trimmed
     int first_trim_offset = band_event_to_offset(1, 0);
     assert(kmer_at_offset(1, first_trim_offset) == -1);
     assert(is_offset_valid(first_trim_offset));
-    bands[1][first_trim_offset] = lp_trim;
-    trace[1][first_trim_offset] = FROM_U;
+    BAND_ARRAY(1,first_trim_offset) = lp_trim;
+    TRACE_ARRAY(1,first_trim_offset) = FROM_U;
 
     int fills = 0;
 #ifdef DEBUG_ADAPTIVE
-    fprintf(stderr, "[trim] bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, bands[1][first_trim_offset]);
+    fprintf(stderr, "[trim] bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, BAND_ARRAY(1,first_trim_offset));
 #endif
 
     // fill in remaining bands
@@ -165,8 +194,8 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         // Determine placement of this band according to Suzuki's adaptive algorithm
         // When both ll and ur are out-of-band (ob) we alternate movements
         // otherwise we decide based on scores
-        float ll = bands[band_idx - 1][0];
-        float ur = bands[band_idx - 1][bandwidth - 1];
+        float ll = BAND_ARRAY(band_idx - 1,0);
+        float ur = BAND_ARRAY(band_idx - 1,bandwidth - 1);
         bool ll_ob = ll == -INFINITY;
         bool ur_ob = ur == -INFINITY;
         
@@ -206,10 +235,10 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         if(is_offset_valid(trim_offset)) {
             int event_idx = event_at_offset(band_idx, trim_offset);
             if(event_idx >= 0 && event_idx < n_events) {
-                bands[band_idx][trim_offset] = lp_trim * (event_idx + 1);
-                trace[band_idx][trim_offset] = FROM_U;
+                BAND_ARRAY(band_idx,trim_offset) = lp_trim * (event_idx + 1);
+                TRACE_ARRAY(band_idx,trim_offset) = FROM_U;
             } else {
-                bands[band_idx][trim_offset] = -INFINITY;
+                BAND_ARRAY(band_idx,trim_offset) = -INFINITY;
             }
         }
 
@@ -245,9 +274,9 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             assert(offset >= 0 && offset < bandwidth);
 #endif
 
-            float up   = is_offset_valid(offset_up)   ? bands[band_idx - 1][offset_up]   : -INFINITY;
-            float left = is_offset_valid(offset_left) ? bands[band_idx - 1][offset_left] : -INFINITY;
-            float diag = is_offset_valid(offset_diag) ? bands[band_idx - 2][offset_diag] : -INFINITY;
+            float up   = is_offset_valid(offset_up)   ? BAND_ARRAY(band_idx - 1,offset_up)   : -INFINITY;
+            float left = is_offset_valid(offset_left) ? BAND_ARRAY(band_idx - 1,offset_left) : -INFINITY;
+            float diag = is_offset_valid(offset_diag) ? BAND_ARRAY(band_idx - 2,offset_diag) : -INFINITY;
  
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
@@ -267,8 +296,8 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             fprintf(stderr, "[adafill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
             fprintf(stderr, "[adafill] bi: %d o: %d e: %d k: %d s: %.2lf f: %d emit: %.2lf\n", band_idx, offset, event_idx, kmer_idx, max_score, from, lp_emission);
 #endif
-            bands[band_idx][offset] = max_score;
-            trace[band_idx][offset] = from;
+            BAND_ARRAY(band_idx,offset) = max_score;
+            TRACE_ARRAY(band_idx,offset) = from;
             fills += 1;
         }
     }
@@ -302,10 +331,12 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     // Find best score between an event and the last k-mer. after trimming the remaining evnets
     for(int event_idx = 0; event_idx < n_events; ++event_idx) {
         int band_idx = event_kmer_to_band(event_idx, curr_kmer_idx);
+    #ifdef ALIGN_CPP_VECTOR
         assert(band_idx < bands.size());
+    #endif
         int offset = band_event_to_offset(band_idx, event_idx);
         if(is_offset_valid(offset)) {
-            float s = bands[band_idx][offset] + (n_events - event_idx) * lp_trim;
+            float s = BAND_ARRAY(band_idx,offset)  + (n_events - event_idx) * lp_trim;
             if(s > max_score) {
                 max_score = s;
                 curr_event_idx = event_idx;
@@ -335,7 +366,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         int offset = band_event_to_offset(band_idx, curr_event_idx);
         assert(band_kmer_to_offset(band_idx, curr_kmer_idx) == offset);
 
-        uint8_t from = trace[band_idx][offset];
+        uint8_t from = TRACE_ARRAY(band_idx,offset);
         if(from == FROM_D) {
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
@@ -360,6 +391,11 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         failed = true;
         out.clear();
     }
+
+#ifndef ALIGN_CPP_VECTOR
+    free(bands);
+    free(trace);
+#endif
 
     //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, fills);
     return out;
