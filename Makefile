@@ -91,7 +91,7 @@ lib/libhdf5.a:
 	fi
 	tar -xzf hdf5-1.8.14.tar.gz || exit 255
 	cd hdf5-1.8.14 && \
-		./configure --enable-threadsafe --prefix=`pwd`/.. && \
+        ./configure --enable-threadsafe --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
 		make && make install
 
 # Download and install eigen if not already downloaded
