@@ -134,7 +134,6 @@ raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling)
     }
 
     // filter the outliers in pA
-    // this is edited by awjga
     for (size_t i = nsample-1; i >0 ; i--) {
         //filter sample > 200 pA and less than 0 pA
         if(rawptr[i]>200 || rawptr[i]<0){
