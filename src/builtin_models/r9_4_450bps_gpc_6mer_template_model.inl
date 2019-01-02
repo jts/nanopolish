@@ -15628,7 +15628,7 @@ static std::vector<double> initialize_r9_4_450bps_gpc_6mer_template_model_data =
 		89.17390, 2.51391, 1.00204, 0.67820, // TTTTTM
 		90.67900, 1.51391, 0.90750, 0.58452 // TTTTTT
 };
-PoreModel initialize_r9_4_450bps_gpc_6mer_template_model()
+PoreModel initialize_r9_4_450bps_gpc_6mer_template_model_builtin()
 {
 	PoreModel tmp;
 	tmp.model_filename = "etc/r9-models/r9.4_450bps.gpc.6mer.template.model";
