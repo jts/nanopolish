@@ -1,6 +1,7 @@
 #model_name	r9.4_450bps.gpc.6mer.template.model
 #kit	r9.4_450bps
 #strand	template
+#k	6
 #alphabet	gpc
 AAAAAA	86.4863	1.51785	0.941478	0.609357
 AAAAAC	83.9488	1.51785	1.07705	0.745608
