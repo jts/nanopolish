@@ -16,22 +16,29 @@
 int verbose = 0;
 
 //
-hid_t fast5_open(const std::string& filename)
+fast5_file fast5_open(const std::string& filename)
 {
-    hid_t hdf5file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
-    return hdf5file;
+    fast5_file fh;
+    fh.hdf5_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    return fh;
 }
 
 //
-void fast5_close(hid_t hdf5_file)
+bool fast5_is_open(fast5_file& fh)
 {
-    H5Fclose(hdf5_file);
+    return fh.hdf5_file >= 0;
 }
 
 //
-std::string fast5_get_raw_read_group(hid_t hdf5_file)
+void fast5_close(fast5_file& fh)
 {
-    std::string read_name = fast5_get_raw_read_name(hdf5_file);
+    H5Fclose(fh.hdf5_file);
+}
+
+//
+std::string fast5_get_raw_read_group(fast5_file& fh)
+{
+    std::string read_name = fast5_get_raw_read_name(fh);
     if(read_name != "") {
         return std::string(RAW_ROOT) + read_name;
     } else {
@@ -40,13 +47,13 @@ std::string fast5_get_raw_read_group(hid_t hdf5_file)
 }
 
 //
-std::string fast5_get_raw_read_name(hid_t hdf5_file)
+std::string fast5_get_raw_read_name(fast5_file& fh)
 {
     // This code is From scrappie's fast5_interface
 
     // retrieve the size of the read name
     ssize_t size =
-        H5Lget_name_by_idx(hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, NULL,
+        H5Lget_name_by_idx(fh.hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, NULL,
                            0, H5P_DEFAULT);
 
     if (size < 0) {
@@ -55,7 +62,7 @@ std::string fast5_get_raw_read_name(hid_t hdf5_file)
 
     // copy the read name out of the fast5
     char* name = (char*)calloc(1 + size, sizeof(char));
-    H5Lget_name_by_idx(hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, name,
+    H5Lget_name_by_idx(fh.hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, name,
                        1 + size, H5P_DEFAULT);
 
     // cleanup
@@ -65,7 +72,7 @@ std::string fast5_get_raw_read_name(hid_t hdf5_file)
 }
 
 //
-std::string fast5_get_read_id(hid_t hdf5_file)
+std::string fast5_get_read_id(fast5_file& fh)
 {
     int ret;
     hid_t read_name_attribute, raw_group, attribute_type;
@@ -75,16 +82,16 @@ std::string fast5_get_read_id(hid_t hdf5_file)
     std::string out = "";
     
     // Get the path to the raw read group
-    std::string raw_read_group = fast5_get_raw_read_group(hdf5_file);
+    std::string raw_read_group = fast5_get_raw_read_group(fh);
     if(raw_read_group == "") {
         return out;
     }
 
-    return fast5_get_fixed_string_attribute(hdf5_file, raw_read_group, "read_id");
+    return fast5_get_fixed_string_attribute(fh, raw_read_group, "read_id");
 }
 
 //
-raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling)
+raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling)
 {
     float* rawptr = NULL;
     hid_t space;
@@ -94,12 +101,12 @@ raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling)
     raw_table rawtbl = { 0, 0, 0, NULL };
 
     // mostly from scrappie
-    std::string raw_read_group = fast5_get_raw_read_group(hdf5_file);
+    std::string raw_read_group = fast5_get_raw_read_group(fh);
 
     // Create data set name
     std::string signal_path = raw_read_group + "/Signal";
 
-    hid_t dset = H5Dopen(hdf5_file, signal_path.c_str(), H5P_DEFAULT);
+    hid_t dset = H5Dopen(fh.hdf5_file, signal_path.c_str(), H5P_DEFAULT);
     if (dset < 0) {
 #ifdef DEBUG_FAST5_IO
         fprintf(stderr, "Failed to open dataset '%s' to read raw signal from.\n", signal_path.c_str());
@@ -141,9 +148,9 @@ raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling)
 }
 
 //
-std::string fast5_get_experiment_type(hid_t hdf5_file)
+std::string fast5_get_experiment_type(fast5_file& fh)
 {
-    return fast5_get_fixed_string_attribute(hdf5_file, "/UniqueGlobalKey/context_tags", "experiment_type");
+    return fast5_get_fixed_string_attribute(fh, "/UniqueGlobalKey/context_tags", "experiment_type");
 }
 
 // from scrappie
@@ -171,13 +178,13 @@ float fast5_read_float_attribute(hid_t group, const char *attribute) {
 }
 
 //
-fast5_raw_scaling fast5_get_channel_params(hid_t hdf5_file)
+fast5_raw_scaling fast5_get_channel_params(fast5_file& fh)
 {
     // from scrappie
     fast5_raw_scaling scaling = { NAN, NAN, NAN, NAN };
     const char *scaling_path = "/UniqueGlobalKey/channel_id";
 
-    hid_t scaling_group = H5Gopen(hdf5_file, scaling_path, H5P_DEFAULT);
+    hid_t scaling_group = H5Gopen(fh.hdf5_file, scaling_path, H5P_DEFAULT);
     if (scaling_group < 0) {
 #ifdef DEBUG_FAST5_IO
         fprintf(stderr, "Failed to group %s.", scaling_path);
@@ -200,7 +207,7 @@ fast5_raw_scaling fast5_get_channel_params(hid_t hdf5_file)
 //
 
 //
-std::string fast5_get_fixed_string_attribute(hid_t hdf5_file, const std::string& group_name, const std::string& attribute_name)
+std::string fast5_get_fixed_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name)
 {
     size_t storage_size;
     char* buffer;
@@ -210,13 +217,13 @@ std::string fast5_get_fixed_string_attribute(hid_t hdf5_file, const std::string&
 
     // according to http://hdf-forum.184993.n3.nabble.com/check-if-dataset-exists-td194725.html
     // we should use H5Lexists to check for the existence of a group/dataset using an arbitrary path
-    ret = H5Lexists(hdf5_file, group_name.c_str(), H5P_DEFAULT);
+    ret = H5Lexists(fh.hdf5_file, group_name.c_str(), H5P_DEFAULT);
     if(ret <= 0) {
         return "";
     }
 
     // Open the group /Raw/Reads/Read_nnn
-    group = H5Gopen(hdf5_file, group_name.c_str(), H5P_DEFAULT);
+    group = H5Gopen(fh.hdf5_file, group_name.c_str(), H5P_DEFAULT);
     if(group < 0) {
 #ifdef DEBUG_FAST5_IO
         fprintf(stderr, "could not open group %s\n", group_name.c_str());

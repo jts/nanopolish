@@ -28,38 +28,46 @@ typedef struct {
     float sample_rate;
 } fast5_raw_scaling;
 
+//
+struct fast5_file
+{
+    hid_t hdf5_file;
+    bool is_multi_fast5;
+};
 
 //
 // External API
 //
 
 // open the file and return the hdf ID
-hid_t fast5_open(const std::string& filename);
+fast5_file fast5_open(const std::string& filename);
+
+bool fast5_is_open(fast5_file& fh);
 
 // close the file
-void fast5_close(hid_t hdf5_file);
+void fast5_close(fast5_file& fh);
 
 // get the raw samples from this file
-raw_table fast5_get_raw_samples(hid_t hdf5_file, fast5_raw_scaling scaling);
+raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling);
 
 // get the name of the raw read in the file (eg Read_1234)
-std::string fast5_get_raw_read_name(hid_t hdf5_file);
+std::string fast5_get_raw_read_name(fast5_file& fh);
 
 // get the name of the raw read group (eg /Raw/Read/Read_1234)
-std::string fast5_get_raw_read_group(hid_t hdf5_file);
+std::string fast5_get_raw_read_group(fast5_file& fh);
 
 // Get the identifier of a read from the hdf5 file
-std::string fast5_get_read_id(hid_t hdf5_file);
+std::string fast5_get_read_id(fast5_file& fh);
 
 // Get the experiment type attribute
-std::string fast5_get_experiment_type(hid_t hdf5_file);
+std::string fast5_get_experiment_type(fast5_file& fh);
 
 // Get sample rate, and ADC-to-pA scalings
-fast5_raw_scaling fast5_get_channel_params(hid_t hdf5_file);
+fast5_raw_scaling fast5_get_channel_params(fast5_file& fh);
 
 //
 // Internal utility functions
 //
-std::string fast5_get_fixed_string_attribute(hid_t hdf5_file, const std::string& group_name, const std::string& attribute_name);
+std::string fast5_get_fixed_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name);
 
 #endif

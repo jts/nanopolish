@@ -55,6 +55,7 @@ namespace opt
 }
 static std::ostream* os_p;
 
+//
 void index_file_from_map(ReadDB& read_db, const std::string& fn, const std::map<std::string, std::string>& fast5_to_read_name_map)
 {
     PROFILE_FUNC("index_file_from_map")
@@ -73,24 +74,26 @@ void index_file_from_map(ReadDB& read_db, const std::string& fn, const std::map<
             fprintf(stderr, "Could not find read %s in sequencing summary file\n", fn.c_str());
         }
     }
-} // process_file
+}
 
+//
 void index_file_from_fast5(ReadDB& read_db, const std::string& fn, const std::map<std::string, std::string>& fast5_to_read_name_map)
 {
     PROFILE_FUNC("index_file_from_fast5")
 
-    hid_t hdf5_file = fast5_open(fn);
-    if(hdf5_file < 0) {
+    fast5_file f5_file = fast5_open(fn);
+    if(!fast5_is_open(f5_file)) {
         fprintf(stderr, "could not open fast5 file: %s\n", fn.c_str());
     }
 
-    std::string read_id = fast5_get_read_id(hdf5_file);
+    std::string read_id = fast5_get_read_id(f5_file);
     if(read_id != "") {
         read_db.add_signal_path(read_id, fn);
     }
-    fast5_close(hdf5_file);
-} // process_file
+    fast5_close(f5_file);
+}
 
+//
 void index_path(ReadDB& read_db, const std::string& path, const std::map<std::string, std::string>& fast5_to_read_name_map)
 {
     fprintf(stderr, "[readdb] indexing %s\n", path.c_str());
@@ -114,7 +117,7 @@ void index_path(ReadDB& read_db, const std::string& path, const std::map<std::st
             }
         }
     }
-} // process_path
+}
 
 // read sequencing summary files from the fofn and add them to the list
 void process_summary_fofn()
@@ -137,6 +140,7 @@ void process_summary_fofn()
     }
 }
 
+//
 void exit_bad_header(const std::string& str, const std::string& filename)
 {
     fprintf(stderr, "Could not find %s column in the header of %s\n", str.c_str(), filename.c_str());
@@ -260,7 +264,6 @@ void parse_index_options(int argc, char** argv)
 int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
-
 
     // Read a map from fast5 files to read name from the sequencing summary files (if any)
     process_summary_fofn();
