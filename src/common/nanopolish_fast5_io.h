@@ -68,6 +68,6 @@ fast5_raw_scaling fast5_get_channel_params(fast5_file& fh);
 //
 // Internal utility functions
 //
-std::string fast5_get_fixed_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name);
+std::string fast5_get_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name);
 
 #endif

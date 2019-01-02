@@ -8,9 +8,10 @@
 //
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 #include "nanopolish_fast5_io.h"
 
-//#define DEBUG_FAST5_IO 1
+#define DEBUG_FAST5_IO 1
 
 #define RAW_ROOT "/Raw/Reads/"
 int verbose = 0;
@@ -20,6 +21,10 @@ fast5_file fast5_open(const std::string& filename)
 {
     fast5_file fh;
     fh.hdf5_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+
+    // read and parse the file version
+    std::string version_str = fast5_get_string_attribute(fh, "/", "file_version");
+    //fprintf(stderr, "file version: %s\n", version_str.c_str());
     return fh;
 }
 
@@ -87,7 +92,7 @@ std::string fast5_get_read_id(fast5_file& fh)
         return out;
     }
 
-    return fast5_get_fixed_string_attribute(fh, raw_read_group, "read_id");
+    return fast5_get_string_attribute(fh, raw_read_group, "read_id");
 }
 
 //
@@ -150,7 +155,7 @@ raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling)
 //
 std::string fast5_get_experiment_type(fast5_file& fh)
 {
-    return fast5_get_fixed_string_attribute(fh, "/UniqueGlobalKey/context_tags", "experiment_type");
+    return fast5_get_string_attribute(fh, "/UniqueGlobalKey/context_tags", "experiment_type");
 }
 
 // from scrappie
@@ -207,22 +212,20 @@ fast5_raw_scaling fast5_get_channel_params(fast5_file& fh)
 //
 
 //
-std::string fast5_get_fixed_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name)
+std::string fast5_get_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name)
 {
-    size_t storage_size;
-    char* buffer;
-    hid_t group, attribute, attribute_type;
-    int ret;
+    hid_t group, attribute, attribute_type, native_type;
     std::string out;
 
     // according to http://hdf-forum.184993.n3.nabble.com/check-if-dataset-exists-td194725.html
     // we should use H5Lexists to check for the existence of a group/dataset using an arbitrary path
-    ret = H5Lexists(fh.hdf5_file, group_name.c_str(), H5P_DEFAULT);
+    // HDF5 1.8 returns 0 on the root group, so we explicitly check for it
+    int ret = group_name == "/" ? 1 : H5Lexists(fh.hdf5_file, group_name.c_str(), H5P_DEFAULT);
     if(ret <= 0) {
         return "";
     }
 
-    // Open the group /Raw/Reads/Read_nnn
+    // Open the group containing the attribute we want
     group = H5Gopen(fh.hdf5_file, group_name.c_str(), H5P_DEFAULT);
     if(group < 0) {
 #ifdef DEBUG_FAST5_IO
@@ -248,25 +251,61 @@ std::string fast5_get_fixed_string_attribute(fast5_file& fh, const std::string& 
 
     // Get data type and check it is a fixed-length string
     attribute_type = H5Aget_type(attribute);
-    if(H5Tis_variable_str(attribute_type)) {
+    if(attribute_type < 0) {
 #ifdef DEBUG_FAST5_IO
-        fprintf(stderr, "variable length string detected -- ignoring attribute\n");
+        fprintf(stderr, "failed to get attribute type %s\n", attribute_name.c_str());
 #endif
         goto close_type;
     }
 
-    // Get the storage size and allocate
-    storage_size = H5Aget_storage_size(attribute);
-    buffer = (char*)calloc(storage_size + 1, sizeof(char));
-
-    // finally read the attribute
-    ret = H5Aread(attribute, attribute_type, buffer);
-    if(ret >= 0) {
-        out = buffer;
+    if(H5Tget_class(attribute_type) != H5T_STRING) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "attribute %s is not a string\n", attribute_name.c_str());
+#endif
+        goto close_type;
     }
 
-    // clean up
-    free(buffer);
+    native_type = H5Tget_native_type(attribute_type, H5T_DIR_ASCEND);
+    if(native_type < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "failed to get native type for %s\n", attribute_name.c_str());
+#endif
+        goto close_native_type;
+    }
+
+    if(H5Tis_variable_str(attribute_type) > 0) {
+        // variable length string
+        char* buffer;
+        ret = H5Aread(attribute, native_type, &buffer);
+        if(ret < 0) {
+            fprintf(stderr, "error reading attribute %s\n", attribute_name.c_str());
+            exit(EXIT_FAILURE);
+        }
+        out = buffer;
+        free(buffer);
+        buffer = NULL;
+
+    } else {
+        // fixed length string
+        size_t storage_size;
+        char* buffer;
+
+        // Get the storage size and allocate
+        storage_size = H5Aget_storage_size(attribute);
+        buffer = (char*)calloc(storage_size + 1, sizeof(char));
+
+        // finally read the attribute
+        ret = H5Aread(attribute, attribute_type, buffer);
+        if(ret >= 0) {
+            out = buffer;
+        }
+
+        // clean up
+        free(buffer);
+    }
+
+close_native_type:
+    H5Tclose(native_type);    
 close_type:
     H5Tclose(attribute_type);
 close_attr:
@@ -276,4 +315,3 @@ close_group:
 
     return out;
 }
-
