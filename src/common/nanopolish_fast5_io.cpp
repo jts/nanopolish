@@ -11,9 +11,10 @@
 #include <assert.h>
 #include "nanopolish_fast5_io.h"
 
-#define DEBUG_FAST5_IO 1
+//#define DEBUG_FAST5_IO 1
 
-#define RAW_ROOT "/Raw/Reads/"
+#define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
+
 int verbose = 0;
 
 //
@@ -22,17 +23,21 @@ fast5_file fast5_open(const std::string& filename)
     fast5_file fh;
     fh.hdf5_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
 
-    // read and parse the file version
+    // read and parse the file version to determine if this is a multi-fast5 structured file
     std::string version_str = fast5_get_string_attribute(fh, "/", "file_version");
-    int major;
-    int minor;
-    int ret = sscanf(version_str.c_str(), "%d.%d", &major, &minor);
-    if(ret != 2) {
-        fprintf(stderr, "Could not parse version string %s\n", version_str.c_str());
-        exit(EXIT_FAILURE);
-    }
+    if(version_str != "") {
+        int major;
+        int minor;
+        int ret = sscanf(version_str.c_str(), "%d.%d", &major, &minor);
+        if(ret != 2) {
+            fprintf(stderr, "Could not parse version string %s\n", version_str.c_str());
+            exit(EXIT_FAILURE);
+        }
 
-    fh.is_multi_fast5 = major >= 1;
+        fh.is_multi_fast5 = major >= 1;
+    } else {
+        fh.is_multi_fast5 = false;
+    }
     return fh;
 }
 
@@ -46,42 +51,6 @@ bool fast5_is_open(fast5_file& fh)
 void fast5_close(fast5_file& fh)
 {
     H5Fclose(fh.hdf5_file);
-}
-
-//
-std::string fast5_get_raw_read_group(fast5_file& fh)
-{
-    std::string read_name = fast5_get_raw_read_name(fh);
-    if(read_name != "") {
-        return std::string(RAW_ROOT) + read_name;
-    } else {
-        return "";
-    }
-}
-
-//
-std::string fast5_get_raw_read_name(fast5_file& fh)
-{
-    // This code is From scrappie's fast5_interface
-
-    // retrieve the size of the read name
-    ssize_t size =
-        H5Lget_name_by_idx(fh.hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, NULL,
-                           0, H5P_DEFAULT);
-
-    if (size < 0) {
-        return "";
-    }
-
-    // copy the read name out of the fast5
-    char* name = (char*)calloc(1 + size, sizeof(char));
-    H5Lget_name_by_idx(fh.hdf5_file, RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, name,
-                       1 + size, H5P_DEFAULT);
-
-    // cleanup
-    std::string out(name);
-    free(name);
-    return out;
 }
 
 //
@@ -128,8 +97,11 @@ std::vector<std::string> fast5_get_multi_read_groups(fast5_file& fh)
 }
 
 //
-std::string fast5_get_read_id(fast5_file& fh)
+std::string fast5_get_read_id_single_fast5(fast5_file& fh)
 {
+    // this function is not supported for multi-fast5 files
+    assert(!fh.is_multi_fast5);
+
     int ret;
     hid_t read_name_attribute, raw_group, attribute_type;
     size_t storage_size = 0;
@@ -138,7 +110,7 @@ std::string fast5_get_read_id(fast5_file& fh)
     std::string out = "";
     
     // Get the path to the raw read group
-    std::string raw_read_group = fast5_get_raw_read_group(fh);
+    std::string raw_read_group = fast5_get_raw_read_group(fh, "");
     if(raw_read_group == "") {
         return out;
     }
@@ -147,7 +119,7 @@ std::string fast5_get_read_id(fast5_file& fh)
 }
 
 //
-raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling)
+raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast5_raw_scaling scaling)
 {
     float* rawptr = NULL;
     hid_t space;
@@ -157,7 +129,7 @@ raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling)
     raw_table rawtbl = { 0, 0, 0, NULL };
 
     // mostly from scrappie
-    std::string raw_read_group = fast5_get_raw_read_group(fh);
+    std::string raw_read_group = fast5_get_raw_read_group(fh, read_id);
 
     // Create data set name
     std::string signal_path = raw_read_group + "/Signal";
@@ -204,9 +176,11 @@ raw_table fast5_get_raw_samples(fast5_file& fh, fast5_raw_scaling scaling)
 }
 
 //
-std::string fast5_get_experiment_type(fast5_file& fh)
+std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id)
 {
-    return fast5_get_string_attribute(fh, "/UniqueGlobalKey/context_tags", "experiment_type");
+    std::string group = fh.is_multi_fast5 ? "/read_" + read_id + "/context_tags"
+                                          : "/UniqueGlobalKey/context_tags";
+    return fast5_get_string_attribute(fh, group.c_str(), "experiment_type");
 }
 
 // from scrappie
@@ -234,16 +208,18 @@ float fast5_read_float_attribute(hid_t group, const char *attribute) {
 }
 
 //
-fast5_raw_scaling fast5_get_channel_params(fast5_file& fh)
+fast5_raw_scaling fast5_get_channel_params(fast5_file& fh, const std::string& read_id)
 {
     // from scrappie
     fast5_raw_scaling scaling = { NAN, NAN, NAN, NAN };
-    const char *scaling_path = "/UniqueGlobalKey/channel_id";
 
-    hid_t scaling_group = H5Gopen(fh.hdf5_file, scaling_path, H5P_DEFAULT);
+    std::string scaling_path = fh.is_multi_fast5 ? "/read_" + read_id + "/channel_id"
+                                                 :  "/UniqueGlobalKey/channel_id";
+
+    hid_t scaling_group = H5Gopen(fh.hdf5_file, scaling_path.c_str(), H5P_DEFAULT);
     if (scaling_group < 0) {
 #ifdef DEBUG_FAST5_IO
-        fprintf(stderr, "Failed to group %s.", scaling_path);
+        fprintf(stderr, "Failed to open group %s\n", scaling_path.c_str());
 #endif
         return scaling;
     }
@@ -261,6 +237,46 @@ fast5_raw_scaling fast5_get_channel_params(fast5_file& fh)
 //
 // Internal functions
 //
+
+//
+std::string fast5_get_raw_root(fast5_file& fh, const std::string& read_id)
+{
+    return fh.is_multi_fast5 ? "/read_" + read_id + "/Raw" : "/Raw/Reads";
+}
+
+//
+std::string fast5_get_raw_read_group(fast5_file& fh, const std::string& read_id)
+{
+    if(fh.is_multi_fast5) {
+        return "/read_" + read_id + "/Raw";
+    } else {
+        std::string internal_read_name = fast5_get_raw_read_internal_name(fh);
+        return internal_read_name != "" ? std::string(LEGACY_FAST5_RAW_ROOT) + "/" + internal_read_name : "";
+    }
+}
+
+//
+std::string fast5_get_raw_read_internal_name(fast5_file& fh)
+{
+    // This code is From scrappie's fast5_interface
+
+    // retrieve the size of the read name
+    ssize_t size =
+        H5Lget_name_by_idx(fh.hdf5_file, LEGACY_FAST5_RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, NULL, 0, H5P_DEFAULT);
+
+    if (size < 0) {
+        return "";
+    }
+
+    // copy the read name out of the fast5
+    char* name = (char*)calloc(1 + size, sizeof(char));
+    H5Lget_name_by_idx(fh.hdf5_file, LEGACY_FAST5_RAW_ROOT, H5_INDEX_NAME, H5_ITER_INC, 0, name, 1 + size, H5P_DEFAULT);
+
+    // cleanup
+    std::string out(name);
+    free(name);
+    return out;
+}
 
 //
 std::string fast5_get_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name)

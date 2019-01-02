@@ -97,7 +97,7 @@ void index_file_from_fast5(ReadDB& read_db, const std::string& fn, const std::ma
             }
         }
     } else {
-        std::string read_id = fast5_get_read_id(f5_file);
+        std::string read_id = fast5_get_read_id_single_fast5(f5_file);
         if(read_id != "") {
             read_db.add_signal_path(read_id, fn);
         }

@@ -86,9 +86,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     fast5_file f5_file = fast5_open(fast5_path);
     if(fast5_is_open(f5_file)) {
 
-        //fprintf(stderr, "file: %s\n", fast5_path.c_str());
-        std::string experiment_type = fast5_get_experiment_type(f5_file);
-        //fprintf(stderr, "type: %s\n", experiment_type.c_str());
+        std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
 
         // Try to detect whether this read is DNA or RNA
         this->nucleotide_type = experiment_type == "rna" || experiment_type == "internal_rna" ? SRNT_RNA : SRNT_DNA;
@@ -303,11 +301,11 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
     assert(this->base_model[strand_idx] != NULL);
 
     // Read the sample rate
-    auto channel_params = fast5_get_channel_params(f5_file);
+    auto channel_params = fast5_get_channel_params(f5_file, this->read_name);
     this->sample_rate = channel_params.sample_rate;
 
     // Read the actual samples
-    raw_table rt = fast5_get_raw_samples(f5_file, channel_params);
+    raw_table rt = fast5_get_raw_samples(f5_file, this->read_name, channel_params);
 
     // trim using scrappie's internal method
     // parameters taken directly from scrappie defaults
