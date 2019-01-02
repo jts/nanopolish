@@ -98,7 +98,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
-"  -q, --methylation=STRING             the type of methylation (cpg,dam,dcm)\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
@@ -154,6 +154,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
+    std::string read_orientation = bam_is_rev(record) ? "-" : "+";
     SquiggleRead sr(read_name, read_db);
 
     // An output map from reference positions to scored motif sites
@@ -322,7 +323,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
             double diff = sum_ll_m - sum_ll_u;
 
-            fprintf(handles.site_writer, "%s\t%d\t%d\t", ss.chromosome.c_str(), ss.start_position, ss.end_position);
+            fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
             fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
             fprintf(handles.site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
@@ -428,7 +429,7 @@ int call_methylation_main(int argc, char** argv)
     handles.site_writer = stdout;
     
     // Write header
-    fprintf(handles.site_writer, "chromosome\tstart\tend\tread_name\t"
+    fprintf(handles.site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
                                  "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
                                  "num_calling_strands\tnum_motifs\tsequence\n");
 
