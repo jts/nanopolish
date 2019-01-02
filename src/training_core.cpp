@@ -8,10 +8,7 @@ using std::vector;
 using std::multiset;
 using std::endl;
 
-const bool use_multiset_logsum = 
-#ifndef USE_MULTISET_LOGSUM
-    true;
-#endif
+const bool use_multiset_logsum = true;
 
 ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, const ParamMixture& input_mixture)
 {
