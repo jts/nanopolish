@@ -59,6 +59,9 @@ std::string fast5_get_raw_read_group(fast5_file& fh);
 // Get the identifier of a read from the hdf5 file
 std::string fast5_get_read_id(fast5_file& fh);
 
+// Get a vector of read groups for a multi-fast5 file (eg read_00041f-...)
+std::vector<std::string> fast5_get_multi_read_groups(fast5_file& fh);
+
 // Get the experiment type attribute
 std::string fast5_get_experiment_type(fast5_file& fh);
 

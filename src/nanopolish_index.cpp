@@ -86,9 +86,21 @@ void index_file_from_fast5(ReadDB& read_db, const std::string& fn, const std::ma
         fprintf(stderr, "could not open fast5 file: %s\n", fn.c_str());
     }
 
-    std::string read_id = fast5_get_read_id(f5_file);
-    if(read_id != "") {
-        read_db.add_signal_path(read_id, fn);
+    if(f5_file.is_multi_fast5) {
+        std::vector<std::string> read_groups = fast5_get_multi_read_groups(f5_file);
+        std::string prefix = "read_";
+        for(size_t group_idx = 0; group_idx < read_groups.size(); ++group_idx) {
+            std::string group_name = read_groups[group_idx];
+            if(group_name.find(prefix) == 0) {
+                std::string read_id = group_name.substr(prefix.size());
+                read_db.add_signal_path(read_id, fn);
+            }
+        }
+    } else {
+        std::string read_id = fast5_get_read_id(f5_file);
+        if(read_id != "") {
+            read_db.add_signal_path(read_id, fn);
+        }
     }
     fast5_close(f5_file);
 }

@@ -24,7 +24,15 @@ fast5_file fast5_open(const std::string& filename)
 
     // read and parse the file version
     std::string version_str = fast5_get_string_attribute(fh, "/", "file_version");
-    //fprintf(stderr, "file version: %s\n", version_str.c_str());
+    int major;
+    int minor;
+    int ret = sscanf(version_str.c_str(), "%d.%d", &major, &minor);
+    if(ret != 2) {
+        fprintf(stderr, "Could not parse version string %s\n", version_str.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    fh.is_multi_fast5 = major >= 1;
     return fh;
 }
 
@@ -73,6 +81,49 @@ std::string fast5_get_raw_read_name(fast5_file& fh)
     // cleanup
     std::string out(name);
     free(name);
+    return out;
+}
+
+//
+std::vector<std::string> fast5_get_multi_read_groups(fast5_file& fh)
+{
+    std::vector<std::string> out;
+    size_t buffer_size = 0;
+    char* buffer = NULL;
+
+    // get the number of groups in the root group
+    H5G_info_t group_info;
+    int ret = H5Gget_info_by_name(fh.hdf5_file, "/", &group_info, H5P_DEFAULT);
+    if(ret < 0) {
+        fprintf(stderr, "error getting group info\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for(size_t group_idx = 0; group_idx < group_info.nlinks; ++group_idx) {
+
+        // retrieve the size of this group name
+        ssize_t size = H5Lget_name_by_idx(fh.hdf5_file, "/", H5_INDEX_NAME, H5_ITER_INC, group_idx, NULL, 0, H5P_DEFAULT);
+
+        if(size < 0) {
+            fprintf(stderr, "error getting group name size\n");
+            exit(EXIT_FAILURE);
+        }
+        size += 1; // for null terminator
+           
+        if(size > buffer_size) {
+            buffer = (char*)realloc(buffer, size);
+            buffer_size = size;
+        }
+    
+        // copy the group name
+        H5Lget_name_by_idx(fh.hdf5_file, "/", H5_INDEX_NAME, H5_ITER_INC, group_idx, buffer, buffer_size, H5P_DEFAULT);
+        buffer[size] = '\0';
+        out.push_back(buffer);
+    }
+
+    free(buffer);
+    buffer = NULL;
+    buffer_size = 0;
     return out;
 }
 
