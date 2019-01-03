@@ -23,21 +23,10 @@ fast5_file fast5_open(const std::string& filename)
     fast5_file fh;
     fh.hdf5_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
 
-    // read and parse the file version to determine if this is a multi-fast5 structured file
-    std::string version_str = fast5_get_string_attribute(fh, "/", "file_version");
-    if(version_str != "") {
-        int major;
-        int minor;
-        int ret = sscanf(version_str.c_str(), "%d.%d", &major, &minor);
-        if(ret != 2) {
-            fprintf(stderr, "Could not parse version string %s\n", version_str.c_str());
-            exit(EXIT_FAILURE);
-        }
-
-        fh.is_multi_fast5 = major >= 1;
-    } else {
-        fh.is_multi_fast5 = false;
-    }
+    // Check for attribute that indicates whether it is single or multi-fast5
+    // see: https://community.nanoporetech.com/posts/multi-fast5-format
+    const char* indicator_attribute = "/UniqueGlobalKey/tracking_id";
+    fh.is_multi_fast5 = H5Lexists(fh.hdf5_file, indicator_attribute, H5P_DEFAULT) < 0;
     return fh;
 }
 
