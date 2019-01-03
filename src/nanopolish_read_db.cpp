@@ -139,7 +139,7 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
             path = fields.back();
 
             // as a sanity check we require the path name to end in ".fast5"
-            if(path.substr(path.length() - 6) != ".fast5") {
+            if(path.length() < 6 || path.substr(path.length() - 6) != ".fast5") {
                 path = "";
             }
         }
