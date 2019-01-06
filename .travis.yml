@@ -23,8 +23,6 @@ git:
           - |
             docker run --rm -t \
                 -e HDF5="${HDF5:-install}" \
-                -e HDF5_VERSION="${HDF5_VERSION}" \
-                -e HDF5_CONFIG_ARGS="${HDF5_CONFIG_ARGS}" \
                 -e H5_CFLAGS="${H5_CFLAGS}" \
                 -e H5_INCLUDE="${H5_INCLUDE}" \
                 -e LDFLAGS="${LDFLAGS}" \
@@ -50,8 +48,6 @@ matrix:
           sudo: required
           env:
               - ARCH=arm64
-              - HDF5_VERSION=1.10.4
-              - HDF5_CONFIG_ARGS=""
           <<: *arch
           <<: *cron-only
         - name: aarch64-system-hdf5
@@ -67,8 +63,6 @@ matrix:
           sudo: required
           env:
               - ARCH=armhf
-              - HDF5_VERSION=1.10.4
-              - HDF5_CONFIG_ARGS=""
           <<: *arch
           <<: *cron-only
         - name: armv7l-system-hdf5

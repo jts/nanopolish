@@ -21,8 +21,7 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
-HDF5_VERSION ?= 1.8.14
-HDF5_CONFIG_ARGS ?= --enable-threadsafe
+HDF5_VERSION ?= 1.10.4
 EIGEN_VERSION ?= 3.2.5
 
 # Check operating system, OSX doesn't have -lrt
@@ -98,7 +97,7 @@ lib/libhdf5.a:
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-		./configure $(HDF5_CONFIG_ARGS) --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
+		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
 		make && make install
 
 # Download and install eigen if not already downloaded
