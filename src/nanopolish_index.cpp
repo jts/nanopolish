@@ -164,8 +164,8 @@ void parse_sequencing_summary(const std::string& filename, std::map<std::string,
 {
     // open
     std::ifstream in_file(filename.c_str());
-    if(in_file.bad()) {
-        fprintf(stderr, "error: could not file %s\n", filename.c_str());
+    if(!in_file.good()) {
+        fprintf(stderr, "error: could not read file %s\n", filename.c_str());
         exit(EXIT_FAILURE);
     }
 
