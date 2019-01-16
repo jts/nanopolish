@@ -458,7 +458,6 @@ void add_aligned_events(const ReadDB& read_db,
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
                 #pragma omp critical(kmer)
                 {
-                    #pragma omp atomic
                     event_count[rank]++;
                     add_event(kmer_summary, std, event_count[rank]);
                 }
