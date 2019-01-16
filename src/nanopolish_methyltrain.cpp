@@ -456,10 +456,12 @@ void add_aligned_events(const ReadDB& read_db,
 
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
-                #pragma omp atomic
-                event_count[rank]++;
                 #pragma omp critical(kmer)
-                add_event(kmer_summary, std, event_count[rank]);
+                {
+                    #pragma omp atomic
+                    event_count[rank]++;
+                    add_event(kmer_summary, std, event_count[rank]);
+                }
             }
 
             if(ea.hmm_state == 'M')  {
