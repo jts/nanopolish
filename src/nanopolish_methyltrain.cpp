@@ -312,8 +312,7 @@ void add_event(StateSummary& kmer_summary, StateTrainingData std, int event_coun
     // Add all events for each kmer until we have the maximum number of events to train
     if(event_count <= opt::max_events) {
         kmer_summary.events.push_back(std);
-    }
-    else {
+    } else {
         // Select a random number between 0 and the total number of events for this kmer
         std::mt19937 rng(event_count);
         std::uniform_int_distribution<int> gen(0, event_count);
