@@ -23,6 +23,9 @@
 #include <omp.h>
 #include <getopt.h>
 #include <cstddef>
+#include <random>
+#include <functional>
+#include <unordered_map>
 #include "htslib/faidx.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_eventalign.h"
@@ -112,6 +115,7 @@ static const char *METHYLTRAIN_USAGE_MESSAGE =
 "      --max-reads=NUM                  stop after processing NUM reads in each round\n"
 "      --progress                       print out a progress message\n"
 "      --stdv                           enable stdv modelling\n"
+"      --max-events=NUM                 use NUM events for training (default: 1000)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -141,6 +145,7 @@ namespace opt
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
     static unsigned num_training_rounds = 5;
+    static unsigned max_events = 1000;
 }
 
 static const char* shortopts = "r:b:g:t:m:vnc";
@@ -160,7 +165,8 @@ enum { OPT_HELP = 1,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
        OPT_P_BAD_SELF,
-       OPT_MAX_READS
+       OPT_MAX_READS,
+       OPT_MAX_EVENTS
      };
 
 static const struct option longopts[] = {
@@ -188,6 +194,7 @@ static const struct option longopts[] = {
     { "filter-policy",      required_argument, NULL, OPT_FILTER_POLICY },
     { "rounds",             required_argument, NULL, OPT_NUM_ROUNDS },
     { "max-reads",          required_argument, NULL, OPT_MAX_READS },
+    { "max-events",         required_argument, NULL, OPT_MAX_EVENTS },
     { NULL, 0, NULL, 0 }
 };
 
@@ -299,6 +306,26 @@ bool recalibrate_model(SquiggleRead &sr,
     return recalibrated;
 }
 
+// Use reservoir sampling to limit the amount of events for each kmer
+void add_event(StateSummary& kmer_summary, StateTrainingData std, int event_count)
+{
+    // Add all events for each kmer until we have the maximum number of events to train
+    if(event_count <= opt::max_events) {
+        kmer_summary.events.push_back(std);
+    }
+    else {
+        // Select a random number between 0 and the total number of events for this kmer
+        std::mt19937 rng(event_count);
+        std::uniform_int_distribution<int> gen(0, event_count);
+        int rs_location = gen(rng);
+
+        // Only update the training data if the random number is below the maximum number of events
+        if(rs_location < opt::max_events) {
+            kmer_summary.events[rs_location] = std;
+        }
+    }
+}
+
 // Update the training data with aligned events from a read
 void add_aligned_events(const ReadDB& read_db,
                         const faidx_t* fai,
@@ -311,7 +338,8 @@ void add_aligned_events(const ReadDB& read_db,
                         const std::string& training_alphabet,
                         size_t training_k,
                         size_t round,
-                        ModelTrainingMap& training)
+                        ModelTrainingMap& training,
+                        std::unordered_map<uint32_t, int>& event_count)
 {
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -429,7 +457,10 @@ void add_aligned_events(const ReadDB& read_db,
             if(use_for_training) {
                 StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
                 #pragma omp critical(kmer)
-                kmer_summary.events.push_back(std);
+                {
+                    event_count[rank]++;
+                    add_event(kmer_summary, std, event_count[rank]);
+                }
             }
 
             if(ea.hmm_state == 'M')  {
@@ -473,6 +504,7 @@ void parse_methyltrain_options(int argc, char** argv)
             case OPT_P_BAD: arg >> g_p_bad; break;
             case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
             case OPT_MAX_READS: arg >> opt::max_reads; break;
+            case OPT_MAX_EVENTS: arg >> opt::max_events; break;
             case OPT_HELP:
                 std::cout << METHYLTRAIN_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -755,6 +787,7 @@ void train_one_round(const ReadDB& read_db,
     size_t num_reads_realigned = 0;
     size_t num_records_buffered = 0;
     Progress progress("[methyltrain]");
+    std::unordered_map<uint32_t, int> event_count;
 
     do {
         assert(num_records_buffered < records.size());
@@ -773,7 +806,7 @@ void train_one_round(const ReadDB& read_db,
                     add_aligned_events(read_db, fai, hdr, record, read_idx,
                                        clip_start, clip_end,
                                        kit_name, alphabet, k,
-                                       round, model_training_data);
+                                       round, model_training_data, event_count);
                 }
             }
 
