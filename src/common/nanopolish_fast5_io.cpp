@@ -164,13 +164,26 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
     return rawtbl;
 }
 
-//
-std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id)
+std::string fast5_get_context_tags_group(fast5_file& fh, const std::string& read_id)
 {
     std::string group = fh.is_multi_fast5 ? "/read_" + read_id + "/context_tags"
                                           : "/UniqueGlobalKey/context_tags";
+    return group;
+}
+
+//
+std::string fast5_get_sequencing_kit(fast5_file& fh, const std::string& read_id)
+{
+    std::string group = fast5_get_context_tags_group(fh, read_id);
+    return fast5_get_string_attribute(fh, group.c_str(), "sequencing_kit");
+}
+
+std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id)
+{
+    std::string group = fast5_get_context_tags_group(fh, read_id);
     return fast5_get_string_attribute(fh, group.c_str(), "experiment_type");
 }
+
 
 // from scrappie
 float fast5_read_float_attribute(hid_t group, const char *attribute) {

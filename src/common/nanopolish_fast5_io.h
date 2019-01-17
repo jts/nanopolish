@@ -69,6 +69,9 @@ std::vector<std::string> fast5_get_multi_read_groups(fast5_file& fh);
 // get the raw samples from this file
 raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast5_raw_scaling scaling);
 
+// Get the sequencing kit
+std::string fast5_get_sequencing_kit(fast5_file& fh, const std::string& read_id);
+
 // Get the experiment type attribute
 std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id);
 

@@ -86,10 +86,13 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     fast5_file f5_file = fast5_open(fast5_path);
     if(fast5_is_open(f5_file)) {
 
+        std::string sequencing_kit = fast5_get_sequencing_kit(f5_file, this->read_name);
         std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
 
         // Try to detect whether this read is DNA or RNA
-        this->nucleotide_type = experiment_type == "rna" || experiment_type == "internal_rna" ? SRNT_RNA : SRNT_DNA;
+        // Fix issue 531: experiment_type in fast5 is "rna" for cDNA kit dcs108
+        bool rna_experiment = experiment_type == "rna" || experiment_type == "internal_rna";
+        this->nucleotide_type = rna_experiment && sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
 
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
