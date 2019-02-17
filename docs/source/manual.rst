@@ -11,6 +11,7 @@ Modules available: ::
     nanopolish variants --consensus: calculate an improved consensus sequence for a draft genome assembly
     nanopolish eventalign: align signal-level events to k-mers of a reference genome
     nanopolish phase-reads: Phase reads using heterozygous SNVs with respect to a reference genome 
+    nanopolish polya: Estimate polyadenylated tail lengths on native RNA reads
 |
 
 extract
@@ -486,3 +487,63 @@ Usage example
      - print out a progress message
 
  
+polya
+--------------------
+
+Overview
+"""""""""""""""""""""""
+
+Estimate the number of nucleotides in the poly(A) tails of native RNA reads.
+
+Input
+"""""""""""""""""""""""
+
+    * basecalled reads
+    * alignment information
+    * reference transcripts
+
+Usage example
+"""""""""""""""""""""""
+
+::
+
+   nanopolish polya [OPTIONS] --reads=reads.fa --bam=alignments.bam --genome=ref.fa
+
+.. list-table::
+   :widths: 20 10 20 50
+   :header-rows: 1
+
+   * - Argument name(s)
+     - Required
+     - Default value
+     - Description
+
+   * - ``-w, --window=STR``
+     - N
+     - NA
+     - Compute only for reads aligning to window of reference STR (format : ctg:start_id-end_id)
+
+   * - ``-r, --reads=FILE``
+     - Y
+     - NA
+     - the FAST(A/Q) file of native RNA reads
+
+   * - ``-b, --bam=FILE``
+     - Y
+     - NA
+     - the BAM file of alignments between reads and the reference
+
+   * - ``-g, --genome=FILE``
+     - Y
+     - NA
+     - the reference transcripts
+
+   * - ``-t, --threads=NUM``
+     - N
+     - 1
+     - use NUM threads
+
+   * - ``-v, -vv``
+     - N
+     - NA
+     - `-v` returns raw sample log-likelihoods, while `-vv` returns event durations
