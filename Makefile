@@ -91,7 +91,7 @@ htslib/libhts.a:
 #
 lib/libhdf5.a:
 	if [ ! -e hdf5-$(HDF5_VERSION).tar.gz ]; then \
-		version_major_minir=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
+		version_major_minor=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
 		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$${version_major_minor}/hdf5-$(HDF5_VERSION)/src/hdf5-$(HDF5_VERSION).tar.gz; \
 	fi
 
