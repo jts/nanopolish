@@ -12,6 +12,7 @@ LIBS = -lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
 CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64 
+LDFLAGS ?=
 CXX ?= g++
 CC ?= gcc
 
@@ -20,8 +21,7 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
-HDF5_VERSION ?= 1.8.14
-HDF5_CONFIG_ARGS ?= --enable-threadsafe
+HDF5_VERSION ?= 1.10.4
 EIGEN_VERSION ?= 3.2.5
 
 # Check operating system, OSX doesn't have -lrt
@@ -38,7 +38,7 @@ ifeq ($(HDF5), install)
 else
     # Use system-wide hdf5
     H5_LIB =
-    H5_INCLUDE =
+    H5_INCLUDE ?=
     LIBS += -lhdf5
 endif
 
@@ -91,13 +91,13 @@ htslib/libhts.a:
 #
 lib/libhdf5.a:
 	if [ ! -e hdf5-$(HDF5_VERSION).tar.gz ]; then \
-		version_major_minior=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
-		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$${version_major_minior}/hdf5-$(HDF5_VERSION)/src/hdf5-$(HDF5_VERSION).tar.gz; \
+		version_major_minor=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
+		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$${version_major_minor}/hdf5-$(HDF5_VERSION)/src/hdf5-$(HDF5_VERSION).tar.gz; \
 	fi
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-        ./configure --enable-threadsafe --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
+		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
 		make && make install
 
 # Download and install eigen if not already downloaded
