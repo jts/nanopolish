@@ -55,7 +55,8 @@ namespace opt
 }
 static std::ostream* os_p;
 
-void index_file_from_map(ReadDB& read_db, const std::string& fn, const std::map<std::string, std::string>& fast5_to_read_name_map)
+//
+void index_file_from_map(ReadDB& read_db, const std::string& fn, const std::multimap<std::string, std::string>& fast5_to_read_name_map)
 {
     PROFILE_FUNC("index_file_from_map")
 
@@ -63,35 +64,45 @@ void index_file_from_map(ReadDB& read_db, const std::string& fn, const std::map<
     size_t last_dir_pos = fn.find_last_of("/");
     std::string fast5_basename = last_dir_pos == std::string::npos ? fn : fn.substr(last_dir_pos + 1);
 
-    const auto& iter = fast5_to_read_name_map.find(fast5_basename);
-    if(iter != fast5_to_read_name_map.end()) {
+    auto range = fast5_to_read_name_map.equal_range(fast5_basename);
+    for(auto iter = range.first; iter != range.second; ++iter) {
         if(read_db.has_read(iter->second)) {
             read_db.add_signal_path(iter->second.c_str(), fn);
         }
-    } else {
-        if(opt::verbose > 0) {
-            fprintf(stderr, "Could not find read %s in sequencing summary file\n", fn.c_str());
-        }
     }
-} // process_file
+}
 
-void index_file_from_fast5(ReadDB& read_db, const std::string& fn, const std::map<std::string, std::string>& fast5_to_read_name_map)
+//
+void index_file_from_fast5(ReadDB& read_db, const std::string& fn)
 {
     PROFILE_FUNC("index_file_from_fast5")
 
-    hid_t hdf5_file = fast5_open(fn);
-    if(hdf5_file < 0) {
+    fast5_file f5_file = fast5_open(fn);
+    if(!fast5_is_open(f5_file)) {
         fprintf(stderr, "could not open fast5 file: %s\n", fn.c_str());
     }
 
-    std::string read_id = fast5_get_read_id(hdf5_file);
-    if(read_id != "") {
-        read_db.add_signal_path(read_id, fn);
+    if(f5_file.is_multi_fast5) {
+        std::vector<std::string> read_groups = fast5_get_multi_read_groups(f5_file);
+        std::string prefix = "read_";
+        for(size_t group_idx = 0; group_idx < read_groups.size(); ++group_idx) {
+            std::string group_name = read_groups[group_idx];
+            if(group_name.find(prefix) == 0) {
+                std::string read_id = group_name.substr(prefix.size());
+                read_db.add_signal_path(read_id, fn);
+            }
+        }
+    } else {
+        std::string read_id = fast5_get_read_id_single_fast5(f5_file);
+        if(read_id != "") {
+            read_db.add_signal_path(read_id, fn);
+        }
     }
-    fast5_close(hdf5_file);
-} // process_file
+    fast5_close(f5_file);
+}
 
-void index_path(ReadDB& read_db, const std::string& path, const std::map<std::string, std::string>& fast5_to_read_name_map)
+//
+void index_path(ReadDB& read_db, const std::string& path, const std::multimap<std::string, std::string>& fast5_to_read_name_map)
 {
     fprintf(stderr, "[readdb] indexing %s\n", path.c_str());
     if (is_directory(path)) {
@@ -109,12 +120,12 @@ void index_path(ReadDB& read_db, const std::string& path, const std::map<std::st
                 if(!fast5_to_read_name_map.empty()) {
                     index_file_from_map(read_db, full_fn, fast5_to_read_name_map);
                 } else {
-                    index_file_from_fast5(read_db, full_fn, fast5_to_read_name_map);
+                    index_file_from_fast5(read_db, full_fn);
                 }
             }
         }
     }
-} // process_path
+}
 
 // read sequencing summary files from the fofn and add them to the list
 void process_summary_fofn()
@@ -137,6 +148,7 @@ void process_summary_fofn()
     }
 }
 
+//
 void exit_bad_header(const std::string& str, const std::string& filename)
 {
     fprintf(stderr, "Could not find %s column in the header of %s\n", str.c_str(), filename.c_str());
@@ -144,12 +156,12 @@ void exit_bad_header(const std::string& str, const std::string& filename)
 }
 
 //
-void parse_sequencing_summary(const std::string& filename, std::map<std::string, std::string>& out_map)
+void parse_sequencing_summary(const std::string& filename, std::multimap<std::string, std::string>& out_map)
 {
     // open
     std::ifstream in_file(filename.c_str());
-    if(in_file.bad()) {
-        fprintf(stderr, "error: could not file %s\n", filename.c_str());
+    if(!in_file.good()) {
+        fprintf(stderr, "error: could not read file %s\n", filename.c_str());
         exit(EXIT_FAILURE);
     }
 
@@ -187,7 +199,7 @@ void parse_sequencing_summary(const std::string& filename, std::map<std::string,
         fields = split(line, '\t');
         std::string fast5_filename = fields[filename_idx];
         std::string read_name = fields[read_name_idx];
-        out_map[fast5_filename] = read_name;
+        out_map.insert(std::make_pair(fast5_filename, read_name));
     }
 }
 
@@ -261,10 +273,9 @@ int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
 
-
     // Read a map from fast5 files to read name from the sequencing summary files (if any)
     process_summary_fofn();
-    std::map<std::string, std::string> fast5_to_read_name_map;
+    std::multimap<std::string, std::string> fast5_to_read_name_map;
     for(const auto& ss_filename : opt::sequencing_summary_files) {
         if(opt::verbose > 2) {
             fprintf(stderr, "summary: %s\n", ss_filename.c_str());

@@ -17,7 +17,7 @@ include/
 lib/
 share/
 
-hdf5-1.8.14.tar.gz
+hdf5-1.*.tar.gz
 3.2.5.tar.bz2
 eigen/
 local*

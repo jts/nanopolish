@@ -98,7 +98,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
-"  -q, --methylation=STRING             the type of methylation (cpg,dam,dcm)\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"

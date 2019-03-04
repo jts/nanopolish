@@ -10,8 +10,9 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 #Basic flags every build needs
 LIBS = -lz
 CXXFLAGS ?= -g -O3
-CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
-CFLAGS ?= -O3 -std=c99
+CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
+CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64 
+LDFLAGS ?=
 CXX ?= g++
 CC ?= gcc
 
@@ -19,6 +20,9 @@ CC ?= gcc
 HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
+
+HDF5_VERSION ?= 1.10.4
+EIGEN_VERSION ?= 3.2.5
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -34,7 +38,7 @@ ifeq ($(HDF5), install)
 else
     # Use system-wide hdf5
     H5_LIB =
-    H5_INCLUDE =
+    H5_INCLUDE ?=
     LIBS += -lhdf5
 endif
 
@@ -74,7 +78,7 @@ PROGRAM = nanopolish
 TEST_PROGRAM = nanopolish_test
 
 .PHONY: all
-all: $(PROGRAM) $(TEST_PROGRAM)
+all: depend $(PROGRAM)
 
 #
 # Build libhts
@@ -86,21 +90,23 @@ htslib/libhts.a:
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
 lib/libhdf5.a:
-	if [ ! -e hdf5-1.8.14.tar.gz ]; then \
-		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.14/src/hdf5-1.8.14.tar.gz; \
+	if [ ! -e hdf5-$(HDF5_VERSION).tar.gz ]; then \
+		version_major_minor=`echo "$(HDF5_VERSION)" | sed -E 's/\.[0-9]+$$//'`; \
+		wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-$${version_major_minor}/hdf5-$(HDF5_VERSION)/src/hdf5-$(HDF5_VERSION).tar.gz; \
 	fi
-	tar -xzf hdf5-1.8.14.tar.gz || exit 255
-	cd hdf5-1.8.14 && \
-		./configure --enable-threadsafe --prefix=`pwd`/.. && \
+
+	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
+	cd hdf5-$(HDF5_VERSION) && \
+		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
 		make && make install
 
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
-	if [ ! -e 3.2.5.tar.bz2 ]; then \
-		wget http://bitbucket.org/eigen/eigen/get/3.2.5.tar.bz2; \
+	if [ ! -e $(EIGEN_VERSION).tar.bz2 ]; then \
+		wget http://bitbucket.org/eigen/eigen/get/$(EIGEN_VERSION).tar.bz2; \
 	fi
-	tar -xjf 3.2.5.tar.bz2 || exit 255
-	mv eigen-eigen-bdd17ee3b1b3 eigen || exit 255
+	tar -xjf $(EIGEN_VERSION).tar.bz2 || exit 255
+	mv eigen-eigen-* eigen || exit 255
 
 #
 # Source files
@@ -122,8 +128,6 @@ depend: .depend
 .depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
-
-include .depend
 
 # Compile objects
 .cpp.o:

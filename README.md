@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.11.0: support for multi-fast5 files. `nanopolish methyltrain` now subsamples input data, improving speed and memory usage
+
 * 0.10.2: added new program `nanopolish polya` to estimate the length of poly-A tails on direct RNA reads (by @paultsw)
 
 * 0.10.1: `nanopolish variants --consensus` now only outputs a VCF file instead of a fasta sequence. The VCF file describes the changes that need to be made to turn the draft sequence into the polished assembly. A new program, `nanopolish vcf2fasta`, is provided to generate the polished genome (this replaces `nanopolish_merge.py`, see usage instructions below). This change is to avoid issues when merging segments that end on repeat boundaries (reported by Michael Wykes and Chris Wright).

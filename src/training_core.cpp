@@ -8,18 +8,12 @@ using std::vector;
 using std::multiset;
 using std::endl;
 
-const bool use_multiset_logsum = 
-#ifndef USE_MULTISET_LOGSUM
-    false;
-#else
-    true;
-#endif
+const bool use_multiset_logsum = true;
 
 ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, const ParamMixture& input_mixture)
 {
     size_t n_components = input_mixture.params.size();
     size_t n_data = data.size();
-    float log_n_data = std::log(n_data);
     assert(input_mixture.log_weights.size() == n_components);
     ParamMixture curr_mixture = input_mixture;
 
@@ -75,6 +69,16 @@ ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, con
                     << std::fixed << std::setprecision(2) << log_resp[i][j] << ")" << endl;
             }
         }
+
+        // compute logsum
+        //
+        logsumset< float > denom_terms(use_multiset_logsum);
+        for (size_t j = 0; j < n_components; ++j) {
+            for (size_t i = 0; i < n_data; ++i) {
+                denom_terms.add(log_resp[i][j]);
+            }
+        }
+        float log_n_data = denom_terms.val();
 
         // update weights
         //

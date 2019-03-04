@@ -95,6 +95,39 @@ const char* MethylCpGAlphabet::_recognition_sites_methylated[] = { "MG" };
 const char* MethylCpGAlphabet::_recognition_sites_methylated_complement[] = { "GM" };
 
 //
+// methyl-cytosine in GC context
+//
+const uint8_t MethylGpCAlphabet::_rank[256] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,2,0,0,0,0,0,3,0,0,
+    0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+const char* MethylGpCAlphabet::_name = "gpc";
+const char* MethylGpCAlphabet::_base = "ACGMT";
+const char* MethylGpCAlphabet::_complement = "TGCGA";
+const uint32_t MethylGpCAlphabet::_size = 5;
+
+const uint32_t MethylGpCAlphabet::_num_recognition_sites = 1;
+const uint32_t MethylGpCAlphabet::_recognition_length = 2;
+const char* MethylGpCAlphabet::_recognition_sites[] = { "GC" };
+const char* MethylGpCAlphabet::_recognition_sites_methylated[] = { "GM" };
+const char* MethylGpCAlphabet::_recognition_sites_methylated_complement[] = { "MG" };
+
+//
 // Dam methylation: methyl-adenine in GATC context
 //
 const uint8_t MethylDamAlphabet::_rank[256] = {
@@ -163,6 +196,7 @@ const char* MethylDcmAlphabet::_recognition_sites_methylated_complement[] = { "G
 // Global objects
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;
+MethylGpCAlphabet gMethylGpCAlphabet;
 MethylDamAlphabet gMethylDamAlphabet;
 MethylDcmAlphabet gMethylDcmAlphabet;
 UtoTRNAAlphabet gUtoTRNAAlphabet;
@@ -171,6 +205,7 @@ std::vector<const Alphabet*> get_alphabet_list()
 {
     std::vector<const Alphabet*> list = { &gDNAAlphabet, 
                                           &gMCpGAlphabet, 
+                                          &gMethylGpCAlphabet,
                                           &gMethylDamAlphabet,
                                           &gMethylDcmAlphabet,
                                           &gUtoTRNAAlphabet };

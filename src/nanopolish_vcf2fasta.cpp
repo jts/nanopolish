@@ -47,6 +47,7 @@ static const char *VCF2FASTA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -g, --genome=FILE                    the input genome is in FILE\n"
+"  -f, --fofn=FILE                      read the list of VCF files to use from FILE\n"
 "      --skip-checks                    skip the sanity checks\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -54,11 +55,12 @@ namespace opt
 {
     static unsigned int verbose;
     static std::vector<std::string> input_vcf_files;
+    static std::string vcf_fofn;
     static std::string genome_file;
     static bool skip_checks = false;
 }
 
-static const char* shortopts = "g:v";
+static const char* shortopts = "g:f:v";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_SKIP_CHECKS };
 
@@ -67,7 +69,8 @@ static const struct option longopts[] = {
     { "help",          no_argument,       NULL, OPT_HELP },
     { "version",       no_argument,       NULL, OPT_VERSION },
     { "skip-checks",   no_argument,       NULL, OPT_SKIP_CHECKS },
-    { "genome",      required_argument, NULL, 'g' },
+    { "genome",        required_argument, NULL, 'g' },
+    { "fofn",          required_argument, NULL, 'f' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -80,6 +83,7 @@ void parse_vcf2fasta_options(int argc, char** argv)
             case '?': die = true; break;
             case 'v': opt::verbose++; break;
             case 'g': arg >> opt::genome_file; break;
+            case 'f': arg >> opt::vcf_fofn; break;
             case OPT_SKIP_CHECKS: opt::skip_checks = true; break;
             case OPT_HELP:
                 std::cout << VCF2FASTA_USAGE_MESSAGE;
@@ -95,7 +99,7 @@ void parse_vcf2fasta_options(int argc, char** argv)
         die = true;
     }
 
-    if (argc - optind < 1) {
+    if (argc - optind < 1 && opt::vcf_fofn.empty()) {
         std::cerr << SUBPROGRAM ": not enough arguments\n";
         die = true;
     }
@@ -108,6 +112,15 @@ void parse_vcf2fasta_options(int argc, char** argv)
 
     for(; optind < argc; ++optind) {
         opt::input_vcf_files.push_back(argv[optind]);
+    }
+
+    // add files from the fofn
+    if(!opt::vcf_fofn.empty()) {
+        std::ifstream infile(opt::vcf_fofn);
+        std::string line;
+        while(getline(infile, line)) {
+            opt::input_vcf_files.push_back(line);
+        }
     }
 }
 
@@ -134,10 +147,10 @@ int vcf2fasta_main(int argc, char** argv)
             if(line[0] == '#') {
 
                 // check for window coordinates
-                if(line.find("nanopolish_window") != std::string::npos) {
-                    std::vector<std::string> fields = split(line, '=');
-                    assert(fields.size() == 2);
-                    window_str = fields[1];
+                std::string window_key = "nanopolish_window=";
+                size_t key_pos = line.find(window_key);
+                if(key_pos != std::string::npos) {
+                    window_str = line.substr(key_pos + window_key.size());
                 }
             } else {
                 Variant v(line);

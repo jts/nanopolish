@@ -15,6 +15,7 @@
 #include "nanopolish_eventalign.h"
 #include "nanopolish_read_db.h"
 #include "nanopolish_pore_model_set.h"
+#include "nanopolish_fast5_io.h"
 #include <string>
 
 enum PoreType
@@ -303,7 +304,7 @@ class SquiggleRead
         void load_from_events(const uint32_t flags);
 
         // Load all read data from raw samples
-        void load_from_raw(hid_t hdf5_file, const uint32_t flags);
+        void load_from_raw(fast5_file& f5_file, const uint32_t flags);
 
         // Version-specific intialization functions
         void _load_R7(uint32_t si);
