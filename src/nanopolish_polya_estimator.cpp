@@ -220,15 +220,21 @@ private:
         // T -> T (100%)
         {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 1.00f}
     };
-    // 50/50 chance of starting on L or S
-    float start_probs[HMM_NUM_STATES] = { 0.50f, 0.50f, 0.00f, 0.00f, 0.00f, 0.00f };
+    // All state sequences must start on S:
+    float start_probs[HMM_NUM_STATES] = { 1.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f };
 
     // ----- emission parameters:
     // emission parameters, from empirical MLE on manually-flagged reads:
-    // START, LEADER, and POLYA have Gaussian emissions;
+    // START has a mixture of Gaussian and Uniform emissions;
+    // LEADER and POLYA have Gaussian emissions;
     // ADAPTER, TRANSCRIPT have Gaussian mixture emissions;
     // CLIFF has Uniform emissions.
     GaussianParameters s_emission = {70.2737f, 3.7743f};
+    float s_begin = 40.0f;
+    float s_end = 250.0f;
+    float s_prob = 0.00476f; // == {1. / (250.0f - 40.0f)}
+    float s_norm_coeff = 0.50f;
+    float s_unif_coeff = 0.50f;
     GaussianParameters l_emission = {110.973f, 5.237f};
     GaussianParameters a0_emission = {79.347f, 8.3702f};
     GaussianParameters a1_emission = {63.3126f, 2.7464f};
@@ -265,7 +271,8 @@ private:
         float log_probs;
         if (state == HMM_START) {
             // START state:
-            log_probs = log_normal_pdf(xx, this->s_emission);
+            float norm_term = s_norm_coeff * normal_pdf(xx, this->s_emission);
+            log_probs = std::log(norm_term + s_unif_coeff * s_prob);
         }
         if (state == HMM_LEADER) {
             // LEADER state:
@@ -680,14 +687,13 @@ std::string pre_segmentation_qc(uint32_t suffix_clip, uint32_t prefix_clip, doub
 // These tests indicate that something went wrong in the segmentation algorithm.
 std::string post_segmentation_qc(const Segmentation& region_indices, const SquiggleRead& sr)
 {
-    // fetch sizes of LEADER, ADAPTER, POLYA regions:
-    double num_leader_samples = region_indices.leader;
+    // fetch sizes of ADAPTER and POLYA regions:
     double num_adapter_samples = (region_indices.adapter+1) - region_indices.leader;
     double num_polya_samples = region_indices.polya - (region_indices.adapter+1);
 
     // check for NOREGION:
     std::string qc_tag;
-    if (num_leader_samples < 200.0 || num_adapter_samples < 200.0 || num_polya_samples < 200.0) {
+    if (num_adapter_samples < 200.0 || num_polya_samples < 200.0) {
         qc_tag = "NOREGION";
     } else {
         qc_tag = "PASS";
