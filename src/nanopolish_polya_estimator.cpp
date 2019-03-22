@@ -739,6 +739,11 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
                                     int region_start,
                                     int region_end)
 {
+    //----- check if primary or secondary alignment by inspecting FLAG; skip read if secondary:
+    if (record->core.flag & BAM_FSECONDARY) {
+        return;
+    }
+
     //----- load a squiggle read:
     std::string read_name = bam_get_qname(record);
     std::string ref_name(hdr->target_name[record->core.tid]);
