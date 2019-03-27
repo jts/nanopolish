@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.11.1: `nanopolish polya` now supports SQK-RNA-002 kits with automatic backwards-compatibility with SQK-RNA-001
+
 * 0.11.0: support for multi-fast5 files. `nanopolish methyltrain` now subsamples input data, improving speed and memory usage
 
 * 0.10.2: added new program `nanopolish polya` to estimate the length of poly-A tails on direct RNA reads (by @paultsw)
