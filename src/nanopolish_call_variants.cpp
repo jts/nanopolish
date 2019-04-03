@@ -1183,7 +1183,7 @@ int call_variants_main(int argc, char** argv)
 
     if(opt::calculate_all_support) {
         header_fields.push_back(
-                Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Integer",
+                Variant::make_vcf_tag_string("INFO", "SupportFractionByBase", 4, "Float",
                     "The fraction of reads supporting A,C,G,T at this position"));
 
     }
