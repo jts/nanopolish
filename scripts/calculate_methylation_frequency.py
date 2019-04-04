@@ -1,10 +1,9 @@
 #! /usr/bin/env python
 
-import math
 import sys
 import csv
 import argparse
-from collections import namedtuple
+
 
 class SiteStats:
     def __init__(self, g_size, g_seq):
