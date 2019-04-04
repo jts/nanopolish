@@ -323,6 +323,11 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
             double diff = sum_ll_m - sum_ll_u;
 
+            // do not output if outside the window boundaries
+            if(ss.start_position < region_start || ss.end_position >= region_end) {
+                continue;
+            }
+
             fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
             fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
