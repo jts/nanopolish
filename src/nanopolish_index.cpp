@@ -113,10 +113,15 @@ void index_path(ReadDB& read_db, const std::string& path, const std::multimap<st
             }
 
             std::string full_fn = path + "/" + fn;
-            if(is_directory(full_fn)) {
+            bool is_fast5 = full_fn.find(".fast5") != -1;
+            bool in_map = fast5_to_read_name_map.find(fn) != fast5_to_read_name_map.end();
+
+            // JTS 04/19: is_directory is painfully slow so we first check if the file is in the name map
+            // if it is, it is definitely not a directory so we can skip the system call
+            if(!in_map && is_directory(full_fn)) {
                 // recurse
                 index_path(read_db, full_fn, fast5_to_read_name_map);
-            } else if (full_fn.find(".fast5") != -1) {
+            } else if (is_fast5) {
                 if(!fast5_to_read_name_map.empty()) {
                     index_file_from_map(read_db, full_fn, fast5_to_read_name_map);
                 } else {
