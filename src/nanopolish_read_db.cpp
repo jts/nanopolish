@@ -145,10 +145,12 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
         }
         
         // sanity check that the read does not exist in the database
+        // JTS 04/2019: changed error to warning to account for duplicate reads coming out of
+        // some versions of guppy.
         auto iter = m_data.find(seq->name.s);
         if(iter != m_data.end()) {
-            fprintf(stderr, "Error: duplicate read name %s found in fasta file\n", seq->name.s);
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "Warning: duplicate read name %s found in fasta file\n", seq->name.s);
+            continue;
         }
         
         // add path
