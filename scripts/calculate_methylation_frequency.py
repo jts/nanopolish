@@ -3,7 +3,7 @@
 import sys
 import csv
 import argparse
-
+import gzip
 
 class SiteStats:
     def __init__(self, g_size, g_seq):
@@ -24,48 +24,47 @@ def update_call_stats(key, num_called_cpg_sites, is_methylated, sequence):
 
 parser = argparse.ArgumentParser( description='Calculate methylation frequency at genomic CpG sites')
 parser.add_argument('-c', '--call-threshold', type=float, required=False, default=2.5)
-parser.add_argument('-i', '--input', type=str, required=False)
 parser.add_argument('-s', '--split-groups', action='store_true')
-args = parser.parse_args()
+args, input_files = parser.parse_known_args()
 assert(args.call_threshold is not None)
 
 sites = dict()
-
-if args.input:
-    in_fh = open(args.input)
-else:
-    in_fh = sys.stdin
-csv_reader = csv.DictReader(in_fh, delimiter='\t')
-
-for record in csv_reader:
-    
-    num_sites = int(record['num_motifs']) 
-    llr = float(record['log_lik_ratio'])
-
-    # Skip ambiguous call
-    if abs(llr) < args.call_threshold:
-        continue
-    sequence = record['sequence']
-
-    is_methylated = llr > 0
-    
-    # if this is a multi-cpg group and split_groups is set, break up these sites
-    if args.split_groups and num_sites > 1:
-        c = str(record['chromosome']) 
-        s = int(record['start'])
-        e = int(record['end'])
-
-        # find the position of the first CG dinucleotide
-        sequence = record['sequence']
-        cg_pos = sequence.find("CG")
-        first_cg_pos = cg_pos
-        while cg_pos != -1:
-            key = (c, s + cg_pos - first_cg_pos, s + cg_pos - first_cg_pos)
-            update_call_stats(key, 1, is_methylated, "split-group")
-            cg_pos = sequence.find("CG", cg_pos + 1)
+# iterate over input files and collect per-site stats
+for f in input_files:
+    if f[-3:] == ".gz":
+        in_fh = gzip.open(f, 'rt')
     else:
-        key = (str(record['chromosome']), int(record['start']), int(record['end']))
-        update_call_stats(key, num_sites, is_methylated, sequence)
+        in_fh = open(f)
+    csv_reader = csv.DictReader(in_fh, delimiter='\t')
+    for record in csv_reader:
+
+        num_sites = int(record['num_motifs'])
+        llr = float(record['log_lik_ratio'])
+
+        # Skip ambiguous call
+        if abs(llr) < args.call_threshold:
+            continue
+        sequence = record['sequence']
+
+        is_methylated = llr > 0
+
+        # if this is a multi-cpg group and split_groups is set, break up these sites
+        if args.split_groups and num_sites > 1:
+            c = str(record['chromosome'])
+            s = int(record['start'])
+            e = int(record['end'])
+
+            # find the position of the first CG dinucleotide
+            sequence = record['sequence']
+            cg_pos = sequence.find("CG")
+            first_cg_pos = cg_pos
+            while cg_pos != -1:
+                key = (c, s + cg_pos - first_cg_pos, s + cg_pos - first_cg_pos)
+                update_call_stats(key, 1, is_methylated, "split-group")
+                cg_pos = sequence.find("CG", cg_pos + 1)
+        else:
+            key = (str(record['chromosome']), int(record['start']), int(record['end']))
+            update_call_stats(key, num_sites, is_methylated, sequence)
 
 # header
 print("\t".join(["chromosome", "start", "end", "num_motifs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"]))
