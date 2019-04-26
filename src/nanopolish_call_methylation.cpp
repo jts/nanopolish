@@ -324,7 +324,8 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             double diff = sum_ll_m - sum_ll_u;
 
             // do not output if outside the window boundaries
-            if(ss.start_position < region_start || ss.end_position >= region_end) {
+            if((region_start != -1 && ss.start_position < region_start) ||
+               (region_end != -1 && ss.end_position >= region_end)) {
                 continue;
             }
 
