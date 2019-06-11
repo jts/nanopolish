@@ -21,7 +21,7 @@ Download raw fast5 data and basecall
 Let's start by downloading a dataset of fast5 files from the European Nucleotide Archive. We'll download a tarball of fast5 files containing reads that are known to have polyadenylated tail lengths of 30nt. ::
 
     mkdir data && mkdir data/fastqs
-    wget ftp://ftp.sra.ebi.ac.uk/vol1/ERA158/ERA1580896/oxfordnanopore_native/30xpolyA.tar.gz -O 30xpolyA.tar.gz && mv 30xpolyA.tar.gz data/
+    wget ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR276/ERR2764784/30xpolyA.tar.gz -O 30xpolyA.tar.gz && mv 30xpolyA.tar.gz data/
     tar -xzf data/30xpolyA.tar.gz -C data/
     read_fast5_basecaller.py --worker_threads=8 -f FLO-MIN107 -k SQK-RNA001 -q 0 -s data/fastqs -i data/30xpolyA/fast5/pass
     cat data/fastqs/workspace/pass/*.fastq > data/30xpolyA.fastq
