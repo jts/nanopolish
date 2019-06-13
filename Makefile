@@ -84,7 +84,7 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
-	cd htslib && make || exit 255
+	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
