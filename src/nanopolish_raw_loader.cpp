@@ -312,8 +312,8 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 
     // Find best score between an event and the last k-mer. after trimming the remaining evnets
     for(int event_idx = 0; event_idx < n_events; ++event_idx) {
-        int band_idx = event_kmer_to_band(event_idx, curr_kmer_idx);
-        int offset = band_event_to_offset(band_idx, event_idx);
+        size_t band_idx = event_kmer_to_band(event_idx, curr_kmer_idx);
+        size_t offset = band_event_to_offset(band_idx, event_idx);
         if(is_offset_valid(offset)) {
             float s = BAND_ARRAY(band_idx,offset)  + (n_events - event_idx) * lp_trim;
             if(s > max_score) {
@@ -341,8 +341,8 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
 
-        int band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
-        int offset = band_event_to_offset(band_idx, curr_event_idx);
+        size_t band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
+        size_t offset = band_event_to_offset(band_idx, curr_event_idx);
         assert(band_kmer_to_offset(band_idx, curr_kmer_idx) == offset);
 
         uint8_t from = TRACE_ARRAY(band_idx,offset);
