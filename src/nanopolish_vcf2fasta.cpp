@@ -178,26 +178,26 @@ int vcf2fasta_main(int argc, char** argv)
         // Confirm that all windows on this contig have been polished
         bool window_check_ok = true;
         auto& windows = windows_by_contig[contig];
-        if(windows.empty()) {
-            fprintf(stderr, "error: no polishing windows found for %s\n", contig.c_str());
-            exit(EXIT_FAILURE);
-        }
-
         std::sort(windows.begin(), windows.end());
 
-        for(size_t window_idx = 1; window_idx < windows.size(); ++window_idx) {
-            int prev_start = windows[window_idx - 1].first;
-            int prev_end = windows[window_idx - 1].second;
-            int curr_start = windows[window_idx].first;
-            int curr_end = windows[window_idx].second;
-            if(!opt::skip_checks && curr_start > prev_end) {
-                fprintf(stderr, "error: adjacent polishing windows do not overlap (%d-%d and %d-%d)\n", prev_start, prev_end, curr_start, curr_end);
-                window_check_ok = false;
-            }
-        }
-
-        // check the first and last windows of the contig were polished
         if(!opt::skip_checks) {
+            if(windows.empty()) {
+                fprintf(stderr, "error: no polishing windows found for %s\n", contig.c_str());
+                exit(EXIT_FAILURE);
+            }
+
+            for(size_t window_idx = 1; window_idx < windows.size(); ++window_idx) {
+                int prev_start = windows[window_idx - 1].first;
+                int prev_end = windows[window_idx - 1].second;
+                int curr_start = windows[window_idx].first;
+                int curr_end = windows[window_idx].second;
+                if(curr_start > prev_end) {
+                    fprintf(stderr, "error: adjacent polishing windows do not overlap (%d-%d and %d-%d)\n", prev_start, prev_end, curr_start, curr_end);
+                    window_check_ok = false;
+                }
+            }
+
+            // check the first and last windows of the contig were polished
             if(windows[0].first != 0) {
                 fprintf(stderr, "error: first %d bases are not covered by a polished window for contig %s.\n", windows[0].first, contig.c_str());
                 window_check_ok = false;
