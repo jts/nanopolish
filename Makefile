@@ -8,7 +8,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 #
 
 #Basic flags every build needs
-LIBS = -lz
+LIBS = -lz -lhts
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
 CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64 
@@ -21,6 +21,7 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
+HTSLIB_VERSION ?= 1.9
 HDF5_VERSION ?= 1.10.4
 EIGEN_VERSION ?= 3.2.5
 
@@ -52,13 +53,14 @@ endif
 
 # Default to build and link the libhts submodule
 ifeq ($(HTS), install)
-    HTS_LIB = ./htslib/libhts.a
-    HTS_INCLUDE = -I./htslib
+    HTS_LIB = htslib-$(HTSLIB_VERSION)/libhts.a
+    HTS_LIB_PATH = -L./htslib-$(HTSLIB_VERSION)
+    HTS_INCLUDE = -I./htslib-$(HTSLIB_VERSION)
 else
     # Use system-wide htslib
-    HTS_LIB =
+    HTS_LIB = 
+    HTS_LIB_PATH =
     HTS_INCLUDE =
-    LIBS += -lhts
 endif
 
 # Include the header-only fast5 library
@@ -83,8 +85,15 @@ all: depend $(PROGRAM)
 #
 # Build libhts
 #
-htslib/libhts.a:
-	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
+htslib-$(HTSLIB_VERSION)/libhts.a:
+	if [ ! -e htslib-$(HTSLIB_VERSION).tar.bz2 ]; then \
+        wget https://github.com/samtools/htslib/releases/download/$(HTSLIB_VERSION)/htslib-$(HTSLIB_VERSION).tar.bz2; \
+    fi
+	tar -xjf htslib-$(HTSLIB_VERSION).tar.bz2 || exit 255
+
+	cd htslib-$(HTSLIB_VERSION) && \
+        ./configure --disable-lzma && \
+        make
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
@@ -125,7 +134,7 @@ C_OBJ = $(C_SRC:.c=.o)
 .PHONY: depend
 depend: .depend
 
-.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
+.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
 
@@ -138,11 +147,11 @@ depend: .depend
 
 # Link main executable
 $(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB_PATH) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 # Link test executable
 $(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB_PATH) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 .PHONY: test
 test: $(TEST_PROGRAM)
