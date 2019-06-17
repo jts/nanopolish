@@ -24,6 +24,7 @@ git:
             docker run --rm -t \
                 -e HDF5="${HDF5:-install}" \
                 -e H5_CFLAGS="${H5_CFLAGS}" \
+                -e HDF5_VERSION="1.10.4" \
                 -e H5_INCLUDE="${H5_INCLUDE}" \
                 -e LDFLAGS="${LDFLAGS}" \
                 nanopolish

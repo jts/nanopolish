@@ -21,7 +21,7 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
-HDF5_VERSION ?= 1.10.4
+HDF5_VERSION ?= 1.8.14
 EIGEN_VERSION ?= 3.2.5
 
 # Check operating system, OSX doesn't have -lrt
