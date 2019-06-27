@@ -310,7 +310,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     int curr_event_idx = 0;
     int curr_kmer_idx = n_kmers -1;
 
-    // Find best score between an event and the last k-mer. after trimming the remaining evnets
+    // Find best score between an event and the last k-mer. after trimming the remaining events
     for(int event_idx = 0; event_idx < n_events; ++event_idx) {
         size_t band_idx = event_kmer_to_band(event_idx, curr_kmer_idx);
         size_t offset = band_event_to_offset(band_idx, event_idx);
@@ -329,6 +329,10 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 
     int curr_gap = 0;
     int max_gap = 0;
+    int max_stay = 0;
+    int min_distance_to_band_edge = bandwidth;
+    int curr_stay;
+
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
 
         // emit alignment
@@ -341,8 +345,17 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
 
+        // position in band
         size_t band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
         size_t offset = band_event_to_offset(band_idx, curr_event_idx);
+        int distance_to_band_edge = std::min(offset, bandwidth - offset);
+        min_distance_to_band_edge = std::min(min_distance_to_band_edge, distance_to_band_edge);
+
+        /*
+        if(curr_stay > 40) {
+            fprintf(stderr, "stall %d detected at [%d %d]\n", curr_stay, curr_kmer_idx, curr_event_idx);
+        }
+        */
         assert(band_kmer_to_offset(band_idx, curr_kmer_idx) == offset);
 
         uint8_t from = TRACE_ARRAY(band_idx,offset);
@@ -350,12 +363,16 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
             curr_gap = 0;
+            curr_stay = 0;
         } else if(from == FROM_U) {
             curr_event_idx -= 1;
             curr_gap = 0;
+            curr_stay += 1;
+            max_stay = std::max(curr_stay, max_stay);
         } else {
             curr_kmer_idx -= 1;
             curr_gap += 1;
+            curr_stay = 0;
             max_gap = std::max(curr_gap, max_gap);
         }
     }
@@ -374,7 +391,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     free(bands);
     free(trace);
 
-    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, fills);
+    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, max_stay, min_distance_to_band_edge, fills);
     return out;
 }
 
