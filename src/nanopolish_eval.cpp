@@ -317,7 +317,7 @@ class SequenceModel
 {
     public:
         virtual float score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags) const = 0;
-        virtual std::string get_name(const HMMInputData& data) const = 0;
+        virtual std::string get_name(const PoreModel* pore_model) const = 0;
 };
 
 //
@@ -328,21 +328,19 @@ class ProfileHMMModel : public SequenceModel
         return profile_hmm_score(sequence, data, flags);
     }
 
-    std::string get_name(const HMMInputData& data) const
+    std::string get_name(const PoreModel* pore_model) const
     {
-        return "np_hmm_" + data.pore_model->metadata.get_kit_name() + "_" + (char)(data.pore_model->k + 48) + "mer";
+        return "np_hmm_" + pore_model->metadata.get_kit_name() + "_" + (char)(pore_model->k + 48) + "mer";
     }
 };
 
-//
-void eval_single_read_sequence_model(const ReadDB& read_db,
-                                     const faidx_t* fai,
-                                     const bam_hdr_t* hdr,
-                                     const bam1_t* record,
-                                     size_t read_idx,
-                                     int region_start,
-                                     int region_end)
+std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
+                                                 const faidx_t* fai,
+                                                 const bam_hdr_t* hdr,
+                                                 const bam1_t* record,
+                                                 const SequenceModel* model)
 {
+    std::vector<Variant> variants;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
 
     std::string ref_name = hdr->target_name[record->core.tid];
@@ -351,17 +349,8 @@ void eval_single_read_sequence_model(const ReadDB& read_db,
 
     // skip if region too short
     if(alignment_end_pos - alignment_start_pos < 1000) {
-        return;
+        return variants;
     }
-
-    // Load a squiggle read for the mapped read
-    std::string read_name = bam_get_qname(record);
-
-    // load read
-    SquiggleRead sr(read_name, read_db);
-
-    std::vector<SequenceModel*> models;
-    models.push_back(new ProfileHMMModel);
 
     // load reference sequence
     int reference_length;
@@ -373,7 +362,7 @@ void eval_single_read_sequence_model(const ReadDB& read_db,
 
     // skip if no events
     if(!sr.has_events_for_strand(strand_idx)) {
-        return;
+        return variants;
     }
 
     SequenceAlignmentRecord seq_align_record(record);
@@ -381,7 +370,6 @@ void eval_single_read_sequence_model(const ReadDB& read_db,
 
     // Create random variants in this reference sequence
     int num_variants = 100;
-    std::vector<Variant> variants;
     if(opt::error_type == "substitutions")
         variants = generate_random_substitutions(reference_haplotype, num_variants);
     else if(opt::error_type == "deletions")
@@ -398,55 +386,77 @@ void eval_single_read_sequence_model(const ReadDB& read_db,
         assert(false && "unknown error-type");
 
     //
-    for(const SequenceModel* model : models) {
-        for(const Variant& v : variants) {
+    for(Variant& v : variants) {
 
-            int calling_start = v.ref_position - opt::min_flanking_sequence;
-            int calling_end = v.ref_position + opt::min_flanking_sequence;
+        int calling_start = v.ref_position - opt::min_flanking_sequence;
+        int calling_end = v.ref_position + opt::min_flanking_sequence;
 
-            HMMInputData data;
-            data.read = event_align_record.sr;
-            data.strand = event_align_record.strand;
-            data.rc = event_align_record.rc;
-            data.event_stride = event_align_record.stride;
-            data.pore_model = sr.get_base_model(event_align_record.strand);
-            int e1,e2;
-            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
-                                                            calling_start,
-                                                            calling_end,
-                                                            e1,
-                                                            e2);
+        HMMInputData data;
+        data.read = event_align_record.sr;
+        data.strand = event_align_record.strand;
+        data.rc = event_align_record.rc;
+        data.event_stride = event_align_record.stride;
+        data.pore_model = sr.get_base_model(event_align_record.strand);
+        int e1,e2;
+        bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
+                                                        calling_start,
+                                                        calling_end,
+                                                        e1,
+                                                        e2);
 
-            // The events of this read do not span the calling window, skip
-            if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > MAX_EVENT_TO_BP_RATIO) {
-                continue;
-            }
+        // The events of this read do not span the calling window, skip
+        if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > MAX_EVENT_TO_BP_RATIO) {
+            continue;
+        }
 
-            data.event_start_idx = e1;
-            data.event_stop_idx = e2;
+        data.event_start_idx = e1;
+        data.event_stop_idx = e2;
 
-            Haplotype calling_haplotype =
-                reference_haplotype.substr_by_reference(calling_start, calling_end);
+        Haplotype calling_haplotype =
+            reference_haplotype.substr_by_reference(calling_start, calling_end);
 
-            //fprintf(stderr, "ref: %s\n", calling_haplotype.get_sequence().c_str());
-            double ref_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
-            bool good_haplotype = calling_haplotype.apply_variant(v);
-            if(good_haplotype) {
-                double alt_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
-                double log_sum = add_logs(alt_score, ref_score);
-
-                #pragma omp critical
-                fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\t%.2lf\t%.2lf\n",
-                    ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), data.read->read_name.c_str(), model->get_name(data).c_str(), ref_score, alt_score, ref_score - alt_score);
-            }
+        //fprintf(stderr, "ref: %s\n", calling_haplotype.get_sequence().c_str());
+        double ref_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
+        bool good_haplotype = calling_haplotype.apply_variant(v);
+        if(good_haplotype) {
+            double alt_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
+            v.quality = ref_score - alt_score;
+            
+            /*
+            #pragma omp critical
+            fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\t%.2lf\t%.2lf\n",
+                ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), data.read->read_name.c_str(), model->get_name(data).c_str(), ref_score, alt_score, ref_score - alt_score);
+            */
         }
     }
+    return variants;
+}
 
-    for(SequenceModel* model : models) {
-        delete model;
-        model = NULL;
+//
+void eval_single_read(const ReadDB& read_db,
+                      const faidx_t* fai,
+                      const bam_hdr_t* hdr,
+                      const bam1_t* record,
+                      size_t read_idx,
+                      int region_start,
+                      int region_end)
+{
+    SequenceModel* model = new ProfileHMMModel;
+    
+    // Load a squiggle read for the mapped read
+    std::string read_name = bam_get_qname(record);
+    SquiggleRead sr(read_name, read_db);
+
+    std::vector<Variant> scored_variants = generate_and_score_variants(sr, fai, hdr, record, model);
+    std::string ref_name = hdr->target_name[record->core.tid];
+
+    for(Variant& v : scored_variants) {
+        #pragma omp critical
+        fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\n",
+            ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
     }
 
+    delete model;
 }
 
 int eval_main(int argc, char** argv)
@@ -470,17 +480,15 @@ int eval_main(int argc, char** argv)
 
     // write header
     if(opt::analysis_type == "sequence-model") {
-        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tref_score\talt_score\tlog_likelihood_ratio\n");
-    } else if(opt::analysis_type == "duration") {
-        fprintf(stdout, "ref_name\tref_position\tref_seq\tbase_before\tbase_after\tread_name\trc\tduration\tglobal_samples_per_base\tlocal_samples_per_base\tmodel_samples_per_base\tfixhp_duration\tsamples\tduration_profile\n");
-    }
+        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
+    } 
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.set_max_reads(opt::max_reads);
-    auto f = std::bind(eval_single_read_sequence_model, std::ref(read_db), std::ref(fai), _1, _2, _3, _4, _5);
+    auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), _1, _2, _3, _4, _5);
     processor.parallel_run(f);
     
     fai_destroy(fai);
