@@ -369,7 +369,7 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
     // Create random variants in this reference sequence
-    int num_variants = 100;
+    int num_variants = 1000;
     if(opt::error_type == "substitutions")
         variants = generate_random_substitutions(reference_haplotype, num_variants);
     else if(opt::error_type == "deletions")
@@ -386,6 +386,8 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
         assert(false && "unknown error-type");
 
     //
+    std::vector<Variant> out_variants;
+
     for(Variant& v : variants) {
 
         int calling_start = v.ref_position - opt::min_flanking_sequence;
@@ -421,7 +423,7 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
         if(good_haplotype) {
             double alt_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
             v.quality = ref_score - alt_score;
-            
+            out_variants.push_back(v);        
             /*
             #pragma omp critical
             fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\t%.2lf\t%.2lf\n",
@@ -429,7 +431,7 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
             */
         }
     }
-    return variants;
+    return out_variants;
 }
 
 //
@@ -450,12 +452,26 @@ void eval_single_read(const ReadDB& read_db,
     std::vector<Variant> scored_variants = generate_and_score_variants(sr, fai, hdr, record, model);
     std::string ref_name = hdr->target_name[record->core.tid];
 
-    for(Variant& v : scored_variants) {
-        #pragma omp critical
-        fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\n",
-            ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
+    if(opt::analysis_type == "sequence_model") {
+        for(Variant& v : scored_variants) {
+            #pragma omp critical
+            fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\n",
+                ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
+        }
+    } else if(opt::analysis_type == "read-accuracy") {
+        int total_variants = 0;
+        int correct_variants = 0;
+        for(Variant& v : scored_variants) {
+            total_variants += 1;
+            correct_variants += v.quality > 0;
+        }
+        
+        if(total_variants > 0) {
+            #pragma omp critical
+            fprintf(stdout, "%s\t%.3f\t%.4lf\n", read_name.c_str(), sr.scalings[0].var, (float)correct_variants / total_variants);
+        }
+        
     }
-
     delete model;
 }
 
@@ -481,13 +497,17 @@ int eval_main(int argc, char** argv)
     // write header
     if(opt::analysis_type == "sequence-model") {
         fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
-    } 
+    } else if(opt::analysis_type == "read-accuracy") {
+        fprintf(stdout, "read_name\tvar\taccuracy\n");
+    }
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.set_max_reads(opt::max_reads);
+    processor.set_min_mapping_quality(20);
+
     auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), _1, _2, _3, _4, _5);
     processor.parallel_run(f);
     
