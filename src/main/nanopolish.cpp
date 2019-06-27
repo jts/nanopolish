@@ -22,6 +22,7 @@
 #include "nanopolish_polya_estimator.h"
 #include "nanopolish_train_poremodel_from_basecalls.h"
 #include "nanopolish_dump_initial_alignment.h"
+#include "nanopolish_eval.h"
 
 int print_usage(int argc, char **argv);
 int print_version(int argc, char **argv);
@@ -41,6 +42,7 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"vcf2fasta",   vcf2fasta_main},
     {"polya",  polya_main},
     {"dump-initial-alignment",  dumpalignment_main},
+    {"eval",  eval_main},
     {"call-methylation",  call_methylation_main}
 };
 
