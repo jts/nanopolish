@@ -326,6 +326,7 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
                                                              *this->base_model[strand_idx],
                                                              et);
 
+
     // copy events into nanopolish's format
     this->events[strand_idx].resize(et.n);
     double start_time = 0;
@@ -334,6 +335,12 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         this->events[strand_idx][i] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
         start_time += length_in_seconds;
     }
+
+    /*
+    // try to estimate var using linear regression
+    SNRMetrics snr_metrics = this->calculate_snr_metrics(strand_idx);
+    this->scalings[strand_idx].var = 2.02173 + -0.02927 * (snr_metrics.current_range / snr_metrics.median_sd);
+    */
 
     if(flags & SRF_LOAD_RAW_SAMPLES) {
         this->sample_start_time = 0;
@@ -1119,6 +1126,34 @@ std::pair<size_t, size_t> SquiggleRead::get_event_sample_idx(size_t strand_idx, 
     size_t end_idx = this->get_sample_index_at_time((event_start_time + event_duration) * this->sample_rate);
 
     return std::make_pair(start_idx, end_idx);
+}
+       
+SNRMetrics SquiggleRead::calculate_snr_metrics(size_t strand_idx)
+{
+    SNRMetrics out = { 0.0f, 0.0f };
+    if(this->events[strand_idx].size() < 100) {
+        return out;
+    }
+
+    // SNR estimates (from CW ONT)
+    std::vector<double> event_means;
+    std::vector<double> event_sds;
+
+    for(size_t i = 0; i < this->events[strand_idx].size(); ++i) {
+        event_means.push_back(this->events[strand_idx][i].mean);
+        event_sds.push_back(this->events[strand_idx][i].stdv);
+    }
+
+    std::sort(event_means.begin(), event_means.end());
+    std::sort(event_sds.begin(), event_sds.end());
+
+    int idx10p = event_means.size() * 0.1;
+    int idx90p = event_means.size() * 0.9;
+    out.current_range = event_means[idx90p] - event_means[idx10p];
+    
+    int idx50p = event_sds.size() * 0.5;
+    out.median_sd = event_sds[idx50p];
+    return out;
 }
 
 void SquiggleRead::detect_pore_type()

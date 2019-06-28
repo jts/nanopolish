@@ -465,10 +465,16 @@ void eval_single_read(const ReadDB& read_db,
                 ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
         }
     } else if(opt::analysis_type == "read-accuracy") {
-        // crudely estimate read rate
-        double read_duration = sr.events[0].back().start_time - sr.events[0].front().start_time;
+
+        // read metadata
+        int strand_idx = 0;
+
+        // speed
+        double read_duration = sr.events[strand_idx].back().start_time - sr.events[strand_idx].front().start_time;
         int read_length = sr.read_sequence.length();
         double read_rate = read_length / read_duration;
+        
+        SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
 
         int total_all = 0;
         int correct_all = 0;
@@ -500,8 +506,10 @@ void eval_single_read(const ReadDB& read_db,
         
         if(total_all > 0) {
             #pragma omp critical
-            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
-                read_name.c_str(), opt::label.c_str(), sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, read_rate, accuracy_all, accuracy_sub, accuracy_indel);
+            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
+                read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd, 
+                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, 
+                read_rate, accuracy_all, accuracy_sub, accuracy_indel);
         }
     }
     delete model;
@@ -530,7 +538,7 @@ int eval_main(int argc, char** argv)
     if(opt::analysis_type == "sequence-model") {
         fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
     } else if(opt::analysis_type == "read-accuracy") {
-        fprintf(stdout, "read_name\tlabel\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+        fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
     }
 
     // the BamProcessor framework calls the input function with the

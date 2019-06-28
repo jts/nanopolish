@@ -58,6 +58,13 @@ struct SquiggleEvent
     float log_stdv;    // precompute for efficiency
 };
 
+// From CW, ONT
+struct SNRMetrics
+{
+    double current_range;
+    double median_sd;
+};
+
 // Scaling parameters to account for per-read variations from the model
 struct SquiggleScalings
 {
@@ -246,6 +253,9 @@ class SquiggleRead
         size_t get_sample_index_at_time(size_t sample_time) const;
         std::vector<float> get_scaled_samples_for_event(size_t strand_idx, size_t event_idx) const;
         std::pair<size_t, size_t> get_event_sample_idx(size_t strand_idx, size_t event_idx) const;
+
+        // Signal-to-noise calculation
+        SNRMetrics calculate_snr_metrics(size_t strand_idx);
 
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const
