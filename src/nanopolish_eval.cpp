@@ -73,7 +73,10 @@ static const char *EVAL_USAGE_MESSAGE =
 "  -w, --window=STR                     only evaluate reads in the window STR (format: ctg:start-end)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -a, --analysis-type=STR              type of analysis to perform (sequence-model or read-level)\n"
-"  -e, --error-type=STR                 type of errors to introduce (default: substitutions)\n"
+"  -s, --substitions                    generate substitution errors\n"
+"  -i, --insertions                     generate insertion errors\n"
+"  -d, --deletions                      generate deletion errors\n"
+"  -h, --homopolymer-indels             generate random indels in homopolymers\n"
 "      --min-homopolymer-length=NUM     minimum length of homopolymer to consider (default: 5)\n"
 "      --progress                       print out a progress message\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -87,16 +90,19 @@ namespace opt
     static std::string region;
 
     static std::string analysis_type = "sequence-model";
-    static std::string error_type = "substitutions";
     static unsigned progress = 0;
     static unsigned num_threads = 1;
     static unsigned batch_size = 128;
     static size_t max_reads = -1;
+    static int substitutions = 0; 
+    static int insertions = 0; 
+    static int deletions = 0; 
+    static int homopolymer_indels = 0; 
     static int min_homopolymer_length = 5;
     static int min_flanking_sequence = 30;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:e:a:v";
+static const char* shortopts = "r:b:g:t:w:m:e:a:vsdih";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -114,7 +120,10 @@ static const struct option longopts[] = {
     { "window",                 required_argument, NULL, 'w' },
     { "max-reads",              required_argument, NULL, 'm' },
     { "analysis-type",          required_argument, NULL, 'a' },
-    { "error-type",             required_argument, NULL, 'e' },
+    { "substitutions",          no_argument,       NULL, 's' },
+    { "insertions",             no_argument,       NULL, 'd' },
+    { "deletions",              no_argument,       NULL, 'i' },
+    { "homopolymer-indels",     no_argument,       NULL, 'h' },
     { "min-homopolymer-length", required_argument, NULL, OPT_MIN_HOMOPOLYMER_LENGTH},
     { "progress",               no_argument,       NULL, OPT_PROGRESS },
     { "help",                   no_argument,       NULL, OPT_HELP },
@@ -137,7 +146,10 @@ void parse_eval_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::max_reads; break;
             case 'a': arg >> opt::analysis_type; break;
-            case 'e': arg >> opt::error_type; break;
+            case 's': opt::substitutions = 1; break;
+            case 'i': opt::insertions = 1; break;
+            case 'd': opt::deletions = 1; break;
+            case 'h': opt::homopolymer_indels = 1; break;
             case 'v': opt::verbose++; break;
             case OPT_MIN_HOMOPOLYMER_LENGTH: arg >> opt::min_homopolymer_length; break;
             case OPT_PROGRESS: opt::progress = true; break;
@@ -184,13 +196,12 @@ void parse_eval_options(int argc, char** argv)
     }
 }
 
-std::vector<Variant> generate_random_substitutions(const Haplotype& reference, const int num_variants)
+void generate_random_substitutions(const Haplotype& reference, const int num_variants, std::vector<Variant>& variants)
 {
     int start = reference.get_reference_position();
     int length = reference.get_sequence().length();
     int adjusted_length = length - 2 * opt::min_flanking_sequence;
 
-    std::vector<Variant> variants;
     for(size_t i = 0; i < num_variants; ++i) {
         int variant_position = start + opt::min_flanking_sequence + rand() % adjusted_length;
         std::string refseq = reference.substr_by_reference(variant_position, variant_position).get_sequence();
@@ -210,16 +221,14 @@ std::vector<Variant> generate_random_substitutions(const Haplotype& reference, c
         v.alt_seq = altseq;
         variants.push_back(v);
     }
-    return variants;
 }
 
-std::vector<Variant> generate_random_insertions(const Haplotype& reference, const int num_variants)
+void generate_random_insertions(const Haplotype& reference, const int num_variants, std::vector<Variant>& variants)
 {
     int start = reference.get_reference_position();
     int length = reference.get_sequence().length();
     int adjusted_length = length - 2 * opt::min_flanking_sequence;
 
-    std::vector<Variant> variants;
     for(size_t i = 0; i < num_variants; ++i) {
         int variant_position = start + opt::min_flanking_sequence + rand() % adjusted_length;
         std::string refseq = reference.substr_by_reference(variant_position, variant_position).get_sequence();
@@ -233,16 +242,14 @@ std::vector<Variant> generate_random_insertions(const Haplotype& reference, cons
         v.alt_seq = altseq;
         variants.push_back(v);
     }
-    return variants;
 }
 
-std::vector<Variant> generate_random_deletions(const Haplotype& reference, const int num_variants)
+void generate_random_deletions(const Haplotype& reference, const int num_variants, std::vector<Variant>& variants)
 {
     int start = reference.get_reference_position();
     int length = reference.get_sequence().length();
     int adjusted_length = length - 2 * opt::min_flanking_sequence;
 
-    std::vector<Variant> variants;
     for(size_t i = 0; i < num_variants; ++i) {
         int variant_position = start + opt::min_flanking_sequence + rand() % adjusted_length;
         std::string refseq = reference.substr_by_reference(variant_position, variant_position + 1).get_sequence();
@@ -255,10 +262,9 @@ std::vector<Variant> generate_random_deletions(const Haplotype& reference, const
         v.alt_seq = altseq;
         variants.push_back(v);
     }
-    return variants;
 }
 
-std::vector<Variant> generate_random_homopolymer_errors(const Haplotype& reference, const int min_hp_length, float p_deletion, const int num_variants)
+void generate_random_homopolymer_errors(const Haplotype& reference, const int min_hp_length, float p_deletion, const int num_variants, std::vector<Variant>& variants)
 {
     int start = reference.get_reference_position();
     int length = reference.get_sequence().length();
@@ -309,7 +315,8 @@ std::vector<Variant> generate_random_homopolymer_errors(const Haplotype& referen
     // shuffle and take the top N
     std::random_shuffle(candidate_variants.begin(), candidate_variants.end());
     candidate_variants.resize(num_variants);
-    return candidate_variants;
+    variants.insert(variants.end(), candidate_variants.begin(), candidate_variants.end());
+    return;
 }
 
 //
@@ -360,31 +367,21 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
     size_t strand_idx = 0;
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
 
-    // skip if no events
-    if(!sr.has_events_for_strand(strand_idx)) {
-        return variants;
-    }
 
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
     // Create random variants in this reference sequence
     int num_variants = 1000;
-    if(opt::error_type == "substitutions")
-        variants = generate_random_substitutions(reference_haplotype, num_variants);
-    else if(opt::error_type == "deletions")
-        variants = generate_random_deletions(reference_haplotype, num_variants);
-    else if(opt::error_type == "insertions")
-        variants = generate_random_insertions(reference_haplotype, num_variants);
-    else if(opt::error_type == "hp-insertions")
-        variants = generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.0, num_variants);
-    else if(opt::error_type == "hp-deletions")
-        variants = generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 1.0, num_variants);
-    else if(opt::error_type == "hp-mixed")
-        variants = generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.5, num_variants);
-    else
-        assert(false && "unknown error-type");
-
+    if(opt::substitutions)
+        generate_random_substitutions(reference_haplotype, num_variants, variants);
+    if(opt::deletions)
+        generate_random_deletions(reference_haplotype, num_variants, variants);
+    if(opt::insertions)
+        generate_random_insertions(reference_haplotype, num_variants, variants);
+    if(opt::homopolymer_indels)
+        generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.5, num_variants, variants);
+    
     //
     std::vector<Variant> out_variants;
 
@@ -443,11 +440,16 @@ void eval_single_read(const ReadDB& read_db,
                       int region_start,
                       int region_end)
 {
-    SequenceModel* model = new ProfileHMMModel;
-    
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
+    
+    // skip if no events
+    if(!sr.has_events_for_strand(0)) {
+        return;
+    }
+
+    SequenceModel* model = new ProfileHMMModel;
 
     std::vector<Variant> scored_variants = generate_and_score_variants(sr, fai, hdr, record, model);
     std::string ref_name = hdr->target_name[record->core.tid];
@@ -459,18 +461,44 @@ void eval_single_read(const ReadDB& read_db,
                 ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
         }
     } else if(opt::analysis_type == "read-accuracy") {
-        int total_variants = 0;
-        int correct_variants = 0;
+        // crudely estimate read rate
+        double read_duration = sr.events[0].back().start_time - sr.events[0].front().start_time;
+        int read_length = sr.read_sequence.length();
+        double read_rate = read_length / read_duration;
+
+        int total_all = 0;
+        int correct_all = 0;
+
+        int total_indel = 0;
+        int correct_indel = 0;
+
+        int total_sub = 0;
+        int correct_sub = 0;
         for(Variant& v : scored_variants) {
-            total_variants += 1;
-            correct_variants += v.quality > 0;
+            
+            bool correct = v.quality > 0;
+
+            total_all += 1;
+            correct_all += correct;
+        
+            if(v.is_snp()) {
+                total_sub += 1;
+                correct_sub += correct;
+            } else {
+                total_indel += 1;
+                correct_indel += correct;
+            }
         }
         
-        if(total_variants > 0) {
+        float accuracy_all = total_all > 0 ? (float)correct_all / total_all : 0.0f;
+        float accuracy_sub = total_sub > 0 ? (float)correct_sub / total_sub : 0.0f;
+        float accuracy_indel = total_indel > 0 ? (float)correct_indel / total_indel : 0.0f;
+        
+        if(total_all > 0) {
             #pragma omp critical
-            fprintf(stdout, "%s\t%.3f\t%.4lf\n", read_name.c_str(), sr.scalings[0].var, (float)correct_variants / total_variants);
+            fprintf(stdout, "%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
+                read_name.c_str(), sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, read_rate, accuracy_all, accuracy_sub, accuracy_indel);
         }
-        
     }
     delete model;
 }
@@ -498,7 +526,7 @@ int eval_main(int argc, char** argv)
     if(opt::analysis_type == "sequence-model") {
         fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
     } else if(opt::analysis_type == "read-accuracy") {
-        fprintf(stdout, "read_name\tvar\taccuracy\n");
+        fprintf(stdout, "read_name\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
     }
 
     // the BamProcessor framework calls the input function with the
