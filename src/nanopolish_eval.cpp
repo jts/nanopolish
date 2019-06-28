@@ -73,6 +73,7 @@ static const char *EVAL_USAGE_MESSAGE =
 "  -w, --window=STR                     only evaluate reads in the window STR (format: ctg:start-end)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -a, --analysis-type=STR              type of analysis to perform (sequence-model or read-level)\n"
+"  -l, --label=STR                      apply a user-defined label to the output\n"
 "  -s, --substitions                    generate substitution errors\n"
 "  -i, --insertions                     generate insertion errors\n"
 "  -d, --deletions                      generate deletion errors\n"
@@ -89,6 +90,7 @@ namespace opt
     static std::string genome_file;
     static std::string region;
 
+    static std::string label = "default";
     static std::string analysis_type = "sequence-model";
     static unsigned progress = 0;
     static unsigned num_threads = 1;
@@ -120,11 +122,12 @@ static const struct option longopts[] = {
     { "window",                 required_argument, NULL, 'w' },
     { "max-reads",              required_argument, NULL, 'm' },
     { "analysis-type",          required_argument, NULL, 'a' },
+    { "label",                  required_argument, NULL, 'l' },
+    { "min-homopolymer-length", required_argument, NULL, OPT_MIN_HOMOPOLYMER_LENGTH},
     { "substitutions",          no_argument,       NULL, 's' },
     { "insertions",             no_argument,       NULL, 'd' },
     { "deletions",              no_argument,       NULL, 'i' },
     { "homopolymer-indels",     no_argument,       NULL, 'h' },
-    { "min-homopolymer-length", required_argument, NULL, OPT_MIN_HOMOPOLYMER_LENGTH},
     { "progress",               no_argument,       NULL, OPT_PROGRESS },
     { "help",                   no_argument,       NULL, OPT_HELP },
     { "version",                no_argument,       NULL, OPT_VERSION },
@@ -146,6 +149,7 @@ void parse_eval_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'm': arg >> opt::max_reads; break;
             case 'a': arg >> opt::analysis_type; break;
+            case 'l': arg >> opt::label; break;
             case 's': opt::substitutions = 1; break;
             case 'i': opt::insertions = 1; break;
             case 'd': opt::deletions = 1; break;
@@ -496,8 +500,8 @@ void eval_single_read(const ReadDB& read_db,
         
         if(total_all > 0) {
             #pragma omp critical
-            fprintf(stdout, "%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
-                read_name.c_str(), sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, read_rate, accuracy_all, accuracy_sub, accuracy_indel);
+            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
+                read_name.c_str(), opt::label.c_str(), sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, read_rate, accuracy_all, accuracy_sub, accuracy_indel);
         }
     }
     delete model;
@@ -526,7 +530,7 @@ int eval_main(int argc, char** argv)
     if(opt::analysis_type == "sequence-model") {
         fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
     } else if(opt::analysis_type == "read-accuracy") {
-        fprintf(stdout, "read_name\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+        fprintf(stdout, "read_name\tlabel\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
     }
 
     // the BamProcessor framework calls the input function with the
