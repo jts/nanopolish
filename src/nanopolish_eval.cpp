@@ -3,7 +3,7 @@
 // Written by Jared Simpson (jared.simpson@oicr.on.ca)
 //---------------------------------------------------------
 //
-// nanopolish_eval -- framework for testing new 
+// nanopolish_eval -- framework for testing new
 // models and methods
 //
 #include <stdio.h>
@@ -58,7 +58,7 @@ static const char *EVAL_VERSION_MESSAGE =
 SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Written by Jared Simpson.\n"
 "\n"
-"Copyright 2017 Ontario Institute for Cancer Research\n";
+"Copyright 2019 Ontario Institute for Cancer Research\n";
 
 static const char *EVAL_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa variants.vcf\n"
@@ -96,10 +96,10 @@ namespace opt
     static unsigned num_threads = 1;
     static unsigned batch_size = 128;
     static size_t max_reads = -1;
-    static int substitutions = 0; 
-    static int insertions = 0; 
-    static int deletions = 0; 
-    static int homopolymer_indels = 0; 
+    static int substitutions = 0;
+    static int insertions = 0;
+    static int deletions = 0;
+    static int homopolymer_indels = 0;
     static int min_homopolymer_length = 5;
     static int min_flanking_sequence = 30;
 }
@@ -345,14 +345,15 @@ class ProfileHMMModel : public SequenceModel
     }
 };
 
-std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
-                                                 const faidx_t* fai,
-                                                 const bam_hdr_t* hdr,
-                                                 const bam1_t* record,
-                                                 const SequenceModel* model)
+std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
+                                                const faidx_t* fai,
+                                                const std::vector<Variant>& variants,
+                                                const bam_hdr_t* hdr,
+                                                const bam1_t* record,
+                                                const SequenceModel* model)
 {
-    std::vector<Variant> variants;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
+    size_t strand_idx = 0;
 
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
@@ -365,34 +366,24 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
 
     // load reference sequence
     int reference_length;
-    std::string reference_seq = 
+    std::string reference_seq =
         get_reference_region_ts(fai, ref_name.c_str(), alignment_start_pos, alignment_end_pos, &reference_length);
-
-    size_t strand_idx = 0;
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
-
 
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
-    // Create random variants in this reference sequence
-    int num_variants = 1000;
-    if(opt::substitutions)
-        generate_random_substitutions(reference_haplotype, num_variants, variants);
-    if(opt::deletions)
-        generate_random_deletions(reference_haplotype, num_variants, variants);
-    if(opt::insertions)
-        generate_random_insertions(reference_haplotype, num_variants, variants);
-    if(opt::homopolymer_indels)
-        generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.5, num_variants, variants);
-    
     //
     std::vector<Variant> out_variants;
 
-    for(Variant& v : variants) {
+    for(const Variant& v : variants) {
 
         int calling_start = v.ref_position - opt::min_flanking_sequence;
         int calling_end = v.ref_position + opt::min_flanking_sequence;
+
+        if(v.ref_position <= alignment_start_pos || v.ref_position >= alignment_end_pos) {
+            continue;
+        }
 
         HMMInputData data;
         data.read = event_align_record.sr;
@@ -423,8 +414,8 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
         bool good_haplotype = calling_haplotype.apply_variant(v);
         if(good_haplotype) {
             double alt_score = model->score(calling_haplotype.get_sequence(), data, alignment_flags);
-            v.quality = ref_score - alt_score;
-            out_variants.push_back(v);        
+            out_variants.push_back(v);
+            out_variants.back().quality = ref_score - alt_score;
             /*
             #pragma omp critical
             fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\t%.2lf\t%.2lf\n",
@@ -438,6 +429,7 @@ std::vector<Variant> generate_and_score_variants(SquiggleRead& sr,
 //
 void eval_single_read(const ReadDB& read_db,
                       const faidx_t* fai,
+                      const std::vector<Variant>& variants,
                       const bam_hdr_t* hdr,
                       const bam1_t* record,
                       size_t read_idx,
@@ -447,7 +439,7 @@ void eval_single_read(const ReadDB& read_db,
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
-    
+
     // skip if no events
     if(!sr.has_events_for_strand(0)) {
         return;
@@ -455,7 +447,7 @@ void eval_single_read(const ReadDB& read_db,
 
     SequenceModel* model = new ProfileHMMModel;
 
-    std::vector<Variant> scored_variants = generate_and_score_variants(sr, fai, hdr, record, model);
+    std::vector<Variant> scored_variants = score_variants_single_read(sr, fai, variants, hdr, record, model);
     std::string ref_name = hdr->target_name[record->core.tid];
 
     if(opt::analysis_type == "sequence_model") {
@@ -473,7 +465,7 @@ void eval_single_read(const ReadDB& read_db,
         double read_duration = sr.events[strand_idx].back().start_time - sr.events[strand_idx].front().start_time;
         int read_length = sr.read_sequence.length();
         double read_rate = read_length / read_duration;
-        
+
         SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
 
         int total_all = 0;
@@ -485,12 +477,12 @@ void eval_single_read(const ReadDB& read_db,
         int total_sub = 0;
         int correct_sub = 0;
         for(Variant& v : scored_variants) {
-            
+
             bool correct = v.quality > 0;
 
             total_all += 1;
             correct_all += correct;
-        
+
             if(v.is_snp()) {
                 total_sub += 1;
                 correct_sub += correct;
@@ -499,16 +491,16 @@ void eval_single_read(const ReadDB& read_db,
                 correct_indel += correct;
             }
         }
-        
+
         float accuracy_all = total_all > 0 ? (float)correct_all / total_all : 0.0f;
         float accuracy_sub = total_sub > 0 ? (float)correct_sub / total_sub : 0.0f;
         float accuracy_indel = total_indel > 0 ? (float)correct_indel / total_indel : 0.0f;
-        
+
         if(total_all > 0) {
             #pragma omp critical
-            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n", 
-                read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd, 
-                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var, 
+            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
+                read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd,
+                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var,
                 read_rate, accuracy_all, accuracy_sub, accuracy_indel);
         }
     }
@@ -526,13 +518,37 @@ int eval_main(int argc, char** argv)
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
+    std::string contig;
+    int start_base;
+    int end_base;
     if(!opt::region.empty()) {
-        std::string contig;
-        int start_base;
-        int end_base;
         parse_region_string(opt::region, contig, start_base, end_base);
-
+    } else {
+        fprintf(stderr, "A region string must be provided");
+        exit(EXIT_FAILURE);
     }
+
+    // Generate variants across the reference region
+    std::vector<Variant> variants;
+
+    // load reference sequence
+    int reference_length;
+    std::string reference_seq =
+        get_reference_region_ts(fai, contig.c_str(), start_base, end_base, &reference_length);
+
+    Haplotype reference_haplotype(contig, start_base, reference_seq);
+
+    // Create random variants in this reference sequence
+    float variant_rate = 0.01;
+    int num_variants = variant_rate * reference_length;
+    if(opt::substitutions)
+        generate_random_substitutions(reference_haplotype, num_variants, variants);
+    if(opt::deletions)
+        generate_random_deletions(reference_haplotype, num_variants, variants);
+    if(opt::insertions)
+        generate_random_insertions(reference_haplotype, num_variants, variants);
+    if(opt::homopolymer_indels)
+        generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.5, num_variants, variants);
 
     // write header
     if(opt::analysis_type == "sequence-model") {
@@ -541,6 +557,7 @@ int eval_main(int argc, char** argv)
         fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
     }
 
+
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
@@ -548,9 +565,9 @@ int eval_main(int argc, char** argv)
     processor.set_max_reads(opt::max_reads);
     processor.set_min_mapping_quality(20);
 
-    auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), _1, _2, _3, _4, _5);
+    auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), _1, _2, _3, _4, _5);
     processor.parallel_run(f);
-    
+
     fai_destroy(fai);
     return EXIT_SUCCESS;
 }
