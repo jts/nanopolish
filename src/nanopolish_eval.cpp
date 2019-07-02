@@ -200,6 +200,43 @@ void parse_eval_options(int argc, char** argv)
     }
 }
 
+struct AccuracyStats
+{
+    int total_all = 0;
+    int correct_all = 0;
+
+    int total_indel = 0;
+    int correct_indel = 0;
+
+    int total_sub = 0;
+    int correct_sub = 0;
+
+    float get_accuracy_all() { return total_all > 0 ? (float)correct_all / total_all : 0.0f; }
+    float get_accuracy_sub() { return total_sub > 0 ? (float)correct_sub / total_sub : 0.0f; }
+    float get_accuracy_indel() { return total_indel > 0 ? (float)correct_indel / total_indel : 0.0f; }
+};
+
+AccuracyStats calculate_accuracy_stats(const std::vector<Variant> scored_variants)
+{
+    AccuracyStats stats;
+    for(const Variant& v : scored_variants) {
+
+        bool correct = v.quality > 0;
+
+        stats.total_all += 1;
+        stats.correct_all += correct;
+
+        if(v.is_snp()) {
+            stats.total_sub += 1;
+            stats.correct_sub += correct;
+        } else {
+            stats.total_indel += 1;
+            stats.correct_indel += correct;
+        }
+    }
+    return stats;
+}
+
 //
 //
 //
@@ -258,46 +295,80 @@ class ReadVariantsAnalysis : public AnalysisType
 class ConsensusVariantsAnalysis : public AnalysisType
 {
     public:
-
-    ConsensusVariantsAnalysis(const std::vector<Variant>& variants)
-    {
-        for(const auto& v : variants) {
-            std::string key = v.key();
-            variant_map[key] = v;
-            variant_map[key].quality = 0.0f;
-            depth_map[key] = 0;
-        }
-    }
-
-    void write_header() const
-    {
-        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tnum_reads\tlog_likelihood_ratio\n");
-    }
-
-    void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
-    {
-        for(const Variant& v : scored_variants) {
-            std::string key = v.key();
-            #pragma omp critical
-            {
-                variant_map[key].quality += v.quality;
-                depth_map[key] += 1;
+        ConsensusVariantsAnalysis() {}
+        ConsensusVariantsAnalysis(const std::vector<Variant>& variants)
+        {
+            for(const auto& v : variants) {
+                std::string key = v.key();
+                variant_map[key] = v;
+                variant_map[key].quality = 0.0f;
+                depth_map[key] = 0;
             }
         }
-    }
 
-    void finalize()
-    {
-        for(const auto& kv : variant_map) {
-            int depth = depth_map[kv.first];
-            const Variant& v = kv.second;
-            fprintf(stdout, "%s\t%d\t%s\t%s\t%d\t%.2lf\n",
-                    v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), depth, v.quality);
+        void write_header() const
+        {
+            fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tnum_reads\tlog_likelihood_ratio\n");
         }
-    }
 
-    std::map<std::string, Variant> variant_map;
-    std::map<std::string, int> depth_map;
+        void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
+        {
+            for(const Variant& v : scored_variants) {
+                std::string key = v.key();
+                #pragma omp critical
+                {
+                    variant_map[key].quality += v.quality;
+                    depth_map[key] += 1;
+                }
+            }
+        }
+
+        virtual void finalize()
+        {
+            for(const auto& kv : variant_map) {
+                int depth = depth_map[kv.first];
+                const Variant& v = kv.second;
+                fprintf(stdout, "%s\t%d\t%s\t%s\t%d\t%.2lf\n",
+                        v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), depth, v.quality);
+            }
+        }
+
+        std::map<std::string, Variant> variant_map;
+        std::map<std::string, int> depth_map;
+};
+
+class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
+{
+    public:
+        ConsensusAccuracyAnalysis(const std::vector<Variant>& variants)
+        {
+            for(const auto& v : variants) {
+                std::string key = v.key();
+                variant_map[key] = v;
+                variant_map[key].quality = 0.0f;
+                depth_map[key] = 0;
+            }
+        }
+
+        void write_header() const
+        {
+            fprintf(stdout, "count_all\tcount_subs\tcount_indels\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+        }
+
+        void finalize()
+        {
+            std::vector<Variant> variants;
+            for(const auto& kv : variant_map) {
+                variants.push_back(kv.second);
+            }
+
+            AccuracyStats accuracy_stats = calculate_accuracy_stats(variants);
+
+            #pragma omp critical
+            fprintf(stdout, "%d\t%d\t%d\t%.4f\t%.4f\t%.4f\n",
+                accuracy_stats.total_all, accuracy_stats.total_sub, accuracy_stats.total_indel,
+                accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
+        }
 };
 
 class ReadAccuracyAnalysis : public AnalysisType
@@ -318,41 +389,14 @@ class ReadAccuracyAnalysis : public AnalysisType
         double read_rate = read_length / read_duration;
 
         SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
+        AccuracyStats accuracy_stats = calculate_accuracy_stats(scored_variants);
 
-        int total_all = 0;
-        int correct_all = 0;
-
-        int total_indel = 0;
-        int correct_indel = 0;
-
-        int total_sub = 0;
-        int correct_sub = 0;
-        for(const Variant& v : scored_variants) {
-
-            bool correct = v.quality > 0;
-
-            total_all += 1;
-            correct_all += correct;
-
-            if(v.is_snp()) {
-                total_sub += 1;
-                correct_sub += correct;
-            } else {
-                total_indel += 1;
-                correct_indel += correct;
-            }
-        }
-
-        float accuracy_all = total_all > 0 ? (float)correct_all / total_all : 0.0f;
-        float accuracy_sub = total_sub > 0 ? (float)correct_sub / total_sub : 0.0f;
-        float accuracy_indel = total_indel > 0 ? (float)correct_indel / total_indel : 0.0f;
-
-        if(total_all > 0) {
+        if(accuracy_stats.total_all > 0) {
             #pragma omp critical
             fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
                 sr.read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd,
                 sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var,
-                read_rate, accuracy_all, accuracy_sub, accuracy_indel);
+                read_rate, accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
         }
     }
 
@@ -490,6 +534,8 @@ std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
                                                 const bam1_t* record,
                                                 const SequenceModel* model)
 {
+    //
+    std::vector<Variant> out_variants;
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
     size_t strand_idx = 0;
 
@@ -499,7 +545,7 @@ std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
 
     // skip if region too short
     if(alignment_end_pos - alignment_start_pos < 1000) {
-        return variants;
+        return out_variants;
     }
 
     // load reference sequence
@@ -511,8 +557,6 @@ std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
-    //
-    std::vector<Variant> out_variants;
 
     for(const Variant& v : variants) {
 
@@ -643,6 +687,8 @@ int eval_main(int argc, char** argv)
         analysis_type = new ReadAccuracyAnalysis;
     } else if(opt::analysis_type == "consensus-variants") {
         analysis_type = new ConsensusVariantsAnalysis(variants);
+    } else if(opt::analysis_type == "consensus-accuracy") {
+        analysis_type = new ConsensusAccuracyAnalysis(variants);
     } else {
         fprintf(stderr, "Error: unknown analysis type %s\n", opt::analysis_type.c_str());
         exit(EXIT_FAILURE);
