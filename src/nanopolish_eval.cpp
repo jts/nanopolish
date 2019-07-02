@@ -200,6 +200,165 @@ void parse_eval_options(int argc, char** argv)
     }
 }
 
+//
+//
+//
+class SequenceModel
+{
+    public:
+        virtual float score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags) const = 0;
+        virtual std::string get_name(const PoreModel* pore_model) const = 0;
+};
+
+//
+class ProfileHMMModel : public SequenceModel
+{
+    float score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags) const
+    {
+        return profile_hmm_score(sequence, data, flags);
+    }
+
+    std::string get_name(const PoreModel* pore_model) const
+    {
+        return "np_hmm_" + pore_model->metadata.get_kit_name() + "_" + (char)(pore_model->k + 48) + "mer";
+    }
+};
+
+
+//
+//
+//
+class AnalysisType
+{
+    public:
+        virtual void write_header() const = 0;
+        virtual void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants) = 0;
+        virtual void finalize() = 0;
+};
+
+class ReadVariantsAnalysis : public AnalysisType
+{
+    void write_header() const
+    {
+        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
+    }
+
+    void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
+    {
+        for(const Variant& v : scored_variants) {
+           #pragma omp critical
+            fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\n",
+                    v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), sr.read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
+        }
+    }
+
+    void finalize() {} // intentionally does nothing
+};
+
+class ConsensusVariantsAnalysis : public AnalysisType
+{
+    public:
+
+    ConsensusVariantsAnalysis(const std::vector<Variant>& variants)
+    {
+        for(const auto& v : variants) {
+            std::string key = v.key();
+            variant_map[key] = v;
+            variant_map[key].quality = 0.0f;
+            depth_map[key] = 0;
+        }
+    }
+
+    void write_header() const
+    {
+        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tnum_reads\tlog_likelihood_ratio\n");
+    }
+
+    void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
+    {
+        for(const Variant& v : scored_variants) {
+            std::string key = v.key();
+            #pragma omp critical
+            {
+                variant_map[key].quality += v.quality;
+                depth_map[key] += 1;
+            }
+        }
+    }
+
+    void finalize()
+    {
+        for(const auto& kv : variant_map) {
+            int depth = depth_map[kv.first];
+            const Variant& v = kv.second;
+            fprintf(stdout, "%s\t%d\t%s\t%s\t%d\t%.2lf\n",
+                    v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), depth, v.quality);
+        }
+    }
+
+    std::map<std::string, Variant> variant_map;
+    std::map<std::string, int> depth_map;
+};
+
+class ReadAccuracyAnalysis : public AnalysisType
+{
+    void write_header() const
+    {
+        fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+    }
+
+    void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
+    {
+        // read metadata
+        int strand_idx = 0;
+
+        // speed
+        double read_duration = sr.events[strand_idx].back().start_time - sr.events[strand_idx].front().start_time;
+        int read_length = sr.read_sequence.length();
+        double read_rate = read_length / read_duration;
+
+        SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
+
+        int total_all = 0;
+        int correct_all = 0;
+
+        int total_indel = 0;
+        int correct_indel = 0;
+
+        int total_sub = 0;
+        int correct_sub = 0;
+        for(const Variant& v : scored_variants) {
+
+            bool correct = v.quality > 0;
+
+            total_all += 1;
+            correct_all += correct;
+
+            if(v.is_snp()) {
+                total_sub += 1;
+                correct_sub += correct;
+            } else {
+                total_indel += 1;
+                correct_indel += correct;
+            }
+        }
+
+        float accuracy_all = total_all > 0 ? (float)correct_all / total_all : 0.0f;
+        float accuracy_sub = total_sub > 0 ? (float)correct_sub / total_sub : 0.0f;
+        float accuracy_indel = total_indel > 0 ? (float)correct_indel / total_indel : 0.0f;
+
+        if(total_all > 0) {
+            #pragma omp critical
+            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
+                sr.read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd,
+                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var,
+                read_rate, accuracy_all, accuracy_sub, accuracy_indel);
+        }
+    }
+
+    void finalize() {} // do nothing
+};
+
 void generate_random_substitutions(const Haplotype& reference, const int num_variants, std::vector<Variant>& variants)
 {
     int start = reference.get_reference_position();
@@ -323,27 +482,6 @@ void generate_random_homopolymer_errors(const Haplotype& reference, const int mi
     return;
 }
 
-//
-class SequenceModel
-{
-    public:
-        virtual float score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags) const = 0;
-        virtual std::string get_name(const PoreModel* pore_model) const = 0;
-};
-
-//
-class ProfileHMMModel : public SequenceModel
-{
-    float score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags) const
-    {
-        return profile_hmm_score(sequence, data, flags);
-    }
-
-    std::string get_name(const PoreModel* pore_model) const
-    {
-        return "np_hmm_" + pore_model->metadata.get_kit_name() + "_" + (char)(pore_model->k + 48) + "mer";
-    }
-};
 
 std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
                                                 const faidx_t* fai,
@@ -430,6 +568,7 @@ std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
 void eval_single_read(const ReadDB& read_db,
                       const faidx_t* fai,
                       const std::vector<Variant>& variants,
+                      AnalysisType* analysis_type,
                       const bam_hdr_t* hdr,
                       const bam1_t* record,
                       size_t read_idx,
@@ -449,61 +588,8 @@ void eval_single_read(const ReadDB& read_db,
 
     std::vector<Variant> scored_variants = score_variants_single_read(sr, fai, variants, hdr, record, model);
     std::string ref_name = hdr->target_name[record->core.tid];
+    analysis_type->process_scored_variants(sr, model, scored_variants);
 
-    if(opt::analysis_type == "sequence_model") {
-        for(Variant& v : scored_variants) {
-            #pragma omp critical
-            fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%s\t%.2lf\n",
-                ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), read_name.c_str(), model->get_name(sr.get_base_model(0)).c_str(), v.quality);
-        }
-    } else if(opt::analysis_type == "read-accuracy") {
-
-        // read metadata
-        int strand_idx = 0;
-
-        // speed
-        double read_duration = sr.events[strand_idx].back().start_time - sr.events[strand_idx].front().start_time;
-        int read_length = sr.read_sequence.length();
-        double read_rate = read_length / read_duration;
-
-        SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
-
-        int total_all = 0;
-        int correct_all = 0;
-
-        int total_indel = 0;
-        int correct_indel = 0;
-
-        int total_sub = 0;
-        int correct_sub = 0;
-        for(Variant& v : scored_variants) {
-
-            bool correct = v.quality > 0;
-
-            total_all += 1;
-            correct_all += correct;
-
-            if(v.is_snp()) {
-                total_sub += 1;
-                correct_sub += correct;
-            } else {
-                total_indel += 1;
-                correct_indel += correct;
-            }
-        }
-
-        float accuracy_all = total_all > 0 ? (float)correct_all / total_all : 0.0f;
-        float accuracy_sub = total_sub > 0 ? (float)correct_sub / total_sub : 0.0f;
-        float accuracy_indel = total_indel > 0 ? (float)correct_indel / total_indel : 0.0f;
-
-        if(total_all > 0) {
-            #pragma omp critical
-            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
-                read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd,
-                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var,
-                read_rate, accuracy_all, accuracy_sub, accuracy_indel);
-        }
-    }
     delete model;
 }
 
@@ -524,7 +610,7 @@ int eval_main(int argc, char** argv)
     if(!opt::region.empty()) {
         parse_region_string(opt::region, contig, start_base, end_base);
     } else {
-        fprintf(stderr, "A region string must be provided");
+        fprintf(stderr, "Error: a region string must be provided");
         exit(EXIT_FAILURE);
     }
 
@@ -550,13 +636,19 @@ int eval_main(int argc, char** argv)
     if(opt::homopolymer_indels)
         generate_random_homopolymer_errors(reference_haplotype, opt::min_homopolymer_length, 0.5, num_variants, variants);
 
-    // write header
-    if(opt::analysis_type == "sequence-model") {
-        fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tread_name\tmodel_name\tlog_likelihood_ratio\n");
+    AnalysisType* analysis_type;
+    if(opt::analysis_type == "read-variants") {
+        analysis_type = new ReadVariantsAnalysis;
     } else if(opt::analysis_type == "read-accuracy") {
-        fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+        analysis_type = new ReadAccuracyAnalysis;
+    } else if(opt::analysis_type == "consensus-variants") {
+        analysis_type = new ConsensusVariantsAnalysis(variants);
+    } else {
+        fprintf(stderr, "Error: unknown analysis type %s\n", opt::analysis_type.c_str());
+        exit(EXIT_FAILURE);
     }
 
+    analysis_type->write_header();
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
@@ -565,8 +657,10 @@ int eval_main(int argc, char** argv)
     processor.set_max_reads(opt::max_reads);
     processor.set_min_mapping_quality(20);
 
-    auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), _1, _2, _3, _4, _5);
+    auto f = std::bind(eval_single_read, std::ref(read_db), std::ref(fai), std::ref(variants), analysis_type, _1, _2, _3, _4, _5);
     processor.parallel_run(f);
+
+    analysis_type->finalize();
 
     fai_destroy(fai);
     return EXIT_SUCCESS;

@@ -1128,7 +1128,7 @@ std::pair<size_t, size_t> SquiggleRead::get_event_sample_idx(size_t strand_idx, 
     return std::make_pair(start_idx, end_idx);
 }
        
-SNRMetrics SquiggleRead::calculate_snr_metrics(size_t strand_idx)
+SNRMetrics SquiggleRead::calculate_snr_metrics(size_t strand_idx) const
 {
     SNRMetrics out = { 0.0f, 0.0f };
     if(this->events[strand_idx].size() < 100) {

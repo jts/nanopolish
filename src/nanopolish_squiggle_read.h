@@ -255,7 +255,7 @@ class SquiggleRead
         std::pair<size_t, size_t> get_event_sample_idx(size_t strand_idx, size_t event_idx) const;
 
         // Signal-to-noise calculation
-        SNRMetrics calculate_snr_metrics(size_t strand_idx);
+        SNRMetrics calculate_snr_metrics(size_t strand_idx) const;
 
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const
