@@ -298,6 +298,11 @@ class ConsensusVariantsAnalysis : public AnalysisType
         ConsensusVariantsAnalysis() {}
         ConsensusVariantsAnalysis(const std::vector<Variant>& variants)
         {
+            initialize(variants);
+        }
+
+        void initialize(const std::vector<Variant>& variants)
+        {
             for(const auto& v : variants) {
                 std::string key = v.key();
                 variant_map[key] = v;
@@ -342,12 +347,7 @@ class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
     public:
         ConsensusAccuracyAnalysis(const std::vector<Variant>& variants)
         {
-            for(const auto& v : variants) {
-                std::string key = v.key();
-                variant_map[key] = v;
-                variant_map[key].quality = 0.0f;
-                depth_map[key] = 0;
-            }
+            initialize(variants);
         }
 
         void write_header() const
