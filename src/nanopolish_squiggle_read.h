@@ -65,6 +65,15 @@ struct SNRMetrics
     double median_sd;
 };
 
+struct RateMetrics
+{
+    double median_duration;
+    double skip_frequency;
+    double stall_frequency;
+    double mean_speed;
+    double extra_event_frequency;
+};
+
 // Scaling parameters to account for per-read variations from the model
 struct SquiggleScalings
 {
@@ -256,6 +265,9 @@ class SquiggleRead
 
         // Signal-to-noise calculation
         SNRMetrics calculate_snr_metrics(size_t strand_idx) const;
+
+        // Calculate rate metrics
+        RateMetrics calculate_rate_metrics(size_t strand_idx) const;
 
         // print the scaling parameters for this strand
         void print_scaling_parameters(FILE* fp, size_t strand_idx) const

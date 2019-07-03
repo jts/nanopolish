@@ -333,8 +333,8 @@ class ConsensusVariantsAnalysis : public AnalysisType
             for(const auto& kv : variant_map) {
                 int depth = depth_map[kv.first];
                 const Variant& v = kv.second;
-                fprintf(stdout, "%s\t%d\t%s\t%s\t%d\t%.2lf\n",
-                        v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), depth, v.quality);
+                fprintf(stdout, "%s\t%d\t%s\t%s\t%s\t%d\t%.2lf\n",
+                        v.ref_name.c_str(), v.ref_position, v.ref_seq.c_str(), v.alt_seq.c_str(), opt::label.c_str(), depth, v.quality);
             }
         }
 
@@ -352,7 +352,7 @@ class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
 
         void write_header() const
         {
-            fprintf(stdout, "count_all\tcount_subs\tcount_indels\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+            fprintf(stdout, "label\tcount_all\tcount_subs\tcount_indels\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
         }
 
         void finalize()
@@ -365,7 +365,7 @@ class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
             AccuracyStats accuracy_stats = calculate_accuracy_stats(variants);
 
             #pragma omp critical
-            fprintf(stdout, "%d\t%d\t%d\t%.4f\t%.4f\t%.4f\n",
+            fprintf(stdout, "%s\t%d\t%d\t%d\t%.4f\t%.4f\t%.4f\n", opt::label.c_str(),
                 accuracy_stats.total_all, accuracy_stats.total_sub, accuracy_stats.total_indel,
                 accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
         }
@@ -375,7 +375,8 @@ class ReadAccuracyAnalysis : public AnalysisType
 {
     void write_header() const
     {
-        fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+        fprintf(stdout, "read_name\tlabel\tcurrent_range\tmedian_sd\tshift\tscale\tvar\tread_rate\tevents_per_base\t"
+                        "extra_event_frequency\tskip_frequency\tstall_frequency\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
     }
 
     void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
@@ -388,15 +389,17 @@ class ReadAccuracyAnalysis : public AnalysisType
         int read_length = sr.read_sequence.length();
         double read_rate = read_length / read_duration;
 
+        RateMetrics rate_metrics = sr.calculate_rate_metrics(strand_idx);
         SNRMetrics snr_metrics = sr.calculate_snr_metrics(strand_idx);
         AccuracyStats accuracy_stats = calculate_accuracy_stats(scored_variants);
 
         if(accuracy_stats.total_all > 0) {
             #pragma omp critical
-            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
+            fprintf(stdout, "%s\t%s\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.4f\t%.4f\t%.4f\n",
                 sr.read_name.c_str(), opt::label.c_str(), snr_metrics.current_range, snr_metrics.median_sd,
-                sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var,
-                read_rate, accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
+                sr.scalings[strand_idx].shift, sr.scalings[strand_idx].scale, sr.scalings[strand_idx].var,
+                read_rate, sr.events_per_base[strand_idx], rate_metrics.extra_event_frequency, rate_metrics.skip_frequency, rate_metrics.stall_frequency,
+                accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
         }
     }
 

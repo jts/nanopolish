@@ -429,7 +429,7 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
-    }
+    } 
 }
 
 void SquiggleRead::_load_R7(uint32_t si)
@@ -1127,6 +1127,110 @@ std::pair<size_t, size_t> SquiggleRead::get_event_sample_idx(size_t strand_idx, 
 
     return std::make_pair(start_idx, end_idx);
 }
+
+double median(const std::vector<double>& x)
+{
+    assert(!x.empty());
+
+    //
+    std::vector<double> y = x;
+    std::sort(y.begin(), y.end());
+    size_t n = y.size();
+    return n % 2 == 1 ? y[n / 2] : (y[n / 2 - 1] + y[n / 2]) / 2.0f;
+}
+
+
+RateMetrics SquiggleRead::calculate_rate_metrics(size_t strand_idx) const
+{
+    RateMetrics rate_metrics;
+
+    // get kmer stats
+    size_t k = this->get_base_model(strand_idx)->k;
+    size_t num_kmers = this->read_sequence.length() - k + 1;
+    size_t num_skips = 0;
+
+    // collect durations, collapsing by k-mer:
+    std::vector<double> durations_per_kmer(num_kmers);
+    std::vector<double> events_per_kmer(num_kmers);
+    for (size_t i = 0; i < this->base_to_event_map.size(); ++i) {
+        size_t start_idx = this->base_to_event_map[i].indices[strand_idx].start;
+        size_t end_idx = this->base_to_event_map[i].indices[strand_idx].stop;
+        // no events for this k-mer
+        if (start_idx == -1) {
+            num_skips += 1;
+            continue;
+        }
+        assert(start_idx <= end_idx);
+        for (size_t j = start_idx; j <= end_idx; ++j) {
+            durations_per_kmer[i] += this->get_duration(j, strand_idx);
+            events_per_kmer[i] += 1;
+        }
+    }
+
+    //
+    std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
+    assert(durations_per_kmer.size() > 0);
+    rate_metrics.median_duration = median(durations_per_kmer);
+
+    double stall_threshold = rate_metrics.median_duration * 10;
+
+    double num_any_event = 0;
+    double num_extra_event = 0;
+    size_t num_stalls = 0;
+    double sum_duration;
+    double sum_events;
+    for(size_t i = 0; i < num_kmers; ++i) {
+        sum_duration += durations_per_kmer[i];
+        sum_events += events_per_kmer[i];
+        num_stalls += durations_per_kmer[i] > stall_threshold;
+        num_extra_event += events_per_kmer[i] > 1 ? events_per_kmer[i] - 1 : 0;
+        num_any_event += events_per_kmer[i] > 0;
+    }
+    double mean_duration = sum_duration / num_kmers;
+    double mean_events = sum_events / num_kmers;
+
+    // Calculate median duration over segments
+    size_t segment_length = 100;
+    std::vector<double> segment_mean_duration;
+    std::vector<double> segment_mean_events;
+    for(size_t i = 0; i < num_kmers; i += segment_length) {
+        double segment_sum_duration = 0.0f;
+        double segment_sum_events = 0.0f;
+
+        for(size_t j = i; j < num_kmers && j < i + segment_length; ++j) {
+            segment_sum_duration += durations_per_kmer[j];
+            segment_sum_events += events_per_kmer[j];
+        }
+
+        segment_mean_duration.push_back(segment_sum_duration / segment_length);
+        segment_mean_events.push_back(segment_sum_events / segment_length);
+    }
+    double segment_median_duration = median(segment_mean_duration);
+    double segment_median_events = median(segment_mean_events);
+
+    // this is our estimator of read rate, currently we use the median duration
+    // per k-mer as its more robust to outliers caused by stalls
+    double read_rate = 1.0 / rate_metrics.median_duration;
+    rate_metrics.skip_frequency = (double)num_skips / num_kmers;
+    rate_metrics.stall_frequency = (double)num_stalls / num_kmers;
+    //this->extra_event_frequency = (double)num_extra_event / num_any_event;
+    rate_metrics.extra_event_frequency = 1 - (1 / (num_extra_event / num_any_event + 1));
+    rate_metrics.mean_speed = 1.0 / mean_duration;
+
+    /*
+       fprintf(stderr, "[readrate] %s med: [%.5lfs %.1lf] mean: [%.5lfs %.1lf] seg: [%.5lfs %.1f] "
+       "ev_mean: %.2f seg med ev: %.2lf, stalls: %zu st f: %.2f skips: %zu skip f: %.4lf ee: %zu ee f: %.4f\n",
+       this->read_name.substr(0, 6).c_str(), this->rate_metrics.median_duration, read_rate, mean_duration, 1.0 / mean_duration, segment_median_duration, 1.0 / segment_median_duration,
+       mean_events, segment_median_events, num_stalls, (double)num_stalls / num_kmers, num_skips, this->rate_metrics.skip_frequency, num_extra_event, this->rate_metrics.extra_event_frequency);
+    */
+
+    /*
+    fprintf(stderr, "[read-metadata]\treadid=%s\tmean_read_rate=%.1lf\tmean_events_per_base=%.2lf\tshift=%.2f\tscale=%.2lf\tvar=%.2lf\n",
+            this->read_name.c_str(), 1.0 / mean_duration, mean_events, this->scalings[0].shift, this->scalings[0].scale, this->scalings[0].var);
+    */
+    return rate_metrics;
+}
+
        
 SNRMetrics SquiggleRead::calculate_snr_metrics(size_t strand_idx) const
 {
