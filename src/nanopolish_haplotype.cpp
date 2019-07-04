@@ -89,17 +89,17 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end) const
 {
     assert(start >= m_ref_position);
     assert(start <= m_ref_position + m_reference.length());
-    
+
     assert(end >= m_ref_position);
     assert(end <= m_ref_position + m_reference.length());
 
     size_t derived_base_start = _find_derived_index_by_ref_lower_bound(start);
     size_t derived_base_end = _find_derived_index_by_ref_lower_bound(end);
-    
+
     // Bump out the reference coordinate to encompass the complete range (start, end)
     while(m_coordinate_map[derived_base_start] > start ||
           m_coordinate_map[derived_base_start] == INSERTED_POSITION)
-    { 
+    {
         derived_base_start -= 1;
     }
 
@@ -116,7 +116,7 @@ Haplotype Haplotype::substr_by_reference(size_t start, size_t end) const
 
     start = m_coordinate_map[derived_base_start];
     end = m_coordinate_map[derived_base_end];
-    
+
     Haplotype ret(m_ref_name,
                   start,
                   m_reference.substr(start - m_ref_position, end - start + 1));
