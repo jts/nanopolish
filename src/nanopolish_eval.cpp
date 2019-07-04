@@ -323,7 +323,7 @@ class ConsensusVariantsAnalysis : public AnalysisType
 
         void write_header() const
         {
-            fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tnum_reads\tlog_likelihood_ratio\n");
+            fprintf(stdout, "ref_name\tref_position\tref_seq\talt_seq\tlabel\tnum_reads\tlog_likelihood_ratio\n");
         }
 
         void process_scored_variants(const SquiggleRead& sr, const SequenceModel* model, const std::vector<Variant>& scored_variants)
@@ -534,7 +534,7 @@ void generate_random_homopolymer_errors(const Haplotype& reference, const int mi
 
     // shuffle and take the top N
     std::random_shuffle(candidate_variants.begin(), candidate_variants.end());
-    candidate_variants.resize(num_variants);
+    candidate_variants.resize(std::min((size_t)num_variants, candidate_variants.size()));
     variants.insert(variants.end(), candidate_variants.begin(), candidate_variants.end());
     return;
 }
@@ -636,11 +636,12 @@ void eval_single_read(const ReadDB& read_db,
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
 
+
     // skip if no events
     if(!sr.has_events_for_strand(0)) {
         return;
     }
-
+    
     SequenceModel* model = new ProfileHMMModel;
 
     std::vector<Variant> scored_variants = score_variants_single_read(sr, fai, variants, hdr, record, model);
