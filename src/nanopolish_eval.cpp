@@ -79,6 +79,7 @@ static const char *EVAL_USAGE_MESSAGE =
 "  -d, --deletions                      generate deletion errors\n"
 "  -h, --homopolymer-indels             generate random indels in homopolymers\n"
 "      --min-homopolymer-length=NUM     minimum length of homopolymer to consider (default: 5)\n"
+"      --model=FILE                     use the model from FILE\n"
 "      --progress                       print out a progress message\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
@@ -89,6 +90,7 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string region;
+    static std::string model_filename;
 
     static std::string label = "default";
     static std::string analysis_type = "sequence-model";
@@ -110,7 +112,8 @@ enum { OPT_HELP = 1,
        OPT_VERSION,
        OPT_PROGRESS,
        OPT_MIN_HOMOPOLYMER_LENGTH,
-       OPT_LOG_LEVEL
+       OPT_LOG_LEVEL,
+       OPT_MODEL
      };
 
 static const struct option longopts[] = {
@@ -124,6 +127,7 @@ static const struct option longopts[] = {
     { "analysis-type",          required_argument, NULL, 'a' },
     { "label",                  required_argument, NULL, 'l' },
     { "min-homopolymer-length", required_argument, NULL, OPT_MIN_HOMOPOLYMER_LENGTH},
+    { "model",                  required_argument, NULL, OPT_MODEL },
     { "substitutions",          no_argument,       NULL, 's' },
     { "insertions",             no_argument,       NULL, 'd' },
     { "deletions",              no_argument,       NULL, 'i' },
@@ -157,6 +161,7 @@ void parse_eval_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case OPT_MIN_HOMOPOLYMER_LENGTH: arg >> opt::min_homopolymer_length; break;
             case OPT_PROGRESS: opt::progress = true; break;
+            case OPT_MODEL: arg >> opt::model_filename; break;
             case OPT_HELP:
                 std::cout << EVAL_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -192,6 +197,11 @@ void parse_eval_options(int argc, char** argv)
     if(opt::bam_file.empty()) {
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
         die = true;
+    }
+
+    if(!opt::substitutions && !opt::insertions && !opt::deletions && !opt::homopolymer_indels) {
+        std::cerr << SUBPROGRAM ": at least one of -s, -i, -d or -h must be provided\n";
+        die = 1;
     }
 
     if (die) {
@@ -647,6 +657,12 @@ int eval_main(int argc, char** argv)
 
     ReadDB read_db;
     read_db.load(opt::reads_file);
+    
+    // Read the input model and i
+    if(!opt::model_filename.empty()) {
+        PoreModel model(opt::model_filename);
+        PoreModelSet::add_model(model);
+    }
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
