@@ -147,26 +147,26 @@ def main():
 		if ".gz" in file_type:
 			with gzip.open(o_fa, "rt") as fin:
 				if "fasta.gz" in file_type:
-					for title, seq in SimpleFastaParser(handle):
+					for title, seq in SimpleFastaParser(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq.gz" in file_type:
-					for title, seq, qual in FastqGeneralIterator(handle):
+					for title, seq, qual in FastqGeneralIterator(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 		else:
 			with open(o_fa, "rt") as fin:
 				if "fasta" in file_type:
-					for title, seq in SimpleFastaParser(handle):
+					for title, seq in SimpleFastaParser(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq" in file_type:
-					for title, seq, qual in FastqGeneralIterator(handle):
+					for title, seq, qual in FastqGeneralIterator(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 
 	# --------------------------------------------------------
