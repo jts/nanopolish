@@ -449,7 +449,7 @@ void parse_train_options(int argc, char** argv)
         if(filter_policy_str == "R9") {
             opt::min_event_duration = 0.002;
         } else if(filter_policy_str == "R9.4") {
-            opt::min_event_duration = 0.001;
+            opt::min_event_duration = 0.000;
         } else if(filter_policy_str == "R7") {
             opt::min_event_duration = 0.005;
         } else {
@@ -701,7 +701,7 @@ int train_main(int argc, char** argv)
 
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
 
-        fprintf(stderr, "[train] round %zu (example k-mer level: \n", round);
+        fprintf(stderr, "[train] round %zu\n", round);
         current_model = train_round(read_db, training_kit, train_alphabet_ptr->get_name(), training_k, round, current_model);
     }
 

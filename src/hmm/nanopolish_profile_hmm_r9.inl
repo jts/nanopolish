@@ -25,7 +25,7 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         float p_stay = 1 - (1 / read_events_per_base);
 #ifndef USE_EXTERNAL_PARAMS
         float p_skip = 0.0025;
-        float p_bad = 0.001;
+        float p_bad = 1e-10;
         float p_bad_self = p_bad;
         float p_skip_self = 0.3;
 #else
