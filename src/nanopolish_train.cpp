@@ -281,6 +281,16 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     if (alignment_output.size() == 0)
         return;
 
+    /*
+    double resid = 0.;
+    recalibrate_model(sr, *sr.get_model(strand_idx, train_alphabet_ptr->get_name()), strand_idx, alignment_output, true, false);
+
+    // Alignment step 2, after recalibration
+    alignment_output = align_read_to_ref(params);
+    if (alignment_output.size() == 0)
+        return;
+    */
+
     // Update pore model based on alignment
     std::string model_key = PoreModelSet::get_model_key(*sr.get_model(strand_idx, train_alphabet_ptr->get_name()));
 
