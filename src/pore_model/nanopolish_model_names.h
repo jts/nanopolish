@@ -20,6 +20,7 @@ enum KitVersion
     KV_R9_250BPS,
     KV_R9_4_450BPS,
     KV_R9_4_70BPS,
+    KV_R10_450BPS,
     NUM_KITS
 };
 
@@ -35,6 +36,7 @@ struct ModelMetadata
     std::string get_kit_name() const;
     std::string get_strand_model_name() const;
 
+    // this intentially catches r10 as well.
     bool is_r9() const { return kit >= KV_R9_250BPS; }
     bool is_r7() const { return kit >= KV_SQK005 && kit <= KV_SQK006; }
 };

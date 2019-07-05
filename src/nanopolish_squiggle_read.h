@@ -23,6 +23,7 @@ enum PoreType
     PT_UNKNOWN = 0,
     PT_R7,
     PT_R9,
+    PT_R10
 };
 
 // the type of the read

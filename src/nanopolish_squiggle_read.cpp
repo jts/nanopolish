@@ -270,6 +270,14 @@ void SquiggleRead::load_from_events(const uint32_t flags)
     }
 }
 
+static detector_param const event_detection_r10 = {
+    .window_length1 = 4,
+    .window_length2 = 13,
+    .threshold1 = 1.52f,
+    .threshold2 = 3.91f,
+    .peak_height = 0.17f
+};
+
 //
 void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
 {
@@ -278,14 +286,26 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         return;
     }
 
-    // Hardcoded parameters, for now we can only do template with the main R9.4 model
+    //
+    this->read_type = SRT_TEMPLATE;
+    std::string strand_str = "template";
     size_t strand_idx = 0;
+
+    this->pore_type = PT_R9;
     std::string alphabet = "nucleotide";
     std::string kit = "r9.4_450bps";
-    std::string strand_str = "template";
     size_t k = 6;
 
     const detector_param* ed_params = &event_detection_defaults;
+
+    // hack for R10: set pore type depending on file path
+    // TODO: detect from fast5 when the appropriate fields are available
+    if(this->fast5_path.find("r10") != std::string::npos) {
+        this->pore_type = PT_R10;
+        kit = "r10_450bps";
+        k = 9;
+        ed_params = &event_detection_r10;
+    }
 
     if(this->nucleotide_type == SRNT_RNA) {
         kit = "r9.4_70bps";
@@ -296,8 +316,6 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         std::replace(this->read_sequence.begin(), this->read_sequence.end(), 'U', 'T');
     }
 
-    this->read_type = SRT_TEMPLATE;
-    this->pore_type = PT_R9;
 
     // Set the base model for this read to either the nucleotide or U->T RNA model
     this->base_model[strand_idx] = PoreModelSet::get_model(kit, alphabet, strand_str, k);
@@ -309,6 +327,12 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
 
     // Read the actual samples
     raw_table rt = fast5_get_raw_samples(f5_file, this->read_name, channel_params);
+    if(rt.n == 0) {
+        if(rt.raw != NULL) {
+            free(rt.raw);
+        }
+        return;
+    }
 
     // trim using scrappie's internal method
     // parameters taken directly from scrappie defaults
