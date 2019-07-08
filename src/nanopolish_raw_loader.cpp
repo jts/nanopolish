@@ -74,7 +74,7 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 #define BAND_ARRAY(r, c) ( bands[((r)*(ALN_BANDWIDTH)+(c))] )
 #define TRACE_ARRAY(r, c) ( trace[((r)*(ALN_BANDWIDTH)+(c))] )
 
-std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
+std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
 {
     size_t strand_idx = 0;
     size_t k = pore_model.k;
@@ -87,25 +87,20 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     const uint8_t FROM_U = 1;
     const uint8_t FROM_L = 2;
  
-    // qc
-    double min_average_log_emission = -5.0;
-    int max_gap_threshold = 50;
-
     // banding
-    int bandwidth = ALN_BANDWIDTH;
+    int bandwidth = parameters.bandwidth;
     int half_bandwidth = bandwidth / 2;
  
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
-    double p_stay = 1 - (1 / (events_per_kmer + 1));
+    double p_stay = 1 - (1 / events_per_kmer);
 
     // setting a tiny skip penalty helps keep the true alignment within the adaptive band
     // this was empirically determined
-    double epsilon = 1e-10;
-    double lp_skip = log(epsilon);
+    double lp_skip = log(parameters.p_skip);
     double lp_stay = log(p_stay);
     double lp_step = log(1.0 - exp(lp_skip) - exp(lp_stay));
-    double lp_trim = log(0.01);
+    double lp_trim = log(parameters.p_trim);
  
     // dp matrix
     size_t n_rows = n_events + 1;
@@ -331,7 +326,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     int max_gap = 0;
     int max_stay = 0;
     int min_distance_to_band_edge = bandwidth;
-    int curr_stay;
+    int curr_stay = 0;
 
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
 
@@ -383,7 +378,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     bool spanned = out.front().ref_pos == 0 && out.back().ref_pos == n_kmers - 1;
     
     bool failed = false;
-    if(avg_log_emission < min_average_log_emission || !spanned || max_gap > max_gap_threshold) {
+    if(avg_log_emission < parameters.min_average_log_emission || !spanned || max_gap > parameters.max_gap_threshold || max_stay > parameters.max_stay_threshold) {
         failed = true;
         out.clear();
     }
@@ -391,7 +386,9 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     free(bands);
     free(trace);
 
-    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, max_stay, min_distance_to_band_edge, fills);
+    if(parameters.verbose) {
+        fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, max_stay, min_distance_to_band_edge, fills);
+    }
     return out;
 }
 

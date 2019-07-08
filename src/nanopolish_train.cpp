@@ -42,6 +42,7 @@
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_read_db.h"
 #include "nanopolish_bam_processor.h"
+#include "nanopolish_raw_loader.h"
 #include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -264,22 +265,40 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     // set k
     uint32_t k = sr.get_model_k(strand_idx);
 
-    // Align using the new model
-    EventAlignmentParameters params;
-    params.sr = &sr;
-    params.fai = fai;
-    params.hdr = hdr;
-    params.record = record;
-    params.strand_idx = strand_idx;
+    // Get the reference sequence for this read
+    std::string ref_name = hdr->target_name[record->core.tid];
+    int alignment_start_pos = record->core.pos;
+    int alignment_end_pos = bam_endpos(record);
 
-    params.alphabet = train_alphabet_ptr->get_name();
-    params.read_idx = read_idx;
-    params.region_start = region_start;
-    params.region_end = region_end;
-
-    std::vector<EventAlignment> alignment_output = align_read_to_ref(params);
-    if (alignment_output.size() == 0)
+    // skip if region too short
+    // TODO: make parameter
+    if(alignment_end_pos - alignment_start_pos < 1000) {
         return;
+    }
+
+    // load reference sequence
+    int reference_length;
+    std::string reference_seq =
+        get_reference_region_ts(fai, ref_name.c_str(), alignment_start_pos, alignment_end_pos, &reference_length);
+
+    // Reverse complement if necessary
+    if(bam_is_rev(record)) {
+        reference_seq = train_alphabet_ptr->reverse_complement(reference_seq);
+    }
+
+    // align events to the reference sequence
+    AdaBandedParameters alignment_parameters;
+    alignment_parameters.bandwidth = 100;
+    alignment_parameters.p_skip = 1e-10;
+    alignment_parameters.verbose = 1;
+    alignment_parameters.min_average_log_emission = -3.5;
+    alignment_parameters.max_stay_threshold = 200;
+
+    std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, *sr.get_model(strand_idx, train_alphabet_ptr->get_name()), reference_seq, alignment_parameters);
+    size_t edge_ignore = 200;
+    if(alignment.size() < 2*edge_ignore) {
+        return;
+    }
 
     /*
     double resid = 0.;
@@ -297,58 +316,35 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     //
     // Get the data structure holding the training data for this strand
     //
-    for(size_t i = 0; i < alignment_output.size(); ++i) {
-        const EventAlignment& ea = alignment_output[i];
-        std::string model_kmer = ea.model_kmer;
 
-        // Grab the previous/next model kmer from the alignment_output table.
-        // If the read is from the same strand as the reference
-        // the next kmer comes from the next alignment_output (and vice-versa)
-        // other the indices are swapped
-        int next_stride = ea.rc ? -1 : 1;
-
-        std::string prev_kmer = "";
-        std::string next_kmer = "";
-
-        if(i > 0 && i < alignment_output.size() - 1) {
-
-            // check that the event indices are correct for the next expected position
-            assert(alignment_output[i + next_stride].event_idx - ea.event_idx == 1);
-            assert(alignment_output[i - next_stride].event_idx - ea.event_idx == -1);
-
-            // only set the previous/next when there was exactly one base of movement along the referenc
-            if( std::abs(alignment_output[i + next_stride].ref_position - ea.ref_position) == 1) {
-                next_kmer = alignment_output[i + next_stride].model_kmer;
-            }
-
-            if( std::abs(alignment_output[i - next_stride].ref_position - ea.ref_position) == 1) {
-                prev_kmer = alignment_output[i - next_stride].model_kmer;
-            }
-        }
+    for(size_t i = edge_ignore; i < alignment.size() - edge_ignore; ++i) {
+        size_t k_idx = alignment[i].ref_pos;
+        size_t event_idx = alignment[i].read_pos;
 
         // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
-        uint32_t rank = train_alphabet_ptr->kmer_rank(model_kmer.c_str(), k);
+        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + k_idx, k);
         assert(rank < training_data.size());
         auto& kmer_summary = training_data[rank];
 
         // We only use this event for training if its not at the end of the alignment
         // (to avoid bad alignments around the read edges) and if its not too short (to
         // avoid bad measurements from effecting the levels too much)
-        bool use_for_training = i > opt::min_distance_from_alignment_end &&
-            i + opt::min_distance_from_alignment_end < alignment_output.size() &&
-            alignment_output[i].hmm_state == 'M' &&
-            sr.get_duration( alignment_output[i].event_idx, strand_idx) >= opt::min_event_duration &&
-            sr.get_fully_scaled_level(alignment_output[i].event_idx, strand_idx) >= 1.0;
+        bool use_for_training = sr.get_duration( event_idx, strand_idx) >= opt::min_event_duration &&
+                                sr.get_fully_scaled_level(event_idx, strand_idx) >= 1.0;
 
         if(use_for_training) {
-            StateTrainingData std(sr, ea, rank, prev_kmer, next_kmer);
+            StateTrainingData std(sr.get_fully_scaled_level(event_idx, strand_idx),
+                                  sr.get_scaled_stdv(event_idx, strand_idx),
+                                  sr.scalings[strand_idx].var,
+                                  sr.scalings[strand_idx].scale);
+
             #pragma omp critical(kmer)
             {
                 event_count[rank]++;
                 add_event_tmp(kmer_summary, std, event_count[rank]);
             }
         }
-
+        /*
         if(ea.hmm_state == 'M')  {
             #pragma omp atomic
             kmer_summary.num_matches += 1;
@@ -356,6 +352,7 @@ void add_aligned_events_for_read(const ReadDB& read_db,
             #pragma omp atomic
             kmer_summary.num_stays += 1;
         }
+        */
     }
 }
 

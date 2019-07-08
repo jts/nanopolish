@@ -17,11 +17,23 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
                                              const PoreModel& pore_model,
                                              const event_table& et);
 
+struct AdaBandedParameters
+{
+    double min_average_log_emission = -5.0;
+    int max_gap_threshold = 50;
+    int max_stay_threshold = 10000;
+    int bandwidth = 100;
+    float p_skip = 1e-10;
+    float p_trim = 1e-2;
+    int verbose = 0;
+};
+
 // Align events to k-mers of a sequence using Suzuki's adaptive banded algorithm
 // see: https://www.biorxiv.org/content/early/2017/09/07/130633
 std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read,
                                                             const PoreModel& pore_model,
-                                                            const std::string& sequence);
+                                                            const std::string& sequence,
+                                                            const AdaBandedParameters parameters = AdaBandedParameters());
 
 // Simple banded alignmend algorithm
 // Deprecated, use the above
