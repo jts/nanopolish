@@ -69,10 +69,8 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
 #define move_down(curr_band) { curr_band.event_idx + 1, curr_band.kmer_idx }
 #define move_right(curr_band) { curr_band.event_idx, curr_band.kmer_idx + 1 }
 
-#define ALN_BANDWIDTH 100
-
-#define BAND_ARRAY(r, c) ( bands[((r)*(ALN_BANDWIDTH)+(c))] )
-#define TRACE_ARRAY(r, c) ( trace[((r)*(ALN_BANDWIDTH)+(c))] )
+#define BAND_ARRAY(r, c) ( bands[((r)*(bandwidth)+(c))] )
+#define TRACE_ARRAY(r, c) ( trace[((r)*(bandwidth)+(c))] )
 
 std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
 {
@@ -258,7 +256,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
             float score_u = up + lp_stay + lp_emission;
-            float score_l = left + lp_skip;
+            double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
 
             float max_score = score_d;
             uint8_t from = FROM_D;
