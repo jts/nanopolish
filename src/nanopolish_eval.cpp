@@ -337,7 +337,11 @@ class ConsensusVariantsAnalysis : public AnalysisType
                 }
             }
 
+            #pragma omp atomic
             total_reads += 1;
+            
+            #pragma omp atomic
+            sum_var += sr.scalings[0].var;
         }
 
         virtual void finalize()
@@ -353,6 +357,7 @@ class ConsensusVariantsAnalysis : public AnalysisType
         std::map<std::string, Variant> variant_map;
         std::map<std::string, int> depth_map;
         int total_reads = 0;
+        float sum_var = 0.0f;
 };
 
 class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
@@ -365,7 +370,7 @@ class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
 
         void write_header() const
         {
-            fprintf(stdout, "label\ttotal_reads\tcount_all\tcount_subs\tcount_indels\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
+            fprintf(stdout, "label\ttotal_reads\tmean_read_var\tcount_all\tcount_subs\tcount_indels\taccuracy_all\taccuracy_subs\taccuracy_indels\n");
         }
 
         void finalize()
@@ -378,7 +383,7 @@ class ConsensusAccuracyAnalysis : public ConsensusVariantsAnalysis
             AccuracyStats accuracy_stats = calculate_accuracy_stats(variants);
 
             #pragma omp critical
-            fprintf(stdout, "%s\t%d\t%d\t%d\t%d\t%.4f\t%.4f\t%.4f\n", opt::label.c_str(), total_reads,
+            fprintf(stdout, "%s\t%d\t%.3f\t%d\t%d\t%d\t%.4f\t%.4f\t%.4f\n", opt::label.c_str(), total_reads, sum_var / total_reads,
                 accuracy_stats.total_all, accuracy_stats.total_sub, accuracy_stats.total_indel,
                 accuracy_stats.get_accuracy_all(), accuracy_stats.get_accuracy_sub(), accuracy_stats.get_accuracy_indel());
         }
