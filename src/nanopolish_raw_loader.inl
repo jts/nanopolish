@@ -123,11 +123,11 @@ class AdaptiveBandedViterbi
             return { curr_origin.event_idx, curr_origin.kmer_idx + 1 };
         }
 
-        void initialize(size_t n_events, size_t n_kmers, const AdaBandedParameters& parameters)
+        void initialize(const SquiggleRead& read, const std::string& sequence, size_t k, size_t strand_idx, const AdaBandedParameters& parameters)
         {
             this->parameters = parameters;
-            this->n_events = n_events;
-            this->n_kmers = n_kmers;
+            this->n_events = read.events[strand_idx].size();
+            this->n_kmers = sequence.size() - k + 1;
             this->bandwidth = parameters.bandwidth;
             this->n_bands = (n_events + 1) + (n_kmers + 1);
             this->band_scores = (float*)malloc(sizeof(float) * this->n_bands * this->bandwidth);
@@ -314,7 +314,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         kmer_ranks[i] = alphabet->kmer_rank(sequence.substr(i, k).c_str(), k);
     }
 
-    hmm_result.initialize(n_events, n_kmers, parameters);
+    hmm_result.initialize(read, sequence, k, strand_idx, parameters);
 
     // band 0: score zero in the central cell
     int start_cell_offset = hmm_result.get_offset_for_kmer_in_band(0, -1);
