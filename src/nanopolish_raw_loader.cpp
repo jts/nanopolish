@@ -59,12 +59,8 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
     return out;
 }
 
-std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
+bool qc_simple_event_alignment(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters, std::vector<AlignedPair>& alignment)
 {
-    AdaptiveBandedViterbi abv;
-    generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
-    std::vector<AlignedPair> alignment = abv.backtrack();
-    
     // Calculate QC metrics
     size_t strand_idx = 0;
     size_t k = pore_model.k;
@@ -84,23 +80,60 @@ std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead
     double avg_log_emission = sum_emission / n_aligned_events;
     bool spanned = alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
     
-    bool failed = false;
-    if(avg_log_emission < parameters.min_average_log_emission || !spanned) {
-        failed = true;
-    }
+    bool passed = avg_log_emission > parameters.min_average_log_emission && spanned;
 
     double events_per_kmer = 0.0f;
     if(parameters.verbose) {
-        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\n", 
-            read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos, abv.get_num_fills());
+        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n", 
+            read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos);
     }
+    return passed;
+}
 
-    if(failed) {
+std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
+{
+    size_t strand_idx = 0;
+
+    AdaptiveBandedViterbi abv;
+    abv.initialize_adaptive(read, sequence, pore_model.k, strand_idx, parameters);
+    
+    generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
+    std::vector<AlignedPair> alignment = abv.backtrack();
+    
+    // qc
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, sequence, parameters, alignment);
+
+    if(!qc_pass) {
         alignment.clear();
     }
 
     return alignment;
 }
+
+std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& read,
+                                                                 const PoreModel& pore_model,
+                                                                 const Haplotype& haplotype,
+                                                                 const EventAlignmentRecord& event_align_record,
+                                                                 const AdaBandedParameters parameters)
+{
+    size_t strand_idx = 0;
+
+    AdaptiveBandedViterbi abv;
+    abv.initialize_guided(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+ 
+    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, abv);
+    std::vector<AlignedPair> alignment = abv.backtrack();
+    
+    // qc
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment);
+
+    if(!qc_pass) {
+        alignment.clear();
+    }
+
+    return alignment;
+}
+
 
 
 #define event_kmer_to_band(ei, ki) (ei + 1) + (ki + 1)
@@ -128,9 +161,9 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 #endif
 
     // backtrack markers
-    const uint8_t FROM_D = 0;
-    const uint8_t FROM_U = 1;
-    const uint8_t FROM_L = 2;
+    const uint8_t TMPFROM_D = 0;
+    const uint8_t TMPFROM_U = 1;
+    const uint8_t TMPFROM_L = 2;
  
     // banding
     int bandwidth = parameters.bandwidth;
@@ -204,7 +237,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     assert(kmer_at_offset(1, first_trim_offset) == -1);
     assert(is_offset_valid(first_trim_offset));
     BAND_ARRAY(1,first_trim_offset) = lp_trim;
-    TRACE_ARRAY(1,first_trim_offset) = FROM_U;
+    TRACE_ARRAY(1,first_trim_offset) = TMPFROM_U;
 
     int fills = 0;
 #ifdef DEBUG_ADAPTIVE
@@ -258,7 +291,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             int event_idx = event_at_offset(band_idx, trim_offset);
             if(event_idx >= 0 && event_idx < n_events) {
                 BAND_ARRAY(band_idx,trim_offset) = lp_trim * (event_idx + 1);
-                TRACE_ARRAY(band_idx,trim_offset) = FROM_U;
+                TRACE_ARRAY(band_idx,trim_offset) = TMPFROM_U;
             } else {
                 BAND_ARRAY(band_idx,trim_offset) = -INFINITY;
             }
@@ -306,12 +339,12 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
 
             float max_score = score_d;
-            uint8_t from = FROM_D;
+            uint8_t from = TMPFROM_D;
 
             max_score = score_u > max_score ? score_u : max_score;
-            from = max_score == score_u ? FROM_U : from;
+            from = max_score == score_u ? TMPFROM_U : from;
             max_score = score_l > max_score ? score_l : max_score;
-            from = max_score == score_l ? FROM_L : from;
+            from = max_score == score_l ? TMPFROM_L : from;
 
 #ifdef DEBUG_ADAPTIVE
             fprintf(stderr, "[adafill] offset-up: %d offset-diag: %d offset-left: %d\n", offset_up, offset_diag, offset_left);
@@ -401,13 +434,13 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         assert(band_kmer_to_offset(band_idx, curr_kmer_idx) == offset);
 
         uint8_t from = TRACE_ARRAY(band_idx,offset);
-        if(from == FROM_D) {
+        if(from == TMPFROM_D) {
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay = 0;
             is_skip = false;
-        } else if(from == FROM_U) {
+        } else if(from == TMPFROM_U) {
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay += 1;
@@ -465,9 +498,9 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
     }
 #endif
 
-    const uint8_t FROM_D = 0;
-    const uint8_t FROM_U = 1;
-    const uint8_t FROM_L = 2;
+    const uint8_t TMPFROM_D = 0;
+    const uint8_t TMPFROM_U = 1;
+    const uint8_t TMPFROM_L = 2;
     
     // qc
     double min_average_log_emission = -5.0;
@@ -546,13 +579,13 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
             double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
 
             double max_score = score_d;
-            uint8_t from = FROM_D;
+            uint8_t from = TMPFROM_D;
 
             max_score = score_u > max_score ? score_u : max_score;
-            from = max_score == score_u ? FROM_U : from;
+            from = max_score == score_u ? TMPFROM_U : from;
             
             max_score = score_l > max_score ? score_l : max_score;
-            from = max_score == score_l ? FROM_L : from;
+            from = max_score == score_l ? TMPFROM_L : from;
      
             //fprintf(stderr, "[orgfill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
 #ifdef DEBUG_BANDED
@@ -628,10 +661,10 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
         int col = curr_k_idx + 1;
 
         uint8_t from = get(backtrack_matrix, row, col);
-        if(from == FROM_D) {
+        if(from == TMPFROM_D) {
             curr_k_idx -= 1;
             curr_event_idx -= 1;
-        } else if(from == FROM_U) {
+        } else if(from == TMPFROM_U) {
             curr_event_idx -= 1;
         } else {
             curr_k_idx -= 1;

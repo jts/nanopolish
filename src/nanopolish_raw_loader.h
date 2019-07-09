@@ -12,6 +12,7 @@
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_anchor.h"
 #include "scrappie_structures.h"
+#include "nanopolish_alignment_db.h"
 
 SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
                                              const PoreModel& pore_model,
@@ -47,6 +48,12 @@ std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead
                                                                     const std::string& sequence,
                                                                     const AdaBandedParameters parameters = AdaBandedParameters());
 
+
+std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& read,
+                                                                 const PoreModel& pore_model,
+                                                                 const Haplotype& haplotype,
+                                                                 const EventAlignmentRecord& event_align_record,
+                                                                 const AdaBandedParameters parameters = AdaBandedParameters());
 
 // Simple banded alignmend algorithm
 // Deprecated, use the above

@@ -578,7 +578,6 @@ std::vector<Variant> score_variants_single_read(SquiggleRead& sr,
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
 
-
     for(const Variant& v : variants) {
 
         int calling_start = v.ref_position - opt::min_flanking_sequence;

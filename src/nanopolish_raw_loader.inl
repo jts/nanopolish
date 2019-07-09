@@ -7,6 +7,7 @@
 // data directly from raw nanopore files without events
 //
 #include "nanopolish_profile_hmm.h"
+#include "nanopolish_haplotype.h"
 
 //#define DEBUG_GENERIC 1
 
@@ -35,6 +36,7 @@ class AdaptiveBandedViterbi
             this->bandwidth = 0;
             this->n_fills = 0;
             this->n_bands = 0;
+            this->initialized = false;
         }
 
         ~AdaptiveBandedViterbi()
@@ -110,7 +112,6 @@ class AdaptiveBandedViterbi
 #endif
             this->set(band_idx, band_offset, max_score, from);
             this->n_fills += 1;
-
         }
 
         inline BandOrigin move_band_down(const BandOrigin& curr_origin) const
@@ -123,8 +124,9 @@ class AdaptiveBandedViterbi
             return { curr_origin.event_idx, curr_origin.kmer_idx + 1 };
         }
 
-        void initialize(const SquiggleRead& read, const std::string& sequence, size_t k, size_t strand_idx, const AdaBandedParameters& parameters)
+        void initialize_common(const SquiggleRead& read, const std::string& sequence, size_t k, size_t strand_idx, const AdaBandedParameters& parameters)
         {
+            this->initialized = true;
             this->parameters = parameters;
             this->n_events = read.events[strand_idx].size();
             this->n_kmers = sequence.size() - k + 1;
@@ -149,6 +151,18 @@ class AdaptiveBandedViterbi
             }
 
             this->band_origins.resize(n_bands);
+            for(size_t i = 0; i < this->band_origins.size(); ++i) {
+                this->band_origins[i] = { -1, -1 };
+            }
+        }
+
+        void initialize_adaptive(const SquiggleRead& read, 
+                                 const std::string& sequence, 
+                                 size_t k, 
+                                 size_t strand_idx, 
+                                 const AdaBandedParameters& parameters)
+        {
+            this->initialize_common(read, sequence, k, strand_idx, parameters);
 
             // initialize positions of first two bands
             int half_bandwidth = this->bandwidth / 2;
@@ -157,11 +171,66 @@ class AdaptiveBandedViterbi
             this->band_origins[1] = move_band_down(this->band_origins[0]);
         }
 
+        void initialize_guided(const SquiggleRead& read, 
+                               const Haplotype& haplotype, 
+                               const EventAlignmentRecord& event_alignment_record, 
+                               size_t k, 
+                               size_t strand_idx, 
+                               const AdaBandedParameters& parameters)
+        {
+            this->initialize_common(read, haplotype.get_sequence(), k, strand_idx, parameters);
+
+            const std::vector<AlignedPair> event_to_haplotype_alignment = event_alignment_record.aligned_events;
+
+            // make a map from event to the position in the haplotype it aligns to
+            int ref_offset = haplotype.get_reference_position();
+            std::vector<int> event_to_kmer(this->n_events, -1);
+            for(size_t i = 0; i < event_to_haplotype_alignment.size(); ++i) {
+                assert(event_to_haplotype_alignment[i].read_pos < event_to_kmer.size());
+                event_to_kmer[event_to_haplotype_alignment[i].read_pos] = event_to_haplotype_alignment[i].ref_pos - ref_offset;
+            }
+
+            // First two bands need to be manually initialized
+            int half_bandwidth = this->bandwidth / 2;
+            this->band_origins[0].event_idx = half_bandwidth - 1;
+            this->band_origins[0].kmer_idx = -1 - half_bandwidth;
+            this->band_origins[1] = move_band_down(this->band_origins[0]);
+
+            // many events will have an unassigned position, fill them in here using the last seen kmer
+            // and set band coordinates
+            int prev_kmer_idx = 0;
+            for(size_t i = 0; i < event_to_kmer.size(); ++i) {
+                if(event_to_kmer[i] == -1) {
+                    event_to_kmer[i] = prev_kmer_idx;
+                } else {
+                    prev_kmer_idx = event_to_kmer[i];
+                }
+
+                int event_idx = i;
+                int kmer_idx = event_to_kmer[i];
+                int band_idx = this->event_kmer_to_band(event_idx, kmer_idx);
+                if(band_idx < this->band_origins.size()) {
+                    this->band_origins[band_idx].event_idx = half_bandwidth + event_idx;
+                    this->band_origins[band_idx].kmer_idx = kmer_idx - half_bandwidth;
+                }
+                /*
+                fprintf(stderr, "lookup[%zu] = %d band_idx: %d origin: %d %d\n", 
+                    event_idx, kmer_idx, band_idx, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
+                */
+            }
+        }
+
         int get_num_bands() const { return this->n_bands; }
         int get_num_fills() const { return this->n_fills; }
+        bool is_initialized() const { return this->initialized; }
 
         void determine_band_origin(size_t band_idx)
         {
+
+            // band position already set, do nothing
+            if(this->band_origins[band_idx].event_idx >= 0 && this->band_origins[band_idx].kmer_idx >= 0) {
+                return;
+            }
             // Determine placement of this band according to Suzuki's adaptive algorithm
             // When both ll and ur are out-of-band (ob) we alternate movements
             // otherwise we decide based on scores
@@ -274,6 +343,7 @@ class AdaptiveBandedViterbi
         size_t n_bands;
         size_t n_fills;
         size_t bandwidth;
+        bool initialized;
 };
 
 template<class GenericBandedHMMResult>
@@ -314,7 +384,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         kmer_ranks[i] = alphabet->kmer_rank(sequence.substr(i, k).c_str(), k);
     }
 
-    hmm_result.initialize(read, sequence, k, strand_idx, parameters);
+    assert(hmm_result.is_initialized());
 
     // band 0: score zero in the central cell
     int start_cell_offset = hmm_result.get_offset_for_kmer_in_band(0, -1);
