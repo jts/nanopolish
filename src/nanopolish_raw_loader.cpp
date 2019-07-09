@@ -372,19 +372,21 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     int max_stay = 0;
     int min_distance_to_band_edge = bandwidth;
     int curr_stay = 0;
+    bool is_skip = false;
 
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
 
         // emit alignment
-        out.push_back({curr_kmer_idx, curr_event_idx});
+        if(!is_skip) {
+            out.push_back({curr_kmer_idx, curr_event_idx});
+            size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_kmer_idx, k).c_str(), k);
+            sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
+            n_aligned_events += 1;
+        }
+
 #ifdef DEBUG_ADAPTIVE
         fprintf(stderr, "[adaback] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
 #endif
-        // qc stats
-        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_kmer_idx, k).c_str(), k);
-        float emission = log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
-        n_aligned_events += 1;
-
         // position in band
         size_t band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
         size_t offset = band_event_to_offset(band_idx, curr_event_idx);
@@ -400,22 +402,23 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 
         uint8_t from = TRACE_ARRAY(band_idx,offset);
         if(from == FROM_D) {
-            sum_emission += emission;
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay = 0;
+            is_skip = false;
         } else if(from == FROM_U) {
-            sum_emission += emission;
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay += 1;
             max_stay = std::max(curr_stay, max_stay);
+            is_skip = false;
         } else {
             curr_kmer_idx -= 1;
             curr_gap += 1;
             curr_stay = 0;
             max_gap = std::max(curr_gap, max_gap);
+            is_skip = true;
         }
     }
     std::reverse(out.begin(), out.end());
