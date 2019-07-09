@@ -35,10 +35,19 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read,
                                                             const std::string& sequence,
                                                             const AdaBandedParameters parameters = AdaBandedParameters());
 
+std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read,
+                                                                    const PoreModel& pore_model,
+                                                                    const std::string& sequence,
+                                                                    const AdaBandedParameters parameters = AdaBandedParameters());
+
+
 // Simple banded alignmend algorithm
 // Deprecated, use the above
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read,
                                                    const PoreModel& pore_model,
                                                    const std::string& sequence);
+
+
+#include "nanopolish_raw_loader.inl"
 
 #endif

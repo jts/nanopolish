@@ -59,6 +59,50 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
     return out;
 }
 
+std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
+{
+    AdaptiveBandedViterbi abv;
+    generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
+    std::vector<AlignedPair> alignment = abv.backtrack();
+    
+    // Calculate QC metrics
+    size_t strand_idx = 0;
+    size_t k = pore_model.k;
+    const Alphabet* alphabet = pore_model.pmalphabet;
+    size_t n_aligned_events = 0;
+    double sum_emission = 0.0f;
+
+    for(size_t i = 0; i < alignment.size(); ++i) {
+        size_t event_idx = alignment[i].read_pos;
+        size_t kmer_idx = alignment[i].ref_pos;
+
+        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(kmer_idx, k).c_str(), k);
+        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
+        n_aligned_events += 1;
+    }
+
+    double avg_log_emission = sum_emission / n_aligned_events;
+    bool spanned = alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
+    
+    bool failed = false;
+    if(avg_log_emission < parameters.min_average_log_emission || !spanned) {
+        failed = true;
+    }
+
+    double events_per_kmer = 0.0f;
+    if(parameters.verbose) {
+        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\n", 
+            read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos, abv.get_num_fills());
+    }
+
+    if(failed) {
+        alignment.clear();
+    }
+
+    return alignment;
+}
+
+
 #define event_kmer_to_band(ei, ki) (ei + 1) + (ki + 1)
 #define band_event_to_offset(bi, ei) band_lower_left[bi].event_idx - (ei)
 #define band_kmer_to_offset(bi, ki) (ki) - band_lower_left[bi].kmer_idx
@@ -79,6 +123,9 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     const Alphabet* alphabet = pore_model.pmalphabet;
     size_t n_events = read.events[strand_idx].size();
     size_t n_kmers = sequence.size() - k + 1;
+#ifdef DEBUG_ADAPTIVE
+    fprintf(stderr, "[ada] aligning read %s\n", read.read_name.substr(0,6).c_str());
+#endif
 
     // backtrack markers
     const uint8_t FROM_D = 0;
@@ -269,7 +316,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 #ifdef DEBUG_ADAPTIVE
             fprintf(stderr, "[adafill] offset-up: %d offset-diag: %d offset-left: %d\n", offset_up, offset_diag, offset_left);
             fprintf(stderr, "[adafill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
-            fprintf(stderr, "[adafill] bi: %d o: %d e: %d k: %d s: %.2lf f: %d emit: %.2lf\n", band_idx, offset, event_idx, kmer_idx, max_score, from, lp_emission);
+            fprintf(stderr, "[adafill] bi: %d o: %d e: %d k: %d s: %.2lf f: %d rank: %zu emit: %.2lf\n", band_idx, offset, event_idx, kmer_idx, max_score, from, kmer_rank, lp_emission);
 #endif
             BAND_ARRAY(band_idx,offset) = max_score;
             TRACE_ARRAY(band_idx,offset) = from;
@@ -277,7 +324,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
         }
     }
 
-    /*
+/*
     // Debug, print some of the score matrix
     for(int col = 0; col <= 10; ++col) {
         for(int row = 0; row < 100; ++row) {
@@ -287,10 +334,10 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
             int offset = band_kmer_to_offset(band_idx, kmer_idx);
             assert(offset == band_event_to_offset(band_idx, event_idx));
             assert(event_idx == event_at_offset(band_idx, offset));
-            fprintf(stdout, "ei: %d ki: %d bi: %d o: %d s: %.2f\n", event_idx, kmer_idx, band_idx, offset, bands[band_idx][offset]);
+            fprintf(stderr, "[adafill] ei: %d ki: %d bi: %d o: %d s: %.2f from: %d\n", event_idx, kmer_idx, band_idx, offset, BAND_ARRAY(band_idx,offset), TRACE_ARRAY(band_idx, offset));
         }
     }
-    */
+*/
 
     //
     // Backtrack to compute alignment
@@ -335,7 +382,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 #endif
         // qc stats
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_kmer_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
+        float emission = log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
 
         // position in band
@@ -353,11 +400,13 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
 
         uint8_t from = TRACE_ARRAY(band_idx,offset);
         if(from == FROM_D) {
+            sum_emission += emission;
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay = 0;
         } else if(from == FROM_U) {
+            sum_emission += emission;
             curr_event_idx -= 1;
             curr_gap = 0;
             curr_stay += 1;

@@ -295,6 +295,8 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     alignment_parameters.max_stay_threshold = 200;
 
     std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, *sr.get_model(strand_idx, train_alphabet_ptr->get_name()), reference_seq, alignment_parameters);
+    adaptive_banded_generic_simple_event_align(sr, *sr.get_model(strand_idx, train_alphabet_ptr->get_name()), reference_seq, alignment_parameters);
+
     size_t edge_ignore = 200;
     if(alignment.size() < 2*edge_ignore) {
         return;
