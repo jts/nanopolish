@@ -235,6 +235,7 @@ class AdaptiveBandedViterbi
             }
         }
 
+        int get_bandwidth() const { return this->bandwidth; }
         int get_num_bands() const { return this->n_bands; }
         int get_num_fills() const { return this->n_fills; }
         bool is_initialized() const { return this->initialized; }
@@ -265,6 +266,13 @@ class AdaptiveBandedViterbi
             } else {
                 this->band_origins[band_idx] = move_band_down(this->band_origins[band_idx - 1]);
             }
+        }
+
+        inline bool is_event_kmer_in_band(int event_idx, int kmer_idx)
+        {
+            int band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_event_in_band(band_idx, event_idx);
+            return this->is_offset_valid(band_offset);
         }
 
         void get_offset_range_for_band(size_t band_idx, int& min_offset, int& max_offset) const
@@ -380,15 +388,12 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     // band 0: score zero in the starting cell
     hmm_result.set3_by_event_kmer(-1, -1, 0.0f, -INFINITY, -INFINITY);
 
-    // band 1: set trim of first event
-    hmm_result.set3_by_event_kmer(0, -1, -INFINITY, lp_trim, -INFINITY);
-
 #ifdef DEBUG_GENERIC
     fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
 #endif
 
     // fill in remaining bands
-    for(int band_idx = 2; band_idx < hmm_result.get_num_bands(); ++band_idx) {
+    for(int band_idx = 1; band_idx < hmm_result.get_num_bands(); ++band_idx) {
 
         hmm_result.determine_band_origin(band_idx);
 
@@ -400,8 +405,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             float score_u = hmm_result.get_by_event_kmer(event_idx - 1, start_trim_kmer_state) + lp_trim;
             hmm_result.set3(band_idx, start_trim_offset, -INFINITY, score_u, -INFINITY);
         }
-
-        // determine the range of offsets in this band we should fill in
+ 
         int min_offset, max_offset;
         hmm_result.get_offset_range_for_band(band_idx, min_offset, max_offset);
 
@@ -419,7 +423,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             float score_d = diag + lp_step + lp_emission;
             float score_u = up + lp_stay + lp_emission;
             float score_l = left + lp_skip;
-            hmm_result.set3(band_idx, offset, score_d, score_u, score_l);
+            hmm_result.set3_by_event_kmer(event_idx, kmer_idx, score_d, score_u, score_l);
 
 #ifdef DEBUG_GENERIC
             fprintf(stderr, "[ada-gen-fill] offset-up: %d offset-diag: %d offset-left: %d\n", offset_up, offset_diag, offset_left);
@@ -430,7 +434,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         }
 
         // if there is an end trim state in this band, set it here
-        int end_trim_kmer_state = this->n_kmers;
+        int end_trim_kmer_state = n_kmers;
         int offset = hmm_result.get_offset_for_kmer_in_band(band_idx, end_trim_kmer_state);
         if(hmm_result.is_offset_valid(offset)) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, offset);
@@ -448,7 +452,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     float score_d = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1);
     float score_u = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx);
     float score_l = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1);
-    this->set3_by_event_kmer(terminate, band_offset, score_d, score_u, score_l);
+    hmm_result.set3_by_event_kmer(terminal_event_idx, terminal_kmer_idx, score_d, score_u, score_l);
 
 /*
     // Debug, print some of the score matrix
