@@ -45,14 +45,6 @@ class AdaptiveBandedViterbi
             this->trace = NULL;
         }
 
-        inline int get_start_state_offset(size_t band_idx) const
-        {
-            assert(band_idx == 0);
-            int offset = get_offset_for_kmer_in_band(band_idx, -1);
-            assert(get_offset_for_event_in_band(band_idx, -1) == offset);
-            return offset;
-        }
-
         inline int get_end_trim_kmer_state() const
         {
             return this->n_kmers;
@@ -98,6 +90,7 @@ class AdaptiveBandedViterbi
         {
             size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
             int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            // NB: not necessary to verify band/offset is valid
             return this->get(band_idx, band_offset);
         }
         
@@ -107,32 +100,17 @@ class AdaptiveBandedViterbi
                 this->trace[band_idx * this->bandwidth + band_offset] : 0;
         }
         
-
         inline void set(size_t band_idx, int band_offset, float value, uint8_t from) {
             size_t idx = band_idx * this->bandwidth + band_offset;
             this->band_scores[idx] = value;
             this->trace[idx] = from;
         }
-
-        inline void set_start_state(float value)
-        {
-            size_t band_idx = 0;
-            int offset = get_start_state_offset(band_idx);
-            this->set(band_idx, offset, value, SHMM_FROM_D);
-        }
-
-        inline void set_start_trim_for_band(size_t band_idx, float log_trim_penalty)
-        {
-            int trim_offset = this->get_offset_for_kmer_in_band(band_idx, -1);
-            if(!this->is_offset_valid(trim_offset)) {
-                return;
-            }
-
-            int event_idx = this->get_event_at_band_offset(band_idx, trim_offset);
-            if(event_idx >= 0) {
-                this->set(band_idx, trim_offset, (event_idx + 1) * log_trim_penalty, SHMM_FROM_U);
-            } else {
-                this->set(band_idx, trim_offset, -INFINITY, SHMM_FROM_INVALID);
+        
+        inline void set_by_event_kmer(int event_idx, int kmer_idx, float value, uint8_t from) {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            if(is_offset_valid(band_offset)) {
+                this->set(band_idx, band_offset, value, from);
             }
         }
 
@@ -282,7 +260,6 @@ class AdaptiveBandedViterbi
 
         void determine_band_origin(size_t band_idx)
         {
-
             // band position already set, do nothing
             if(this->band_origins[band_idx].event_idx >= 0 && this->band_origins[band_idx].kmer_idx >= 0) {
                 return;
@@ -419,11 +396,11 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
     // initialize first two bands as a special case
 
-    // band 0: score zero in the central cell
-    hmm_result.set_start_state(0.0f);
+    // band 0: score zero in the starting cell
+    hmm_result.set_by_event_kmer(-1, -1, 0.0f, SHMM_FROM_INVALID);
 
-    // band 1: set trim
-    hmm_result.set_start_trim_for_band(1, lp_trim);
+    // band 1: set trim of first event
+    hmm_result.set_by_event_kmer(0, -1, lp_trim, SHMM_FROM_U);
 
 #ifdef DEBUG_GENERIC
     fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
@@ -434,8 +411,14 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
         hmm_result.determine_band_origin(band_idx);
 
-        // update trim state
-        hmm_result.set_start_trim_for_band(band_idx, lp_trim);
+        // update start trim state for this band
+        int start_trim_kmer_state = -1;
+        int start_trim_offset = hmm_result.get_offset_for_kmer_in_band(band_idx, start_trim_kmer_state);
+        if(hmm_result.is_offset_valid(start_trim_offset)) {
+            int event_idx = hmm_result.get_event_at_band_offset(band_idx, start_trim_offset);
+            float score_u = hmm_result.get_by_event_kmer(event_idx - 1, start_trim_kmer_state) + lp_trim;
+            hmm_result.set3(band_idx, start_trim_offset, -INFINITY, score_u, -INFINITY);
+        }
 
         // determine the range of offsets in this band we should fill in
         int min_offset, max_offset;
