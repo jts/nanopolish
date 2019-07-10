@@ -89,10 +89,11 @@ class AdaptiveBandedViterbiStorage
         uint8_t* trace;
 };
 
-class AdaptiveBandedViterbi
+template<class StorageType>
+class AdaptiveBandedGeneric
 {
     public:
-        AdaptiveBandedViterbi()
+        AdaptiveBandedGeneric()
         {
             this->bandwidth = 0;
             this->n_fills = 0;
@@ -100,7 +101,7 @@ class AdaptiveBandedViterbi
             this->initialized = false;
         }
 
-        ~AdaptiveBandedViterbi()
+        ~AdaptiveBandedGeneric()
         {
             this->storage.deallocate();
         }
@@ -276,7 +277,7 @@ class AdaptiveBandedViterbi
         size_t get_num_events() const { return this->n_events; }
         size_t get_num_kmers() const { return this->n_kmers; }
         bool is_initialized() const { return this->initialized; }
-        const AdaptiveBandedViterbiStorage& get_storage() const { return storage; }
+        const StorageType& get_storage() const { return storage; }
 
         void determine_band_origin(size_t band_idx)
         {
@@ -332,7 +333,7 @@ class AdaptiveBandedViterbi
 
     private:
 
-        AdaptiveBandedViterbiStorage storage;
+        StorageType storage;
         std::vector<BandOrigin> band_origins;
         AdaBandedParameters parameters;
         size_t n_kmers;
@@ -464,3 +465,48 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     }
 */
 }
+
+// conveniance typedefs
+typedef AdaptiveBandedGeneric<AdaptiveBandedViterbiStorage> AdaptiveBandedViterbi;
+
+std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& abv)
+{
+    // Backtrack to compute alignment
+    std::vector<AlignedPair> out;
+
+    float max_score = -INFINITY;
+    size_t n_kmers = abv.get_num_kmers();
+    int curr_event_idx = abv.get_num_events();
+    int curr_kmer_idx = n_kmers;
+
+#ifdef DEBUG_GENERIC
+    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
+#endif
+
+    while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
+
+        // emit current alignment
+        if(curr_kmer_idx != n_kmers) {
+            out.push_back({curr_kmer_idx, curr_event_idx});
+        }
+
+#ifdef DEBUG_GENERIC
+        fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
+#endif
+        // position in band
+        size_t cell_idx = abv.get_cell_for_event_kmer(curr_event_idx, curr_kmer_idx);
+
+        uint8_t from = abv.get_storage().get_trace(cell_idx);
+        if(from == SHMM_FROM_D) {
+            curr_kmer_idx -= 1;
+            curr_event_idx -= 1;
+        } else if(from == SHMM_FROM_U) {
+            curr_event_idx -= 1;
+        } else {
+            curr_kmer_idx -= 1;
+        }
+    }
+    std::reverse(out.begin(), out.end());
+    return out;
+}
+
