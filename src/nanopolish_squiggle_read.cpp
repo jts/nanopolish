@@ -387,7 +387,10 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
     free(et.event);
 
     // align events to the basecalled read
-    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, *this->base_model[strand_idx], read_sequence);
+    AdaBandedParameters parameters;
+    parameters.verbose = 1;
+    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, *this->base_model[strand_idx], read_sequence, parameters);
+    adaptive_banded_generic_simple_event_align(*this, *this->base_model[strand_idx], read_sequence, parameters);
 
     // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {

@@ -79,15 +79,56 @@ bool qc_simple_event_alignment(SquiggleRead& read, const PoreModel& pore_model, 
 
     double avg_log_emission = sum_emission / n_aligned_events;
     bool spanned = alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
-    
+
     bool passed = avg_log_emission > parameters.min_average_log_emission && spanned;
 
     double events_per_kmer = 0.0f;
     if(parameters.verbose) {
-        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n", 
+        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n",
             read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos);
     }
     return passed;
+}
+
+std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& abv)
+{
+    // Backtrack to compute alignment
+    std::vector<AlignedPair> out;
+
+    float max_score = -INFINITY;
+    size_t n_kmers = abv.get_num_kmers();
+    int curr_event_idx = abv.get_num_events();
+    int curr_kmer_idx = n_kmers;
+
+#ifdef DEBUG_GENERIC
+    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
+#endif
+
+    while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
+
+        // emit current alignment
+        if(curr_kmer_idx != n_kmers) {
+            out.push_back({curr_kmer_idx, curr_event_idx});
+        }
+
+#ifdef DEBUG_GENERIC
+        fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
+#endif
+        // position in band
+        size_t cell_idx = abv.get_cell_for_event_kmer(curr_event_idx, curr_kmer_idx);
+
+        uint8_t from = abv.get_storage().get_trace(cell_idx);
+        if(from == SHMM_FROM_D) {
+            curr_kmer_idx -= 1;
+            curr_event_idx -= 1;
+        } else if(from == SHMM_FROM_U) {
+            curr_event_idx -= 1;
+        } else {
+            curr_kmer_idx -= 1;
+        }
+    }
+    std::reverse(out.begin(), out.end());
+    return out;
 }
 
 std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
@@ -96,10 +137,10 @@ std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead
 
     AdaptiveBandedViterbi abv;
     abv.initialize_adaptive(read, sequence, pore_model.k, strand_idx, parameters);
-    
+
     generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
-    std::vector<AlignedPair> alignment = abv.backtrack();
-    
+    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
+
     // qc
     bool qc_pass = qc_simple_event_alignment(read, pore_model, sequence, parameters, alignment);
 
@@ -120,10 +161,10 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
 
     AdaptiveBandedViterbi abv;
     abv.initialize_guided(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
- 
+
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, abv);
-    std::vector<AlignedPair> alignment = abv.backtrack();
-    
+    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
+
     // qc
     bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment);
 

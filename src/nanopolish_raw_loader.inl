@@ -23,13 +23,77 @@ const uint8_t SHMM_FROM_U = 1;
 const uint8_t SHMM_FROM_L = 2;
 const uint8_t SHMM_FROM_INVALID = 3;
 
+class AdaptiveBandedViterbiStorage
+{
+    public:
+        void allocate(size_t n)
+        {
+            this->scores = (float*)malloc(sizeof(float) * n);
+            if(this->scores == NULL){
+                fprintf(stderr,"Memory allocation failed at %s\n",__func__);
+                exit(1);
+            }
+
+            this->trace = (uint8_t*)malloc(sizeof(uint8_t) * n);
+            if(this->trace == NULL){
+                fprintf(stderr,"Memory allocation failed at %s\n",__func__);
+                exit(1);
+            }
+
+            // init
+            for(size_t i = 0; i < n; ++i) {
+                this->scores[i] = -INFINITY;
+                this->trace[i] = SHMM_FROM_INVALID;
+            }
+        }
+
+        void deallocate()
+        {
+            free(this->scores);
+            this->scores = NULL;
+            
+            free(this->trace);
+            this->trace = NULL;
+        }
+
+        inline float get(size_t cell_idx) const
+        {
+            return this->scores[cell_idx];
+        }
+        
+        inline uint8_t get_trace(size_t cell_idx) const
+        {
+            return this->trace[cell_idx];
+        }
+
+        inline void set3(size_t cell_idx, float score_d, float score_u, float score_l)
+        {
+            float max_score = score_d;
+            uint8_t from = SHMM_FROM_D;
+
+            max_score = score_u > max_score ? score_u : max_score;
+            from = max_score == score_u ? SHMM_FROM_U : from;
+            max_score = score_l > max_score ? score_l : max_score;
+            from = max_score == score_l ? SHMM_FROM_L : from;
+#ifdef DEBUG_GENERIC
+            int event_idx = this->get_event_at_band_offset(band_idx, band_offset);
+            int kmer_idx = this->get_kmer_at_band_offset(band_idx, band_offset);
+            fprintf(stderr, "[ada-generic] band: (%zu, %d) ek: (%d %d) set3(%.2f, %.2f, %.2f) from: %d\n", band_idx, band_offset, event_idx, kmer_idx, score_d, score_u, score_l, from);
+#endif
+            this->scores[cell_idx] = max_score;
+            this->trace[cell_idx] = from;
+        }
+    
+    private:
+        float* scores;
+        uint8_t* trace;
+};
+
 class AdaptiveBandedViterbi
 {
     public:
         AdaptiveBandedViterbi()
         {
-            this->band_scores = NULL;
-            this->trace = NULL;
             this->bandwidth = 0;
             this->n_fills = 0;
             this->n_bands = 0;
@@ -38,11 +102,7 @@ class AdaptiveBandedViterbi
 
         ~AdaptiveBandedViterbi()
         {
-            free(this->band_scores);
-            this->band_scores = NULL;
-            
-            free(this->trace);
-            this->trace = NULL;
+            this->storage.deallocate();
         }
         
         inline int get_offset_for_event_in_band(size_t band_idx, int event_idx) const
@@ -78,13 +138,7 @@ class AdaptiveBandedViterbi
         inline float get(size_t band_idx, int band_offset) const
         {
             return this->is_offset_valid(band_offset) ? 
-                this->band_scores[band_idx * this->bandwidth + band_offset] : -INFINITY;
-        }
-        
-        inline uint8_t get_trace(size_t band_idx, int band_offset) const
-        {
-            return this->is_offset_valid(band_offset) ? 
-                this->trace[band_idx * this->bandwidth + band_offset] : 0;
+                this->storage.get(band_idx * this->bandwidth + band_offset) : -INFINITY;
         }
         
         inline float get_by_event_kmer(int event_idx, int kmer_idx) const
@@ -94,11 +148,18 @@ class AdaptiveBandedViterbi
             // NB: not necessary to verify band/offset is valid
             return this->get(band_idx, band_offset);
         }
-        
-        inline void set(size_t band_idx, int band_offset, float value, uint8_t from) {
-            size_t idx = band_idx * this->bandwidth + band_offset;
-            this->band_scores[idx] = value;
-            this->trace[idx] = from;
+
+        inline size_t get_cell_for_band_offset(size_t band_idx, int band_offset) const
+        {
+            return band_idx * this->bandwidth + band_offset;
+        }
+
+        inline size_t get_cell_for_event_kmer(int event_idx, int kmer_idx) const
+        {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            assert(is_offset_valid(band_offset));
+            return get_cell_for_band_offset(band_idx, band_offset);
         }
         
         inline void set3_by_event_kmer(int event_idx, int kmer_idx, float score_d, float score_u, float score_l) {
@@ -111,19 +172,8 @@ class AdaptiveBandedViterbi
 
         inline void set3(size_t band_idx, int band_offset, float score_d, float score_u, float score_l)
         {
-            float max_score = score_d;
-            uint8_t from = SHMM_FROM_D;
-
-            max_score = score_u > max_score ? score_u : max_score;
-            from = max_score == score_u ? SHMM_FROM_U : from;
-            max_score = score_l > max_score ? score_l : max_score;
-            from = max_score == score_l ? SHMM_FROM_L : from;
-#ifdef DEBUG_GENERIC
-            int event_idx = this->get_event_at_band_offset(band_idx, band_offset);
-            int kmer_idx = this->get_kmer_at_band_offset(band_idx, band_offset);
-            fprintf(stderr, "[ada-generic] band: (%zu, %d) ek: (%d %d) set3(%.2f, %.2f, %.2f) from: %d\n", band_idx, band_offset, event_idx, kmer_idx, score_d, score_u, score_l, from);
-#endif
-            this->set(band_idx, band_offset, max_score, from);
+            size_t cell_idx = get_cell_for_band_offset(band_idx, band_offset);
+            this->storage.set3(cell_idx, score_d, score_u, score_l);
             this->n_fills += 1;
         }
 
@@ -147,24 +197,9 @@ class AdaptiveBandedViterbi
 
             // +2 for the start/end/trim states
             this->n_bands = (n_events + 2) + (n_kmers + 2);
-            this->band_scores = (float*)malloc(sizeof(float) * this->n_bands * this->bandwidth);
-            if(this->band_scores == NULL){
-                fprintf(stderr,"Memory allocation failed at %s\n",__func__);
-                exit(1);
-            }
-
-            this->trace = (uint8_t*)malloc(sizeof(uint8_t) * this->n_bands * this->bandwidth);
-            if(this->trace == NULL){
-                fprintf(stderr,"Memory allocation failed at %s\n",__func__);
-                exit(1);
-            }
-
-            for (size_t i = 0; i < n_bands; i++) {
-                for (int j = 0; j < bandwidth; j++) {
-                    set(i, j, -INFINITY, 0);
-                }
-            }
-
+            size_t n_cells = this->n_bands * this->bandwidth;
+            this->storage.allocate(n_cells);
+            
             this->band_origins.resize(n_bands);
             for(size_t i = 0; i < this->band_origins.size(); ++i) {
                 this->band_origins[i] = { -1, -1 };
@@ -238,7 +273,10 @@ class AdaptiveBandedViterbi
         int get_bandwidth() const { return this->bandwidth; }
         int get_num_bands() const { return this->n_bands; }
         int get_num_fills() const { return this->n_fills; }
+        size_t get_num_events() const { return this->n_events; }
+        size_t get_num_kmers() const { return this->n_kmers; }
         bool is_initialized() const { return this->initialized; }
+        const AdaptiveBandedViterbiStorage& get_storage() const { return storage; }
 
         void determine_band_origin(size_t band_idx)
         {
@@ -292,52 +330,9 @@ class AdaptiveBandedViterbi
             max_offset = std::min(max_offset, (int)this->bandwidth);
         }
 
-        std::vector<AlignedPair> backtrack() const
-        {
-            // Backtrack to compute alignment
-            std::vector<AlignedPair> out;
-
-            float max_score = -INFINITY;
-            int curr_event_idx = this->n_events;
-            int curr_kmer_idx = this->n_kmers;
-
-#ifdef DEBUG_GENERIC
-            fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
-#endif
-
-            while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
-
-                // emit current alignment
-                if(curr_kmer_idx != this->n_kmers) {
-                    out.push_back({curr_kmer_idx, curr_event_idx});
-                }
-
-#ifdef DEBUG_GENERIC
-                fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
-#endif
-                // position in band
-                size_t band_idx = this->event_kmer_to_band(curr_event_idx, curr_kmer_idx);
-                size_t offset = this->get_offset_for_event_in_band(band_idx, curr_event_idx);
-                assert(this->get_offset_for_kmer_in_band(band_idx, curr_kmer_idx) == offset);
-
-                uint8_t from = this->get_trace(band_idx,offset);
-                if(from == SHMM_FROM_D) {
-                    curr_kmer_idx -= 1;
-                    curr_event_idx -= 1;
-                } else if(from == SHMM_FROM_U) {
-                    curr_event_idx -= 1;
-                } else {
-                    curr_kmer_idx -= 1;
-                }
-            }
-            std::reverse(out.begin(), out.end());
-            return out;
-        }
-
     private:
 
-        float* band_scores;
-        uint8_t* trace;
+        AdaptiveBandedViterbiStorage storage;
         std::vector<BandOrigin> band_origins;
         AdaBandedParameters parameters;
         size_t n_kmers;
