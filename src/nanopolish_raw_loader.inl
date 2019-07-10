@@ -299,14 +299,11 @@ class AdaptiveBandedViterbi
             fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, max_score);
 #endif
 
-            bool is_skip = false;
-
             while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
 
                 // emit current alignment
-                if(!is_skip) {
-                    out.push_back({curr_kmer_idx, curr_event_idx});
-                }
+                out.push_back({curr_kmer_idx, curr_event_idx});
+
 #ifdef DEBUG_GENERIC
                 fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
 #endif
@@ -319,13 +316,10 @@ class AdaptiveBandedViterbi
                 if(from == SHMM_FROM_D) {
                     curr_kmer_idx -= 1;
                     curr_event_idx -= 1;
-                    is_skip = false;
                 } else if(from == SHMM_FROM_U) {
                     curr_event_idx -= 1;
-                    is_skip = false;
                 } else {
                     curr_kmer_idx -= 1;
-                    is_skip = true;
                 }
             }
             std::reverse(out.begin(), out.end());
@@ -448,7 +442,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
             float score_u = up + lp_stay + lp_emission;
-            double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
+            float score_l = left + lp_skip;
             hmm_result.set3(band_idx, offset, score_d, score_u, score_l);
 
 #ifdef DEBUG_GENERIC
