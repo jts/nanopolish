@@ -44,11 +44,6 @@ class AdaptiveBandedViterbi
             free(this->trace);
             this->trace = NULL;
         }
-
-        inline int get_end_trim_kmer_state() const
-        {
-            return this->n_kmers;
-        }
         
         inline int get_offset_for_event_in_band(size_t band_idx, int event_idx) const
         {
@@ -86,6 +81,12 @@ class AdaptiveBandedViterbi
                 this->band_scores[band_idx * this->bandwidth + band_offset] : -INFINITY;
         }
         
+        inline uint8_t get_trace(size_t band_idx, int band_offset) const
+        {
+            return this->is_offset_valid(band_offset) ? 
+                this->trace[band_idx * this->bandwidth + band_offset] : 0;
+        }
+        
         inline float get_by_event_kmer(int event_idx, int kmer_idx) const
         {
             size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
@@ -94,23 +95,17 @@ class AdaptiveBandedViterbi
             return this->get(band_idx, band_offset);
         }
         
-        inline uint8_t get_trace(size_t band_idx, int band_offset) const
-        {
-            return this->is_offset_valid(band_offset) ? 
-                this->trace[band_idx * this->bandwidth + band_offset] : 0;
-        }
-        
         inline void set(size_t band_idx, int band_offset, float value, uint8_t from) {
             size_t idx = band_idx * this->bandwidth + band_offset;
             this->band_scores[idx] = value;
             this->trace[idx] = from;
         }
         
-        inline void set_by_event_kmer(int event_idx, int kmer_idx, float value, uint8_t from) {
+        inline void set3_by_event_kmer(int event_idx, int kmer_idx, float score_d, float score_u, float score_l) {
             size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
             int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
             if(is_offset_valid(band_offset)) {
-                this->set(band_idx, band_offset, value, from);
+                this->set3(band_idx, band_offset, score_d, score_u, score_l);
             }
         }
 
@@ -130,20 +125,6 @@ class AdaptiveBandedViterbi
 #endif
             this->set(band_idx, band_offset, max_score, from);
             this->n_fills += 1;
-        }
-
-        inline void terminate()
-        {
-            int terminal_event_idx = this->n_events;
-            int terminal_kmer_idx = this->n_kmers;
-
-            float score_d = this->get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1);
-            float score_u = this->get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx);
-            float score_l = this->get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1);
-
-            int band_idx = this->event_kmer_to_band(terminal_event_idx, terminal_kmer_idx);
-            int band_offset = this->get_offset_for_kmer_in_band(band_idx, terminal_kmer_idx);
-            this->set3(band_idx, band_offset, score_d, score_u, score_l);
         }
 
         inline BandOrigin move_band_down(const BandOrigin& curr_origin) const
@@ -397,10 +378,10 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     // initialize first two bands as a special case
 
     // band 0: score zero in the starting cell
-    hmm_result.set_by_event_kmer(-1, -1, 0.0f, SHMM_FROM_INVALID);
+    hmm_result.set3_by_event_kmer(-1, -1, 0.0f, -INFINITY, -INFINITY);
 
     // band 1: set trim of first event
-    hmm_result.set_by_event_kmer(0, -1, lp_trim, SHMM_FROM_U);
+    hmm_result.set3_by_event_kmer(0, -1, -INFINITY, lp_trim, -INFINITY);
 
 #ifdef DEBUG_GENERIC
     fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
@@ -449,8 +430,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         }
 
         // if there is an end trim state in this band, set it here
-        int end_trim_kmer_state = hmm_result.get_end_trim_kmer_state();
-        assert(end_trim_kmer_state == n_kmers);
+        int end_trim_kmer_state = this->n_kmers;
         int offset = hmm_result.get_offset_for_kmer_in_band(band_idx, end_trim_kmer_state);
         if(hmm_result.is_offset_valid(offset)) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, offset);
@@ -461,7 +441,14 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         }
     }
 
-    hmm_result.terminate();
+    // terminate
+    int terminal_event_idx = n_events;
+    int terminal_kmer_idx = n_kmers;
+
+    float score_d = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1);
+    float score_u = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx);
+    float score_l = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1);
+    this->set3_by_event_kmer(terminate, band_offset, score_d, score_u, score_l);
 
 /*
     // Debug, print some of the score matrix
