@@ -91,6 +91,13 @@ class AdaptiveBandedViterbi
                 this->band_scores[band_idx * this->bandwidth + band_offset] : -INFINITY;
         }
         
+        inline float get_by_event_kmer(int event_idx, int kmer_idx) const
+        {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            return this->get(band_idx, band_offset);
+        }
+        
         inline uint8_t get_trace(size_t band_idx, int band_offset) const
         {
             return this->is_offset_valid(band_offset) ? 
@@ -413,7 +420,6 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     // band 1: set trim
     hmm_result.set_start_trim_for_band(1, lp_trim);
 
-
 #ifdef DEBUG_GENERIC
     fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
 #endif
@@ -436,22 +442,9 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
             size_t kmer_rank = kmer_ranks[kmer_idx];
             
-            int offset_up   = hmm_result.get_offset_for_event_in_band(band_idx - 1, event_idx - 1);
-            int offset_left = hmm_result.get_offset_for_kmer_in_band(band_idx - 1, kmer_idx - 1);
-            int offset_diag = hmm_result.get_offset_for_kmer_in_band(band_idx - 2, kmer_idx - 1);
-
-#ifdef DEBUG_GENERIC
-            // verify calculations are sane
-            assert(kmer_idx >= 0 && kmer_idx < n_kmers);
-            assert(event_idx >= 0 && event_idx < n_events);
-            assert(offset_diag == hmm_result.get_offset_for_event_in_band(band_idx - 2, event_idx - 1));
-            assert(offset_up - offset_left == 1);
-            assert(offset >= 0 && offset < parameters.bandwidth);
-#endif
-            // these can be -INFINITY if the up/left/diag cells are out of the band
-            float up   = hmm_result.get(band_idx - 1, offset_up);
-            float left = hmm_result.get(band_idx - 1, offset_left);
-            float diag = hmm_result.get(band_idx - 2, offset_diag);
+            float up   = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx);
+            float left = hmm_result.get_by_event_kmer(event_idx, kmer_idx - 1);
+            float diag = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx - 1);
 
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
