@@ -18,13 +18,10 @@ struct BandOrigin
     int kmer_idx;
 };
 
-enum SimpleHMMMovementType
-{
-    SHMM_FROM_D = 0,
-    SHMM_FROM_U,
-    SHMM_FROM_L,
-    SHMM_FROM_INVALID
-};
+const uint8_t SHMM_FROM_D = 0;
+const uint8_t SHMM_FROM_U = 1;
+const uint8_t SHMM_FROM_L = 2;
+const uint8_t SHMM_FROM_INVALID = 3;
 
 class AdaptiveBandedViterbi
 {
@@ -46,6 +43,16 @@ class AdaptiveBandedViterbi
             
             free(this->trace);
             this->trace = NULL;
+        }
+
+
+
+        inline int get_start_state_offset(size_t band_idx) const
+        {
+            assert(band_idx == 0);
+            int offset = get_offset_for_kmer_in_band(band_idx, -1);
+            assert(get_offset_for_event_in_band(band_idx, -1) == offset);
+            return offset;
         }
         
         inline int get_offset_for_event_in_band(size_t band_idx, int event_idx) const
@@ -89,11 +96,34 @@ class AdaptiveBandedViterbi
             return this->is_offset_valid(band_offset) ? 
                 this->trace[band_idx * this->bandwidth + band_offset] : 0;
         }
+        
 
         inline void set(size_t band_idx, int band_offset, float value, uint8_t from) {
             size_t idx = band_idx * this->bandwidth + band_offset;
             this->band_scores[idx] = value;
             this->trace[idx] = from;
+        }
+
+        inline void set_start_state(float value)
+        {
+            size_t band_idx = 0;
+            int offset = get_start_state_offset(band_idx);
+            this->set(band_idx, offset, value, SHMM_FROM_D);
+        }
+
+        inline void set_start_trim_for_band(size_t band_idx, float log_trim_penalty)
+        {
+            int trim_offset = this->get_offset_for_kmer_in_band(band_idx, -1);
+            if(!this->is_offset_valid(trim_offset)) {
+                return;
+            }
+
+            int event_idx = this->get_event_at_band_offset(band_idx, trim_offset);
+            if(event_idx >= 0) {
+                this->set(band_idx, trim_offset, (event_idx + 1) * log_trim_penalty, SHMM_FROM_U);
+            } else {
+                this->set(band_idx, trim_offset, -INFINITY, SHMM_FROM_INVALID);
+            }
         }
 
         inline void set3(size_t band_idx, int band_offset, float score_d, float score_u, float score_l)
@@ -357,11 +387,6 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     fprintf(stderr, "[ada] aligning read %s\n", read.read_name.substr(0,6).c_str());
 #endif
 
-    // backtrack markers
-    const uint8_t SHMM_FROM_D = 0;
-    const uint8_t SHMM_FROM_U = 1;
-    const uint8_t SHMM_FROM_L = 2;
- 
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
     double p_stay = 1 - (1 / events_per_kmer);
@@ -380,17 +405,14 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
     assert(hmm_result.is_initialized());
 
-    // band 0: score zero in the central cell
-    int start_cell_offset = hmm_result.get_offset_for_kmer_in_band(0, -1);
-    assert(hmm_result.is_offset_valid(start_cell_offset));
-    assert(hmm_result.get_offset_for_event_in_band(0, -1) == start_cell_offset);
-    hmm_result.set(0, start_cell_offset, 0.0f, 0);
+    // initialize first two bands as a special case
 
-    // band 1: first event is trimmed
-    int first_trim_offset = hmm_result.get_offset_for_event_in_band(1, 0);
-    assert(hmm_result.get_kmer_at_band_offset(1, first_trim_offset) == -1);
-    assert(hmm_result.is_offset_valid(first_trim_offset));
-    hmm_result.set(1, first_trim_offset, lp_trim, SHMM_FROM_U);
+    // band 0: score zero in the central cell
+    hmm_result.set_start_state(0.0f);
+
+    // band 1: set trim
+    hmm_result.set_start_trim_for_band(1, lp_trim);
+
 
 #ifdef DEBUG_GENERIC
     fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
@@ -401,16 +423,8 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
         hmm_result.determine_band_origin(band_idx);
 
-        // If the trim state is within the band, fill it in here
-        int trim_offset = hmm_result.get_offset_for_kmer_in_band(band_idx, -1);
-        if(hmm_result.is_offset_valid(trim_offset)) {
-            int event_idx = hmm_result.get_event_at_band_offset(band_idx, trim_offset);
-            if(event_idx >= 0 && event_idx < n_events) {
-                hmm_result.set(band_idx, trim_offset, lp_trim * (event_idx + 1), SHMM_FROM_U);
-            } else {
-                hmm_result.set(band_idx, trim_offset, -INFINITY, 0);
-            }
-        }
+        // update trim state
+        hmm_result.set_start_trim_for_band(band_idx, lp_trim);
 
         // determine the range of offsets in this band we should fill in
         int min_offset, max_offset;
