@@ -45,14 +45,17 @@ class AdaptiveBandedViterbi
             this->trace = NULL;
         }
 
-
-
         inline int get_start_state_offset(size_t band_idx) const
         {
             assert(band_idx == 0);
             int offset = get_offset_for_kmer_in_band(band_idx, -1);
             assert(get_offset_for_event_in_band(band_idx, -1) == offset);
             return offset;
+        }
+
+        inline int get_end_trim_kmer_state() const
+        {
+            return this->n_kmers;
         }
         
         inline int get_offset_for_event_in_band(size_t band_idx, int event_idx) const
@@ -151,6 +154,20 @@ class AdaptiveBandedViterbi
             this->n_fills += 1;
         }
 
+        inline void terminate()
+        {
+            int terminal_event_idx = this->n_events;
+            int terminal_kmer_idx = this->n_kmers;
+
+            float score_d = this->get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1);
+            float score_u = this->get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx);
+            float score_l = this->get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1);
+
+            int band_idx = this->event_kmer_to_band(terminal_event_idx, terminal_kmer_idx);
+            int band_offset = this->get_offset_for_kmer_in_band(band_idx, terminal_kmer_idx);
+            this->set3(band_idx, band_offset, score_d, score_u, score_l);
+        }
+
         inline BandOrigin move_band_down(const BandOrigin& curr_origin) const
         {
             return { curr_origin.event_idx + 1, curr_origin.kmer_idx };
@@ -168,7 +185,9 @@ class AdaptiveBandedViterbi
             this->n_events = read.events[strand_idx].size();
             this->n_kmers = sequence.size() - k + 1;
             this->bandwidth = parameters.bandwidth;
-            this->n_bands = (n_events + 1) + (n_kmers + 1);
+
+            // +2 for the start/end/trim states
+            this->n_bands = (n_events + 2) + (n_kmers + 2);
             this->band_scores = (float*)malloc(sizeof(float) * this->n_bands * this->bandwidth);
             if(this->band_scores == NULL){
                 fprintf(stderr,"Memory allocation failed at %s\n",__func__);
@@ -313,33 +332,19 @@ class AdaptiveBandedViterbi
             std::vector<AlignedPair> out;
 
             float max_score = -INFINITY;
-            int curr_event_idx = 0;
-            int curr_kmer_idx = this->n_kmers - 1;
+            int curr_event_idx = this->n_events;
+            int curr_kmer_idx = this->n_kmers;
 
-            // Find best score between an event and the last k-mer. after trimming the remaining events
-            float lp_trim = log(this->parameters.p_trim);
-            for(int event_idx = 0; event_idx < this->n_events; ++event_idx) {
-                size_t band_idx = this->event_kmer_to_band(event_idx, curr_kmer_idx);
-                size_t offset = this->get_offset_for_event_in_band(band_idx, event_idx);
-                if(this->is_offset_valid(offset)) {
-                    float s = this->get(band_idx,offset) + (this->n_events - event_idx) * lp_trim;
 #ifdef DEBUG_GENERIC
-                    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, s);
-#endif
-                    if(s > max_score) {
-                        max_score = s;
-                        curr_event_idx = event_idx;
-                    }
-                }
-            }
-#ifdef DEBUG_GENERIC
-            fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, max_score);
+            fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
 #endif
 
             while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
 
                 // emit current alignment
-                out.push_back({curr_kmer_idx, curr_event_idx});
+                if(curr_kmer_idx != this->n_kmers) {
+                    out.push_back({curr_kmer_idx, curr_event_idx});
+                }
 
 #ifdef DEBUG_GENERIC
                 fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
@@ -459,7 +464,21 @@ void generic_banded_simple_hmm(SquiggleRead& read,
                 band_idx, offset, event_idx, kmer_idx, hmm_result.get(band_idx, offset), hmm_result.get_trace(band_idx, offset), kmer_rank, lp_emission);
 #endif
         }
+
+        // if there is an end trim state in this band, set it here
+        int end_trim_kmer_state = hmm_result.get_end_trim_kmer_state();
+        assert(end_trim_kmer_state == n_kmers);
+        int offset = hmm_result.get_offset_for_kmer_in_band(band_idx, end_trim_kmer_state);
+        if(hmm_result.is_offset_valid(offset)) {
+            int event_idx = hmm_result.get_event_at_band_offset(band_idx, offset);
+            float score_d = hmm_result.get_by_event_kmer(event_idx - 1, n_kmers - 1) + lp_trim;
+            float score_u = hmm_result.get_by_event_kmer(event_idx - 1, end_trim_kmer_state) + lp_trim;
+            float score_l = hmm_result.get_by_event_kmer(event_idx, n_kmers - 1) + lp_trim;
+            hmm_result.set3(band_idx, offset, score_d, score_u, score_l);
+        }
     }
+
+    hmm_result.terminate();
 
 /*
     // Debug, print some of the score matrix
