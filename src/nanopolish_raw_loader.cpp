@@ -99,7 +99,7 @@ std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead
     size_t strand_idx = 0;
 
     AdaptiveBandedViterbi abv;
-    abv.initialize_adaptive(read, sequence, pore_model.k, strand_idx, parameters);
+    abv.initialize(read, sequence, pore_model.k, strand_idx, parameters);
 
     generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
     std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
@@ -121,12 +121,17 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
                                                                  const AdaBandedParameters parameters)
 {
     size_t strand_idx = 0;
+    std::vector<AlignedPair> alignment;
 
     EventBandedViterbi ebv;
     ebv.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    if(!ebv.are_bands_continuous()) {
+        return alignment;
+    }
 
+    // fill in DP matrix
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebv);
-    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(ebv);
+    alignment = adaptive_banded_backtrack(ebv);
 
     // qc
     bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment, ebv.get_short_name());

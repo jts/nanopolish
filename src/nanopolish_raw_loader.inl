@@ -184,7 +184,7 @@ class AdaptiveBandedMatrix
             return { curr_origin.event_idx, curr_origin.kmer_idx + 1 };
         }
 
-        void initialize_common(const SquiggleRead& read, const std::string& sequence, size_t k, size_t strand_idx, const AdaBandedParameters& parameters)
+        void initialize(const SquiggleRead& read, const std::string& sequence, size_t k, size_t strand_idx, const AdaBandedParameters& parameters)
         {
             this->initialized = true;
             this->parameters = parameters;
@@ -201,70 +201,12 @@ class AdaptiveBandedMatrix
             for(size_t i = 0; i < this->band_origins.size(); ++i) {
                 this->band_origins[i] = { -1, -1 };
             }
-        }
-
-        void initialize_adaptive(const SquiggleRead& read, 
-                                 const std::string& sequence, 
-                                 size_t k, 
-                                 size_t strand_idx, 
-                                 const AdaBandedParameters& parameters)
-        {
-            this->initialize_common(read, sequence, k, strand_idx, parameters);
 
             // initialize positions of first two bands
             int half_bandwidth = this->bandwidth / 2;
             this->band_origins[0].event_idx = half_bandwidth - 1;
             this->band_origins[0].kmer_idx = -1 - half_bandwidth;
             this->band_origins[1] = move_band_down(this->band_origins[0]);
-        }
-
-        void initialize_guided(const SquiggleRead& read, 
-                               const Haplotype& haplotype, 
-                               const EventAlignmentRecord& event_alignment_record, 
-                               size_t k, 
-                               size_t strand_idx, 
-                               const AdaBandedParameters& parameters)
-        {
-            this->initialize_common(read, haplotype.get_sequence(), k, strand_idx, parameters);
-
-            const std::vector<AlignedPair> event_to_haplotype_alignment = event_alignment_record.aligned_events;
-
-            // make a map from event to the position in the haplotype it aligns to
-            int ref_offset = haplotype.get_reference_position();
-            std::vector<int> event_to_kmer(this->n_events, -1);
-            for(size_t i = 0; i < event_to_haplotype_alignment.size(); ++i) {
-                assert(event_to_haplotype_alignment[i].read_pos < event_to_kmer.size());
-                event_to_kmer[event_to_haplotype_alignment[i].read_pos] = event_to_haplotype_alignment[i].ref_pos - ref_offset;
-            }
-
-            // First two bands need to be manually initialized
-            int half_bandwidth = this->bandwidth / 2;
-            this->band_origins[0].event_idx = half_bandwidth - 1;
-            this->band_origins[0].kmer_idx = -1 - half_bandwidth;
-            this->band_origins[1] = move_band_down(this->band_origins[0]);
-
-            // many events will have an unassigned position, fill them in here using the last seen kmer
-            // and set band coordinates
-            int prev_kmer_idx = 0;
-            for(size_t i = 0; i < event_to_kmer.size(); ++i) {
-                if(event_to_kmer[i] == -1) {
-                    event_to_kmer[i] = prev_kmer_idx;
-                } else {
-                    prev_kmer_idx = event_to_kmer[i];
-                }
-
-                int event_idx = i;
-                int kmer_idx = event_to_kmer[i];
-                int band_idx = this->event_kmer_to_band(event_idx, kmer_idx);
-                if(band_idx < this->band_origins.size()) {
-                    this->band_origins[band_idx].event_idx = half_bandwidth + event_idx;
-                    this->band_origins[band_idx].kmer_idx = kmer_idx - half_bandwidth;
-                }
-                /*
-                fprintf(stderr, "lookup[%zu] = %d band_idx: %d origin: %d %d\n", 
-                    event_idx, kmer_idx, band_idx, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
-                */
-            }
         }
 
         int get_bandwidth() const { return this->bandwidth; }
@@ -353,6 +295,7 @@ class EventBandedMatrix
             this->n_fills = 0;
             this->n_bands = 0;
             this->initialized = false;
+            this->band_discontinuity = false;
         }
 
         ~EventBandedMatrix()
@@ -423,10 +366,24 @@ class EventBandedMatrix
                         this->band_origins[band_idx].kmer_idx = this->band_origins[band_idx - 1].kmer_idx;
                     }
                 }
+
                 /*
-                fprintf(stderr, "[ebm] band: %d e2k: %d [%d %d]\n", 
-                    band_idx, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
-                 */
+                fprintf(stderr, "[ebm] band: %d/%d e2k: %d [%d %d]\n",
+                        band_idx, this->n_bands, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
+                */
+
+                // check bands are strictly increasing
+                assert(band_idx == 0 || event_idx > max_event_idx || this->band_origins[band_idx].kmer_idx >= this->band_origins[band_idx - 1].kmer_idx);
+
+                // check for discontinuity
+                // this can happen when the initial event-to-read alignment has a very large skip
+                // for now we just chuck out the read
+                if(band_idx > 0) {
+                    int prev_band_last_kmer = this->band_origins[band_idx - 1].kmer_idx + this->bandwidth - 1;
+                    if(this->band_origins[band_idx].kmer_idx > prev_band_last_kmer) {
+                        this->band_discontinuity = true;
+                    }
+                }
             }
         }
         
@@ -517,6 +474,7 @@ class EventBandedMatrix
         size_t get_num_kmers() const { return this->n_kmers; }
         bool is_initialized() const { return this->initialized; }
         const StorageType& get_storage() const { return storage; }
+        bool are_bands_continuous() const { return !this->band_discontinuity; }
 
     private:
         
@@ -529,6 +487,7 @@ class EventBandedMatrix
         size_t n_fills;
         size_t bandwidth;
         bool initialized;
+        bool band_discontinuity;
 };
 
 template<class GenericBandedHMMResult>
