@@ -55,6 +55,13 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
                                                                  const EventAlignmentRecord& event_align_record,
                                                                  const AdaBandedParameters parameters = AdaBandedParameters());
 
+void guide_banded_generic_simple_posterior(SquiggleRead& read,
+                                           const PoreModel& pore_model,
+                                           const Haplotype& haplotype,
+                                           const EventAlignmentRecord& event_align_record,
+                                           const AdaBandedParameters parameters);
+
+
 // Simple banded alignmend algorithm
 // Deprecated, use the above
 std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read,

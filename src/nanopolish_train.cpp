@@ -287,6 +287,8 @@ void add_aligned_events_for_read(const ReadDB& read_db,
         reference_seq = train_alphabet_ptr->reverse_complement(reference_seq);
     }
 
+    //if(sr.read_name.find("a38dd6") == -1) { return; }
+
     // align events to the reference sequence
     AdaBandedParameters alignment_parameters;
     alignment_parameters.bandwidth = 100;
@@ -296,14 +298,17 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     alignment_parameters.max_stay_threshold = 200;
 
     const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
+
     std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
+    //adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
     
     // prepare data structures for the guided DP
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-    guide_banded_generic_simple_event_align(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+    //guide_banded_generic_simple_event_align(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+    
+    guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
 
     size_t edge_ignore = 200;
     if(alignment.size() < 2*edge_ignore) {

@@ -143,6 +143,28 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
     return alignment;
 }
 
+void guide_banded_generic_simple_posterior(SquiggleRead& read,
+                                           const PoreModel& pore_model,
+                                           const Haplotype& haplotype,
+                                           const EventAlignmentRecord& event_align_record,
+                                           const AdaBandedParameters parameters)
+{
+    size_t strand_idx = 0;
+    std::vector<AlignedPair> alignment;
+
+    EventBandedForward ebf;
+    ebf.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    if(!ebf.are_bands_continuous()) {
+        return;
+    }
+
+    // fill in DP matrix
+    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
+    float f = ebf.get_by_event_kmer(ebf.get_num_events(), ebf.get_num_kmers());
+
+    fprintf(stderr, "%s\t%s\t%.2f\n", "ebf", read.read_name.substr(0, 6).c_str(), f);
+    return;
+}
 
 
 #define event_kmer_to_band(ei, ki) (ei + 1) + (ki + 1)
@@ -559,7 +581,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(kmer_idx, k).c_str(), k);
 
         for(int row = 0; row < n_rows; ++row) {
-            
+
             int event_idx = min_event_idx + row;
             if(event_idx >= n_events) {
                 set(viterbi_matrix, row, col, -INFINITY);
@@ -576,9 +598,9 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
             double up = row_up >= 0 && row_up < n_rows ?        get(viterbi_matrix, row_up, col) : -INFINITY;
             double diag = row_diag >= 0 && row_diag < n_rows ?  get(viterbi_matrix, row_diag, col - 1) : -INFINITY;
             double left = row_left >= 0 && row_left < n_rows ?  get(viterbi_matrix, row_left, col - 1) : -INFINITY;
-            
+
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
-     
+
             double score_d = diag + lp_step + lp_emission;
             double score_u = up + lp_stay + lp_emission;
             double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
@@ -588,10 +610,10 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
 
             max_score = score_u > max_score ? score_u : max_score;
             from = max_score == score_u ? TMPFROM_U : from;
-            
+
             max_score = score_l > max_score ? score_l : max_score;
             from = max_score == score_l ? TMPFROM_L : from;
-     
+
             //fprintf(stderr, "[orgfill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
 #ifdef DEBUG_BANDED
             fprintf(stderr, "[orgfill] e: %d k: %d s: %.2lf f: %d emit: %.2lf\n", event_idx, kmer_idx, max_score, from, lp_emission);

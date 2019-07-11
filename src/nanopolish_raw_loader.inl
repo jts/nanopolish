@@ -11,6 +11,7 @@
 
 //#define DEBUG_GENERIC 1
 //#define DEBUG_GENERIC_BACKTRACK 1
+#define VERIFY_MEMORY 1
 
 // Structure to keep track of the lower-left position in the band
 struct BandOrigin
@@ -84,6 +85,47 @@ class SimpleHMMViterbiStorage
         float* scores;
         uint8_t* trace;
 };
+
+class SimpleHMMFBStorage
+{
+    public:
+        void allocate(size_t n)
+        {
+            this->scores = (float*)malloc(sizeof(float) * n);
+            if(this->scores == NULL){
+                fprintf(stderr,"Memory allocation failed at %s\n",__func__);
+                exit(1);
+            }
+
+            // init
+            for(size_t i = 0; i < n; ++i) {
+                this->scores[i] = -INFINITY;
+            }
+        }
+
+        void deallocate()
+        {
+            free(this->scores);
+            this->scores = NULL;
+        }
+
+        inline float get(size_t cell_idx) const
+        {
+            return this->scores[cell_idx];
+        }
+        
+        inline void set3(size_t cell_idx, float score_d, float score_u, float score_l)
+        {
+            float sum = score_d;
+            sum = add_logs(sum, score_u);
+            sum = add_logs(sum, score_l);
+            this->scores[cell_idx] = sum;
+        }
+    
+    private:
+        float* scores;
+};
+
 
 template<class StorageType>
 class AdaptiveBandedMatrix
@@ -389,9 +431,17 @@ class EventBandedMatrix
         
         void get_offset_range_for_band(size_t band_idx, int& min_offset, int& max_offset) const
         {
-            // all band cells are valid in this scheme
-            min_offset = this->band_origins[band_idx].kmer_idx >= 0 ? 0 : 1;
-            max_offset = std::min(this->bandwidth, this->n_kmers - this->band_origins[band_idx].kmer_idx);
+            int kmer_min_offset = this->band_origins[band_idx].kmer_idx >= 0 ? 0 : 1;
+            int kmer_max_offset = std::min(this->bandwidth, this->n_kmers - this->band_origins[band_idx].kmer_idx);
+
+            int event_min_offset = this->band_origins[band_idx].event_idx >= 0 ? 0 : 1;
+            int event_max_offset = std::min(this->bandwidth, this->n_events - this->band_origins[band_idx].event_idx);
+
+            min_offset = std::max(kmer_min_offset, event_min_offset);
+            min_offset = std::max(min_offset, 0);
+
+            max_offset = std::min(kmer_max_offset, event_max_offset);
+            max_offset = std::min(max_offset, (int)this->bandwidth);
         }
 
         // EventBanding does not adapt, this function does nothing
@@ -409,7 +459,11 @@ class EventBandedMatrix
 
         inline size_t get_cell_for_band_offset(size_t band_idx, int band_offset) const
         {
-            return band_idx * this->bandwidth + band_offset;
+            size_t cell_idx = band_idx * this->bandwidth + band_offset;
+#if VERIFY_MEMORY
+            assert(cell_idx < this->n_bands * this->bandwidth);
+#endif
+            return cell_idx;
         }
         
         inline int get_event_at_band_offset(size_t band_idx, int offset) const
@@ -503,10 +557,6 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     size_t n_events = read.events[strand_idx].size();
     size_t n_kmers = sequence.size() - k + 1;
 
-#ifdef DEBUG_GENERIC
-    fprintf(stderr, "[ada] aligning read %s\n", read.read_name.substr(0,6).c_str());
-#endif
-
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
     double p_stay = 1 - (1 / events_per_kmer);
@@ -556,7 +606,11 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             float up   = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx);
             float left = hmm_result.get_by_event_kmer(event_idx, kmer_idx - 1);
             float diag = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx - 1);
-
+            
+#ifdef VERIFY_MEMORY
+            assert(event_idx >= 0 && event_idx < n_events);
+            assert(kmer_idx >= 0 && kmer_idx < n_kmers);
+#endif
             float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
             float score_d = diag + lp_step + lp_emission;
             float score_u = up + lp_stay + lp_emission;
@@ -611,6 +665,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 // conveniance typedefs
 typedef AdaptiveBandedMatrix<SimpleHMMViterbiStorage> AdaptiveBandedViterbi;
 typedef EventBandedMatrix<SimpleHMMViterbiStorage> EventBandedViterbi;
+typedef EventBandedMatrix<SimpleHMMFBStorage> EventBandedForward;
 
 template<class MatrixType>
 std::vector<AlignedPair> adaptive_banded_backtrack(const MatrixType& mt)
