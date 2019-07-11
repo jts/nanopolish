@@ -297,7 +297,7 @@ void add_aligned_events_for_read(const ReadDB& read_db,
 
     const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
     std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    //adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
+    adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
     
     // prepare data structures for the guided DP
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
@@ -305,7 +305,6 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
     guide_banded_generic_simple_event_align(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
 
-    exit(1);
     size_t edge_ignore = 200;
     if(alignment.size() < 2*edge_ignore) {
         return;

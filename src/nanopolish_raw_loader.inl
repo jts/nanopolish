@@ -10,6 +10,7 @@
 #include "nanopolish_haplotype.h"
 
 //#define DEBUG_GENERIC 1
+//#define DEBUG_GENERIC_BACKTRACK 1
 
 // Structure to keep track of the lower-left position in the band
 struct BandOrigin
@@ -382,9 +383,13 @@ class EventBandedMatrix
 
             for(size_t i = 0; i < event_to_haplotype_alignment.size(); ++i) {
                 int event_idx = event_to_haplotype_alignment[i].read_pos;
-                int kmer_idx = event_to_haplotype_alignment[i].ref_pos;
+                int kmer_idx = event_to_haplotype_alignment[i].ref_pos - ref_offset;
+                if(event_alignment_record.rc) {
+                    // change strand
+                    kmer_idx = this->n_kmers - 1 - kmer_idx;
+                }
                 assert(event_idx < event_to_kmer.size());
-                event_to_kmer[event_idx] = kmer_idx - ref_offset;
+                event_to_kmer[event_idx] = kmer_idx;
                 min_event_idx = std::min(event_idx, min_event_idx);
                 max_event_idx = std::max(event_idx, max_event_idx);
             }
@@ -421,7 +426,7 @@ class EventBandedMatrix
                 /*
                 fprintf(stderr, "[ebm] band: %d e2k: %d [%d %d]\n", 
                     band_idx, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
-                */
+                 */
             }
         }
         
