@@ -23,7 +23,7 @@ const uint8_t SHMM_FROM_U = 1;
 const uint8_t SHMM_FROM_L = 2;
 const uint8_t SHMM_FROM_INVALID = 3;
 
-class AdaptiveBandedViterbiStorage
+class SimpleHMMViterbiStorage
 {
     public:
         void allocate(size_t n)
@@ -467,7 +467,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 }
 
 // conveniance typedefs
-typedef AdaptiveBandedGeneric<AdaptiveBandedViterbiStorage> AdaptiveBandedViterbi;
+typedef AdaptiveBandedGeneric<SimpleHMMViterbiStorage> AdaptiveBandedViterbi;
 
 std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& abv)
 {

@@ -90,47 +90,6 @@ bool qc_simple_event_alignment(SquiggleRead& read, const PoreModel& pore_model, 
     return passed;
 }
 
-std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& abv)
-{
-    // Backtrack to compute alignment
-    std::vector<AlignedPair> out;
-
-    float max_score = -INFINITY;
-    size_t n_kmers = abv.get_num_kmers();
-    int curr_event_idx = abv.get_num_events();
-    int curr_kmer_idx = n_kmers;
-
-#ifdef DEBUG_GENERIC
-    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
-#endif
-
-    while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
-
-        // emit current alignment
-        if(curr_kmer_idx != n_kmers) {
-            out.push_back({curr_kmer_idx, curr_event_idx});
-        }
-
-#ifdef DEBUG_GENERIC
-        fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
-#endif
-        // position in band
-        size_t cell_idx = abv.get_cell_for_event_kmer(curr_event_idx, curr_kmer_idx);
-
-        uint8_t from = abv.get_storage().get_trace(cell_idx);
-        if(from == SHMM_FROM_D) {
-            curr_kmer_idx -= 1;
-            curr_event_idx -= 1;
-        } else if(from == SHMM_FROM_U) {
-            curr_event_idx -= 1;
-        } else {
-            curr_kmer_idx -= 1;
-        }
-    }
-    std::reverse(out.begin(), out.end());
-    return out;
-}
-
 std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
 {
     size_t strand_idx = 0;
