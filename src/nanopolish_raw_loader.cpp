@@ -59,7 +59,11 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
     return out;
 }
 
-bool qc_simple_event_alignment(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters, std::vector<AlignedPair>& alignment)
+bool qc_simple_event_alignment(SquiggleRead& read,
+                               const PoreModel& pore_model,
+                               const std::string& sequence,
+                               const AdaBandedParameters parameters,
+                               const std::vector<AlignedPair>& alignment, const char* short_name)
 {
     // Calculate QC metrics
     size_t strand_idx = 0;
@@ -84,7 +88,7 @@ bool qc_simple_event_alignment(SquiggleRead& read, const PoreModel& pore_model, 
 
     double events_per_kmer = 0.0f;
     if(parameters.verbose) {
-        fprintf(stderr, "ada-gen\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n",
+        fprintf(stderr, "%s\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n", short_name,
             read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos);
     }
     return passed;
@@ -101,7 +105,7 @@ std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead
     std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
 
     // qc
-    bool qc_pass = qc_simple_event_alignment(read, pore_model, sequence, parameters, alignment);
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, sequence, parameters, alignment, abv.get_short_name());
 
     if(!qc_pass) {
         alignment.clear();
@@ -118,14 +122,14 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
 {
     size_t strand_idx = 0;
 
-    AdaptiveBandedViterbi abv;
-    abv.initialize_guided(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    EventBandedViterbi ebv;
+    ebv.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
 
-    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, abv);
-    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
+    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebv);
+    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(ebv);
 
     // qc
-    bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment);
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment, ebv.get_short_name());
 
     if(!qc_pass) {
         alignment.clear();

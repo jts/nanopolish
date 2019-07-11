@@ -75,11 +75,6 @@ class SimpleHMMViterbiStorage
             from = max_score == score_u ? SHMM_FROM_U : from;
             max_score = score_l > max_score ? score_l : max_score;
             from = max_score == score_l ? SHMM_FROM_L : from;
-#ifdef DEBUG_GENERIC
-            int event_idx = this->get_event_at_band_offset(band_idx, band_offset);
-            int kmer_idx = this->get_kmer_at_band_offset(band_idx, band_offset);
-            fprintf(stderr, "[ada-generic] band: (%zu, %d) ek: (%d %d) set3(%.2f, %.2f, %.2f) from: %d\n", band_idx, band_offset, event_idx, kmer_idx, score_d, score_u, score_l, from);
-#endif
             this->scores[cell_idx] = max_score;
             this->trace[cell_idx] = from;
         }
@@ -90,10 +85,10 @@ class SimpleHMMViterbiStorage
 };
 
 template<class StorageType>
-class AdaptiveBandedGeneric
+class AdaptiveBandedMatrix
 {
     public:
-        AdaptiveBandedGeneric()
+        AdaptiveBandedMatrix()
         {
             this->bandwidth = 0;
             this->n_fills = 0;
@@ -101,7 +96,7 @@ class AdaptiveBandedGeneric
             this->initialized = false;
         }
 
-        ~AdaptiveBandedGeneric()
+        ~AdaptiveBandedMatrix()
         {
             this->storage.deallocate();
         }
@@ -331,8 +326,195 @@ class AdaptiveBandedGeneric
             max_offset = std::min(max_offset, (int)this->bandwidth);
         }
 
+        inline const char* get_short_name() { return "abv"; }
+
     private:
 
+        StorageType storage;
+        std::vector<BandOrigin> band_origins;
+        AdaBandedParameters parameters;
+        size_t n_kmers;
+        size_t n_events;
+        size_t n_bands;
+        size_t n_fills;
+        size_t bandwidth;
+        bool initialized;
+};
+
+template<class StorageType>
+class EventBandedMatrix
+{
+    public:
+        
+        EventBandedMatrix()
+        {
+            this->bandwidth = 0;
+            this->n_fills = 0;
+            this->n_bands = 0;
+            this->initialized = false;
+        }
+
+        ~EventBandedMatrix()
+        {
+            this->storage.deallocate();
+        }
+
+        void initialize(const SquiggleRead& read, 
+                        const Haplotype& haplotype, 
+                        const EventAlignmentRecord& event_alignment_record, 
+                        size_t k, 
+                        size_t strand_idx, 
+                        const AdaBandedParameters& parameters)
+        {
+            this->initialized = true;
+            this->parameters = parameters;
+            this->n_kmers = haplotype.get_sequence().size() - k + 1;
+            this->n_events = read.events[strand_idx].size();
+            this->bandwidth = parameters.bandwidth;
+            
+            const std::vector<AlignedPair> event_to_haplotype_alignment = event_alignment_record.aligned_events;
+
+            // make a map from event to the position in the haplotype it aligns to
+            int ref_offset = haplotype.get_reference_position();
+            std::vector<int> event_to_kmer(this->n_events, -1);
+            int min_event_idx = std::numeric_limits<int>::max();
+            int max_event_idx = std::numeric_limits<int>::min();
+
+            for(size_t i = 0; i < event_to_haplotype_alignment.size(); ++i) {
+                int event_idx = event_to_haplotype_alignment[i].read_pos;
+                int kmer_idx = event_to_haplotype_alignment[i].ref_pos;
+                assert(event_idx < event_to_kmer.size());
+                event_to_kmer[event_idx] = kmer_idx - ref_offset;
+                min_event_idx = std::min(event_idx, min_event_idx);
+                max_event_idx = std::max(event_idx, max_event_idx);
+            }
+
+            // +2 for the start/end/trim states
+            this->n_bands = (n_events + 2);
+            size_t n_cells = this->n_bands * this->bandwidth;
+            this->storage.allocate(n_cells);
+            
+            this->band_origins.resize(n_bands);
+            for(size_t i = 0; i < this->band_origins.size(); ++i) {
+                this->band_origins[i] = { -1, -1 };
+            }
+
+            int half_bandwidth = this->bandwidth / 2;
+
+            for(int band_idx = 0; band_idx < this->n_bands; ++band_idx) {
+                int event_idx = band_idx - 1;
+                this->band_origins[band_idx].event_idx = event_idx;
+                if(event_idx < min_event_idx) {
+                    // band starts at start trim state
+                    this->band_origins[band_idx].kmer_idx = -1;
+                } else if(event_idx > max_event_idx) {
+                    // band terminates at end trim state
+                    this->band_origins[band_idx].kmer_idx = this->n_kmers - this->bandwidth + 1;
+                } else {
+                    // if this event was aligned to a k-mer, set the band accordingly otherwise copy previous band
+                    if(event_to_kmer[event_idx] != -1) {
+                        this->band_origins[band_idx].kmer_idx = std::max(-1, event_to_kmer[event_idx] - half_bandwidth);
+                    } else {
+                        this->band_origins[band_idx].kmer_idx = this->band_origins[band_idx - 1].kmer_idx;
+                    }
+                }
+                /*
+                fprintf(stderr, "[ebm] band: %d e2k: %d [%d %d]\n", 
+                    band_idx, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
+                */
+            }
+        }
+        
+        void get_offset_range_for_band(size_t band_idx, int& min_offset, int& max_offset) const
+        {
+            // all band cells are valid in this scheme
+            min_offset = this->band_origins[band_idx].kmer_idx >= 0 ? 0 : 1;
+            max_offset = std::min(this->bandwidth, this->n_kmers - this->band_origins[band_idx].kmer_idx);
+        }
+
+        // EventBanding does not adapt, this function does nothing
+        void determine_band_origin(size_t band_idx) {}
+
+        inline bool is_offset_valid(int band_offset) const
+        {
+            return band_offset >= 0 && band_offset < this->bandwidth;
+        }
+        
+        inline int event_kmer_to_band(int event_idx, int kmer_idx) const
+        {
+            return (event_idx + 1);
+        }
+
+        inline size_t get_cell_for_band_offset(size_t band_idx, int band_offset) const
+        {
+            return band_idx * this->bandwidth + band_offset;
+        }
+        
+        inline int get_event_at_band_offset(size_t band_idx, int offset) const
+        {
+            return this->band_origins[band_idx].event_idx;
+        }
+
+        inline int get_kmer_at_band_offset(size_t band_idx, int offset) const
+        {
+            return this->band_origins[band_idx].kmer_idx + offset;
+        }
+
+        inline int get_offset_for_kmer_in_band(size_t band_idx, int kmer_idx) const
+        {
+            return kmer_idx - this->band_origins[band_idx].kmer_idx;
+        }
+
+        inline float get(size_t band_idx, int band_offset) const
+        {
+            return this->is_offset_valid(band_offset) ? 
+                this->storage.get(get_cell_for_band_offset(band_idx, band_offset)) : -INFINITY;
+        }
+        
+        inline float get_by_event_kmer(int event_idx, int kmer_idx) const
+        {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            // NB: not necessary to verify band/offset is valid
+            return this->get(band_idx, band_offset);
+        }
+
+        inline size_t get_cell_for_event_kmer(int event_idx, int kmer_idx) const
+        {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            assert(is_offset_valid(band_offset));
+            return get_cell_for_band_offset(band_idx, band_offset);
+        }
+        
+        inline void set3_by_event_kmer(int event_idx, int kmer_idx, float score_d, float score_u, float score_l) {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            if(is_offset_valid(band_offset)) {
+                this->set3(band_idx, band_offset, score_d, score_u, score_l);
+            }
+        }
+
+        inline void set3(size_t band_idx, int band_offset, float score_d, float score_u, float score_l)
+        {
+            size_t cell_idx = get_cell_for_band_offset(band_idx, band_offset);
+            this->storage.set3(cell_idx, score_d, score_u, score_l);
+            this->n_fills += 1;
+        }
+
+        inline const char* get_short_name() { return "ebv"; }
+
+        // getters
+        int get_bandwidth() const { return this->bandwidth; }
+        int get_num_bands() const { return this->n_bands; }
+        int get_num_fills() const { return this->n_fills; }
+        size_t get_num_events() const { return this->n_events; }
+        size_t get_num_kmers() const { return this->n_kmers; }
+        bool is_initialized() const { return this->initialized; }
+        const StorageType& get_storage() const { return storage; }
+
+    private:
+        
         StorageType storage;
         std::vector<BandOrigin> band_origins;
         AdaBandedParameters parameters;
@@ -384,10 +566,6 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     // band 0: score zero in the starting cell
     hmm_result.set3_by_event_kmer(-1, -1, 0.0f, -INFINITY, -INFINITY);
 
-#ifdef DEBUG_GENERIC
-    fprintf(stderr, "[generic] trim-init bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, hmm_result.get(1,first_trim_offset));
-#endif
-
     // fill in remaining bands
     for(int band_idx = 1; band_idx < hmm_result.get_num_bands(); ++band_idx) {
 
@@ -422,10 +600,9 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             hmm_result.set3_by_event_kmer(event_idx, kmer_idx, score_d, score_u, score_l);
 
 #ifdef DEBUG_GENERIC
-            fprintf(stderr, "[ada-gen-fill] offset-up: %d offset-diag: %d offset-left: %d\n", offset_up, offset_diag, offset_left);
-            fprintf(stderr, "[ada-gen-fill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
-            fprintf(stderr, "[ada-gen-fill] bi: %d o: %d e: %d k: %d s: %.2lf f: %d rank: %zu emit: %.2lf\n", 
-                band_idx, offset, event_idx, kmer_idx, hmm_result.get(band_idx, offset), hmm_result.get_trace(band_idx, offset), kmer_rank, lp_emission);
+            fprintf(stderr, "[ada-gen-fill] bi: %d o: %d e: %d k: %d s: %.2lf rank: %zu emit: %.2lf\n", 
+                band_idx, offset, event_idx, kmer_idx, hmm_result.get(band_idx, offset), kmer_rank, lp_emission);
+            fprintf(stderr, "[ada-gen-fill]\tup: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
 #endif
         }
 
@@ -438,6 +615,7 @@ void generic_banded_simple_hmm(SquiggleRead& read,
             float score_u = hmm_result.get_by_event_kmer(event_idx - 1, end_trim_kmer_state) + lp_trim;
             float score_l = hmm_result.get_by_event_kmer(event_idx, n_kmers - 1) + lp_trim;
             hmm_result.set3(band_idx, offset, score_d, score_u, score_l);
+            //fprintf(stderr, "[ada-gen-fill] set end trim %d %d %d\n", end_trim_kmer_state, band_idx, offset);
         }
     }
 
@@ -467,20 +645,22 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 }
 
 // conveniance typedefs
-typedef AdaptiveBandedGeneric<SimpleHMMViterbiStorage> AdaptiveBandedViterbi;
+typedef AdaptiveBandedMatrix<SimpleHMMViterbiStorage> AdaptiveBandedViterbi;
+typedef EventBandedMatrix<SimpleHMMViterbiStorage> EventBandedViterbi;
 
-std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& abv)
+template<class MatrixType>
+std::vector<AlignedPair> adaptive_banded_backtrack(const MatrixType& mt)
 {
     // Backtrack to compute alignment
     std::vector<AlignedPair> out;
 
     float max_score = -INFINITY;
-    size_t n_kmers = abv.get_num_kmers();
-    int curr_event_idx = abv.get_num_events();
+    size_t n_kmers = mt.get_num_kmers();
+    int curr_event_idx = mt.get_num_events();
     int curr_kmer_idx = n_kmers;
 
-#ifdef DEBUG_GENERIC
-    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, this->get_by_event_kmer(curr_event_idx, curr_kmer_idx));
+#ifdef DEBUG_GENERIC_BACKTRACK
+    fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, mt.get_by_event_kmer(curr_event_idx, curr_kmer_idx));
 #endif
 
     while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
@@ -490,13 +670,13 @@ std::vector<AlignedPair> adaptive_banded_backtrack(const AdaptiveBandedViterbi& 
             out.push_back({curr_kmer_idx, curr_event_idx});
         }
 
-#ifdef DEBUG_GENERIC
+#ifdef DEBUG_GENERIC_BACKTRACK
         fprintf(stderr, "[ada-generic-back] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
 #endif
         // position in band
-        size_t cell_idx = abv.get_cell_for_event_kmer(curr_event_idx, curr_kmer_idx);
+        size_t cell_idx = mt.get_cell_for_event_kmer(curr_event_idx, curr_kmer_idx);
 
-        uint8_t from = abv.get_storage().get_trace(cell_idx);
+        uint8_t from = mt.get_storage().get_trace(cell_idx);
         if(from == SHMM_FROM_D) {
             curr_kmer_idx -= 1;
             curr_event_idx -= 1;
