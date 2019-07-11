@@ -162,7 +162,8 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
     float f = ebf.get_by_event_kmer(ebf.get_num_events(), ebf.get_num_kmers());
 
-    fprintf(stderr, "%s\t%s\t%.2f\n", "ebf", read.read_name.substr(0, 6).c_str(), f);
+    fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\n", "ebf",
+        read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events());
     return;
 }
 
