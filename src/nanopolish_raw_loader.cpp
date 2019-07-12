@@ -152,19 +152,27 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
     size_t strand_idx = 0;
     std::vector<AlignedPair> alignment;
 
+    // Forward
     EventBandedForward ebf;
     ebf.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
     if(!ebf.are_bands_continuous()) {
         return;
     }
 
-    // fill in DP matrix
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
+
+    // Backward
+    EventBandedForward ebb;
+    ebb.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    assert(ebb.are_bands_continuous()); // if forward is OK backwards must be too
+    generic_banded_simple_hmm_backwards(read, pore_model, haplotype.get_sequence(), parameters, ebb);
+
     float f = ebf.get_by_event_kmer(ebf.get_num_events(), ebf.get_num_kmers());
+    float b = ebb.get_by_event_kmer(-1, -1);
 
     if(parameters.verbose) {
-        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\n", "ebf",
-            read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events());
+        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\t%.2f\t%.2f\n", "ebf",
+            read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events(), f, b);
     }
     return;
 }
@@ -254,7 +262,7 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     };
 
     std::vector<EventKmerPair> band_lower_left(n_bands);
- 
+
     // initialize range of first two bands
     band_lower_left[0].event_idx = half_bandwidth - 1;
     band_lower_left[0].kmer_idx = -1 - half_bandwidth;

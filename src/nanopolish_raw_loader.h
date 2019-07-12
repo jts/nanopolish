@@ -18,12 +18,6 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
                                              const PoreModel& pore_model,
                                              const event_table& et);
 
-enum SimpleHMMBandPolicy
-{
-    SHMM_BP_ADAPTIVE,
-    SHMM_BP_GUIDED
-};
-
 struct AdaBandedParameters
 {
     double min_average_log_emission = -5.0;
@@ -33,7 +27,6 @@ struct AdaBandedParameters
     float p_skip = 1e-10;
     float p_trim = 1e-2;
     int verbose = 0;
-    SimpleHMMBandPolicy band_policy = SHMM_BP_ADAPTIVE;
 };
 
 // Align events to k-mers of a sequence using Suzuki's adaptive banded algorithm
