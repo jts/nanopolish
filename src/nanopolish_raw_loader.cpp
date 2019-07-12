@@ -162,8 +162,10 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
     float f = ebf.get_by_event_kmer(ebf.get_num_events(), ebf.get_num_kmers());
 
-    fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\n", "ebf",
-        read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events());
+    if(parameters.verbose) {
+        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\n", "ebf",
+            read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events());
+    }
     return;
 }
 
@@ -196,11 +198,11 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     const uint8_t TMPFROM_D = 0;
     const uint8_t TMPFROM_U = 1;
     const uint8_t TMPFROM_L = 2;
- 
+
     // banding
     int bandwidth = parameters.bandwidth;
     int half_bandwidth = bandwidth / 2;
- 
+
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
     double p_stay = 1 - (1 / events_per_kmer);
@@ -211,12 +213,12 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, 
     double lp_stay = log(p_stay);
     double lp_step = log(1.0 - exp(lp_skip) - exp(lp_stay));
     double lp_trim = log(parameters.p_trim);
- 
+
     // dp matrix
     size_t n_rows = n_events + 1;
     size_t n_cols = n_kmers + 1;
     size_t n_bands = n_rows + n_cols;
- 
+
     // Initialize
 
     // Precompute k-mer ranks to avoid doing this in the inner loop
