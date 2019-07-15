@@ -383,7 +383,8 @@ class EventBandedMatrix
                     // change strand
                     kmer_idx = this->n_kmers - 1 - kmer_idx;
                 }
-                assert(event_idx < event_to_kmer.size());
+                if(event_idx >= event_to_kmer.size()) { continue; }
+                //assert(event_idx < event_to_kmer.size());
                 event_to_kmer[event_idx] = kmer_idx;
                 min_event_idx = std::min(event_idx, min_event_idx);
                 max_event_idx = std::max(event_idx, max_event_idx);
@@ -421,7 +422,7 @@ class EventBandedMatrix
                     ki = std::min(ki, min_kmer_idx); // clip upper
                     this->band_origins[band_idx].kmer_idx = ki;
                 }
-
+                
                 /*
                 fprintf(stderr, "[ebm] band: %d/%d e2k: %d [%d %d]\n",
                         band_idx, this->n_bands, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
@@ -567,8 +568,8 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     size_t strand_idx = 0;
     size_t k = pore_model.k;
     const Alphabet* alphabet = pore_model.pmalphabet;
-    size_t n_events = read.events[strand_idx].size();
-    size_t n_kmers = sequence.size() - k + 1;
+    size_t n_events = hmm_result.get_num_events();
+    size_t n_kmers = hmm_result.get_num_kmers();
 
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
@@ -689,8 +690,8 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
     size_t strand_idx = 0;
     size_t k = pore_model.k;
     const Alphabet* alphabet = pore_model.pmalphabet;
-    size_t n_events = read.events[strand_idx].size();
-    size_t n_kmers = sequence.size() - k + 1;
+    size_t n_events = hmm_result.get_num_events();
+    size_t n_kmers = hmm_result.get_num_kmers();
 
     // transition penalties
     double events_per_kmer = (double)n_events / n_kmers;
@@ -772,7 +773,7 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
             assert(kmer_idx >= 0 && kmer_idx < n_kmers);
 #endif
             float lp_emission_diag = event_idx < n_events - 1 && kmer_idx < n_kmers - 1 ? 
-                log_probability_match_r9(read, pore_model, kmer_ranks[kmer_idx + 1], event_idx + 1, strand_idx) : -INFINITY;
+                log_probability_match_r9(read, pore_model, kmer_ranks[kmer_idx + 1], event_idx + 1, strand_idx) : 0.0f;
 
             float lp_emission_down = event_idx < n_events - 1 ? 
                 log_probability_match_r9(read, pore_model, kmer_ranks[kmer_idx], event_idx + 1, strand_idx) : -INFINITY;
@@ -787,7 +788,7 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
 
 #ifdef DEBUG_GENERIC_BACKWARD
             fprintf(stderr, "[ada-gen-fill-bw] bi: %d o: %d e: %d k: %d s: %.2lf emit-diag: %.2lf emit-down: %.2lf\n", 
-                band_idx, offset, event_idx, kmer_idx, hmm_result.get3_by_event_kmer(event_idx, kmer_idx), lp_emission_diag, lp_emission_down);
+                band_idx, offset, event_idx, kmer_idx, hmm_result.get_by_event_kmer(event_idx, kmer_idx), lp_emission_diag, lp_emission_down);
             fprintf(stderr, "[ada-gen-fill-bw]\tdown: %.2lf diag: %.2lf right: %.2lf\n", down, diag, right);
 #endif
         }

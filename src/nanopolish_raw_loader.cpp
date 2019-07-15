@@ -75,7 +75,6 @@ bool qc_simple_event_alignment(SquiggleRead& read,
     for(size_t i = 0; i < alignment.size(); ++i) {
         size_t event_idx = alignment[i].read_pos;
         size_t kmer_idx = alignment[i].ref_pos;
-
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(kmer_idx, k).c_str(), k);
         sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
         n_aligned_events += 1;
@@ -191,7 +190,8 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
         int trim_event_idx = band_idx - 1;
         float sa = ebf.get_by_event_kmer(trim_event_idx, -1);
         float sb = ebb.get_by_event_kmer(trim_event_idx, -1);
-        fprintf(stderr, "[posterior] %d ST - (%.2lf %.2lf %.2lf)\n", trim_event_idx, sa, sb, sa + sb - f);
+        float slp = sa + sb - f;
+        fprintf(stderr, "[posterior] %d ST %.4f (%.2lf %.2lf %.2lf)\n", trim_event_idx, expf(slp), sa, sb, slp);
         int min_offset, max_offset;
         ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
         for(int offset = min_offset; offset < max_offset; ++offset) {
@@ -210,7 +210,8 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
 
         float fte = ebf.get_by_event_kmer(trim_event_idx, ebf.get_num_kmers());
         float bte = ebb.get_by_event_kmer(trim_event_idx, ebf.get_num_kmers());
-        fprintf(stderr, "[posterior] %d ET - (%.2lf %.2lf %.2lf)\n", trim_event_idx, fte, bte, fte + bte - f);
+        float lpte = fte + bte - f;
+        fprintf(stderr, "[posterior] %d ET %.4f (%.2lf %.2lf %.2lf)\n", trim_event_idx, expf(lpte), fte, bte, lpte);
     }
 
     return;
