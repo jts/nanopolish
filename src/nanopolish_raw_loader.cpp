@@ -181,7 +181,7 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
         float weight;
     };
 
-
+/*
     float sa = ebf.get_by_event_kmer(-1, -1);
     float sb = ebb.get_by_event_kmer(-1, -1);
     fprintf(stderr, "[posterior] -1 -1 - (%.2lf %.2lf %.2lf)\n", sa, sb, sa + sb - f);
@@ -212,6 +212,60 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
         float bte = ebb.get_by_event_kmer(trim_event_idx, ebf.get_num_kmers());
         float lpte = fte + bte - f;
         fprintf(stderr, "[posterior] %d ET %.4f (%.2lf %.2lf %.2lf)\n", trim_event_idx, expf(lpte), fte, bte, lpte);
+    }
+*/
+
+    // Pass 1: calculate normalization term by event
+    std::vector<float> normalization(ebf.get_num_events(), -INFINITY);
+    for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
+        // trim start
+        int trim_event_idx = band_idx - 1;
+        float lp = ebf.get_by_event_kmer(trim_event_idx, -1) + ebb.get_by_event_kmer(trim_event_idx, -1) - f;
+        normalization[trim_event_idx] = logsumexpf(normalization[trim_event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+        fprintf(stderr, "[normalization] %d %d %.8f %.8f\n", trim_event_idx, -1, lp, normalization[trim_event_idx]);
+#endif
+        // normal event, kmer pairs
+        int min_offset, max_offset;
+        ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
+        for(int offset = min_offset; offset < max_offset; ++offset) {
+            int event_idx = ebf.get_event_at_band_offset(band_idx, offset);
+            int kmer_idx = ebf.get_kmer_at_band_offset(band_idx, offset);
+            float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
+            float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
+            lp = fke + bke - f;
+            normalization[event_idx] = logsumexpf(normalization[event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+            fprintf(stderr, "[normalization] %d %d %.8f %.8f %.8f %.8f %.8f %.8f %.8f\n", event_idx, kmer_idx, fke, bke, fke + bke, f, lp, expf(lp), normalization[event_idx]);
+#endif
+        }
+
+        // trim end
+        int trim_end_kmer_idx = ebf.get_num_kmers();
+        lp = ebf.get_by_event_kmer(trim_event_idx, trim_end_kmer_idx) + ebb.get_by_event_kmer(trim_event_idx, trim_end_kmer_idx) - f;
+        normalization[trim_event_idx] = logsumexpf(normalization[trim_event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+        fprintf(stderr, "[normalization] %d %d %.8f %.8f\n", trim_event_idx, ebf.get_num_kmers(), lp, normalization[trim_event_idx]);
+#endif
+    }
+
+    // Pass 2: calculate posteriors
+    for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
+        int min_offset, max_offset;
+        ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
+        for(int offset = min_offset; offset < max_offset; ++offset) {
+            int event_idx = ebf.get_event_at_band_offset(band_idx, offset);
+            int kmer_idx = ebf.get_kmer_at_band_offset(band_idx, offset);
+
+            float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
+            float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
+            float n = normalization[event_idx];
+            float w = expf(fke + bke - f - n);
+            EventKmerPosterior ekp = { event_idx, kmer_idx, w };
+            if(w > 0.00001) {
+                fprintf(stderr, "[posterior] %d %d %.8f (%.2lf %.2lf %.8lf %.8lf %.8lf)\n", ekp.event_idx, ekp.kmer_idx, w, fke, bke, fke + bke, n, fke + bke - n);
+            }
+        }
     }
 
     return;
