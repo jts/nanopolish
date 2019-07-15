@@ -170,7 +170,7 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
     float b = ebb.get_by_event_kmer(-1, -1);
 
     if(parameters.verbose) {
-        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\t%.2f\t%.2f\n", "ebf",
+        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\t%.8f\t%.8f\n", "ebf",
             read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events(), f, b);
     }
 
@@ -180,40 +180,6 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
         int kmer_idx;
         float weight;
     };
-
-/*
-    float sa = ebf.get_by_event_kmer(-1, -1);
-    float sb = ebb.get_by_event_kmer(-1, -1);
-    fprintf(stderr, "[posterior] -1 -1 - (%.2lf %.2lf %.2lf)\n", sa, sb, sa + sb - f);
-
-    for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
-        int trim_event_idx = band_idx - 1;
-        float sa = ebf.get_by_event_kmer(trim_event_idx, -1);
-        float sb = ebb.get_by_event_kmer(trim_event_idx, -1);
-        float slp = sa + sb - f;
-        fprintf(stderr, "[posterior] %d ST %.4f (%.2lf %.2lf %.2lf)\n", trim_event_idx, expf(slp), sa, sb, slp);
-        int min_offset, max_offset;
-        ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
-        for(int offset = min_offset; offset < max_offset; ++offset) {
-            int event_idx = ebf.get_event_at_band_offset(band_idx, offset);
-            int kmer_idx = ebf.get_kmer_at_band_offset(band_idx, offset);
-
-            //float fte = ebf.get_by_event_kmer(event_idx, -1);
-            //float bte = ebb.get_by_event_kmer(event_idx, -1);
-
-            float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
-            float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
-            float w = expf(fke + bke - f);
-            EventKmerPosterior ekp = { event_idx, kmer_idx, w };
-            fprintf(stderr, "[posterior] %d %d %.4f (%.2lf %.2lf %.2lf)\n", ekp.event_idx, ekp.kmer_idx, w, fke, bke, fke + bke - f);
-        }
-
-        float fte = ebf.get_by_event_kmer(trim_event_idx, ebf.get_num_kmers());
-        float bte = ebb.get_by_event_kmer(trim_event_idx, ebf.get_num_kmers());
-        float lpte = fte + bte - f;
-        fprintf(stderr, "[posterior] %d ET %.4f (%.2lf %.2lf %.2lf)\n", trim_event_idx, expf(lpte), fte, bte, lpte);
-    }
-*/
 
     // Pass 1: calculate normalization term by event
     std::vector<float> normalization(ebf.get_num_events(), -INFINITY);
@@ -263,7 +229,8 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
             float w = expf(fke + bke - f - n);
             EventKmerPosterior ekp = { event_idx, kmer_idx, w };
             if(w > 0.00001) {
-                fprintf(stderr, "[posterior] %d %d %.8f (%.2lf %.2lf %.8lf %.8lf %.8lf)\n", ekp.event_idx, ekp.kmer_idx, w, fke, bke, fke + bke, n, fke + bke - n);
+                std::string kmer = haplotype.get_sequence().substr(ekp.kmer_idx, 6);
+                fprintf(stderr, "[posterior] %d %d %s %.8f (%.2lf %.2lf %.8lf %.8lf %.8lf)\n", ekp.event_idx, ekp.kmer_idx, kmer.c_str(), w, fke, bke, fke + bke, n, fke + bke - n);
             }
         }
     }

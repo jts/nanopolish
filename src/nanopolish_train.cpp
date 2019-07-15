@@ -292,7 +292,7 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     // align events to the reference sequence
     AdaBandedParameters alignment_parameters;
     alignment_parameters.bandwidth = 100;
-    alignment_parameters.p_skip = 1e-10;
+    alignment_parameters.p_skip = 1e-2;
     alignment_parameters.verbose = 1;
     alignment_parameters.min_average_log_emission = -3.5;
     alignment_parameters.max_stay_threshold = 200;

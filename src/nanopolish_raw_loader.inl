@@ -367,7 +367,6 @@ class EventBandedMatrix
             this->n_kmers = haplotype.get_sequence().size() - k + 1;
             this->n_events = read.events[strand_idx].size();
             this->bandwidth = parameters.bandwidth;
-            
             const std::vector<AlignedPair> event_to_haplotype_alignment = event_alignment_record.aligned_events;
 
             // make a map from event to the position in the haplotype it aligns to
@@ -793,22 +792,18 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
 #endif
         }
 
-        // if there is an end trim state in this band, set it here
+        // if there is a start trim state in this band, set it here
         int start_trim_kmer_state = -1;
         int start_trim_offset = hmm_result.get_offset_for_kmer_in_band(band_idx, start_trim_kmer_state);
         if(hmm_result.is_offset_valid(start_trim_offset)) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, start_trim_offset);
-            if(event_idx >= 0) {
-                float lp_emission_diag = event_idx < n_events - 1 ? 
-                    log_probability_match_r9(read, pore_model, kmer_ranks[start_trim_kmer_state + 1], event_idx + 1, strand_idx) : -INFINITY;
+            float lp_emission_diag = event_idx >= 0 && event_idx < n_events - 1 ? 
+                log_probability_match_r9(read, pore_model, kmer_ranks[start_trim_kmer_state + 1], event_idx + 1, strand_idx) : -INFINITY;
 
-                float score_diag  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state + 1) + lp_step + lp_emission_diag;
-                float score_down  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state) + lp_trim;
-                float score_right = hmm_result.get_by_event_kmer(event_idx, start_trim_kmer_state + 1) + lp_skip;
-                hmm_result.set3(band_idx, start_trim_offset, score_diag, score_down, score_right);
-            } else {
-                hmm_result.set3(band_idx, start_trim_offset, -INFINITY, -INFINITY, -INFINITY);
-            }
+            float score_diag  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state + 1) + lp_step + lp_emission_diag;
+            float score_down  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state) + lp_trim;
+            float score_right = hmm_result.get_by_event_kmer(event_idx, start_trim_kmer_state + 1) + lp_skip;
+            hmm_result.set3(band_idx, start_trim_offset, score_diag, score_down, score_right);
 
             /*
             fprintf(stderr, "[ada-gen-trim-bw] bi: %d o: %d e: %d k: %d s: %.2lf\n", 
