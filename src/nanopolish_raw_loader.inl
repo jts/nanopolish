@@ -11,6 +11,7 @@
 
 //#define DEBUG_GENERIC 1
 //#define DEBUG_GENERIC_BACKTRACK 1
+//#define DEBUG_GENERIC_BACKWARD 1
 #define VERIFY_MEMORY 1
 
 // Structure to keep track of the lower-left position in the band
@@ -400,6 +401,8 @@ class EventBandedMatrix
 
             int half_bandwidth = this->bandwidth / 2;
 
+            // do not put bands beyond this k-mer idx or the ending cells will be uselessly out-of-band
+            int min_kmer_idx = this->n_kmers - this->bandwidth + 1;
             for(int band_idx = 0; band_idx < this->n_bands; ++band_idx) {
                 int event_idx = band_idx - 1;
                 this->band_origins[band_idx].event_idx = event_idx;
@@ -408,14 +411,15 @@ class EventBandedMatrix
                     this->band_origins[band_idx].kmer_idx = -1;
                 } else if(event_idx > max_event_idx) {
                     // band terminates at end trim state
-                    this->band_origins[band_idx].kmer_idx = this->n_kmers - this->bandwidth + 1;
+                    this->band_origins[band_idx].kmer_idx = min_kmer_idx;
+                } else if(event_to_kmer[event_idx] == -1) {
+                    // this event doesn't align, copy previous band
+                    this->band_origins[band_idx].kmer_idx = this->band_origins[band_idx - 1].kmer_idx;
                 } else {
-                    // if this event was aligned to a k-mer, set the band accordingly otherwise copy previous band
-                    if(event_to_kmer[event_idx] != -1) {
-                        this->band_origins[band_idx].kmer_idx = std::max(-1, event_to_kmer[event_idx] - half_bandwidth);
-                    } else {
-                        this->band_origins[band_idx].kmer_idx = this->band_origins[band_idx - 1].kmer_idx;
-                    }
+                    int ki = event_to_kmer[event_idx] - half_bandwidth;
+                    ki = std::max(-1, ki); // clip lower at -1
+                    ki = std::min(ki, min_kmer_idx); // clip upper
+                    this->band_origins[band_idx].kmer_idx = ki;
                 }
 
                 /*
@@ -444,7 +448,7 @@ class EventBandedMatrix
             int kmer_max_offset = std::min(this->bandwidth, this->n_kmers - this->band_origins[band_idx].kmer_idx);
 
             int event_min_offset = this->band_origins[band_idx].event_idx >= 0 ? 0 : 1;
-            int event_max_offset = std::min(this->bandwidth, this->n_events - this->band_origins[band_idx].event_idx);
+            int event_max_offset = this->band_origins[band_idx].event_idx >= this->n_events ? -1 : this->bandwidth;
 
             min_offset = std::max(kmer_min_offset, event_min_offset);
             min_offset = std::max(min_offset, 0);
@@ -638,9 +642,9 @@ void generic_banded_simple_hmm(SquiggleRead& read,
         int offset = hmm_result.get_offset_for_kmer_in_band(band_idx, end_trim_kmer_state);
         if(hmm_result.is_offset_valid(offset)) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, offset);
-            float score_d = hmm_result.get_by_event_kmer(event_idx - 1, n_kmers - 1) + lp_trim;
+            float score_d = hmm_result.get_by_event_kmer(event_idx - 1, n_kmers - 1) + lp_step;
             float score_u = hmm_result.get_by_event_kmer(event_idx - 1, end_trim_kmer_state) + lp_trim;
-            float score_l = hmm_result.get_by_event_kmer(event_idx, n_kmers - 1) + lp_trim;
+            float score_l = hmm_result.get_by_event_kmer(event_idx, n_kmers - 1) + lp_skip;
             hmm_result.set3(band_idx, offset, score_d, score_u, score_l);
 #ifdef DEBUG_GENERIC
             fprintf(stderr, "[ada-gen-fill] set end trim %zu %d %d %d\n", band_idx, end_trim_kmer_state, event_idx, offset);
@@ -652,9 +656,10 @@ void generic_banded_simple_hmm(SquiggleRead& read,
     int terminal_event_idx = n_events;
     int terminal_kmer_idx = n_kmers;
 
-    float score_d = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1);
-    float score_u = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx);
-    float score_l = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1);
+    float lp_term = log(1.0 / 3);
+    float score_d = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx - 1) + lp_term;
+    float score_u = hmm_result.get_by_event_kmer(terminal_event_idx - 1, terminal_kmer_idx) + lp_term;
+    float score_l = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx - 1) + lp_term;
     hmm_result.set3_by_event_kmer(terminal_event_idx, terminal_kmer_idx, score_d, score_u, score_l);
 
 /*
@@ -705,14 +710,30 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
 
     assert(hmm_result.is_initialized());
 
-    // set origin cell
-    hmm_result.set3_by_event_kmer(n_events, n_kmers, 0.0f, -INFINITY, -INFINITY);
+    // initialize for cells that can reach the terminal cell (n_events, n_kmers)
+    float lp_term = log(1.0 / 3);
+    
+    // terminal itself, invalid
+    hmm_result.set3_by_event_kmer(n_events, n_kmers, -INFINITY, -INFINITY, -INFINITY);
+
+    // last event trimmed
+    hmm_result.set3_by_event_kmer(n_events - 1, n_kmers, lp_term, -INFINITY, -INFINITY);
+
+    // last event for last kmer
+    hmm_result.set3_by_event_kmer(n_events - 1, n_kmers - 1, lp_term, -INFINITY, -INFINITY);
+
+    // last k-mer skipped (should this be allowed?)
+    hmm_result.set3_by_event_kmer(n_events, n_kmers - 1, lp_term, -INFINITY, -INFINITY);
+
 #ifdef DEBUG_GENERIC_BACKWARD
     fprintf(stderr, "[ada-gen-init-bw] e: %d k: %d s: %.2lf\n", n_events, n_kmers, hmm_result.get_by_event_kmer(n_events, n_kmers));
+    fprintf(stderr, "[ada-gen-init-bw] e: %d k: %d s: %.2lf\n", n_events - 1, n_kmers, hmm_result.get_by_event_kmer(n_events - 1, n_kmers));
+    fprintf(stderr, "[ada-gen-init-bw] e: %d k: %d s: %.2lf\n", n_events, n_kmers - 1, hmm_result.get_by_event_kmer(n_events, n_kmers - 1));
+    fprintf(stderr, "[ada-gen-init-bw] e: %d k: %d s: %.2lf\n", n_events - 1, n_kmers - 1, hmm_result.get_by_event_kmer(n_events - 1, n_kmers - 1));
 #endif
 
     // fill in remaining bands
-    for(size_t band_idx = hmm_result.get_num_bands() - 2; band_idx > 0; --band_idx) {
+    for(size_t band_idx = hmm_result.get_num_bands() - 1; band_idx > 0; --band_idx) {
 
         // backward algorithm is constrained to use the same bands as forward, do not adapt
         // hmm_result.determine_band_origin(band_idx);
@@ -720,42 +741,53 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
         // update end trim state for this band
         int end_trim_kmer_state = n_kmers;
         int end_trim_offset = hmm_result.get_offset_for_kmer_in_band(band_idx, end_trim_kmer_state);
-        if(hmm_result.is_offset_valid(end_trim_offset)) {
-            int event_idx = hmm_result.get_event_at_band_offset(band_idx, end_trim_offset);
-            float score_d = hmm_result.get_by_event_kmer(event_idx + 1, end_trim_kmer_state) + lp_trim;
+        int end_trim_event_idx = hmm_result.get_event_at_band_offset(band_idx, end_trim_offset);
+
+        // check if the trim state is in the band, and this is not the last event (which is initialized above)
+        if(hmm_result.is_offset_valid(end_trim_offset) && end_trim_event_idx != n_events - 1) {
+            float score_d = hmm_result.get_by_event_kmer(end_trim_event_idx + 1, end_trim_kmer_state) + lp_trim;
             hmm_result.set3(band_idx, end_trim_offset, -INFINITY, score_d, -INFINITY);
 #ifdef DEBUG_GENERIC_BACKWARD
-            fprintf(stderr, "[ada-gen-fill-bw] bi: %d o: %d e: %d k: %d s: %.2lf\n", 
-                band_idx, end_trim_offset, event_idx, end_trim_kmer_state, hmm_result.get(band_idx, end_trim_offset));
+            fprintf(stderr, "[ada-gen-trim-bw] bi: %d o: %d e: %d k: %d s: %.2lf\n", 
+                band_idx, end_trim_offset, end_trim_event_idx, end_trim_kmer_state, hmm_result.get(band_idx, end_trim_offset));
 #endif
         }
  
         int min_offset, max_offset;
         hmm_result.get_offset_range_for_band(band_idx, min_offset, max_offset);
-
+#ifdef DEBUG_GENERIC_BACKWARD
+        fprintf(stderr, "[ada-gen-fill-bw] bi: %d min_o: %d max_o: %d\n", band_idx, min_offset, max_offset);
+#endif
         for(int offset = max_offset - 1; offset >= min_offset; --offset) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, offset);
             int kmer_idx = hmm_result.get_kmer_at_band_offset(band_idx, offset);
+            
+            // already filled in initialization
+            if(event_idx == n_events - 1 && kmer_idx == n_kmers - 1) {
+                continue;
+            } 
 
-            size_t kmer_rank = kmer_ranks[kmer_idx];
-            
-            float down  = hmm_result.get_by_event_kmer(event_idx + 1, kmer_idx);
-            float right = hmm_result.get_by_event_kmer(event_idx, kmer_idx + 1);
-            float diag  = hmm_result.get_by_event_kmer(event_idx + 1, kmer_idx + 1);
-            
 #ifdef VERIFY_MEMORY
             assert(event_idx >= 0 && event_idx < n_events);
             assert(kmer_idx >= 0 && kmer_idx < n_kmers);
 #endif
-            float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
-            float score_diag  = diag + lp_step + lp_emission;
-            float score_down  = down + lp_stay + lp_emission;
+            float lp_emission_diag = event_idx < n_events - 1 && kmer_idx < n_kmers - 1 ? 
+                log_probability_match_r9(read, pore_model, kmer_ranks[kmer_idx + 1], event_idx + 1, strand_idx) : -INFINITY;
+
+            float lp_emission_down = event_idx < n_events - 1 ? 
+                log_probability_match_r9(read, pore_model, kmer_ranks[kmer_idx], event_idx + 1, strand_idx) : -INFINITY;
+            float down  = hmm_result.get_by_event_kmer(event_idx + 1, kmer_idx);
+            float right = hmm_result.get_by_event_kmer(event_idx, kmer_idx + 1);
+            float diag  = hmm_result.get_by_event_kmer(event_idx + 1, kmer_idx + 1);
+            
+            float score_diag  = diag + lp_step + lp_emission_diag;
+            float score_down  = down + lp_stay + lp_emission_down;
             float score_right = right + lp_skip;
             hmm_result.set3_by_event_kmer(event_idx, kmer_idx, score_diag, score_down, score_right);
 
 #ifdef DEBUG_GENERIC_BACKWARD
-            fprintf(stderr, "[ada-gen-fill-bw] bi: %d o: %d e: %d k: %d s: %.2lf rank: %zu emit: %.2lf\n", 
-                band_idx, offset, event_idx, kmer_idx, hmm_result.get(band_idx, offset), kmer_rank, lp_emission);
+            fprintf(stderr, "[ada-gen-fill-bw] bi: %d o: %d e: %d k: %d s: %.2lf emit-diag: %.2lf emit-down: %.2lf\n", 
+                band_idx, offset, event_idx, kmer_idx, hmm_result.get3_by_event_kmer(event_idx, kmer_idx), lp_emission_diag, lp_emission_down);
             fprintf(stderr, "[ada-gen-fill-bw]\tdown: %.2lf diag: %.2lf right: %.2lf\n", down, diag, right);
 #endif
         }
@@ -765,11 +797,22 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
         int start_trim_offset = hmm_result.get_offset_for_kmer_in_band(band_idx, start_trim_kmer_state);
         if(hmm_result.is_offset_valid(start_trim_offset)) {
             int event_idx = hmm_result.get_event_at_band_offset(band_idx, start_trim_offset);
-            float score_diag  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state + 1) + lp_trim;
-            float score_down  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state) + lp_trim;
-            float score_right = hmm_result.get_by_event_kmer(event_idx, start_trim_kmer_state + 1) + lp_trim;
-            hmm_result.set3(band_idx, start_trim_offset, score_diag, score_down, score_right);
-            //fprintf(stderr, "[ada-gen-fill] set end trim %d %d %d\n", end_trim_kmer_state, band_idx, offset);
+            if(event_idx >= 0) {
+                float lp_emission_diag = event_idx < n_events - 1 ? 
+                    log_probability_match_r9(read, pore_model, kmer_ranks[start_trim_kmer_state + 1], event_idx + 1, strand_idx) : -INFINITY;
+
+                float score_diag  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state + 1) + lp_step + lp_emission_diag;
+                float score_down  = hmm_result.get_by_event_kmer(event_idx + 1, start_trim_kmer_state) + lp_trim;
+                float score_right = hmm_result.get_by_event_kmer(event_idx, start_trim_kmer_state + 1) + lp_skip;
+                hmm_result.set3(band_idx, start_trim_offset, score_diag, score_down, score_right);
+            } else {
+                hmm_result.set3(band_idx, start_trim_offset, -INFINITY, -INFINITY, -INFINITY);
+            }
+
+            /*
+            fprintf(stderr, "[ada-gen-trim-bw] bi: %d o: %d e: %d k: %d s: %.2lf\n", 
+                band_idx, start_trim_offset, event_idx, start_trim_kmer_state, hmm_result.get(band_idx, start_trim_offset));
+            */
         }
     }
 
@@ -777,9 +820,10 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
     int terminal_event_idx = -1;
     int terminal_kmer_idx = -1;
 
-    float score_diag  = hmm_result.get_by_event_kmer(terminal_event_idx + 1, terminal_kmer_idx + 1);
-    float score_down  = hmm_result.get_by_event_kmer(terminal_event_idx + 1, terminal_kmer_idx);
-    float score_right = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx + 1);
+    float lp_emission_diag = log_probability_match_r9(read, pore_model, kmer_ranks[0], 0, strand_idx);
+    float score_diag  = hmm_result.get_by_event_kmer(terminal_event_idx + 1, terminal_kmer_idx + 1) + lp_step + lp_emission_diag;
+    float score_down  = hmm_result.get_by_event_kmer(terminal_event_idx + 1, terminal_kmer_idx) + lp_trim;
+    float score_right = hmm_result.get_by_event_kmer(terminal_event_idx, terminal_kmer_idx + 1) + lp_skip;
     hmm_result.set3_by_event_kmer(terminal_event_idx, terminal_kmer_idx, score_diag, score_down, score_right);
 
 /*
