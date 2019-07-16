@@ -26,6 +26,7 @@ struct AdaBandedParameters
     int bandwidth = 100;
     float p_skip = 1e-10;
     float p_trim = 1e-2;
+    float min_posterior = 1e-3;
     int verbose = 0;
 };
 
@@ -36,23 +37,33 @@ std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read,
                                                             const std::string& sequence,
                                                             const AdaBandedParameters parameters = AdaBandedParameters());
 
+//
 std::vector<AlignedPair> adaptive_banded_generic_simple_event_align(SquiggleRead& read,
                                                                     const PoreModel& pore_model,
                                                                     const std::string& sequence,
                                                                     const AdaBandedParameters parameters = AdaBandedParameters());
 
-
+//
 std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& read,
                                                                  const PoreModel& pore_model,
                                                                  const Haplotype& haplotype,
                                                                  const EventAlignmentRecord& event_align_record,
                                                                  const AdaBandedParameters parameters = AdaBandedParameters());
 
-void guide_banded_generic_simple_posterior(SquiggleRead& read,
-                                           const PoreModel& pore_model,
-                                           const Haplotype& haplotype,
-                                           const EventAlignmentRecord& event_align_record,
-                                           const AdaBandedParameters parameters);
+// 
+struct EventKmerPosterior
+{
+    int event_idx;
+    int kmer_idx;
+    float log_posterior;
+};
+
+//
+std::vector<EventKmerPosterior> guide_banded_generic_simple_posterior(SquiggleRead& read,
+                                                                      const PoreModel& pore_model,
+                                                                      const Haplotype& haplotype,
+                                                                      const EventAlignmentRecord& event_align_record,
+                                                                      const AdaBandedParameters parameters);
 
 
 // Simple banded alignmend algorithm

@@ -616,9 +616,9 @@ void generic_banded_simple_hmm(SquiggleRead& read,
 
             size_t kmer_rank = kmer_ranks[kmer_idx];
             
+            float diag = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx - 1);
             float up   = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx);
             float left = hmm_result.get_by_event_kmer(event_idx, kmer_idx - 1);
-            float diag = hmm_result.get_by_event_kmer(event_idx - 1, kmer_idx - 1);
             
 #ifdef VERIFY_MEMORY
             assert(event_idx >= 0 && event_idx < n_events);

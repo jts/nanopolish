@@ -142,20 +142,22 @@ std::vector<AlignedPair> guide_banded_generic_simple_event_align(SquiggleRead& r
     return alignment;
 }
 
-void guide_banded_generic_simple_posterior(SquiggleRead& read,
-                                           const PoreModel& pore_model,
-                                           const Haplotype& haplotype,
-                                           const EventAlignmentRecord& event_align_record,
-                                           const AdaBandedParameters parameters)
+std::vector<EventKmerPosterior> guide_banded_generic_simple_posterior(SquiggleRead& read,
+                                                                      const PoreModel& pore_model,
+                                                                      const Haplotype& haplotype,
+                                                                      const EventAlignmentRecord& event_align_record,
+                                                                      const AdaBandedParameters parameters)
 {
     size_t strand_idx = 0;
-    std::vector<AlignedPair> alignment;
+    size_t k = pore_model.k;
+    std::vector<EventKmerPosterior> assignment;
+    const Alphabet* alphabet = pore_model.pmalphabet;
 
     // Forward
     EventBandedForward ebf;
     ebf.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
     if(!ebf.are_bands_continuous()) {
-        return;
+        return assignment;
     }
 
     generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
@@ -174,12 +176,6 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
             read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events(), f, b);
     }
 
-    struct EventKmerPosterior
-    {
-        int event_idx;
-        int kmer_idx;
-        float weight;
-    };
 
     // Pass 1: calculate normalization term by event
     std::vector<float> normalization(ebf.get_num_events(), -INFINITY);
@@ -216,6 +212,7 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
     }
 
     // Pass 2: calculate posteriors
+    float log_min_posterior = log(parameters.min_posterior);
     for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
         int min_offset, max_offset;
         ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
@@ -226,16 +223,22 @@ void guide_banded_generic_simple_posterior(SquiggleRead& read,
             float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
             float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
             float n = normalization[event_idx];
-            float w = expf(fke + bke - f - n);
-            EventKmerPosterior ekp = { event_idx, kmer_idx, w };
-            if(w > 0.00001) {
-                std::string kmer = haplotype.get_sequence().substr(ekp.kmer_idx, 6);
-                fprintf(stderr, "[posterior] %d %d %s %.8f (%.2lf %.2lf %.8lf %.8lf %.8lf)\n", ekp.event_idx, ekp.kmer_idx, kmer.c_str(), w, fke, bke, fke + bke, n, fke + bke - n);
+            float log_w = fke + bke - f - n;
+            EventKmerPosterior ekp = { event_idx, kmer_idx, log_w };
+            if(log_w > log_min_posterior) {
+                assignment.push_back(ekp);
+                /*
+                std::string kmer = haplotype.get_sequence().substr(ekp.kmer_idx, k);
+                size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
+                fprintf(stderr, "[posterior] %d %d %s %.8f %.2f %.2f\n",
+                    ekp.event_idx, ekp.kmer_idx, kmer.c_str(), exp(log_w), read.get_fully_scaled_level(event_idx, strand_idx), pore_model.states[kmer_rank].level_mean);
+                //fprintf(stderr, "[posterior] \t(%.2lf %.2lf %.8lf %.8lf %.8lf)\n", fke, bke, fke + bke, n, fke + bke - n);
+                */
             }
         }
     }
 
-    return;
+    return assignment;
 }
 
 
@@ -735,7 +738,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
 #ifdef DEBUG_BANDED
         fprintf(stderr, "[orgback] ei: %d ki: %d\n", curr_event_idx, curr_k_idx);
 #endif
-        
+
         size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
         sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
         n_aligned_events += 1;
@@ -743,7 +746,7 @@ std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const Por
 #if DEBUG_PRINT_STATS
         // update debug stats
         debug_event_for_kmer[curr_k_idx] = curr_event_idx;
-        
+
         int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
         sum_distance_from_debug += kd;
         max_distance_from_debug = std::max(kd, max_distance_from_debug);
