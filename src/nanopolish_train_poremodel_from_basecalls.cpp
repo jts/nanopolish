@@ -191,7 +191,7 @@ void alignment_to_training_data(const SquiggleRead* read,
         // If the scale/shift values are off, or the events are erroneous, the scaled events can have negative values
         // causing the training to implode. Filter these here.
         if(level >= 1.0) {
-            StateTrainingData std(level, stdv, read->scalings[a.strand_idx].var, read->scalings[a.strand_idx].scale);
+            StateTrainingData std(level, stdv, read->scalings[a.strand_idx].var, read->scalings[a.strand_idx].scale, 0.0f);
             out_data->at(kmer_rank).push_back(std);
         }
 

@@ -149,7 +149,7 @@ namespace opt
     static unsigned min_distance_from_alignment_end = 5;
     static unsigned min_number_of_events_to_train = 100;
     static unsigned num_training_rounds = 5;
-    static unsigned max_events = 1000;
+    static unsigned max_events = 10000;
 }
 
 static const char* shortopts = "r:b:g:t:i:d:vnc";
@@ -287,31 +287,33 @@ void add_aligned_events_for_read(const ReadDB& read_db,
         reference_seq = train_alphabet_ptr->reverse_complement(reference_seq);
     }
 
-    //if(sr.read_name.find("a38dd6") == -1) { return; }
+    //if(sr.read_name.find("bf2ba5") == -1) { return; }
 
     // align events to the reference sequence
+
+    const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
+
+    // for information only, result is discarded
     AdaBandedParameters alignment_parameters;
+    alignment_parameters.verbose = 1;
+    adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
+    
+    // prepare data structures for the event-guided forward/backward to calculate state posteriors
     alignment_parameters.bandwidth = 100;
     alignment_parameters.p_skip = 1e-2;
     alignment_parameters.verbose = 1;
     alignment_parameters.min_average_log_emission = -3.5;
     alignment_parameters.max_stay_threshold = 200;
 
-    const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
-
-    std::vector<AlignedPair> alignment = adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    //adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    
-    // prepare data structures for the guided DP
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-    //guide_banded_generic_simple_event_align(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
     
-    guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+    std::vector<EventKmerPosterior> state_assignments = 
+        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
 
-    size_t edge_ignore = 200;
-    if(alignment.size() < 2*edge_ignore) {
+    size_t edge_ignore = 50;
+    if(state_assignments.size() < 2*edge_ignore) {
         return;
     }
 
@@ -325,33 +327,26 @@ void add_aligned_events_for_read(const ReadDB& read_db,
         return;
     */
 
-    // Update pore model based on alignment
-    std::string model_key = PoreModelSet::get_model_key(*sr.get_model(strand_idx, train_alphabet_ptr->get_name()));
-
-    //
-    // Get the data structure holding the training data for this strand
-    //
-
-    for(size_t i = edge_ignore; i < alignment.size() - edge_ignore; ++i) {
-        size_t k_idx = alignment[i].ref_pos;
-        size_t event_idx = alignment[i].read_pos;
+    for(size_t i = edge_ignore; i < state_assignments.size() - edge_ignore; ++i) {
+        const auto& ekp = state_assignments[i];
 
         // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
-        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + k_idx, k);
+        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + ekp.kmer_idx, k);
         assert(rank < training_data.size());
         auto& kmer_summary = training_data[rank];
 
         // We only use this event for training if its not at the end of the alignment
         // (to avoid bad alignments around the read edges) and if its not too short (to
         // avoid bad measurements from effecting the levels too much)
-        bool use_for_training = sr.get_duration( event_idx, strand_idx) >= opt::min_event_duration &&
-                                sr.get_fully_scaled_level(event_idx, strand_idx) >= 1.0;
+        bool use_for_training = sr.get_duration( ekp.event_idx, strand_idx) >= opt::min_event_duration &&
+                                sr.get_fully_scaled_level(ekp.event_idx, strand_idx) >= 1.0;
 
         if(use_for_training) {
-            StateTrainingData std(sr.get_fully_scaled_level(event_idx, strand_idx),
-                                  sr.get_scaled_stdv(event_idx, strand_idx),
+            StateTrainingData std(sr.get_fully_scaled_level(ekp.event_idx, strand_idx),
+                                  sr.get_scaled_stdv(ekp.event_idx, strand_idx),
                                   sr.scalings[strand_idx].var,
-                                  sr.scalings[strand_idx].scale);
+                                  sr.scalings[strand_idx].scale,
+                                  ekp.log_posterior);
 
             #pragma omp critical(kmer)
             {

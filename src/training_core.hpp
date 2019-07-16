@@ -31,7 +31,8 @@ struct MinimalStateTrainingData
         initialize(sr.get_fully_scaled_level(ea.event_idx, ea.strand_idx),
                    sr.get_scaled_stdv(ea.event_idx, ea.strand_idx),
                    sr.scalings[ea.strand_idx].var,
-                   sr.scalings[ea.strand_idx].scale);
+                   sr.scalings[ea.strand_idx].scale,
+                   0.0f);
 
         this->read_scale_sd = sr.scalings[ea.strand_idx].scale_sd;
         this->log_read_scale_sd = std::log(this->read_scale_sd);
@@ -42,16 +43,19 @@ struct MinimalStateTrainingData
     MinimalStateTrainingData(double level_mean,
                              double level_stdv,
                              double read_var,
-                             double read_scale)
+                             double read_scale,
+                             double log_state_posterior)
     {
-        initialize(level_mean, level_stdv, read_var, read_scale);
+        initialize(level_mean, level_stdv, read_var, read_scale, log_state_posterior);
     }
 
     void initialize(double level_mean,
                     double level_stdv,
                     double read_var,
-                    double read_scale)
+                    double read_scale,
+                    double log_state_posterior)
     {
+        this->log_state_posterior = log_state_posterior;
         this->level_mean = level_mean;
         this->log_level_mean = std::log(this->level_mean);
         this->level_stdv = level_stdv;
@@ -76,7 +80,7 @@ struct MinimalStateTrainingData
     }
     static void write_header_nonl(std::ostream& os)
     {
-        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tscaled_read_var\tread_scale_sd\tread_var_sd";
+        os << "model\tmodel_kmer\tlevel_mean\tlevel_stdv\tscaled_read_var\tread_scale_sd\tread_var_sd\tstate_posterior";
     }
 
     void write_tsv(std::ostream& os, const std::string& model_name, const std::string& kmer) const
@@ -93,7 +97,8 @@ struct MinimalStateTrainingData
            << level_stdv << '\t'
            << scaled_read_var << '\t'
            << read_scale_sd << '\t'
-           << read_var_sd;
+           << read_var_sd << '\t'
+           << exp(log_state_posterior);
     }
 
     //
@@ -111,6 +116,7 @@ struct MinimalStateTrainingData
     float log_read_scale_sd;
     float read_var_sd;
     float log_read_var_sd;
+    float log_state_posterior;
 }; // struct MinimalStateTrainingData
 
 struct FullStateTrainingData

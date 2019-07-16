@@ -402,7 +402,7 @@ class EventBandedMatrix
             int half_bandwidth = this->bandwidth / 2;
 
             // do not put bands beyond this k-mer idx or the ending cells will be uselessly out-of-band
-            int min_kmer_idx = this->n_kmers - this->bandwidth + 1;
+            int min_kmer_idx = this->n_kmers - this->bandwidth + 2;
             for(int band_idx = 0; band_idx < this->n_bands; ++band_idx) {
                 int event_idx = band_idx - 1;
                 this->band_origins[band_idx].event_idx = event_idx;
@@ -422,10 +422,10 @@ class EventBandedMatrix
                     this->band_origins[band_idx].kmer_idx = ki;
                 }
                 
-                /*
-                fprintf(stderr, "[ebm] band: %d/%d e2k: %d [%d %d]\n",
-                        band_idx, this->n_bands, event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
-                */
+                
+                //fprintf(stderr, "[ebm] band: %d/%d e2k: %d [%d %d]\n",
+                //        band_idx, this->band_origins.size(), event_idx < event_to_kmer.size() ? event_to_kmer[event_idx] : -1, this->band_origins[band_idx].event_idx, this->band_origins[band_idx].kmer_idx);
+                
 
                 // check bands are strictly increasing
                 assert(band_idx == 0 || event_idx > max_event_idx || this->band_origins[band_idx].kmer_idx >= this->band_origins[band_idx - 1].kmer_idx);
@@ -491,6 +491,9 @@ class EventBandedMatrix
 
         inline int get_offset_for_kmer_in_band(size_t band_idx, int kmer_idx) const
         {
+#if VERIFY_MEMORY
+            assert(band_idx < this->band_origins.size());
+#endif
             return kmer_idx - this->band_origins[band_idx].kmer_idx;
         }
 
@@ -744,7 +747,7 @@ void generic_banded_simple_hmm_backwards(SquiggleRead& read,
         int end_trim_event_idx = hmm_result.get_event_at_band_offset(band_idx, end_trim_offset);
 
         // check if the trim state is in the band, and this is not the last event (which is initialized above)
-        if(hmm_result.is_offset_valid(end_trim_offset) && end_trim_event_idx != n_events - 1) {
+        if(hmm_result.is_offset_valid(end_trim_offset) && end_trim_event_idx < n_events - 1) {
             float score_d = hmm_result.get_by_event_kmer(end_trim_event_idx + 1, end_trim_kmer_state) + lp_trim;
             hmm_result.set3(band_idx, end_trim_offset, -INFINITY, score_d, -INFINITY);
 #ifdef DEBUG_GENERIC_BACKWARD
