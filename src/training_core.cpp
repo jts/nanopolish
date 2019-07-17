@@ -63,6 +63,8 @@ ParamMixture train_gaussian_mixture(const vector< StateTrainingData >& data, con
                 << std::scientific << log_denom << " " << std::exp(log_denom) << std::endl;
             for(size_t j = 0; j < n_components; ++j) {
                 log_resp[i][j] -= log_denom;
+                // JTS: re-weigh responsibilities by the posterior probability of being in this state
+                log_resp[i][j] += data[i].log_state_posterior;
                 LOG("training_core", debug1)
                     << "resp " << i << " " << j << " "
                     << std::fixed << std::setprecision(5) << std::exp(log_resp[i][j]) << " ("
