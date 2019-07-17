@@ -306,6 +306,105 @@ bool recalibrate_model(SquiggleRead &sr,
     return recalibrated;
 }
 
+bool recalibrate_model_from_posterior(SquiggleRead &sr,
+                                      const PoreModel& pore_model,
+                                      const std::string& sequence,
+                                      const int strand_idx,
+                                      const std::vector<EventKmerPosterior> &event_kmer_posteriors,
+                                      const bool scale_var,
+                                      const bool scale_drift)
+{
+    uint32_t k = pore_model.k;
+    const uint32_t num_equations = scale_drift ? 3 : 2;
+
+    bool recalibrated = false;
+    Eigen::MatrixXd A(num_equations, num_equations);
+    Eigen::VectorXd b(num_equations);
+    // Assemble linear system corresponding to weighted least squares problem
+    // Can just directly call a weighted least squares solver, but there's enough
+    // structure in our problem it's a little faster just to build the normal eqn
+    // matrices ourselves
+
+    for (int i=0; i<num_equations; i++) {
+        b(i) = 0.;
+        for (int j=0; j<num_equations; j++)
+            A(i,j) = 0.;
+    }
+    
+    // Precompute k-mer ranks
+    std::vector<size_t> kmer_ranks(sequence.size() - k + 1);
+    for(size_t i = 0; i < kmer_ranks.size(); ++i) {
+        kmer_ranks[i] = pore_model.pmalphabet->kmer_rank(sequence.c_str() + i, k);
+    }
+
+    for(size_t i = 0; i < event_kmer_posteriors.size(); ++i) {
+        const auto& ekp = event_kmer_posteriors[i];
+        uint32_t rank = kmer_ranks[ekp.kmer_idx];
+        
+        double level_stdv = pore_model.states[rank].level_stdv;
+        double inv_var = exp(ekp.log_posterior) / (level_stdv * level_stdv);
+
+        double mu = pore_model.states[rank].level_mean;
+        double e  = sr.get_unscaled_level(ekp.event_idx, strand_idx);
+
+        A(0,0) += inv_var;  A(0,1) += mu*inv_var;
+                            A(1,1) += mu*mu*inv_var;
+
+        b(0) += e*inv_var;
+        b(1) += mu*e*inv_var;
+
+        if (scale_drift) {
+            double t  = sr.get_time(ekp.event_idx, strand_idx);
+            A(0,2) += t*inv_var;
+            A(1,2) += mu*t*inv_var;
+            A(2,2) += t*t*inv_var;
+            b(2) += t*e*inv_var;
+        }
+    }
+
+    A(1,0) = A(0,1);
+    if (scale_drift) {
+        A(2,0) = A(0,2);
+        A(2,1) = A(1,2);
+    }
+
+    // perform the linear solve
+    Eigen::VectorXd x = A.fullPivLu().solve(b);
+
+    double shift = x(0);
+    double scale = x(1);
+    double drift = scale_drift ? x(2) : 0.;
+    double var = 1.0;
+
+    if (scale_var) {
+        var = 0.;
+        double denom = 0.0f;
+        for(size_t i = 0; i < event_kmer_posteriors.size(); ++i) {
+            const auto& ekp = event_kmer_posteriors[i];
+            uint32_t rank = kmer_ranks[ekp.kmer_idx];
+            double level_stdv = pore_model.states[rank].level_stdv;
+            double mu = pore_model.states[rank].level_mean;
+            double e  = sr.get_unscaled_level(ekp.event_idx, strand_idx);
+            double post = exp(ekp.log_posterior);
+            double inv_var = post / (level_stdv * level_stdv);
+
+            double yi = (e - shift - scale*mu);
+            if (scale_drift)
+                yi -= drift * sr.get_time(ekp.event_idx, strand_idx);
+
+            var += inv_var * yi * yi;
+            denom += post;
+        }
+        var /= denom;
+        var = sqrt(var);
+    }
+
+    sr.scalings[strand_idx].set4(shift, scale, drift, var);
+    recalibrated = true;
+
+    return recalibrated;
+}
+
 // Use reservoir sampling to limit the amount of events for each kmer
 void add_event(StateSummary& kmer_summary, StateTrainingData std, int event_count)
 {
