@@ -294,17 +294,17 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
 
     // for information only, result is discarded
-    AdaBandedParameters alignment_parameters;
-    alignment_parameters.verbose = 1;
-    adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
+    //alignment_parameters.verbose = 1;
+    //adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
     
     // prepare data structures for the event-guided forward/backward to calculate state posteriors
+    AdaBandedParameters alignment_parameters;
     alignment_parameters.bandwidth = 100;
     alignment_parameters.p_skip = 1e-2;
     alignment_parameters.verbose = 1;
     alignment_parameters.min_average_log_emission = -3.5;
     alignment_parameters.max_stay_threshold = 200;
-
+    alignment_parameters.min_posterior = 1e-1;
     Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
