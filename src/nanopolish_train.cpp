@@ -521,7 +521,11 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
     assert(all_kmers.front() == std::string(k, 'A'));
     assert(all_kmers.back() == std::string(k, 'T'));
 
+    Progress training_timer("");
+
     // Update means for each kmer
+    omp_set_num_threads(opt::num_threads);
+
     #pragma omp parallel for
     for(size_t ki = 0; ki < summaries.size(); ++ki) {
         assert(ki < all_kmers.size());
@@ -582,7 +586,11 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
             }
 
             #pragma omp critical
-            result.trained_model.states[ki] = trained_mixture.params[0];
+            {
+                result.trained_model.states[ki] = trained_mixture.params[0];
+                result.num_kmers_trained += 1;
+                trained = true;
+            }
 
 #if 0
             if (false && model_stdv()) {
@@ -613,9 +621,6 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
                 }
             }
 #endif
-            #pragma omp atomic
-            result.num_kmers_trained += 1;
-            trained = true;
         }
 
         #pragma omp critical
@@ -626,6 +631,8 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
                                     summaries[ki].events.size(), trained, result.trained_model.states[ki].level_mean, result.trained_model.states[ki].level_stdv);
         }
     }
+
+    fprintf(stderr, "[train] trained levels in %.2lfs\n", training_timer.get_elapsed_seconds());
 
     return result;
 }
