@@ -300,8 +300,8 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     
     // prepare data structures for the event-guided forward/backward to calculate state posteriors
     AdaBandedParameters alignment_parameters;
-    alignment_parameters.bandwidth = 100;
-    alignment_parameters.p_skip = 1e-2;
+    alignment_parameters.bandwidth = 25;
+    alignment_parameters.p_skip = 0.005;
     alignment_parameters.verbose = 1;
     alignment_parameters.min_average_log_emission = -3.5;
     alignment_parameters.max_stay_threshold = 200;
@@ -527,6 +527,7 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
         assert(ki < all_kmers.size());
         std::string kmer = all_kmers[ki];
 
+        /*
         // write the observed values to a tsv file
         #pragma omp critical
         {
@@ -534,6 +535,7 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
                 summaries[ki].events[ei].write_tsv(training_ofs, model_short_name, kmer);
             }
         }
+        */
 
         bool is_m_kmer = kmer.find('M') != std::string::npos;
         bool update_kmer = opt::training_target == TT_ALL_KMERS ||
