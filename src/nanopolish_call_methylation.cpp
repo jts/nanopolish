@@ -102,6 +102,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
+"      --model=FILE                     use the model from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -111,7 +112,7 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string methylation_type = "cpg";
-    static std::string models_fofn;
+    static std::string model_filename;
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
     static int progress = 0;
@@ -133,7 +134,7 @@ static const struct option longopts[] = {
     { "methylation",      required_argument, NULL, 'q' },
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
-    { "models-fofn",      required_argument, NULL, 'm' },
+    { "model",            required_argument, NULL, 'm' },
     { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
@@ -349,7 +350,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
-            case 'm': arg >> opt::models_fofn; break;
+            case 'm': arg >> opt::model_filename; break;
             case 'w': arg >> opt::region; break;
             case 'v': opt::verbose++; break;
             case 'K': arg >> opt::batch_size; break;
@@ -401,11 +402,6 @@ void parse_call_methylation_options(int argc, char** argv)
         die = true;
     }
 
-    if(!opt::models_fofn.empty()) {
-        // initialize the model set from the fofn
-        PoreModelSet::initialize(opt::models_fofn);
-    }
-
     if (die)
     {
         std::cout << "\n" << CALL_METHYLATION_USAGE_MESSAGE;
@@ -418,6 +414,12 @@ int call_methylation_main(int argc, char** argv)
     parse_call_methylation_options(argc, argv);
     ReadDB read_db;
     read_db.load(opt::reads_file);
+    
+    // Read the input model and import it
+    if(!opt::model_filename.empty()) {
+        PoreModel model(opt::model_filename);
+        PoreModelSet::add_model(model);
+    }
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());

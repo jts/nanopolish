@@ -666,7 +666,7 @@ int eval_main(int argc, char** argv)
     ReadDB read_db;
     read_db.load(opt::reads_file);
     
-    // Read the input model and i
+    // Read the input model and import it
     if(!opt::model_filename.empty()) {
         PoreModel model(opt::model_filename);
         PoreModelSet::add_model(model);
