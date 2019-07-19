@@ -313,12 +313,14 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     std::vector<EventKmerPosterior> state_assignments = 
         guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
 
-    /*
+/*
     fprintf(stderr, "[scale-original ] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
     recalibrate_model_from_posterior(sr, *pore_model, reference_seq, 0, state_assignments, true, false);
     fprintf(stderr, "[scale-posterior] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
-    */
 
+    state_assignments = 
+        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+*/
     size_t edge_ignore = 50;
     if(state_assignments.size() < 2*edge_ignore) {
         return;
