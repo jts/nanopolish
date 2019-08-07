@@ -81,14 +81,13 @@ bool qc_simple_event_alignment(SquiggleRead& read,
     }
 
     double avg_log_emission = sum_emission / n_aligned_events;
-    bool spanned = alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
-
+    bool spanned = !alignment.empty() && alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
     bool passed = avg_log_emission > parameters.min_average_log_emission && spanned;
-
+    int first_aligned_kmer = !alignment.empty() ? alignment.front().read_pos : -1;
     double events_per_kmer = 0.0f;
     if(parameters.verbose) {
         fprintf(stderr, "%s\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n", short_name,
-            read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, alignment.front().read_pos);
+            read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, first_aligned_kmer);
     }
     return passed;
 }

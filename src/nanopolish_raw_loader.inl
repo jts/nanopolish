@@ -10,7 +10,7 @@
 #include "nanopolish_haplotype.h"
 
 //#define DEBUG_GENERIC 1
-//#define DEBUG_GENERIC_BACKTRACK 1
+#define DEBUG_GENERIC_BACKTRACK 1
 //#define DEBUG_GENERIC_BACKWARD 1
 #define VERIFY_MEMORY 1
 
@@ -297,7 +297,7 @@ class AdaptiveBandedMatrix
             }
         }
 
-        inline bool is_event_kmer_in_band(int event_idx, int kmer_idx)
+        inline bool is_event_kmer_in_band(int event_idx, int kmer_idx) const
         {
             int band_idx = event_kmer_to_band(event_idx, kmer_idx);
             int band_offset = get_offset_for_event_in_band(band_idx, event_idx);
@@ -517,6 +517,13 @@ class EventBandedMatrix
             int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
             assert(is_offset_valid(band_offset));
             return get_cell_for_band_offset(band_idx, band_offset);
+        }
+
+        inline bool is_event_kmer_in_band(int event_idx, int kmer_idx) const
+        {
+            size_t band_idx = event_kmer_to_band(event_idx, kmer_idx);
+            int band_offset = get_offset_for_kmer_in_band(band_idx, kmer_idx);
+            return this->is_offset_valid(band_offset);
         }
         
         inline void set3_by_event_kmer(int event_idx, int kmer_idx, float score_d, float score_u, float score_l) {
@@ -857,6 +864,11 @@ std::vector<AlignedPair> adaptive_banded_backtrack(const MatrixType& mt)
     size_t n_kmers = mt.get_num_kmers();
     int curr_event_idx = mt.get_num_events();
     int curr_kmer_idx = n_kmers;
+
+    // check if the backtrack start point is in the band
+    if(!mt.is_event_kmer_in_band(curr_event_idx, curr_kmer_idx)) {
+        return out;
+    }
 
 #ifdef DEBUG_GENERIC_BACKTRACK
     fprintf(stderr, "[ada-generic-back] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, mt.get_by_event_kmer(curr_event_idx, curr_kmer_idx));
