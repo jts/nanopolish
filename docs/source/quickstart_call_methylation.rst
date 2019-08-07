@@ -84,7 +84,7 @@ The output file contains a lot of information including the position of the CG d
 
 A positive value in the ``log_lik_ratio`` column indicates support for methylation. We have provided a helper script that can be used to calculate how often each reference position was methylated: ::
 
-	scripts/calculate_methylation_frequency.py -i methylation_calls.tsv > methylation_frequency.tsv
+	scripts/calculate_methylation_frequency.py methylation_calls.tsv > methylation_frequency.tsv
 
 The output is another tab-separated file, this time summarized by genomic position: ::
 
