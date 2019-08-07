@@ -10,7 +10,7 @@
 #include "nanopolish_haplotype.h"
 
 //#define DEBUG_GENERIC 1
-#define DEBUG_GENERIC_BACKTRACK 1
+//#define DEBUG_GENERIC_BACKTRACK 1
 //#define DEBUG_GENERIC_BACKWARD 1
 #define VERIFY_MEMORY 1
 
