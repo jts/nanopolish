@@ -94,8 +94,8 @@ Input
 
 Output
 """"""""
-    * gzipped FASTA format of basecalled reads
-    * index files (fai, gzi, readdb)
+    * gzipped FASTA file of basecalled reads (.index)
+    * index files (.fai, .gzi, .readdb)
 
 Readdb file format
 """"""""""""""""""""
