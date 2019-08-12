@@ -310,17 +310,23 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
     
+    // posterior 
     std::vector<EventKmerPosterior> state_assignments = 
         guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
-
-/*
+    
+    // viterbi
+    /*
+    alignment_parameters.bandwidth = 100;
+    std::vector<AlignedPair> state_assignments =  adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
+    */
+    
+    // rescale
+    /*
     fprintf(stderr, "[scale-original ] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
     recalibrate_model_from_posterior(sr, *pore_model, reference_seq, 0, state_assignments, true, false);
     fprintf(stderr, "[scale-posterior] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
+    */
 
-    state_assignments = 
-        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
-*/
     size_t edge_ignore = 50;
     if(state_assignments.size() < 2*edge_ignore) {
         return;
@@ -338,24 +344,33 @@ void add_aligned_events_for_read(const ReadDB& read_db,
 
     for(size_t i = edge_ignore; i < state_assignments.size() - edge_ignore; ++i) {
         const auto& ekp = state_assignments[i];
+        
+        size_t kmer_idx = ekp.kmer_idx;
+        size_t event_idx = ekp.event_idx;
+        double log_posterior = ekp.log_posterior;
 
+        /*
+        size_t kmer_idx = ekp.ref_pos;
+        size_t event_idx = ekp.read_pos;
+        double log_posterior = 0.0;
+        */
         // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
-        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + ekp.kmer_idx, k);
+        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + kmer_idx, k);
         assert(rank < training_data.size());
         auto& kmer_summary = training_data[rank];
 
         // We only use this event for training if its not at the end of the alignment
         // (to avoid bad alignments around the read edges) and if its not too short (to
         // avoid bad measurements from effecting the levels too much)
-        bool use_for_training = sr.get_duration( ekp.event_idx, strand_idx) >= opt::min_event_duration &&
-                                sr.get_fully_scaled_level(ekp.event_idx, strand_idx) >= 1.0;
+        bool use_for_training = sr.get_duration( event_idx, strand_idx) >= opt::min_event_duration &&
+                                sr.get_fully_scaled_level(event_idx, strand_idx) >= 1.0;
 
         if(use_for_training) {
-            StateTrainingData std(sr.get_fully_scaled_level(ekp.event_idx, strand_idx),
-                                  sr.get_scaled_stdv(ekp.event_idx, strand_idx),
+            StateTrainingData std(sr.get_fully_scaled_level(event_idx, strand_idx),
+                                  sr.get_scaled_stdv(event_idx, strand_idx),
                                   sr.scalings[strand_idx].var,
                                   sr.scalings[strand_idx].scale,
-                                  ekp.log_posterior);
+                                  log_posterior);
 
             #pragma omp critical(kmer)
             {
@@ -566,12 +581,14 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
             float major_weight = is_m_kmer ? 1 - incomplete_methylation_rate : 1.0f;
             mixture.log_weights.push_back(log(major_weight));
             mixture.params.push_back(current_model.get_parameters(ki));
-
+            
+            /*
             if(is_m_kmer) {
                 // add second unmethylated component
                 mixture.log_weights.push_back(std::log(incomplete_methylation_rate));
                 mixture.params.push_back(current_model.get_parameters(um_ki));
             }
+            */
 
             if(opt::verbose > 1) {
                 fprintf(stderr, "INIT__MIX %s\t%s\t[%.2lf %.2lf %.2lf]\t[%.2lf %.2lf %.2lf]\n", model_key.c_str(), kmer.c_str(),
