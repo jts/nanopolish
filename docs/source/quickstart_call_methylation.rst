@@ -27,7 +27,7 @@ In this tutorial we will use a subset of the `NA12878 WGS Consortium data <https
 **Details**:
 
 * Sample :	Human cell line (NA12878)
-* Basecaller : Albacore v2.0.2
+* Basecaller : Guppy v2.3.5
 * Region: chr20:5,000,000-10,000,000
 
 In the extracted example data you should find the following files:
@@ -38,35 +38,35 @@ In the extracted example data you should find the following files:
 
 The reads were basecalled using this albacore command: ::
 
-    read_fast5_basecaller.py -c r94_450bps_linear.cfg -t 8 -i fast5_files -s basecalled/ -o fastq
+    guppy_basecaller -c dna_r9.4.1_450bps_flipflop.cfg -i fast5_files/ -s basecalled/
 
 After the basecaller finished, we merged all of the fastq files together into a single file: ::
 
-    cat basecalled/workspace/pass/*.fastq > albacore_output.fastq
+    cat basecalled/*.fastq > output.fastq
 
 Data preprocessing
 ------------------------------------
 
 nanopolish needs access to the signal-level data measured by the nanopore sequencer. To begin, we need to create an index file that links read ids with their signal-level data in the FAST5 files: ::
 
-    nanopolish index -d fast5_files/ albacore_output.fastq
+    nanopolish index -d fast5_files/ output.fastq
 
-We get the following files: ``albacore_output.fastq.index``, ``albacore_output.fastq.index.fai``, ``albacore_output.fastq.index.gzi``, and ``albacore_output.fastq.index.readdb``.
+We get the following files: ``output.fastq.index``, ``output.fastq.index.fai``, ``output.fastq.fastq.index.gzi``, and ``output.fastq.index.readdb``.
 
 Aligning reads to the reference genome
 --------------------------------------
 
 Next, we need to align the basecalled reads to the reference genome. We use minimap2 as it is fast enough to map reads to the human genome. In this example we'll pipe the output directly into ``samtools sort`` to get a sorted bam file: ::
 
-    minimap2 -a -x map-ont reference.fasta albacore_output.fastq | samtools sort -T tmp -o albacore_output.sorted.bam
-    samtools index albacore_output.sorted.bam
+    minimap2 -a -x map-ont reference.fasta output.fastq | samtools sort -T tmp -o output.sorted.bam
+    samtools index output.sorted.bam
 
 Calling methylation
 -------------------
 
-Now we're ready to use nanopolish to detect methylated bases (in this case 5-methylcytosine in a CpG context). The command is fairly straightforward - we have to tell it what reads to use (``albacore_output.fastq``), where the alignments are (``albacore_output.sorted.bam``), the reference genome (``reference.fasta``) and what region of the genome we're interested in (``chr20:5,000,000-10,000,000``)::
+Now we're ready to use nanopolish to detect methylated bases (in this case 5-methylcytosine in a CpG context). The command is fairly straightforward - we have to tell it what reads to use (``output.fastq``), where the alignments are (``output.sorted.bam``), the reference genome (``reference.fasta``) and what region of the genome we're interested in (``chr20:5,000,000-10,000,000``)::
 	
-    nanopolish call-methylation -t 8 -r albacore_output.fastq -b albacore_output.sorted.bam -g reference.fasta -w "chr20:5,000,000-10,000,000" > methylation_calls.tsv
+    nanopolish call-methylation -t 8 -r output.fastq -b output.sorted.bam -g reference.fasta -w "chr20:5,000,000-10,000,000" > methylation_calls.tsv
 
 The output file contains a lot of information including the position of the CG dinucleotide on the reference genome, the ID of the read that was used to make the call, and the log-likelihood ratio calculated by our model: ::
 
