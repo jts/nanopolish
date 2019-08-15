@@ -302,7 +302,7 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     AdaBandedParameters alignment_parameters;
     alignment_parameters.bandwidth = 25;
     alignment_parameters.p_skip = 0.005;
-    alignment_parameters.verbose = 1;
+    //alignment_parameters.verbose = 1;
     alignment_parameters.min_average_log_emission = -3.5;
     alignment_parameters.max_stay_threshold = 200;
     alignment_parameters.min_posterior = 1e-1;
@@ -508,6 +508,7 @@ void parse_train_options(int argc, char** argv)
 struct TrainingResult
 {
     PoreModel trained_model;
+    size_t num_kmers_to_train;
     size_t num_kmers_trained;
 };
 
@@ -522,6 +523,7 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
     // Initialize the new model from the current model
     result.trained_model = current_model;
     result.num_kmers_trained = 0;
+    result.num_kmers_to_train = 0;
 
     uint32_t k = result.trained_model.k;
     std::string model_key = PoreModelSet::get_model_key(result.trained_model);
@@ -562,6 +564,9 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
         bool update_kmer = opt::training_target == TT_ALL_KMERS ||
                            (is_m_kmer && opt::training_target == TT_METHYLATED_KMERS) ||
                            (!is_m_kmer && opt::training_target == TT_UNMETHYLATED_KMERS);
+
+        #pragma omp atomic
+        result.num_kmers_to_train += update_kmer;
 
         bool trained = false;
 
@@ -651,7 +656,7 @@ TrainingResult train_model_from_events(const PoreModel& current_model,
         }
     }
 
-    fprintf(stderr, "[train] trained levels in %.2lfs\n", training_timer.get_elapsed_seconds());
+    fprintf(stderr, "[train] trained %zu/%zu k-mers in %.2lfs\n", result.num_kmers_trained, result.num_kmers_to_train, training_timer.get_elapsed_seconds());
 
     return result;
 }

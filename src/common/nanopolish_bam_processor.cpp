@@ -90,6 +90,8 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
     int result;
     size_t num_reads_realigned = 0;
     size_t num_records_buffered = 0;
+    char* progress_chromosome = NULL;
+    size_t progress_position = 0;
 
     do {
         assert(num_records_buffered < records.size());
@@ -106,13 +108,22 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0 && record->core.qual >= m_min_mapping_quality) {
                     func(m_hdr, record, read_idx, clip_start, clip_end);
+                    
+                    // progress status
+                    progress_chromosome = m_hdr->target_name[record->core.tid];
+                    progress_position = record->core.pos;
                 }
             }
 
             num_reads_realigned += num_records_buffered;
             num_records_buffered = 0;
         }
+
+        if(progress_chromosome != NULL) {
+            fprintf(stderr, "[bam process] processed %d bam records up to %s:%zu\r", num_reads_realigned, progress_chromosome, progress_position);
+        }
     } while(result >= 0 && num_reads_realigned < m_max_reads);
+    fprintf(stderr, "\n");
 
     assert(num_records_buffered == 0);
 
