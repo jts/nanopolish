@@ -24,12 +24,6 @@ HTS ?= install
 HDF5_VERSION ?= 1.8.14
 EIGEN_VERSION ?= 3.2.5
 
-# Check operating system, OSX doesn't have -lrt
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Linux)
-    LIBS += -lrt
-endif
-
 # Default to automatically installing hdf5
 ifeq ($(HDF5), install)
     H5_LIB = ./lib/libhdf5.a
