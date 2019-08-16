@@ -119,6 +119,7 @@ static const char *TRAIN_USAGE_MESSAGE =
 "      --filter-policy=STR              filter data using parameters for STR data (R7, R9, R94)\n"
 "      --rounds=NUM                     number of training rounds to perform\n"
 "      --max-reads=NUM                  stop after processing NUM reads in each round\n"
+"      --max-read-length=NUM            do not use reads exceeding NUM bp in length\n"
 "      --progress                       print out a progress message\n"
 //"      --stdv                           enable stdv modelling\n"
 "      --max-events=NUM                 use NUM events for training (default: 1000)\n"
@@ -144,6 +145,7 @@ namespace opt
     static unsigned num_threads = 1;
     static unsigned batch_size = 128;
     static unsigned max_reads = -1;
+    static unsigned max_read_length = -1;
 
     // Constants that determine which events to use for training
     static float min_event_duration = 0.002;
@@ -171,6 +173,7 @@ enum { OPT_HELP = 1,
        OPT_P_BAD,
        OPT_P_BAD_SELF,
        OPT_MAX_READS,
+       OPT_MAX_READ_LENGTH,
        OPT_MAX_EVENTS
      };
 
@@ -199,6 +202,7 @@ static const struct option longopts[] = {
     { "filter-policy",        required_argument, NULL, OPT_FILTER_POLICY },
     { "rounds",               required_argument, NULL, OPT_NUM_ROUNDS },
     { "max-reads",            required_argument, NULL, OPT_MAX_READS },
+    { "max-read-length",      required_argument, NULL, OPT_MAX_READ_LENGTH },
     { "max-events",           required_argument, NULL, OPT_MAX_EVENTS },
     { NULL, 0, NULL, 0 }
 };
@@ -249,6 +253,11 @@ void add_aligned_events_for_read(const ReadDB& read_db,
 
     // only support training template strand
     size_t strand_idx = 0;
+
+    // optionally skip long reads
+    if(opt::max_read_length > 0 && record->core.l_qseq > opt::max_read_length) {
+        return;
+    }
 
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
@@ -419,6 +428,7 @@ void parse_train_options(int argc, char** argv)
             case OPT_P_BAD: arg >> g_p_bad; break;
             case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
             case OPT_MAX_READS: arg >> opt::max_reads; break;
+            case OPT_MAX_READ_LENGTH: arg >> opt::max_read_length; break;
             case OPT_MAX_EVENTS: arg >> opt::max_events; break;
             case OPT_HELP:
                 std::cout << TRAIN_USAGE_MESSAGE;
