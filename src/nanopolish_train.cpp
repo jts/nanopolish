@@ -44,6 +44,7 @@
 #include "nanopolish_bam_processor.h"
 #include "nanopolish_raw_loader.h"
 #include "nanopolish_methyltrain.h"
+#include "nanopolish_bedmethyl.h"
 #include "training_core.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -116,6 +117,7 @@ static const char *TRAIN_USAGE_MESSAGE =
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -i, --input-model-filename           start training from this model\n"
 "  -d, --output-directory               write results to this output directory\n"
+"      --bedmethyl=FILE                 infer the presence/absence of methylation sites using FILE as a map\n"
 "      --filter-policy=STR              filter data using parameters for STR data (R7, R9, R94)\n"
 "      --rounds=NUM                     number of training rounds to perform\n"
 "      --max-reads=NUM                  stop after processing NUM reads in each round\n"
@@ -137,7 +139,7 @@ namespace opt
     static std::string output_directory;
     static std::string initial_model_type = "ONT";
     static std::string trained_model_type = "reftrained";
-
+    static std::string bedmethyl_filename; 
     static TrainingTarget training_target = TT_METHYLATED_KMERS;
     static bool write_models = true;
     static bool output_scores = false;
@@ -174,7 +176,8 @@ enum { OPT_HELP = 1,
        OPT_P_BAD_SELF,
        OPT_MAX_READS,
        OPT_MAX_READ_LENGTH,
-       OPT_MAX_EVENTS
+       OPT_MAX_EVENTS,
+       OPT_BEDMETHYL
      };
 
 static const struct option longopts[] = {
@@ -204,200 +207,9 @@ static const struct option longopts[] = {
     { "max-reads",            required_argument, NULL, OPT_MAX_READS },
     { "max-read-length",      required_argument, NULL, OPT_MAX_READ_LENGTH },
     { "max-events",           required_argument, NULL, OPT_MAX_EVENTS },
+    { "bedmethyl",            required_argument, NULL, OPT_BEDMETHYL },
     { NULL, 0, NULL, 0 }
 };
-
-// recalculate shift, scale, drift, scale_sd from an alignment and the read
-// returns true if the recalibration was performed
-// in either case, sets residual to the L1 norm of the residual
-extern bool recalibrate_model(SquiggleRead &sr,
-                       const PoreModel& pore_model,
-                       const int strand_idx,
-                       const std::vector<EventAlignment> &alignment_output,
-                       const bool scale_var,
-                       const bool scale_drift);
-
-// Use reservoir sampling to limit the amount of events for each kmer
-void add_event_tmp(StateSummary& kmer_summary, StateTrainingData std, int event_count)
-{
-    // Add all events for each kmer until we have the maximum number of events to train
-    if(event_count <= opt::max_events) {
-        kmer_summary.events.push_back(std);
-    } else {
-        // Select a random number between 0 and the total number of events for this kmer
-        std::mt19937 rng(event_count);
-        std::uniform_int_distribution<int> gen(0, event_count);
-        int rs_location = gen(rng);
-
-        // Only update the training data if the random number is below the maximum number of events
-        if(rs_location < opt::max_events) {
-            kmer_summary.events[rs_location] = std;
-        }
-    }
-}
-
-// Update the training data with aligned events from a read
-void add_aligned_events_for_read(const ReadDB& read_db,
-                                 const faidx_t* fai,
-                                 std::vector<StateSummary>& training_data,
-                                 const std::string& training_kit,
-                                 const std::string& training_alphabet,
-                                 size_t training_k,
-                                 std::unordered_map<uint32_t, int>& event_count,
-                                 const bam_hdr_t* hdr,
-                                 const bam1_t* record,
-                                 size_t read_idx,
-                                 int region_start,
-                                 int region_end)
-{
-
-    // only support training template strand
-    size_t strand_idx = 0;
-
-    // optionally skip long reads
-    if(opt::max_read_length > 0 && record->core.l_qseq > opt::max_read_length) {
-        return;
-    }
-
-    // Load a squiggle read for the mapped read
-    std::string read_name = bam_get_qname(record);
-
-    // load read
-    SquiggleRead sr(read_name, read_db);
-
-    // skip if 1D reads and this is the wrong strand
-    if(!sr.has_events_for_strand(strand_idx)) {
-        return;
-    }
-
-    assert(training_kit == sr.get_model_kit_name(strand_idx));
-    assert(training_k == sr.get_model_k(strand_idx));
-
-    // set k
-    uint32_t k = sr.get_model_k(strand_idx);
-
-    // Get the reference sequence for this read
-    std::string ref_name = hdr->target_name[record->core.tid];
-    int alignment_start_pos = record->core.pos;
-    int alignment_end_pos = bam_endpos(record);
-
-    // skip if region too short
-    // TODO: make parameter
-    if(alignment_end_pos - alignment_start_pos < 1000) {
-        return;
-    }
-
-    // load reference sequence
-    int reference_length;
-    std::string reference_seq =
-        get_reference_region_ts(fai, ref_name.c_str(), alignment_start_pos, alignment_end_pos, &reference_length);
-
-    // Reverse complement if necessary
-    if(bam_is_rev(record)) {
-        reference_seq = train_alphabet_ptr->reverse_complement(reference_seq);
-    }
-
-    //if(sr.read_name.find("bf2ba5") == -1) { return; }
-
-    // align events to the reference sequence
-
-    const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
-
-    // for information only, result is discarded
-    //alignment_parameters.verbose = 1;
-    //adaptive_banded_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    
-    // prepare data structures for the event-guided forward/backward to calculate state posteriors
-    AdaBandedParameters alignment_parameters;
-    alignment_parameters.bandwidth = 25;
-    alignment_parameters.p_skip = 0.005;
-    //alignment_parameters.verbose = 1;
-    alignment_parameters.min_average_log_emission = -3.5;
-    alignment_parameters.max_stay_threshold = 200;
-    alignment_parameters.min_posterior = 1e-1;
-    Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
-    SequenceAlignmentRecord seq_align_record(record);
-    EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-    
-    // posterior 
-    std::vector<EventKmerPosterior> state_assignments = 
-        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
-    
-    // viterbi
-    /*
-    alignment_parameters.bandwidth = 100;
-    std::vector<AlignedPair> state_assignments =  adaptive_banded_generic_simple_event_align(sr, *pore_model, reference_seq, alignment_parameters);
-    */
-    
-    // rescale
-    /*
-    fprintf(stderr, "[scale-original ] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
-    recalibrate_model_from_posterior(sr, *pore_model, reference_seq, 0, state_assignments, true, false);
-    fprintf(stderr, "[scale-posterior] shift: %.3lf scale: %.3lf var: %.3lf\n", sr.scalings[0].shift, sr.scalings[0].scale, sr.scalings[0].var);
-    */
-
-    size_t edge_ignore = 50;
-    if(state_assignments.size() < 2*edge_ignore) {
-        return;
-    }
-
-    /*
-    double resid = 0.;
-    recalibrate_model(sr, *sr.get_model(strand_idx, train_alphabet_ptr->get_name()), strand_idx, alignment_output, true, false);
-
-    // Alignment step 2, after recalibration
-    alignment_output = align_read_to_ref(params);
-    if (alignment_output.size() == 0)
-        return;
-    */
-
-    for(size_t i = edge_ignore; i < state_assignments.size() - edge_ignore; ++i) {
-        const auto& ekp = state_assignments[i];
-        
-        size_t kmer_idx = ekp.kmer_idx;
-        size_t event_idx = ekp.event_idx;
-        double log_posterior = ekp.log_posterior;
-
-        /*
-        size_t kmer_idx = ekp.ref_pos;
-        size_t event_idx = ekp.read_pos;
-        double log_posterior = 0.0;
-        */
-        // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
-        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + kmer_idx, k);
-        assert(rank < training_data.size());
-        auto& kmer_summary = training_data[rank];
-
-        // We only use this event for training if its not at the end of the alignment
-        // (to avoid bad alignments around the read edges) and if its not too short (to
-        // avoid bad measurements from effecting the levels too much)
-        bool use_for_training = sr.get_duration( event_idx, strand_idx) >= opt::min_event_duration &&
-                                sr.get_fully_scaled_level(event_idx, strand_idx) >= 1.0;
-
-        if(use_for_training) {
-            StateTrainingData std(sr.get_fully_scaled_level(event_idx, strand_idx),
-                                  sr.get_scaled_stdv(event_idx, strand_idx),
-                                  sr.scalings[strand_idx].var,
-                                  sr.scalings[strand_idx].scale,
-                                  log_posterior);
-
-            #pragma omp critical(kmer)
-            {
-                event_count[rank]++;
-                add_event_tmp(kmer_summary, std, event_count[rank]);
-            }
-        }
-        /*
-        if(ea.hmm_state == 'M')  {
-            #pragma omp atomic
-            kmer_summary.num_matches += 1;
-        } else if(ea.hmm_state == 'E') {
-            #pragma omp atomic
-            kmer_summary.num_stays += 1;
-        }
-        */
-    }
-}
 
 void parse_train_options(int argc, char** argv)
 {
@@ -430,6 +242,7 @@ void parse_train_options(int argc, char** argv)
             case OPT_MAX_READS: arg >> opt::max_reads; break;
             case OPT_MAX_READ_LENGTH: arg >> opt::max_read_length; break;
             case OPT_MAX_EVENTS: arg >> opt::max_events; break;
+            case OPT_BEDMETHYL: arg >> opt::bedmethyl_filename; break;
             case OPT_HELP:
                 std::cout << TRAIN_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -512,6 +325,297 @@ void parse_train_options(int argc, char** argv)
     if (die) {
         std::cout << "\n" << TRAIN_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
+    }
+}
+
+
+// recalculate shift, scale, drift, scale_sd from an alignment and the read
+// returns true if the recalibration was performed
+// in either case, sets residual to the L1 norm of the residual
+extern bool recalibrate_model(SquiggleRead &sr,
+                       const PoreModel& pore_model,
+                       const int strand_idx,
+                       const std::vector<EventAlignment> &alignment_output,
+                       const bool scale_var,
+                       const bool scale_drift);
+
+// Use reservoir sampling to limit the amount of events for each kmer
+void add_event_tmp(StateSummary& kmer_summary, StateTrainingData std, int event_count)
+{
+    // Add all events for each kmer until we have the maximum number of events to train
+    if(event_count <= opt::max_events) {
+        kmer_summary.events.push_back(std);
+    } else {
+        // Select a random number between 0 and the total number of events for this kmer
+        std::mt19937 rng(event_count);
+        std::uniform_int_distribution<int> gen(0, event_count);
+        int rs_location = gen(rng);
+
+        // Only update the training data if the random number is below the maximum number of events
+        if(rs_location < opt::max_events) {
+            kmer_summary.events[rs_location] = std;
+        }
+    }
+}
+
+std::string infer_read_sequence_from_variants_and_methylation(SquiggleRead& sr,
+                                                              const PoreModel* pore_model,
+                                                              const faidx_t* fai,
+                                                              const bam_hdr_t* hdr,
+                                                              const bam1_t* record,
+                                                              const std::vector<BedMethylRecord>& methylation_records)
+{
+    int strand_idx = 0;
+    uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
+
+    // 
+    std::string ref_name = hdr->target_name[record->core.tid];
+    int ref_start_pos = record->core.pos;
+    int ref_end_pos = bam_endpos(record);
+
+    int reference_length;
+    std::string reference_seq =
+        get_reference_region_ts(fai, ref_name.c_str(), ref_start_pos, ref_end_pos, &reference_length);
+    std::transform(reference_seq.begin(), reference_seq.end(), reference_seq.begin(), ::toupper);
+
+    std::string read_outseq = reference_seq;
+    
+    // Search the variant collection for the index of the first/last variants to phase
+    BedMethylRecord lower_search;
+    lower_search.ref_name = ref_name;
+    lower_search.ref_start_position = ref_start_pos;
+    auto lower_iter = std::lower_bound(methylation_records.begin(), methylation_records.end(), lower_search, sortBedMethylByPosition);
+
+    BedMethylRecord upper_search;
+    upper_search.ref_name = ref_name;
+    upper_search.ref_start_position = ref_end_pos;
+    auto upper_iter = std::upper_bound(methylation_records.begin(), methylation_records.end(), upper_search, sortBedMethylByPosition);
+    
+    if(opt::verbose >= 1) {
+        fprintf(stderr, "Inferring read %s %s:%u-%u %zu\n", 
+            sr.read_name.c_str(), ref_name.c_str(), ref_start_pos, ref_end_pos, upper_iter - lower_iter);
+    }
+
+    SequenceAlignmentRecord seq_align_record(record);
+    EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
+    Haplotype reference_haplotype(ref_name, ref_start_pos, reference_seq);
+
+    //
+    int min_flanking_sequence = 30;
+    for(; lower_iter < upper_iter; ++lower_iter) {
+
+        const BedMethylRecord& bmr = *lower_iter;
+        if(bmr.strand == "-") {
+            continue; // TODO: handle properly
+        }
+
+        // Convert BedMethyl to VCF as this is what Haplotype wants
+        Variant v;
+        v.ref_name = bmr.ref_name;
+        v.ref_position = bmr.ref_start_position;
+        v.ref_seq = reference_seq.substr(bmr.ref_start_position - ref_start_pos, 1);
+        v.alt_seq = "M";
+
+        // Calculate methylated/unmethylated priors
+        double prior_methylated = bmr.coverage > 10 ? bmr.percent_methylated / 100.0 : 0.5;
+        double log_prior_methylated = log(prior_methylated);
+        double log_prior_unmethylated = log(1.0 - prior_methylated);
+
+        // set up HMM data
+        int calling_start = v.ref_position - min_flanking_sequence;
+        int calling_end = v.ref_position + min_flanking_sequence;
+
+        HMMInputData data;
+        data.read = event_align_record.sr;
+        data.strand = event_align_record.strand;
+        data.rc = event_align_record.rc;
+        data.event_stride = event_align_record.stride;
+        data.pore_model = pore_model;
+
+        int e1,e2;
+        bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
+                calling_start,
+                calling_end,
+                e1,
+                e2);
+
+        // The events of this read do not span the calling window, skip
+        if(!bounded || fabs(e2 - e1) / (calling_start - calling_end) > MAX_EVENT_TO_BP_RATIO) {
+            continue;
+        }
+
+        data.event_start_idx = e1;
+        data.event_stop_idx = e2;
+
+        Haplotype calling_haplotype =
+            reference_haplotype.substr_by_reference(calling_start, calling_end);
+
+        HMMInputSequence ref_hmm_input(calling_haplotype.get_sequence(), pore_model->pmalphabet);
+        double ref_score = profile_hmm_score(ref_hmm_input, data, hmm_flags) + log_prior_unmethylated;
+
+        bool good_haplotype = calling_haplotype.apply_variant(v);
+        if(good_haplotype) {
+            HMMInputSequence alt_hmm_input(calling_haplotype.get_sequence(), pore_model->pmalphabet);
+            double alt_score = profile_hmm_score(alt_hmm_input, data, hmm_flags) + log_prior_methylated;
+            double log_sum = add_logs(alt_score, ref_score);
+            double log_p_ref = ref_score - log_sum;
+            double log_p_alt = alt_score - log_sum;
+            char call;
+            double log_p_wrong;
+
+            if(alt_score > ref_score) {
+                call = v.alt_seq[0];
+                log_p_wrong = log_p_ref;
+            } else {
+                call = v.ref_seq[0];
+                log_p_wrong = log_p_alt;
+            }
+
+            double q_score = -10 * log_p_wrong / log(10);
+            char q_char = (int)q_score + 33;
+
+            /*
+            fprintf(stderr, "\t%s prior meth: %.2lf score: %.2lf %.2lf %c p_wrong: %.3lf Q: %d QC: %c\n", 
+                v.key().c_str(), prior_methylated, ref_score, alt_score, call, log_p_wrong, (int)q_score, q_char);
+            */
+
+            int out_position = v.ref_position - ref_start_pos;
+            if(read_outseq[out_position] != v.ref_seq[0]) {
+                fprintf(stderr, "warning: reference base at position %d does not match variant record (%c != %c)\n",
+                        v.ref_position, v.ref_seq[0], read_outseq[out_position]);
+            }
+
+            read_outseq[out_position] = call;
+        }
+    }
+
+
+    return read_outseq;
+}
+
+// Update the training data with aligned events from a read
+void add_aligned_events_for_read(const ReadDB& read_db,
+                                 const faidx_t* fai,
+                                 std::vector<StateSummary>& training_data,
+                                 const std::string& training_kit,
+                                 const std::string& training_alphabet,
+                                 size_t training_k,
+                                 std::unordered_map<uint32_t, int>& event_count,
+                                 const std::vector<BedMethylRecord>& methylation_records,
+                                 const bam_hdr_t* hdr,
+                                 const bam1_t* record,
+                                 size_t read_idx,
+                                 int region_start,
+                                 int region_end)
+{
+
+    // only support training template strand
+    size_t strand_idx = 0;
+
+    // optionally skip long reads
+    if(opt::max_read_length > 0 && record->core.l_qseq > opt::max_read_length) {
+        return;
+    }
+
+    // Load a squiggle read for the mapped read
+    std::string read_name = bam_get_qname(record);
+
+    // load read
+    SquiggleRead sr(read_name, read_db);
+
+    // skip if 1D reads and this is the wrong strand
+    if(!sr.has_events_for_strand(strand_idx)) {
+        return;
+    }
+
+    assert(training_kit == sr.get_model_kit_name(strand_idx));
+    assert(training_k == sr.get_model_k(strand_idx));
+
+    // set k
+    uint32_t k = sr.get_model_k(strand_idx);
+
+    // Get the reference sequence for this read
+    std::string ref_name = hdr->target_name[record->core.tid];
+    int alignment_start_pos = record->core.pos;
+    int alignment_end_pos = bam_endpos(record);
+
+    // skip if region too short
+    // TODO: make parameter
+    if(alignment_end_pos - alignment_start_pos < 1000) {
+        return;
+    }
+    
+    // get the pore model we want for the type of training data
+    const PoreModel* pore_model = sr.get_model(strand_idx, train_alphabet_ptr->get_name());
+
+    // infer the truth sequence for this read using the input  genomic variants and methylation sites
+    std::string reference_seq = infer_read_sequence_from_variants_and_methylation(sr, pore_model, fai, hdr, record, methylation_records);
+
+    // Reverse complement if necessary
+    if(bam_is_rev(record)) {
+        reference_seq = train_alphabet_ptr->reverse_complement(reference_seq);
+    }
+
+    // align events to the reference sequence
+
+
+    // prepare data structures for the event-guided forward/backward to calculate state posteriors
+    AdaBandedParameters alignment_parameters;
+    alignment_parameters.bandwidth = 25;
+    alignment_parameters.p_skip = 0.005;
+    //alignment_parameters.verbose = 1;
+    alignment_parameters.min_average_log_emission = -3.5;
+    alignment_parameters.max_stay_threshold = 200;
+    alignment_parameters.min_posterior = 1e-1;
+    Haplotype reference_haplotype(ref_name, alignment_start_pos, reference_seq);
+    SequenceAlignmentRecord seq_align_record(record);
+    EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
+    
+    // posterior 
+    std::vector<EventKmerPosterior> state_assignments = 
+        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+
+    size_t edge_ignore = 50;
+    if(state_assignments.size() < 2*edge_ignore) {
+        return;
+    }
+
+    for(size_t i = edge_ignore; i < state_assignments.size() - edge_ignore; ++i) {
+        const auto& ekp = state_assignments[i];
+        
+        size_t kmer_idx = ekp.kmer_idx;
+        size_t event_idx = ekp.event_idx;
+        double log_posterior = ekp.log_posterior;
+
+        /*
+        size_t kmer_idx = ekp.ref_pos;
+        size_t event_idx = ekp.read_pos;
+        double log_posterior = 0.0;
+        */
+        // Get the rank of the kmer that we aligned to (on the sequencing strand, = model_kmer)
+        uint32_t rank = train_alphabet_ptr->kmer_rank(reference_seq.c_str() + kmer_idx, k);
+        assert(rank < training_data.size());
+        auto& kmer_summary = training_data[rank];
+
+        // We only use this event for training if its not at the end of the alignment
+        // (to avoid bad alignments around the read edges) and if its not too short (to
+        // avoid bad measurements from effecting the levels too much)
+        bool use_for_training = sr.get_duration( event_idx, strand_idx) >= opt::min_event_duration &&
+                                sr.get_fully_scaled_level(event_idx, strand_idx) >= 1.0;
+
+        if(use_for_training) {
+            StateTrainingData std(sr.get_fully_scaled_level(event_idx, strand_idx),
+                                  sr.get_scaled_stdv(event_idx, strand_idx),
+                                  sr.scalings[strand_idx].var,
+                                  sr.scalings[strand_idx].scale,
+                                  log_posterior);
+
+            #pragma omp critical(kmer)
+            {
+                event_count[rank]++;
+                add_event_tmp(kmer_summary, std, event_count[rank]);
+            }
+        }
     }
 }
 
@@ -676,7 +780,8 @@ PoreModel train_round(const ReadDB& read_db,
                       const std::string& alphabet,
                       size_t k,
                       size_t round,
-                      const PoreModel& current_model)
+                      const PoreModel& current_model,
+                      const std::vector<BedMethylRecord>& methylation_records)
 {
     // initialize summary data
     std::vector<StateSummary> model_training_data(current_model.get_num_states());
@@ -697,6 +802,7 @@ PoreModel train_round(const ReadDB& read_db,
                        std::ref(alphabet),
                        k,
                        std::ref(event_count),
+                       std::ref(methylation_records),
                        _1, _2, _3, _4, _5); // parameters BamProcessor passes in
 
     processor.parallel_run(f);
@@ -760,6 +866,28 @@ int train_main(int argc, char** argv)
             mkdir(opt::output_directory.c_str(), 0700);
     }
 
+    // optionally load in methylation calls for this sample
+    // these calls will be used as a map to determine read-specific
+    // methylation patterns for training
+    std::vector<BedMethylRecord> bedmethyl_records;
+    if(!opt::bedmethyl_filename.empty()) {
+        if(opt::region.empty()) {
+            fprintf(stderr, "error: a training region must be provided when using the bedmethyl option\n");
+            exit(EXIT_FAILURE);
+        }
+
+        std::string contig;
+        int start_base;
+        int end_base;
+        parse_region_string(opt::region, contig, start_base, end_base);
+
+        bedmethyl_records = read_bedmethyl_for_region(opt::bedmethyl_filename, contig, start_base, end_base);
+        fprintf(stderr, "[train] read %zu methylation records in region\n", bedmethyl_records.size());
+        
+        // Sort variants by reference coordinate
+        std::sort(bedmethyl_records.begin(), bedmethyl_records.end(), sortBedMethylByPosition);
+    }
+
     //
     std::string training_kit = current_model.metadata.get_kit_name();
     train_alphabet_ptr = current_model.pmalphabet;
@@ -769,7 +897,7 @@ int train_main(int argc, char** argv)
     for(size_t round = 0; round < opt::num_training_rounds; round++) {
 
         fprintf(stderr, "[train] round %zu\n", round);
-        current_model = train_round(read_db, training_kit, train_alphabet_ptr->get_name(), training_k, round, current_model);
+        current_model = train_round(read_db, training_kit, train_alphabet_ptr->get_name(), training_k, round, current_model, bedmethyl_records);
     }
 
     return EXIT_SUCCESS;

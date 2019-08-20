@@ -368,7 +368,7 @@ int phase_reads_main(int argc, char** argv)
         // Read the variants for this region
         variants = read_variants_for_region(opt::variants_file, contig, start_base, end_base);
     } else {
-         variants = read_variants_from_file(opt::variants_file);
+        variants = read_variants_from_file(opt::variants_file);
     }
 
     // Sort variants by reference coordinate
