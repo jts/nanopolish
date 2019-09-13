@@ -226,8 +226,8 @@ private:
     // ----- emission parameters:
     // emission parameters, from empirical MLE on manually-flagged reads:
     // START has a mixture of Gaussian and Uniform emissions;
-    // LEADER and POLYA have Gaussian emissions;
-    // ADAPTER, TRANSCRIPT have Gaussian mixture emissions;
+    // LEADER has a Gaussian emission;
+    // ADAPTER, POLYA, TRANSCRIPT have Gaussian mixture emissions;
     // CLIFF has Uniform emissions.
     GaussianParameters s_emission = {70.2737f, 3.7743f};
     float s_begin = 40.0f;
@@ -240,7 +240,10 @@ private:
     GaussianParameters a1_emission = {63.3126f, 2.7464f};
     float a0_coeff = 0.874f;
     float a1_coeff = 0.126f;
-    GaussianParameters p_emission = {108.883f, 3.257f};
+    GaussianParameters p0_emission = {108.883f, 3.257f};
+    GaussianParameters p1_emission = {108.498f, 5.257f};
+    float p0_coeff = 0.500f;
+    float p1_coeff = 0.500f;
     float c_begin = 70.0f;
     float c_end = 140.0f;
     float c_log_prob = -4.2485f; // natural log of [1/(140-70)]
@@ -286,7 +289,9 @@ private:
         }
         if (state == HMM_POLYA) {
             // POLYA state:
-            log_probs = log_normal_pdf(xx, this->p_emission);
+	    float mixture_proba = (this->p0_coeff*normal_pdf(xx, this->p0_emission)) + \
+		(this->p1_coeff*normal_pdf(xx, this->p1_emission));
+            log_probs = std::log(mixture_proba);
         }
         if (state == HMM_CLIFF) {
             // CLIFF state: middle-out uniform distribution
@@ -341,9 +346,12 @@ public:
         this->a1_emission.stdv = var * this->a1_emission.stdv;
         this->a1_emission.log_stdv = std::log(this->a1_emission.stdv);
         // POLYA emissions:
-        this->p_emission.mean = shift + scale*(this->p_emission.mean);
-        this->p_emission.stdv = var * this->p_emission.stdv;
-        this->p_emission.log_stdv = std::log(this->p_emission.stdv);
+        this->p0_emission.mean = shift + scale*(this->p0_emission.mean);
+        this->p0_emission.stdv = var * this->p0_emission.stdv;
+        this->p0_emission.log_stdv = std::log(this->p0_emission.stdv);
+        this->p1_emission.mean = shift + scale*(this->p1_emission.mean);
+        this->p1_emission.stdv = var * this->p1_emission.stdv;
+        this->p1_emission.log_stdv = std::log(this->p1_emission.stdv);
         // TRANSCRIPT emissions:
         this->t0_emission.mean = shift + scale*(this->t0_emission.mean);
         this->t0_emission.stdv = var * this->t0_emission.stdv;
@@ -505,6 +513,246 @@ public:
             ixs.polya = region_labels.size() - 1;
         }
         return ixs;
+    }
+};
+
+// ================================================================================
+// Bernoulli Hidden Markov Model
+//   The `BernoulliHMM` class is a two-state hidden markov model designed to find
+//   a (potentially nonexistent) switchpoint in a region with two very similar
+//   Gaussian emissions by discretizing the log-likelihood ratio.
+// * struct BernoulliOutputs: contains log-prob scores and inferred state sequence
+//   from a run of the viterbi algorithm on the bernoulli-distributed sequence.
+// * struct BernoulliSegmentation: contains ending sample indices for each region
+//   of a squiggle's segmentation.
+// * BernoulliHMM: class defining a hidden markov model for segmentation of
+//   a squiggle.
+// ================================================================================
+// Contains the (possibly nonexistent) locations of the switchpoints.
+struct BernoulliSegmentation {
+    int polyi;    // **LAST** index of p(I) region (or -1 if not found).
+    int polya;    // **FIRST** index of p(A) region (or -1 if not found).
+};
+
+// Descriptive shorthands for the states of the bernoulli HMM.
+enum BernoulliState {
+    BERN_POLYI = 0,
+    BERN_POLYA = 1,
+    BERN_NUM_STATES = 2
+};
+
+// Container struct for the output sequences of the viterbi algorithm on the model.
+struct BernoulliOutputs {
+    std::vector<float> scores;
+    std::vector<BernoulliState> labels;
+};
+
+class BernoulliHMM {
+private:
+    float state_transitions[BERN_NUM_STATES][BERN_NUM_STATES] = {
+        {0.90f, 0.10f},
+        {0.00f, 1.00f}
+    };
+    // initial state probabilities:
+    float start_probs[BERN_NUM_STATES] = { 1.00f, 0.00f };
+
+
+    // Normal distributions for poly(I) and poly(A) states:
+    // (N.B.: these should *not* be scaled by the SquiggleRead's linear parameters.)
+    GaussianParameters pI_gaussian = {108.498f, 5.257f};
+    GaussianParameters pA_gaussian = {108.883f, 3.257f};
+
+    // Global mean sample value for recentering:
+    float global_mean = 108.000f;
+
+    // Bernoulli parameters for poly(I) and poly(A) binary log-likelihood ratios:
+    // (These represent the probability of observing a 1 in a {0,1}-supported bernoulli)
+    float pI_bernoulli = 0.72304f;
+    float pA_bernoulli = 0.92154f;
+
+    // log-probabilities are computed in the constructor:
+    float log_state_transitions[BERN_NUM_STATES][BERN_NUM_STATES];
+    float log_start_probs[BERN_NUM_STATES];
+
+    // ----- inlined computation of emission log-probabilities:
+    // Get the log-probability of seeing `x` given we're in state `state` of the HMM
+    // N.B.: we scale the emission parameters (events are **not** scaled).
+    inline float emit_log_proba_gaussian(const float x, const BernoulliState state) const
+    {
+        // sometimes samples can exceed reasonable bounds due to mechanical issues;
+        // in that case, we should clamp it to 100:
+        float xx;
+        if (x > 200.0f || x < 40.0f) {
+            xx = 100.0f;
+        } else {
+            xx = x;
+        }
+
+        // compute on a case-by-case basis to handle heterogeneous probability distributions
+        float log_probs;
+        if (state == BERN_POLYI) {
+            // POLY(I) state:
+            log_probs = std::log(normal_pdf(xx, this->pI_gaussian));
+        }
+        if (state == BERN_POLYA) {
+            // POLY(A) state:
+            log_probs = std::log(normal_pdf(xx, this->pA_gaussian));
+        }
+        return log_probs;
+    }
+
+    // ----- inlined computation of emission log-probabilities, for bernoulli distributions:
+    inline float emit_log_proba_bernoulli(const int n, const BernoulliState state) const
+    {
+        float log_probs;
+        if (state == BERN_POLYI) {
+            if (n == 1) {
+                log_probs = std::log(this->pI_bernoulli);
+            } else {
+                log_probs = std::log(1.0f - this->pI_bernoulli);
+            }
+        }
+        if (state == BERN_POLYA) {
+            if (n == 1) {
+                log_probs = std::log(this->pA_bernoulli);
+            } else {
+                log_probs = std::log(1.0f - this->pA_bernoulli);
+            }
+        }
+        return log_probs;
+    }
+
+public:
+    // Constructor method for BernoulliHMM
+    BernoulliHMM(float scale, float shift, float var)
+    {
+        // initialize log probabilities:
+        for (int i = 0; i < BERN_NUM_STATES; ++i) {
+            for (int j = 0; j < BERN_NUM_STATES; ++j) {
+                if (this->state_transitions[i][j] > 0.00f) {
+                    this->log_state_transitions[i][j] = std::log(this->state_transitions[i][j]);
+                } else {
+                    this->log_state_transitions[i][j] = -INFINITY;
+                }
+            }
+            if (this->start_probs[i] > 0.00f) {
+                this->log_start_probs[i] = std::log(this->start_probs[i]);
+            } else {
+                this->log_start_probs[i] = -INFINITY;
+            }
+        }
+    }
+
+    // Destructor method: nothing to do
+    ~BernoulliHMM() { }
+
+    // Take a vector of floats and return a vector of {0,1}-valued ints
+    // by computing log-likelihood ratios { llkd(polyI) / llkd(polyA) } for each float.
+    std::vector<int> log_lkhd_ratio_sequence(const std::vector<float>& signal) const
+    {
+        // --- compute mean pico-ampere value for this particular sequence:
+        float instance_mean = 0.00f;
+        for (size_t i = 0; i < signal.size(); ++i) {
+            instance_mean = instance_mean + signal.at(i);
+        }
+        instance_mean = instance_mean / static_cast<float>(signal.size());
+
+        // re-center this sequence to the global mean picoamp value and then binarize the log-likelihood ratio values:
+        std::vector<int> bernoullis(signal.size());
+        for (size_t i = 0; i < signal.size(); ++i) {
+            float s = signal.at(i) - instance_mean + this->global_mean;
+            float loglkhd_pI = this->emit_log_proba_gaussian(s, BERN_POLYI);
+            float loglkhd_pA = this->emit_log_proba_gaussian(s, BERN_POLYA);
+            if ((loglkhd_pI / loglkhd_pA) > 1.0f) {
+                bernoullis.at(i) = 1;
+            } else {
+                bernoullis.at(i) = 0;
+            }
+        }
+        std::cout << std::endl;
+
+        return bernoullis;
+    }
+
+    // Viterbi implementation for BernoulliHMM with a 0-1 signal as input.
+    BernoulliOutputs viterbi(const std::vector<int>& bernoullis) const {
+        // --- Initialize viterbi score and backpointer vectors:
+        std::vector<float> _init_scores(BERN_NUM_STATES, -std::numeric_limits<float>::infinity());
+        std::vector<BernoulliState> _init_bptrs(BERN_NUM_STATES, BERN_NUM_STATES);
+        std::vector< std::vector<float> > viterbi_scores(bernoullis.size(), _init_scores);
+        std::vector< std::vector<BernoulliState> > viterbi_bptrs(bernoullis.size(), _init_bptrs);
+
+        // --- forward viterbi pass: compute viterbi scores & backpointers.
+        viterbi_scores[0][BERN_POLYI] = this->log_start_probs[BERN_POLYI] + this->emit_log_proba_bernoulli(bernoullis[0], BERN_POLYI);
+        viterbi_scores[0][BERN_POLYA] = this->log_start_probs[BERN_POLYA] + this->emit_log_proba_bernoulli(bernoullis[0], BERN_POLYA);
+        for (size_t i = 1; i < bernoullis.size(); ++i) {
+            // compute transition probabilities:
+            float i2i = viterbi_scores.at(i-1)[BERN_POLYI] + this->log_state_transitions[BERN_POLYI][BERN_POLYI];
+            float i2a = viterbi_scores.at(i-1)[BERN_POLYI] + this->log_state_transitions[BERN_POLYI][BERN_POLYA];
+            float a2a = viterbi_scores.at(i-1)[BERN_POLYA] + this->log_state_transitions[BERN_POLYA][BERN_POLYA];
+
+            // update viterbi scores:
+            viterbi_scores.at(i)[BERN_POLYI] = i2i + this->emit_log_proba_bernoulli(bernoullis[i], BERN_POLYI);
+            viterbi_scores.at(i)[BERN_POLYA] = std::max(i2a, a2a) + this->emit_log_proba_bernoulli(bernoullis[i], BERN_POLYA);
+
+            // update backpointers:
+            viterbi_bptrs.at(i)[BERN_POLYI] = BERN_POLYI;
+            if (a2a < i2a) {
+                viterbi_bptrs.at(i)[BERN_POLYA] = BERN_POLYI;
+            } else {
+                viterbi_bptrs.at(i)[BERN_POLYA] = BERN_POLYA;
+            }
+        }
+
+        // --- backwards viterbi pass:
+        std::vector<BernoulliState> regions(bernoullis.size(), BERN_POLYI);
+        std::vector<float> scores(bernoullis.size(), 0.0f);
+        if (viterbi_scores.at(bernoullis.size()-1)[BERN_POLYI] < viterbi_scores.at(bernoullis.size()-1)[BERN_POLYA]) {
+            regions[bernoullis.size()-1] = BERN_POLYA;
+            scores[bernoullis.size()-1] = viterbi_scores.at(bernoullis.size()-1)[BERN_POLYA];
+        } else {
+            regions[bernoullis.size()-1] = BERN_POLYI;
+            scores[bernoullis.size()-1] = viterbi_scores.at(bernoullis.size()-1)[BERN_POLYI];
+        }
+        for (size_t j=(bernoullis.size()-2); j > 0; --j) {
+            regions[j] = viterbi_bptrs.at(j)[regions.at(j+1)];
+            scores[j] = viterbi_scores.at(j)[regions.at(j+1)];
+        }
+
+        // --- format BernoulliOutputs structure and return:
+        BernoulliOutputs output_vectors = { scores, regions };
+        return output_vectors;
+    }
+
+    // Compute the Bernoulli HMM segmentation; this is the final public interface that gets called.
+    BernoulliSegmentation segmentation(const SquiggleRead& sr, int start, int stop) const {
+        // --- initialize BernoulliSegmentation (indices of -1 mean that the respective regions were not found):
+        BernoulliSegmentation segmentation = { -1, -1 };
+        // --- guard: if fewer than 100 samples in the region, return 'not found':
+        if (stop - start < 100) {
+            return segmentation;
+        }
+
+        // --- subset the squiggleread sequence, perform linear adjustment, and binarize via log-likelihood test:
+        std::vector<float> squiggle(&sr.samples[start], &sr.samples[stop]);
+        for (size_t i = 0; i < squiggle.size(); ++i) {
+            squiggle.at(i) = (squiggle.at(i) - sr.scalings[0].shift) / sr.scalings[0].scale;
+        }
+        std::vector<int> bernoullis = this->log_lkhd_ratio_sequence(squiggle);
+
+        // --- run viterbi algorithm:
+        BernoulliOutputs viterbi_results = this->viterbi(bernoullis);
+
+        // --- parse viterbi labels to find segmentation (keep indices at -1 if no region found):
+        for (size_t i = 0; i < viterbi_results.labels.size(); ++i) {
+            if (viterbi_results.labels.at(i) == BERN_POLYI) {
+                segmentation.polyi = i;
+            }
+            if ((viterbi_results.labels.at(i) == BERN_POLYA) && (segmentation.polya < 0)) {
+                segmentation.polya = i;
+            }
+        }
+        return segmentation;
     }
 };
 
@@ -721,6 +969,33 @@ std::string post_estimation_qc(const Segmentation& region_indices, const Squiggl
     return qc_tag;
 }
 
+// QC pass to remove erroneous POLY{A,I} detection calls.
+std::string post_boolhmm_detetection_qc(const BernoulliSegmentation& segmentation, int region_length) {
+    // empirically-discovered threshold for number of samples needed for POLYA or POLYI region to be detected:
+    double cutoff = 200;
+    // detect regions:
+    bool polyi_found = false;
+    if (segmentation.polyi > cutoff) {
+        polyi_found = true;
+    }
+    bool polya_found = false;
+    if ((segmentation.polya > 0) && (region_length - segmentation.polya > cutoff)) {
+        polya_found = true;
+    }
+    // compute output tag:
+    std::string qc_tag;
+    if (polyi_found && polya_found) {
+        qc_tag = "A+I";
+    } else if (!polyi_found && polya_found) {
+        qc_tag = "POLYA-ONLY";
+    } else if (polyi_found && !polya_found) {
+        qc_tag = "POLYI-ONLY";
+    } else {
+        qc_tag = "NONE";
+    }
+    return qc_tag;
+}
+
 // ================================================================================
 // Main Poly-A Code
 //   Expose main functionality of this module via public-facing function.
@@ -761,7 +1036,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
-	{
+        {
             fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos);
             if (opt::verbose == 1) {
@@ -812,6 +1087,13 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
         qc_tag = "PASS";
     }
 
+    //----- Detect POLY{A,I} region with BernoulliHMM:
+    BernoulliHMM boolhmm(static_cast<float>(sr.scalings[0].scale),
+                         static_cast<float>(sr.scalings[0].shift),
+                         static_cast<float>(sr.scalings[0].var));
+    BernoulliSegmentation poly_segmentation = boolhmm.segmentation(sr, region_indices.adapter+1, region_indices.polya);
+    std::string poly_detect_tag = post_boolhmm_detetection_qc(poly_segmentation, (region_indices.polya-(region_indices.adapter+1)));
+
     //----- print annotations to TSV:
     double leader_sample_start = region_indices.start+1;
     double adapter_sample_start = region_indices.leader+1;
@@ -820,10 +1102,10 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     double transcr_sample_start = region_indices.polya+1;
     #pragma omp critical
     {
-        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\n",
+        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\t%s\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos,
-                leader_sample_start, adapter_sample_start, polya_sample_start,
-                transcr_sample_start, read_rate, polya_length, qc_tag.c_str());
+                leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
+                read_rate, polya_length, poly_detect_tag.c_str(), qc_tag.c_str());
         // if `verbose == 1`, print the samples (picoAmps) of the read,
         // up to the first 1000 samples of transcript region:
         if (opt::verbose == 1) {
@@ -874,7 +1156,7 @@ int polya_main(int argc, char** argv)
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
     // print header line:
-    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tqc_tag\n");
+    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tdetected\tqc_tag\n");
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
