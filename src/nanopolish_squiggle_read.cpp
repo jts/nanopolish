@@ -360,12 +360,6 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         start_time += length_in_seconds;
     }
 
-    /*
-    // try to estimate var using linear regression
-    SNRMetrics snr_metrics = this->calculate_snr_metrics(strand_idx);
-    this->scalings[strand_idx].var = 2.02173 + -0.02927 * (snr_metrics.current_range / snr_metrics.median_sd);
-    */
-
     if(flags & SRF_LOAD_RAW_SAMPLES) {
         this->sample_start_time = 0;
         this->samples.resize(rt.n);

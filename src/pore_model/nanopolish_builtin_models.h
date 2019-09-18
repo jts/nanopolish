@@ -46,8 +46,8 @@ const static std::vector<PoreModel> builtin_models({
 	initialize_r9_4_70bps_u_to_t_rna_5mer_template_model_builtin(),
 	initialize_r9_4_450bps_dcm_6mer_template_model_builtin(),
 	initialize_r9_4_450bps_dam_6mer_template_model_builtin(),
-    initialize_r10_450bps_nucleotide_9mer_template_model_builtin(),
-    initialize_r10_450bps_cpg_9mer_template_model_builtin()
+	initialize_r10_450bps_nucleotide_9mer_template_model_builtin(),
+	initialize_r10_450bps_cpg_9mer_template_model_builtin()
 });
 
 #endif
