@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 # Convert a .model file into a .inl file that can be directly compiled into nanopolish
-from __future__ import print_function
+
 
 import argparse
 

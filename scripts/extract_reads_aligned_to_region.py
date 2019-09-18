@@ -5,7 +5,7 @@ Extract info on reads that align to a given region
 in draft genome assembly.
 ========================================================
 """
-from __future__ import print_function
+
 
 try:
 	from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -186,7 +186,7 @@ def main():
 	bad_read_id = ""
 	bad_f5_path = ""
 	num_bad_cases = 0
-	for r in region_fast5_files.keys():
+	for r in list(region_fast5_files.keys()):
 		read_id = r
 		f5 = region_fast5_files[r]
 
