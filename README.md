@@ -90,7 +90,7 @@ samtools index reads.sorted.bam
 Now, we use nanopolish to compute the consensus sequence (the genome is polished in 50kb blocks and there will be one output file per block). We'll run this in parallel:
 
 ```
-python nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
+python3 nanopolish_makerange.py draft.fa | parallel --results nanopolish.results -P 8 \
     nanopolish variants --consensus -o polished.{1}.vcf -w {1} -r reads.fa -b reads.sorted.bam -g draft.fa -t 4 --min-candidate-frequency 0.1
 ```
 

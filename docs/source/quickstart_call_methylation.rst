@@ -96,7 +96,7 @@ The output is another tab-separated file, this time summarized by genomic positi
 
 In the example data set we have also included bisulfite data from ENCODE for the same region of chromosome 20. We can use the included ``compare_methylation.py`` helper script to do a quick comparison between the nanopolish methylation output and bisulfite: ::
 
-    python compare_methylation.py bisulfite.ENCFF835NTC.example.tsv methylation_frequency.tsv > bisulfite_vs_nanopolish.tsv
+    python3 compare_methylation.py bisulfite.ENCFF835NTC.example.tsv methylation_frequency.tsv > bisulfite_vs_nanopolish.tsv
 
 We can use R to visualize the results - we observe good correlation between the nanopolish methylation calls and bisulfite: ::
 
