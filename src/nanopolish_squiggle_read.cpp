@@ -88,11 +88,24 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
         std::string sequencing_kit = fast5_get_sequencing_kit(f5_file, this->read_name);
         std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
+        std::string flowcell_type = fast5_get_flowcell_type(f5_file, this->read_name);
 
         // Try to detect whether this read is DNA or RNA
         // Fix issue 531: experiment_type in fast5 is "rna" for cDNA kit dcs108
         bool rna_experiment = experiment_type == "rna" || experiment_type == "internal_rna";
         this->nucleotide_type = rna_experiment && sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
+
+        //fprintf(stderr, "fast5: %s detected flowcell type: %s\n", this->fast5_path.c_str(), flowcell_type.c_str());
+        // pre-release R10 uses "cust" flowcell type so we fall back to checking for
+        // the pore type in the path. this should be removed eventually once
+        // we no longer want to support pre-release R10
+        bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
+        bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
+        if( flowcell_type == "flo-min110" || (cust_or_unknown_fct && has_r10_path )) {
+            this->pore_type = PT_R10;
+        } else {
+            this->pore_type = PT_R9;
+        }
 
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
@@ -291,23 +304,20 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
     std::string strand_str = "template";
     size_t strand_idx = 0;
 
-    this->pore_type = PT_R9;
+    // default to R9 parameters
     std::string alphabet = "nucleotide";
     std::string kit = "r9.4_450bps";
     size_t k = 6;
-
     const detector_param* ed_params = &event_detection_defaults;
 
-    // hack for R10: set pore type depending on file path
-    // TODO: detect from fast5 when the appropriate fields are available
-    if(this->fast5_path.find("r10") != std::string::npos) {
-        this->pore_type = PT_R10;
+    if(this->pore_type == PT_R10) {
         kit = "r10_450bps";
         k = 9;
         ed_params = &event_detection_r10;
     }
 
     if(this->nucleotide_type == SRNT_RNA) {
+        assert(this->pore_type == PT_R9);
         kit = "r9.4_70bps";
         alphabet = "u_to_t_rna";
         k = 5;

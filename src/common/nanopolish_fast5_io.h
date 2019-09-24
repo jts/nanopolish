@@ -75,6 +75,9 @@ std::string fast5_get_sequencing_kit(fast5_file& fh, const std::string& read_id)
 // Get the experiment type attribute
 std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id);
 
+// Get the flow cell type attribute
+std::string fast5_get_flowcell_type(fast5_file& fh, const std::string& read_id);
+
 // Get sample rate, and ADC-to-pA scalings
 fast5_raw_scaling fast5_get_channel_params(fast5_file& fh, const std::string& read_id);
 

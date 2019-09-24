@@ -186,6 +186,20 @@ std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id
     return fast5_get_string_attribute(fh, group.c_str(), "experiment_type");
 }
 
+//
+std::string fast5_get_flowcell_type(fast5_file& fh, const std::string& read_id)
+{
+    std::string group = fast5_get_context_tags_group(fh, read_id);
+    
+    // current attribute name
+    std::string fct = fast5_get_string_attribute(fh, group.c_str(), "flow_cell_product_code");
+    if(fct == "") {
+        // try older attribute
+        fct = fast5_get_string_attribute(fh, group.c_str(), "flowcell_type");
+    }
+    return fct;
+}
+
 
 // from scrappie
 float fast5_read_float_attribute(hid_t group, const char *attribute) {

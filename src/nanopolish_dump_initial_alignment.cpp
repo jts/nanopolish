@@ -46,7 +46,7 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *DUMPALIGNMENT_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa\n"
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa\n"
 "Align nanopore events to reference k-mers\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
