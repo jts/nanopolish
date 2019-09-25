@@ -74,6 +74,7 @@ int main(int argc, char** argv)
 {
     // Turn off HDF's exception printing, which is generally unhelpful for users
     H5Eset_auto(0, NULL, NULL);
+    setenv("HDF5_USE_FILE_LOCKING", "FALSE", 1);
 
     int ret = 0;
     if(argc <= 1) {

@@ -21,7 +21,7 @@ HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
 
-HDF5_VERSION ?= 1.8.14
+HDF5_VERSION ?= 1.10.5
 EIGEN_VERSION ?= 3.2.5
 
 # Default to automatically installing hdf5
