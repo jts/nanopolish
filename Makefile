@@ -15,8 +15,8 @@ CFLAGS ?= -std=c99 -O3
 CXX ?= g++
 CC ?= gcc
 NVCC = nvcc
-NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda-9.0include -O3 -use_fast_math --default-stream per-thread -restrict
-CURTFLAGS ?= -L/usr/local/cuda-9.0/lib64 -lcudart
+NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda/include -O3 -use_fast_math --default-stream per-thread -restrict
+CURTFLAGS ?= -L/usr/local/cuda/lib64 -lcudart
 
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
 HDF5 ?= install
@@ -69,7 +69,7 @@ EIGEN_INCLUDE = -I./eigen/
 # Include the src subdirectories
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
 
-CUDA_INCLUDE=-I/usr/local/cuda-9.0/include
+CUDA_INCLUDE=-I/usr/local/cuda/include
 
 # Add include flags
 CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE) $(CUDA_INCLUDE)
@@ -158,5 +158,4 @@ test: $(TEST_PROGRAM)
 
 .PHONY: clean
 clean:
-	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o
-		src/main/nanopolish.o src/test/nanopolish_test.o
+	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o src/main/nanopolish.o src/test/nanopolish_test.o
