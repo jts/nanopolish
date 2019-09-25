@@ -323,39 +323,13 @@ class SquiggleRead
 
         SquiggleRead(const SquiggleRead&) {}
 
-        // Load all read data from events in a fast5 file
-        void load_from_events(const uint32_t flags);
-
         // Load all read data from raw samples
         void load_from_raw(fast5_file& f5_file, const uint32_t flags);
-
-        // Version-specific intialization functions
-        void _load_R7(uint32_t si);
-        void _load_R9(uint32_t si,
-                      const std::string& read_sequence_1d,
-                      const std::vector<EventRangeForBase>& event_map_1d,
-                      const std::vector<double>& p_model_states,
-                      const uint32_t flags);
-
-        // make a map from a base of the 1D read sequence to the range of events supporting that base
-        std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
-                                                          uint32_t strand,
-                                                          std::vector<fast5::Basecall_Event>& f5_events,
-                                                          size_t k);
-
-        std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
-                                                           uint32_t strand,
-                                                           std::vector<fast5::Basecall_Event>& f5_events,
-                                                           size_t k);
 
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,
                                    size_t& k_idx,
                                    size_t& event_idx) const;
-
-        // as above but for the 2D sequence. this fills in both the template and complete event indices
-        void build_event_map_2d_r7();
-        void build_event_map_2d_r9();
 
         // helper for get_closest_event_to
         int get_next_event(int start, int stop, int stride, uint32_t strand) const;
