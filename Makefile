@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/cuda_kernels
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model
 
 #
 # Set libraries, paths, flags and options
@@ -11,12 +11,9 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 LIBS = -lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char
-CFLAGS ?= -std=c99 -O3
+CFLAGS ?= -O3 -std=c99
 CXX ?= g++
 CC ?= gcc
-NVCC = nvcc
-NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda/include -O3 -use_fast_math --default-stream per-thread -restrict
-CURTFLAGS ?= -L/usr/local/cuda/lib64 -lcudart
 
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
 HDF5 ?= install
@@ -69,17 +66,15 @@ EIGEN_INCLUDE = -I./eigen/
 # Include the src subdirectories
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
 
-CUDA_INCLUDE=-I/usr/local/cuda/include
-
 # Add include flags
-CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE) $(CUDA_INCLUDE)
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
 
 # Main programs to build
 PROGRAM = nanopolish
 TEST_PROGRAM = nanopolish_test
 
 .PHONY: all
-all: $(PROGRAM) $(TEST_PROGRAM)
+all: depend $(PROGRAM)
 
 #
 # Build libhts
@@ -113,26 +108,49 @@ eigen/INSTALL:
 
 # Find the source files by searching subdirectories
 CPP_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cpp))
-CU_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cu))
 C_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.c))
 EXE_SRC = src/main/nanopolish.cpp src/test/nanopolish_test.cpp
 
 # Automatically generated object names
-CPP_OBJ=$(CPP_SRC:.cpp=.o)
-C_OBJ=$(C_SRC:.c=.o)
-CU_OBJ=$(CU_SRC:.cu=.o)
+CPP_OBJ = $(CPP_SRC:.cpp=.o)
+C_OBJ = $(C_SRC:.c=.o)
+
+ifdef cuda
+
+	NVCC = nvcc
+	NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda/include -O3 -use_fast_math --default-stream per-thread -restrict
+	CURTFLAGS ?= -L/usr/local/cuda/lib64 -lcudart
+
+	CUDA_INCLUDE?=-I/usr/local/cuda/include
+	CPPFLAGS+=$(CUDA_INCLUDE)
+	CPPFLAGS+=-DHAVE_CUDA=1
+
+	# Sub directories containing CUDA source code
+	SUBDIRS+=src/cuda_kernels
+	# Find the source files by searching subdirectories
+	CU_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cu))
+	# Automatically generated object names
+	CU_OBJ=$(CU_SRC:.cu=.o)
+	CPP_OBJ+=$(CU_OBJ)
+	LDFLAGS+=$(CURTFLAGS)
 
 .SUFFIXES: .cu
+
+# Compile objects
+.cu.o:
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $(CPPFLAGS) $<
+
+endif
+
+
 
 # Generate dependencies
 .PHONY: depend
 depend: .depend
 
-.depend: $(CPP_SRC) $(C_SRC) $(CU_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
+.depend: $(CPP_SRC) $(C_SRC) $(EXE_SRC) $(H5_LIB) $(EIGEN_CHECK)
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $(CPP_SRC) $(C_SRC) > ./.depend;
-
-include .depend
 
 # Compile objects
 .cpp.o:
@@ -141,16 +159,13 @@ include .depend
 .c.o:
 	$(CC) -o $@ -c $(CFLAGS) $(CPPFLAGS) $(H5_INCLUDE) -fPIC $<
 
-.cu.o:
-	$(NVCC) -o $@ -c $(NVCCFLAGS) $(CPPFLAGS) $<
-
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CU_OBJ) $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS) $(CURTFLAGS)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 # Link test executable
-$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS) $(CURTFLAGS)
+$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 .PHONY: test
 test: $(TEST_PROGRAM)
@@ -158,4 +173,5 @@ test: $(TEST_PROGRAM)
 
 .PHONY: clean
 clean:
-	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(CU_OBJ) $(C_OBJ) src/main/nanopolish.o src/test/nanopolish_test.o src/main/nanopolish.o src/test/nanopolish_test.o
+	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(C_OBJ) \
+		src/main/nanopolish.o src/test/nanopolish_test.o

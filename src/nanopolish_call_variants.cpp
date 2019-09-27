@@ -38,10 +38,12 @@
 #include "profiler.h"
 #include "progress.h"
 #include "stdaln.h"
-#include <cuda_kernels/GpuAligner.h>
-#include <thread>
-#include <chrono>
-#include <future>
+#ifdef HAVE_CUDA
+    #include <cuda_kernels/GpuAligner.h>
+    #include <thread>
+    #include <chrono>
+    #include <future>
+#endif
 
 // Macros
 #define max3(x,y,z) std::max(std::max(x,y), z)
@@ -349,7 +351,7 @@ void prepareForBaseEditCandidates(int start,
     }
 }
 
-
+#ifdef HAVE_CUDA
 void locusRangeBaseEditCandidateGPU(int start,
                                     int end,
                                     const AlignmentDB& alignments,
@@ -384,6 +386,7 @@ void locusRangeBaseEditCandidateGPU(int start,
     }
 
 }
+#endif
 
 void locusRangeBaseEditCandidate(int start,
                                  int end,
@@ -423,6 +426,7 @@ void locusRangeBaseEditCandidate(int start,
     }
 }
 
+#ifdef HAVE_CUDA
 std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB& alignments,
                                                               int region_start,
                                                               int region_end,
@@ -507,6 +511,7 @@ std::vector<Variant> generate_candidate_single_base_edits_gpu(const AlignmentDB&
     }
     return  out_variants;
 }
+#endif
 
 // Given the input region, calculate all single base edits to the current assembly
 std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& alignments,
@@ -1087,10 +1092,15 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
 
         std::vector<Variant> single_base_edits;
         if(opt::gpu) {
+            #ifdef HAVE_CUDA
             single_base_edits = generate_candidate_single_base_edits_gpu(alignments,
 									 region_start,
 									 region_end,
                                                                          alignment_flags);
+            #else
+                fprintf(stderr,"Not compiled for CUDA\n");
+                exit(1);
+            #endif
         } else {
             single_base_edits = generate_candidate_single_base_edits(alignments,
 								     region_start,
