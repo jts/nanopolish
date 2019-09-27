@@ -56,10 +56,10 @@ int print_usage(int, char **)
 int print_version(int, char **)
 {
     static const char *VERSION_MESSAGE =
-	"nanopolish version " PACKAGE_VERSION "\n"
-	"Written by Jared Simpson.\n"
-	"\n"
-	"Copyright 2015-2017 Ontario Institute for Cancer Research\n";
+    "nanopolish version " PACKAGE_VERSION "\n"
+    "Written by Jared Simpson.\n"
+    "\n"
+    "Copyright 2015-2017 Ontario Institute for Cancer Research\n";
     std::cout << VERSION_MESSAGE << std::endl;
     return 0;
 }
@@ -77,10 +77,9 @@ int main(int argc, char** argv)
     } else {
         std::string command(argv[1]);
         auto iter = programs.find(command);
-        if (iter != programs.end()) {
-            ret = iter->second(argc - 1, argv + 1);
-        }
-	else
+        if (iter != programs.end()) 
+            ret = iter->second( argc - 1, argv + 1);
+        else
             ret = print_usage( argc - 1, argv + 1);
     }
 
@@ -93,8 +92,8 @@ int main(int argc, char** argv)
     extern int g_failed_alignment_reads;
     extern int g_bad_fast5_file;
     if(g_total_reads > 0) {
-        fprintf(stderr, "[post-run summaryz] total reads: %d, unparseable: %d, qc fail: %d, could not calibrate: %d, no alignment: %d, bad fast5: %d\n",
-		g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads, g_failed_alignment_reads, g_bad_fast5_file);
+        fprintf(stderr, "[post-run summary] total reads: %d, unparseable: %d, qc fail: %d, could not calibrate: %d, no alignment: %d, bad fast5: %d\n", 
+            g_total_reads, g_unparseable_reads, g_qc_fail_reads, g_failed_calibration_reads, g_failed_alignment_reads, g_bad_fast5_file);
     }
     return ret;
 }
