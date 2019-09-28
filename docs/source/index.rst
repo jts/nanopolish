@@ -15,6 +15,7 @@ nanopolish
    quickstart_consensus
    quickstart_eventalign
    quickstart_call_methylation
+   quickstart_polya
    debug
    manual
 

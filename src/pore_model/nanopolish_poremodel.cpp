@@ -10,7 +10,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
-#include <bits/stl_algo.h>
 #include <fast5.hpp>
 
 void add_found_bases(char *known, const char *kmer) {

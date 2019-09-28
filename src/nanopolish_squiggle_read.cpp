@@ -82,17 +82,17 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         return;
     }
 
-
     // Get the read type from the fast5 file
-    hid_t hdf5_file = fast5_open(fast5_path);
-    if(hdf5_file >= 0) {
+    fast5_file f5_file = fast5_open(fast5_path);
+    if(fast5_is_open(f5_file)) {
 
-        //fprintf(stderr, "file: %s\n", fast5_path.c_str());
-        std::string experiment_type = fast5_get_experiment_type(hdf5_file);
-        //fprintf(stderr, "type: %s\n", experiment_type.c_str());
+        std::string sequencing_kit = fast5_get_sequencing_kit(f5_file, this->read_name);
+        std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
 
         // Try to detect whether this read is DNA or RNA
-        this->nucleotide_type = experiment_type == "rna" || experiment_type == "internal_rna" ? SRNT_RNA : SRNT_DNA;
+        // Fix issue 531: experiment_type in fast5 is "rna" for cDNA kit dcs108
+        bool rna_experiment = experiment_type == "rna" || experiment_type == "internal_rna";
+        this->nucleotide_type = rna_experiment && sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
 
         // Did this read come from nanopolish extract?
         bool is_event_read = is_extract_read_name(this->read_name);
@@ -115,10 +115,10 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             this->f_p = nullptr;
         } else {
             this->read_sequence = read_db.get_read_sequence(read_name);
-            load_from_raw(hdf5_file, flags);
+            load_from_raw(f5_file, flags);
         }
 
-        fast5_close(hdf5_file);
+        fast5_close(f5_file);
 
     } else {
         fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
@@ -271,7 +271,7 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 }
 
 //
-void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
+void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
 {
     // File not in db, can't load
     if(this->fast5_path == "" || this->read_sequence == "") {
@@ -304,11 +304,11 @@ void SquiggleRead::load_from_raw(hid_t hdf5_file, const uint32_t flags)
     assert(this->base_model[strand_idx] != NULL);
 
     // Read the sample rate
-    auto channel_params = fast5_get_channel_params(hdf5_file);
+    auto channel_params = fast5_get_channel_params(f5_file, this->read_name);
     this->sample_rate = channel_params.sample_rate;
 
     // Read the actual samples
-    raw_table rt = fast5_get_raw_samples(hdf5_file, channel_params);
+    raw_table rt = fast5_get_raw_samples(f5_file, this->read_name, channel_params);
 
     // trim using scrappie's internal method
     // parameters taken directly from scrappie defaults

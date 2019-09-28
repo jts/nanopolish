@@ -91,7 +91,7 @@ Usage example
 """""""""""""""""""""""
 ::
 
-    python extract_reads_aligned_to_region.py \
+    python3 extract_reads_aligned_to_region.py \
         --reads reads.fasta \
         --genome ecoli.contigs.fasta \
         --bam reads.sorted.bam \

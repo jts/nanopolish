@@ -37,7 +37,7 @@ SequenceAlignmentRecord::SequenceAlignmentRecord(const bam1_t* record)
     for(int i = 0; i < record->core.l_qseq; ++i) {
         this->sequence[i] = seq_nt16_str[bam_seqi(pseq, i)];
     }
-    
+
     // copy read base-to-reference alignment
     std::vector<AlignedSegment> alignments = get_aligned_segments(record);
     if(alignments.size() > 1) {
@@ -59,7 +59,7 @@ EventAlignmentRecord::EventAlignmentRecord(SquiggleRead* sr,
     this->sr = sr;
     size_t k = this->sr->get_model_k(strand_idx);
     size_t read_length = this->sr->read_sequence.length();
-    
+
     for(size_t i = 0; i < seq_record.aligned_bases.size(); ++i) {
         // skip positions at the boundary
         if(seq_record.aligned_bases[i].read_pos < k) {
@@ -335,6 +335,7 @@ std::vector<Variant> AlignmentDB::get_variants_in_region(const std::string& cont
 
                 size_t ref_sub_start = start_iter->ref_pos - m_region_start;
                 size_t ref_sub_end = next_iter->ref_pos - m_region_start;
+
                 v.ref_seq = m_region_ref_sequence.substr(ref_sub_start, ref_sub_end - ref_sub_start);
                 v.alt_seq = record.sequence.substr(start_iter->read_pos, next_iter->read_pos - start_iter->read_pos);
 
@@ -382,7 +383,7 @@ void AlignmentDB::load_region(const std::string& contig,
         exit(EXIT_FAILURE);
     }
 
-    m_region_end = std::min(stop_position, contig_length);
+    m_region_end = std::min(stop_position, contig_length - 1);
     
     assert(!m_region_contig.empty());
     assert(m_region_start >= 0);
@@ -480,8 +481,8 @@ std::vector<SequenceAlignmentRecord> AlignmentDB::_load_sequence_by_region(const
     int result;
     while((result = sam_itr_next(handles.bam_fh, handles.itr, handles.bam_record)) >= 0) {
 
-        // skip ambiguously mapped reads
-        if(handles.bam_record->core.qual < 20) {
+        // skip records without sequence or ambiguously mapped reads
+        if(handles.bam_record->core.l_qseq == 0 || handles.bam_record->core.qual < 20) {
             continue;
         }
 
