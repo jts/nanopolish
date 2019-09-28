@@ -116,33 +116,8 @@ CPP_OBJ = $(CPP_SRC:.cpp=.o)
 C_OBJ = $(C_SRC:.c=.o)
 
 ifdef cuda
-
-	NVCC = nvcc
-	NVCCFLAGS ?= -std=c++11 -I. -I/usr/local/cuda/include -O3 -use_fast_math --default-stream per-thread -restrict
-	CURTFLAGS ?= -L/usr/local/cuda/lib64 -lcudart
-
-	CUDA_INCLUDE?=-I/usr/local/cuda/include
-	CPPFLAGS+=$(CUDA_INCLUDE)
-	CPPFLAGS+=-DHAVE_CUDA=1
-
-	# Sub directories containing CUDA source code
-	SUBDIRS+=src/cuda_kernels
-	# Find the source files by searching subdirectories
-	CU_SRC := $(foreach dir, $(SUBDIRS), $(wildcard $(dir)/*.cu))
-	# Automatically generated object names
-	CU_OBJ=$(CU_SRC:.cu=.o)
-	CPP_OBJ+=$(CU_OBJ)
-	LDFLAGS+=$(CURTFLAGS)
-
-.SUFFIXES: .cu
-
-# Compile objects
-.cu.o:
-	$(NVCC) -o $@ -c $(NVCCFLAGS) $(CPPFLAGS) $<
-
+include cuda.mk
 endif
-
-
 
 # Generate dependencies
 .PHONY: depend
