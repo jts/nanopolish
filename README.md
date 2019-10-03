@@ -128,4 +128,4 @@ Note that this feature requires nanopolish to be compiled with `make cuda=1`. Yo
 
 ## Credits and Thanks
 
-The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/). Nanopolish also includes code from Oxford Nanopore's [scrappie](https://github.com/nanoporetech/scrappie) basecaller. This code is licensed under the MPL.
+The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/). Nanopolish also includes code from Oxford Nanopore's [scrappie](https://github.com/nanoporetech/scrappie) basecaller. This code is licensed under the MPL. GPU support was originally developed by Mike Vella. Hasindu Gamaarachchi revised Mike's implementation and integrated it into the main nanopolish branch. 
