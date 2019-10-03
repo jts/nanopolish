@@ -494,14 +494,14 @@ std::vector<SequenceAlignmentRecord> AlignmentDB::_load_sequence_by_region(const
 
         records.emplace_back(handles.bam_record);
     }
-            
-    fprintf(stderr, "[alignment db] loaded %d base-space reads in %.2lfs\n", records.size(), timer.get_elapsed_seconds());
+
+    fprintf(stderr, "[alignmentdb] loaded %d base-space reads in %.2lfs\n", records.size(), timer.get_elapsed_seconds());
 
     // cleanup
     sam_itr_destroy(handles.itr);
     bam_destroy1(handles.bam_record);
     sam_close(handles.bam_fh);
-    
+
     return records;
 }
 
@@ -516,7 +516,7 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_bam(c
         EventAlignmentRecord event_record;
 
         std::string full_name = bam_get_qname(handles.bam_record);
-        
+
         // Check for the template/complement suffix
         bool is_template = true;
         size_t suffix_pos = 0;
@@ -579,12 +579,12 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(
         _load_squiggle_read(seq_record.read_name);
 
         for(size_t si = 0; si < NUM_STRANDS; ++si) {
-            
+
             // skip complement
             if(si == C_IDX) {
                 continue;
             }
-    
+
             // skip reads that do not have events here
             SquiggleRead* sr = m_squiggle_read_map[seq_record.read_name];
             if(!sr->has_events_for_strand(si)) {
@@ -596,7 +596,7 @@ std::vector<EventAlignmentRecord> AlignmentDB::_load_events_by_region_from_read(
         }
     }
 
-    fprintf(stderr, "[alignment db] loaded %d signal-space reads in %.2lfs\n", records.size(), timer.get_elapsed_seconds());
+    fprintf(stderr, "[alignmentdb] loaded %d signal-space reads in %.2lfs\n", records.size(), timer.get_elapsed_seconds());
     return records;
 }
 
