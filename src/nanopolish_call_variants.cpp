@@ -129,9 +129,11 @@ namespace opt
     static int max_haplotypes = 1000;
     static int max_rounds = 50;
     static int screen_score_threshold = 100;
+    static int max_coverage_gpu = 40;
     static int screen_flanking_sequence = 10;
     static int debug_alignments = 0;
     static std::vector<std::string> methylation_types;
+    static int gpu = 0;
 }
 
 static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:p:v";
@@ -143,6 +145,7 @@ enum { OPT_HELP = 1,
        OPT_SNPS_ONLY,
        OPT_CALC_ALL_SUPPORT,
        OPT_CONSENSUS,
+       OPT_GPU,
        OPT_FIX_HOMOPOLYMERS,
        OPT_GENOTYPE,
        OPT_MODELS_FOFN,
@@ -181,6 +184,7 @@ static const struct option longopts[] = {
     { "p-bad",                     required_argument, NULL, OPT_P_BAD },
     { "p-bad-self",                required_argument, NULL, OPT_P_BAD_SELF },
     { "consensus",                 no_argument,       NULL, OPT_CONSENSUS },
+    { "gpu",                       required_argument, NULL, OPT_GPU },
     { "faster",                    no_argument,       NULL, OPT_FASTER },
     { "fix-homopolymers",          no_argument,       NULL, OPT_FIX_HOMOPOLYMERS },
     { "calculate-all-support",     no_argument,       NULL, OPT_CALC_ALL_SUPPORT },
@@ -349,6 +353,10 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
     }
     return out_variants;
 }
+
+#ifdef HAVE_CUDA
+    #include <cuda_kernels/gpu_call_variants.inl>
+#endif
 
 // Given the input set of variants, calculate the variants that have a positive score
 std::vector<Variant> screen_variants_by_score(const AlignmentDB& alignments,
@@ -910,7 +918,19 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     if(opt::consensus_mode) {
 
         // generate single-base edits that have a positive haplotype score
-        std::vector<Variant> single_base_edits = generate_candidate_single_base_edits(alignments, region_start, region_end, alignment_flags);
+        std::vector<Variant> single_base_edits;
+        if(opt::gpu==0) {
+            single_base_edits= generate_candidate_single_base_edits(alignments, region_start, region_end, alignment_flags);
+        }
+        else{
+           #ifdef HAVE_CUDA
+                single_base_edits= generate_candidate_single_base_edits_gpu(alignments, region_start, region_end, alignment_flags);
+           #else
+                fprintf(stderr,"--gpu option is only effective when compiled with CUDA support\n");
+                fprintf(stderr,"Please compile nanopolish by 'make cuda=1'. You need to have CUDA toolkit setup for this.");
+                exit(EXIT_FAILURE);
+           #endif
+        }
 
         // insert these into the candidate set
         candidate_variants.insert(candidate_variants.end(), single_base_edits.begin(), single_base_edits.end());
@@ -1020,6 +1040,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
             case OPT_CONSENSUS: opt::consensus_mode = 1; break;
+            case OPT_GPU: opt::gpu = 1; break;
             case OPT_FIX_HOMOPOLYMERS: opt::fix_homopolymers = 1; break;
             case OPT_EFFORT: arg >> opt::screen_score_threshold; break;
             case OPT_FASTER: opt::screen_score_threshold = 25; break;

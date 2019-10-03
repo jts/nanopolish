@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import sys
 import csv
@@ -69,7 +69,7 @@ for f in input_files:
 # header
 print("\t".join(["chromosome", "start", "end", "num_motifs_in_group", "called_sites", "called_sites_methylated", "methylated_frequency", "group_sequence"]))
 
-sorted_keys = sorted(sites.keys(), key = lambda x: x)
+sorted_keys = sorted(list(sites.keys()), key = lambda x: x)
 
 for key in sorted_keys:
     if sites[key].called_sites > 0:

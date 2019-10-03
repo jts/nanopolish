@@ -1,11 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 ========================================================
 Extract info on reads that align to a given region
 in draft genome assembly.
 ========================================================
 """
-from __future__ import print_function
+
 
 try:
 	from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -147,26 +147,26 @@ def main():
 		if ".gz" in file_type:
 			with gzip.open(o_fa, "rt") as fin:
 				if "fasta.gz" in file_type:
-					for title, seq in SimpleFastaParser(handle):
+					for title, seq in SimpleFastaParser(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq.gz" in file_type:
-					for title, seq, qual in FastqGeneralIterator(handle):
+					for title, seq, qual in FastqGeneralIterator(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 		else:
 			with open(o_fa, "rt") as fin:
 				if "fasta" in file_type:
-					for title, seq in SimpleFastaParser(handle):
+					for title, seq in SimpleFastaParser(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 				elif "fastq" in file_type:
-					for title, seq, qual in FastqGeneralIterator(handle):
+					for title, seq, qual in FastqGeneralIterator(fin):
 						name = title.split(None, 1)[0]
-						if record.id in region_read_ids:
+						if name in region_read_ids:
 							fout.write(">%s\n%s\n" % (name, seq))
 
 	# --------------------------------------------------------
@@ -186,7 +186,7 @@ def main():
 	bad_read_id = ""
 	bad_f5_path = ""
 	num_bad_cases = 0
-	for r in region_fast5_files.keys():
+	for r in list(region_fast5_files.keys()):
 		read_id = r
 		f5 = region_fast5_files[r]
 

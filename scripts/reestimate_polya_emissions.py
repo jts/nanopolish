@@ -117,7 +117,7 @@ def make_segmentation_dict(segmentations_tsv_path):
         headers = ['tag', 'read_id', 'pos', 'L_start', 'A_start', 'P_start', 'P_end', 'rate', 'plen', 'alen']
         rdr = csv.DictReader(f, delimiter='\t', quoting=csv.QUOTE_NONE, fieldnames=headers)
         for row in rdr:
-            if row['read_id'] not in segments.keys():
+            if row['read_id'] not in list(segments.keys()):
                 segments[row['read_id']] = { 'L_start': int(float(row['L_start'])),
                                              'A_start': int(float(row['A_start'])),
                                              'P_start': int(float(row['P_start'])),
@@ -138,7 +138,7 @@ def region_search(read_id, sample_ix, segmentations):
     """
     # find read ID in segmentations:
     read_key = None
-    for long_read_id in segmentations.keys():
+    for long_read_id in list(segmentations.keys()):
         if long_read_id[0:len(read_id)] == read_id:
             read_key = long_read_id
 

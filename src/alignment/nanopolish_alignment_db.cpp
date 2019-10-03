@@ -388,7 +388,7 @@ void AlignmentDB::load_region(const std::string& contig,
         exit(EXIT_FAILURE);
     }
 
-    m_region_end = std::min(stop_position, contig_length);
+    m_region_end = std::min(stop_position, contig_length - 1);
     
     assert(!m_region_contig.empty());
     assert(m_region_start >= 0);

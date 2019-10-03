@@ -115,6 +115,10 @@ EXE_SRC = src/main/nanopolish.cpp src/test/nanopolish_test.cpp
 CPP_OBJ = $(CPP_SRC:.cpp=.o)
 C_OBJ = $(C_SRC:.c=.o)
 
+ifdef cuda
+include cuda.mk
+endif
+
 # Generate dependencies
 .PHONY: depend
 depend: .depend
@@ -145,4 +149,5 @@ test: $(TEST_PROGRAM)
 .PHONY: clean
 clean:
 	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(C_OBJ) \
+		src/cuda_kernels/GpuAligner.o \
 		src/main/nanopolish.o src/test/nanopolish_test.o
