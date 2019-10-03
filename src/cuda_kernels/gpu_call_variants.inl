@@ -1,4 +1,4 @@
-#include <cuda_kernels/GpuAligner.h>
+#include <cuda_kernels/gpu_aligner.h>
 #include <thread>
 #include <chrono>
 #include <future>

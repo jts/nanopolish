@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cuda.h>
-#include "GpuAligner.h"
+#include "gpu_aligner.h"
 #include <vector>
 #include "nanopolish_profile_hmm_r9.h"
 

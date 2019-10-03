@@ -31,8 +31,8 @@ class Haplotype
     
         // get the reference location
         const std::string get_reference_name() const { return m_ref_name; }
-        const size_t get_reference_position() const { return m_ref_position; }
-        const size_t get_reference_end() const { return m_ref_position + m_reference.length(); }
+        size_t get_reference_position() const { return m_ref_position; }
+        size_t get_reference_end() const { return m_ref_position + m_reference.length(); }
 
         // return the reference position corresponding to base i of the haplotype
         // returns std::string::npos if the base was inserted into the haplotype
