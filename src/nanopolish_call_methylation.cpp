@@ -95,10 +95,10 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
-"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
-"  -q, --methylation=STRING             the type of methylation (cpg,dam,dcm)\n"
+"  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
@@ -322,6 +322,12 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
             double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
             double diff = sum_ll_m - sum_ll_u;
+
+            // do not output if outside the window boundaries
+            if((region_start != -1 && ss.start_position < region_start) ||
+               (region_end != -1 && ss.end_position >= region_end)) {
+                continue;
+            }
 
             fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
             fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);

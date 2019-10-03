@@ -243,7 +243,11 @@ void emit_tsv_header(FILE* fp)
 
 void emit_sam_header(samFile* fp, const bam_hdr_t* hdr)
 {
-    sam_hdr_write(fp, hdr);
+    int ret = sam_hdr_write(fp, hdr);
+    if(ret < 0) {
+        fprintf(stderr, "error writing sam header\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 std::string cigar_ops_to_string(const std::vector<uint32_t>& ops)
@@ -382,7 +386,12 @@ void emit_event_alignment_sam(htsFile* fp,
     int stride = alignments.front().event_idx < alignments.back().event_idx ? 1 : -1;
     bam_aux_append(event_record, "ES", 'i', 4, reinterpret_cast<uint8_t*>(&stride));
 
-    sam_write1(fp, base_hdr, event_record);
+    int ret = sam_write1(fp, base_hdr, event_record);
+    if(ret < 0) {
+        fprintf(stderr, "error writing sam record\n");
+        exit(EXIT_FAILURE);
+    }
+
     bam_destroy1(event_record); // automatically frees malloc'd segment
 }
 

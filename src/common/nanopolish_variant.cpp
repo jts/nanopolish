@@ -391,7 +391,13 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         v.add_info("TotalReads", group_reads.size());
         v.add_info("AlleleCount", var_count);
         v.add_info("SupportFraction", read_variant_support[vi] / group_reads.size());
-        v.genotype = make_genotype(var_count, ploidy);
+
+        if(group_reads.size() > 0) {
+            v.genotype = make_genotype(var_count, ploidy);
+        } else {
+            v.genotype = ".";
+        }
+
         output_variants.push_back(v);
     }
 
