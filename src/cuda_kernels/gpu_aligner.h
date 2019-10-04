@@ -60,8 +60,8 @@ public:
 
     std::vector<Variant>
       variantScoresThresholded(std::vector<std::vector<Variant>>,
-			       std::vector<Haplotype>,
-			       std::vector<std::vector<HMMInputData>>,
+                               std::vector<Haplotype>,
+                               std::vector<std::vector<HMMInputData>>,
               uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);
 
     std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
