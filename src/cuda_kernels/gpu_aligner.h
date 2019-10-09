@@ -69,6 +69,8 @@ public:
             uint32_t alignment_flags);
     std::vector<std::vector<std::vector<double>>> scoreKernelMod(std::vector<ScoreSet> &scoreSets,
                                                                              uint32_t alignment_flags);
+
+
 private:
     float* scaleDev;
     float* shiftDev;
@@ -80,6 +82,7 @@ private:
     int* eventOffsetsDev;
     int* eventStridesDev;
     int* eventStartsDev;
+    int* modelOffsetsDev;
     int* numRowsDev;
     float* postFlankingDev;
     float* preFlankingDev;
@@ -104,6 +107,7 @@ private:
     int * sequenceLengthsHost;
     int * eventOffsetsHost;
     int * sequenceOffsetsHost;
+    int * modelOffsetsHost;
     int * readIdxHost;
     int * seqIdxHost;
 
@@ -123,6 +127,8 @@ private:
     std::vector<int*> kmerRanksDevPointers;
     std::vector<float*> returnValuesDevResultsPointers;
     std::vector<float*> returnValuesHostResultsPointers;
+    
+    std::map<const PoreModel*, int> modelToOffsetMap;
 
     cudaStream_t streams[8]; // TODO 8 should not be hardcoded here
 };

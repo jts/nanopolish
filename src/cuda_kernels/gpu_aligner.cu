@@ -52,6 +52,7 @@ __global__ void getScoresMod (float * poreModelDev,
                               float * logVarDev,
                               int * eventOffsetsDev,
                               float * eventMeansDev,
+                              int * modelOffsetsDev,
                               float * preFlankingDev,
                               float * postFlankingDev,
                               int * sequenceLengthsDev,
@@ -77,11 +78,11 @@ __global__ void getScoresMod (float * poreModelDev,
 
         // get read statistics
         int numEvents = readLengthsDev[readIdx];
-        int readOffset = eventOffsetsDev[readIdx];
         float read_events_per_base = eventsPerBaseDev[readIdx];
         int e_start = eventStartsDev[readIdx]; // Event start for read
         int e_stride = eventStridesDev[readIdx];
         int e_offset = eventOffsetsDev[readIdx]; // Within the event means etc, the offset needed for this block to get a specific event
+        int m_offset = modelOffsetsDev[readIdx];
         float scale = scaleDev[readIdx];
         float shift = shiftDev[readIdx];
         float var = varDev[readIdx];
@@ -178,9 +179,9 @@ __global__ void getScoresMod (float * poreModelDev,
                 uint32_t rank = kmerRanksDev[seqOffset + kmerIdx + (numKmers *
                                                                     rc)];
 
-                float pore_mean = poreModelDev[rank * 3];
-                float pore_stdv = poreModelDev[rank * 3 + 1];
-                float pore_log_level_stdv = poreModelDev[rank * 3 + 2];
+                float pore_mean = poreModelDev[m_offset + rank * 3];
+                float pore_stdv = poreModelDev[m_offset + rank * 3 + 1];
+                float pore_log_level_stdv = poreModelDev[m_offset + rank * 3 + 2];
 
                 float lp_emission_m = lp_match_r9(rank,
                                                   eventMean,
@@ -283,7 +284,6 @@ __global__ void getScoresMod (float * poreModelDev,
 
 GpuAligner::GpuAligner()
 {
-    size_t numModelElements = 4096;
     size_t max_reads_per_worker = LOCI_PER_WORKER * MAX_COVERAGE * MAX_NUM_VARIANTS_PER_LOCUS;
     int readsSizeBuffer = max_reads_per_worker * sizeof(int);
     int maxBuffer = max_reads_per_worker * MAX_SEQUENCE_LENGTH * sizeof(int);
@@ -291,7 +291,6 @@ GpuAligner::GpuAligner()
     //OLD
     int max_num_sequences = 1;
     int max_sequence_length = 100;
-    int max_n_rows = 100;
 
     poreModelInitialized = false;
 
@@ -313,10 +312,6 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaMalloc((void**)&eventsPerBaseDev, maxBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&eventsPerBaseHost, maxBuffer, cudaHostAllocDefault));
 
-    // Allocate Device memory for pore model
-    CU_CHECK_ERR(cudaMalloc((void**)&poreModelDev, numModelElements * 3 * sizeof(float)));
-    CU_CHECK_ERR(cudaHostAlloc(&poreModelHost, numModelElements * sizeof(float) * 3, cudaHostAllocDefault));
-
     CU_CHECK_ERR(cudaMalloc((void**)&eventStartsDev, readsSizeBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&eventStartsHost, readsSizeBuffer, cudaHostAllocDefault));
 
@@ -328,6 +323,9 @@ GpuAligner::GpuAligner()
 
     CU_CHECK_ERR(cudaMalloc((void**)&eventMeansDev, maxBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&eventMeans, maxBuffer , cudaHostAllocDefault));
+    
+    CU_CHECK_ERR(cudaMalloc((void**)&modelOffsetsDev, maxBuffer));
+    CU_CHECK_ERR(cudaHostAlloc(&modelOffsetsHost, maxBuffer, cudaHostAllocDefault));
 
     CU_CHECK_ERR(cudaMalloc((void**)&preFlankingDev, maxBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&preFlankingHost, maxBuffer, cudaHostAllocDefault));
@@ -350,9 +348,45 @@ GpuAligner::GpuAligner()
     CU_CHECK_ERR(cudaMalloc((void**)&readIdxDev, maxBuffer));
     CU_CHECK_ERR(cudaHostAlloc(&readIdxHost, maxBuffer, cudaHostAllocDefault));
 
-    int numKmers = max_sequence_length * max_num_sequences;
     CU_CHECK_ERR(cudaHostAlloc(&kmerRanks, maxBuffer , cudaHostAllocDefault));
     CU_CHECK_ERR(cudaMalloc((void**)&kmerRanksDev, maxBuffer ));
+
+    //
+    // Allocate Device memory for pore model
+    // 
+
+    // Count the total number of k-mer states across all pore models
+    int numModelElements = 0;
+    int numModels = 0;
+    for(const PoreModel* model : PoreModelSet::get_all_models()) {
+        numModelElements += model->states.size();
+        numModels += 1;
+    }
+    //fprintf(stderr, "Initialized %d states from %d models\n", numModelElements, numModels);
+    int poreModelEntriesPerState = 3;
+    int totalModelEntries = numModelElements * poreModelEntriesPerState;
+    CU_CHECK_ERR(cudaMalloc((void**)&poreModelDev, totalModelEntries * sizeof(float)));
+    CU_CHECK_ERR(cudaHostAlloc(&poreModelHost, totalModelEntries * sizeof(float), cudaHostAllocDefault));
+
+    //
+    // Initialize pore model
+    //
+    int modelOffset = 0;
+    for(const PoreModel* model : PoreModelSet::get_all_models()) {
+        modelToOffsetMap[model] = modelOffset;
+        fprintf(stderr, "inserted model %s at offset %d\n", PoreModelSet::get_model_key(*model).c_str(), modelOffset);
+
+        int num_states = model->states.size();
+        for(int st=0; st<num_states; st++) {
+            auto params = model->states[st];
+            poreModelHost[modelOffset++] = params.level_mean;
+            poreModelHost[modelOffset++] = params.level_stdv;
+            poreModelHost[modelOffset++] = params.level_log_stdv;
+        }
+    }
+
+    fprintf(stderr, "Initialized %d/%d states from %d models\n", modelOffset, numModelElements, numModels);
+    assert(modelOffset == totalModelEntries);
 
     // Allocate host memory for model
     returnValuesHostResultsPointers.resize(max_num_sequences);
@@ -362,6 +396,11 @@ GpuAligner::GpuAligner()
     for (int i =0; i<max_num_sequences;i++){
         cudaStreamCreate(&streams[i]);
     }
+
+    // copy over the pore model to the device
+    // TODO: move this somewhere else?
+    CU_CHECK_ERR(cudaMemcpyAsync(poreModelDev, poreModelHost,
+                                 totalModelEntries * sizeof(float), cudaMemcpyHostToDevice, streams[0]));
 }
 
 //Destructor
@@ -376,6 +415,7 @@ GpuAligner::~GpuAligner() {
     CU_CHECK_ERR(cudaFree(eventStartsDev));
     CU_CHECK_ERR(cudaFree(eventStridesDev));
     CU_CHECK_ERR(cudaFree(eventOffsetsDev));
+    CU_CHECK_ERR(cudaFree(modelOffsetsDev));
     CU_CHECK_ERR(cudaFree(preFlankingDev));
     CU_CHECK_ERR(cudaFree(postFlankingDev));
     CU_CHECK_ERR(cudaFree(kmerRanksDev));
@@ -397,6 +437,7 @@ GpuAligner::~GpuAligner() {
     CU_CHECK_ERR(cudaFreeHost(sequenceLengthsHost));
     CU_CHECK_ERR(cudaFreeHost(seqIdxHost));
     CU_CHECK_ERR(cudaFreeHost(readIdxHost));
+    CU_CHECK_ERR(cudaFreeHost(modelOffsetsHost));
 
     int max_num_sequences = 1;
     for (int i =0; i<max_num_sequences; i++) {
@@ -408,7 +449,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                                                                          uint32_t alignment_flags){
 
     int numEventsTotal = 0; // The number of events across all scoreSets
-    int  numSequences = 0; // The number of sequences across all scoreSets
+    int numSequences = 0; // The number of sequences across all scoreSets
     int kmerOffset = 0;
     int numReads = 0; // The number of reads across all scoreSets
     int numScoreSets = scoreSets.size();
@@ -419,11 +460,12 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
     int globalScoreIdx = 0;
 
     //Loop over every scoreset, filling out buffers and counters
-    for (int scoreSetIdx=0; scoreSetIdx < numScoreSets; scoreSetIdx++){
+    for (int scoreSetIdx=0; scoreSetIdx < numScoreSets; scoreSetIdx++) {
         auto scoreSet = scoreSets[scoreSetIdx];
         int firstReadIdxinScoreSet = globalReadIdx;
+
         //Read data
-        for (int eventSequenceIdx=0; eventSequenceIdx < scoreSet.rawData.size();eventSequenceIdx++){
+        for (int eventSequenceIdx=0; eventSequenceIdx < scoreSet.rawData.size(); eventSequenceIdx++) {
             auto e = scoreSet.rawData[eventSequenceIdx];
             numReads++;
 
@@ -466,25 +508,15 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                 postFlankingHost[rawReadOffset + i] = post_flank[i];
             }
 
+            // look up model offset in the map
+            const auto& modelOffsetIter = modelToOffsetMap.find(e.pore_model);
+            assert(modelOffsetIter != modelToOffsetMap.end());
+            modelOffsetsHost[globalReadIdx] = modelOffsetIter->second;
+
             rawReadOffset += n_events;
             globalReadIdx++;
         }
-        //Pore Model
-        const uint32_t k = scoreSets[0].rawData[0].pore_model->k; //k is the length of a kmer in the pore model
-        if (poreModelInitialized == false) {
-            int num_states = scoreSets[0].rawData[0].pore_model->states.size();
-            int poreModelEntriesPerState = 3;
-            for(int st=0; st<num_states; st++){
-                auto params = scoreSets[0].rawData[0].pore_model->states[st];
-                poreModelHost[st * poreModelEntriesPerState] = params.level_mean;
-                poreModelHost[st * poreModelEntriesPerState + 1] = params.level_stdv;
-                poreModelHost[st * poreModelEntriesPerState + 2] = params.level_log_stdv;
-            }
-            // copy over the pore model
-            CU_CHECK_ERR(cudaMemcpyAsync(poreModelDev, poreModelHost,
-                                         poreModelEntriesPerState * 4096 * sizeof(float), cudaMemcpyHostToDevice, streams[0]));
-            poreModelInitialized = true;
-        }
+
         auto & sequences = scoreSet.stateSequences;
         numSequences += sequences.size();
 
@@ -494,7 +526,8 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
             sequenceOffsetsHost[globalSequenceIdx] = kmerOffset;
 
             int sequenceLength = sequence.length();
-
+            // TODO: k must be set per read, per score set not fixed
+            const uint32_t k = scoreSet.rawData[0].pore_model->k; 
             int numKmers = sequenceLength - k + 1;
 
             for(size_t ki = 0; ki < numKmers; ++ki) {
@@ -555,6 +588,10 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
     CU_CHECK_ERR(cudaMemcpyAsync(eventOffsetsDev, eventOffsetsHost,
                                  numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
 
+    // Model offsets
+    CU_CHECK_ERR(cudaMemcpyAsync(modelOffsetsDev, modelOffsetsHost,
+                                 numReads * sizeof(int), cudaMemcpyHostToDevice, streams[0]));
+
     // Reads + Flanks
     CU_CHECK_ERR(cudaMemcpyAsync(eventMeansDev, eventMeans, numEventsTotal * sizeof(float), cudaMemcpyHostToDevice, streams[0] ));
 
@@ -595,6 +632,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
                                                           logVarDev,
                                                           eventOffsetsDev,
                                                           eventMeansDev,
+                                                          modelOffsetsDev,
                                                           preFlankingDev,
                                                           postFlankingDev,
                                                           sequenceLengthsDev,
@@ -669,9 +707,7 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
         }
 
         // Make methylated versions of each input sequence. Once for the base haplotype and once each for each variant
-
         std::vector<HMMInputSequence> sequences;
-
         HMMInputSequence base_sequence = generate_methylated_alternatives(base_haplotype.get_sequence(),
                                                                           methylation_types)[0];
 
@@ -688,7 +724,6 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
         };
 
         scoreSets[scoreSetIdx] = s;
-
     }
 
     std::vector<Variant> v;
