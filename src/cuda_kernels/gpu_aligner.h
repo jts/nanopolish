@@ -54,21 +54,26 @@ typedef struct {
 
 class GpuAligner
 {
+
 public:
     GpuAligner();
     ~GpuAligner();
 
+    // GPU version of the candidate-variant scoring function
     std::vector<Variant>
       variantScoresThresholded(std::vector<std::vector<Variant>>,
                                std::vector<Haplotype>,
                                std::vector<std::vector<HMMInputData>>,
-              uint32_t alignment_flags, int screen_score_threshold, std::vector<std::string> methylation_types);
+                               uint32_t alignment_flags, 
+                               int screen_score_threshold, 
+                               std::vector<std::string> methylation_types);
 
     std::vector<std::vector<double>> scoreKernel(std::vector<HMMInputSequence> sequences,
-    std::vector<HMMInputData> event_sequences,
-            uint32_t alignment_flags);
+                                                 std::vector<HMMInputData> event_sequences,
+                                                 uint32_t alignment_flags);
+
     std::vector<std::vector<std::vector<double>>> scoreKernelMod(std::vector<ScoreSet> &scoreSets,
-                                                                             uint32_t alignment_flags);
+                                                                 uint32_t alignment_flags);
 
 
 private:
