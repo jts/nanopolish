@@ -23,8 +23,8 @@ Let's start by downloading a dataset of fast5 files from the European Nucleotide
     mkdir data && mkdir data/fastqs
     wget ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR276/ERR2764784/30xpolyA.tar.gz -O 30xpolyA.tar.gz && mv 30xpolyA.tar.gz data/
     tar -xzf data/30xpolyA.tar.gz -C data/
-    read_fast5_basecaller.py --worker_threads=8 -f FLO-MIN107 -k SQK-RNA001 -q 0 -s data/fastqs -i data/30xpolyA/fast5/pass
-    cat data/fastqs/workspace/pass/*.fastq > data/30xpolyA.fastq
+    guppy_basecaller -c rna_r9.4.1_70bps_hac.cfg -i data/30xpolyA/fast5/pass -s data/fastqs
+    cat data/fastqs/*.fastq > data/30xpolyA.fastq
 
 In the above, change the value of the `-f` and `-k` arguments based on your flow-cell and sequencing kit, as the basecaller's accuracy is highly dependent upon these settings.
 
@@ -57,7 +57,7 @@ Align with minimap2 and format the BAM file
 Now we'll align our basecalled mRNA sequences in the fastq file with our reference. First download a reference fasta: ::
 
     wget https://raw.githubusercontent.com/paultsw/polya_analysis/master/data/references/enolase_reference.fas
-    wget https://raw.githubusercontent.com/paultsw/polya_analysis/master/data/references/enolase_reference.fai
+    wget https://raw.githubusercontent.com/paultsw/polya_analysis/master/data/references/enolase_reference.fas.fai
     mv enolase_reference.* data/
 
 Note that our directory structure should now look like this: ::
