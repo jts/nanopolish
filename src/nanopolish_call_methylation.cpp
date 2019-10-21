@@ -421,6 +421,11 @@ int call_methylation_main(int argc, char** argv)
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
+    if(fai == NULL) {
+        fprintf(stderr, "Error: could not open genome file: %s\n", opt::genome_file.c_str());
+        fprintf(stderr, "Please check the path is correct\n");
+        exit(1);
+    }
 
 #ifndef H5_HAVE_THREADSAFE
     if(opt::num_threads > 1) {
@@ -433,7 +438,7 @@ int call_methylation_main(int argc, char** argv)
     // Initialize writers
     OutputHandles handles;
     handles.site_writer = stdout;
-    
+
     // Write header
     fprintf(handles.site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
                                  "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
