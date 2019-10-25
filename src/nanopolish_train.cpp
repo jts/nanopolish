@@ -571,9 +571,9 @@ void add_aligned_events_for_read(const ReadDB& read_db,
     SequenceAlignmentRecord seq_align_record(record);
     EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
     
-    // posterior 
+    // calculate event->kmer posteriors
     std::vector<EventKmerPosterior> state_assignments = 
-        guide_banded_generic_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
+        guide_banded_simple_posterior(sr, *pore_model, reference_haplotype, event_align_record, alignment_parameters);
 
     size_t edge_ignore = 50;
     if(state_assignments.size() < 2*edge_ignore) {
