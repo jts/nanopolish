@@ -339,24 +339,8 @@ extern bool recalibrate_model(SquiggleRead &sr,
                        const bool scale_var,
                        const bool scale_drift);
 
-// Use reservoir sampling to limit the amount of events for each kmer
-void add_event_tmp(StateSummary& kmer_summary, StateTrainingData std, int event_count)
-{
-    // Add all events for each kmer until we have the maximum number of events to train
-    if(event_count <= opt::max_events) {
-        kmer_summary.events.push_back(std);
-    } else {
-        // Select a random number between 0 and the total number of events for this kmer
-        std::mt19937 rng(event_count);
-        std::uniform_int_distribution<int> gen(0, event_count);
-        int rs_location = gen(rng);
+extern void add_event(StateSummary& kmer_summary, StateTrainingData std, int event_count);
 
-        // Only update the training data if the random number is below the maximum number of events
-        if(rs_location < opt::max_events) {
-            kmer_summary.events[rs_location] = std;
-        }
-    }
-}
 
 std::string infer_read_sequence_from_variants_and_methylation(SquiggleRead& sr,
                                                               const PoreModel* pore_model,
@@ -613,7 +597,7 @@ void add_aligned_events_for_read(const ReadDB& read_db,
             #pragma omp critical(kmer)
             {
                 event_count[rank]++;
-                add_event_tmp(kmer_summary, std, event_count[rank]);
+                add_event(kmer_summary, std, event_count[rank]);
             }
         }
     }
