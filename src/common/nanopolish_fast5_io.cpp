@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <algorithm>
 #include "nanopolish_fast5_io.h"
 
 //#define DEBUG_FAST5_IO 1
@@ -173,6 +174,13 @@ std::string fast5_get_context_tags_group(fast5_file& fh, const std::string& read
     return group;
 }
 
+std::string fast5_get_tracking_id_group(fast5_file& fh, const std::string& read_id)
+{
+    std::string group = fh.is_multi_fast5 ? "/read_" + read_id + "/tracking_id"
+                                          : "/UniqueGlobalKey/tracking_id";
+    return group;
+}
+
 //
 std::string fast5_get_sequencing_kit(fast5_file& fh, const std::string& read_id)
 {
@@ -189,14 +197,24 @@ std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id
 //
 std::string fast5_get_flowcell_type(fast5_file& fh, const std::string& read_id)
 {
-    std::string group = fast5_get_context_tags_group(fh, read_id);
-    
-    // current attribute name
-    std::string fct = fast5_get_string_attribute(fh, group.c_str(), "flow_cell_product_code");
+    // The flowcell type can appear in context_tags or tracking_id depending on
+    // MinKNOW version. Check both starting with tracking_id as its the current standard (19/11/05)
+    std::string tracking_id_group = fast5_get_tracking_id_group(fh, read_id);
+    std::string context_group = fast5_get_context_tags_group(fh, read_id);
+    std::string fct = fast5_get_string_attribute(fh, tracking_id_group.c_str(), "flow_cell_product_code");
+
+    // not found, try context_tags + flow_cell_product_code
     if(fct == "") {
-        // try older attribute
-        fct = fast5_get_string_attribute(fh, group.c_str(), "flowcell_type");
+        fct = fast5_get_string_attribute(fh, context_group.c_str(), "flow_cell_product_code");
     }
+
+    // not found, try ancient "flowcell_type"
+    if(fct == "") {
+        fct = fast5_get_string_attribute(fh, context_group.c_str(), "flowcell_type");
+    }
+
+    // Flowcell type should always be uppercase
+    std::transform(fct.begin(), fct.end(), fct.begin(), ::toupper);
     return fct;
 }
 

@@ -101,7 +101,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         // we no longer want to support pre-release R10
         bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
         bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
-        if( flowcell_type == "flo-min110" || (cust_or_unknown_fct && has_r10_path )) {
+        if( flowcell_type == "FLO-MIN110" || (cust_or_unknown_fct && has_r10_path )) {
             this->pore_type = PT_R10;
         } else {
             this->pore_type = PT_R9;
