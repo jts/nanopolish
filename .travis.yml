@@ -21,7 +21,7 @@ matrix:
         - name: "arm64"
           arch: arm64
           os: linux
-
+          filter_secrets: false
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
