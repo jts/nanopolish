@@ -8,26 +8,9 @@ cache: apt
 git:
     depth: 1
 
-.nanopolish.ci.matrix-definitions:
-    - &cron-only
-      if: type = cron OR env(CI_CRON) = true
-    - &arch
-      before_install:
-          - |
-            sed -i "/^FROM / s/arm64/${ARCH}/" Dockerfile-arm
-          - |
-            docker run --rm --privileged \
-                multiarch/qemu-user-static:register --reset && \
-                docker build --rm -t nanopolish -f Dockerfile-arm .
-      script:
-          - |
-            docker run --rm -t \
-                -e HDF5="${HDF5:-install}" \
-                -e H5_CFLAGS="${H5_CFLAGS}" \
-                -e HDF5_VERSION="1.10.4" \
-                -e H5_INCLUDE="${H5_INCLUDE}" \
-                -e LDFLAGS="${LDFLAGS}" \
-                nanopolish
+arch:
+    - amd64
+    - arm64
 
 matrix:
     include:
@@ -44,41 +27,6 @@ matrix:
               - AR=gcc-ar-8
               - NM=gcc-nm-8
               - RANLIB=gcc-ranlib-8
-        # aarch64 - ARM 64-bit
-        - name: aarch64
-          sudo: required
-          env:
-              - ARCH=arm64
-          <<: *arch
-          <<: *cron-only
-        - name: aarch64-system-hdf5
-          sudo: required
-          env:
-              - ARCH=arm64
-              - HDF5="system"
-              - H5_INCLUDE="-I/usr/include/hdf5/serial"
-              - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
-          <<: *arch
-        # armv7l - ARM 32-bit
-        - name: armv7l
-          sudo: required
-          env:
-              - ARCH=armhf
-          <<: *arch
-          <<: *cron-only
-        - name: armv7l-system-hdf5
-          sudo: required
-          env:
-              - ARCH=armhf
-              - HDF5="system"
-              - H5_INCLUDE="-I/usr/include/hdf5/serial"
-              - LDFLAGS="-L/usr/lib/arm-linux-gnueabihf/hdf5/serial"
-          <<: *arch
-    allow_failures:
-        # The jobs installing hdf5 from source in docker finishes with error
-        # because of the job exceeded the maximum time limit (50 minutes).
-        - name: aarch64
-        - name: armv7l
 
 # Install and export newer gcc
 before_install:
