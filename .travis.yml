@@ -1,13 +1,25 @@
 # travis.yml for github.com/jts/nanopolish
 
-dist: trusty
-cache: apt
-git:
-    depth: 1
-
-arch:
-    - amd64
-    - arm64
+matrix:
+  include:
+    - os: linux
+      arch: amd64
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.9
+      env: "CC=gcc-4.9 CXX=g++-4.9 AR=gcc-ar-4.9 NM=gcc-nm-4.9 RANLIB=gcc-ranlib-4.9"
+    - os: linux
+      arch: amd64
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+      env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
