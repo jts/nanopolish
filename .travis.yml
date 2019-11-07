@@ -1,27 +1,8 @@
 # travis.yml for github.com/jts/nanopolish
 
-dist: trusty
-services: docker
-sudo: false
-language: generic
-cache: apt
-git:
-    depth: 1
-
-matrix:
-    include:
-        - name: "amd64 gcc-4.8"
-          env: "CC=gcc-4.8 CXX=g++-4.8 AR=gcc-ar-4.8 NM=gcc-nm-4.8 RANLIB=gcc-ranlib-4.8"
-          arch: amd64
-          os: linux
-        - name: "amd64 gcc-8"
-          env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
-          arch: amd64
-          os: linux
-        - name: "arm64"
-          arch: arm64
-          os: linux
-          filter_secrets: false
+arch:
+    - amd64
+    - arm64
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
