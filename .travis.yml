@@ -31,13 +31,14 @@ matrix:
       env:
         - HDF5="system"
         - H5_INCLUDE="-I/usr/include/hdf5/serial"
-        - LDFLAGS="-L/usr/lib/arm-linux-gnu/hdf5/serial"
+        - LDFLAGS="-L/usr/lib/arm-linux-gnueabihf/hdf5/serial"
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
     # to display the log without downloading the raw log on Travis log page.
     # Travis finishs with error when exceeding the limit of 4 MB of log length.
     - export H5_CFLAGS="-w"
+    - dpkg -L libhdf5-dev
 
 script:
     - make && make test
