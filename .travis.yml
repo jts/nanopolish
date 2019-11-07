@@ -1,6 +1,9 @@
 # travis.yml for github.com/jts/nanopolish
 
 language: generic
+arch:
+  - amd64
+  - arm64
 
 matrix:
   include:
