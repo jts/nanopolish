@@ -1,5 +1,7 @@
 # travis.yml for github.com/jts/nanopolish
 
+language: generic
+
 matrix:
   include:
     - os: linux
@@ -20,6 +22,9 @@ matrix:
           packages:
             - g++-8
       env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
+    - os: linux
+      arch: arm64
+      env: "HDF5=system"
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
