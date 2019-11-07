@@ -24,6 +24,10 @@ matrix:
       env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
     - os: linux
       arch: arm64
+      addons:
+        apt:
+          packages:
+            - libhdf5-serial-dev
       env: "HDF5=system"
 
 before_script:
