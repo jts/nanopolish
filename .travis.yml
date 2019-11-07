@@ -31,7 +31,7 @@ matrix:
       env:
         - HDF5="system"
         - H5_INCLUDE="-I/usr/include/hdf5/serial"
-        - LDFLAGS="-L/usr/lib/arm-linux-gnueabihf/hdf5/serial"
+        - LDFLAGS="-L/usr/lib/arm-linux-gnu/hdf5/serial"
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
