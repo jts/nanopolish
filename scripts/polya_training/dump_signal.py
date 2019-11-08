@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 dump_signal.py: take a **verbose** polya-call file and dump an HDF5 file with the signal data.
 

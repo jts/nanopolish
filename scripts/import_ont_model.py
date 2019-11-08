@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python3
 
 # This script takes a .model file provided by ONT and adds metadata that allows it
 # to be compiled into nanopolish
