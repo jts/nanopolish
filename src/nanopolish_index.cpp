@@ -118,7 +118,7 @@ void index_path(ReadDB& read_db, const std::string& path, const std::multimap<st
 
             // JTS 04/19: is_directory is painfully slow so we first check if the file is in the name map
             // if it is, it is definitely not a directory so we can skip the system call
-            if(!is_fast5 && !in_map && is_directory(full_fn)) {
+            if(!in_map && is_directory(full_fn)) {
                 // recurse
                 index_path(read_db, full_fn, fast5_to_read_name_map);
             } else if (is_fast5) {
