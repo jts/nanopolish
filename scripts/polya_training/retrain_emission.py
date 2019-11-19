@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 retrain_emission.py: take an HDF5 file and segmentations, and output parameters of a mixture model.
 """
