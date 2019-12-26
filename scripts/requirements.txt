@@ -9,4 +9,4 @@ seaborn>=0.9.0
 biopython>=1.76
 pysam>=0.15.3
 pandas>=0.24.0
-scipy==1.3.0
+scipy>=1.3.0
