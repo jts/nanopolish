@@ -4,7 +4,8 @@ language: generic
 
 matrix:
   include:
-    - os: linux
+    - name: Using GNU compilers gcc-4.9 & g++-4.9
+      os: linux
       arch: amd64
       addons:
         apt:
@@ -13,7 +14,9 @@ matrix:
           packages:
             - g++-4.9
       env: "CC=gcc-4.9 CXX=g++-4.9 AR=gcc-ar-4.9 NM=gcc-nm-4.9 RANLIB=gcc-ranlib-4.9"
-    - os: linux
+
+    - name: GNU compilers gcc-8 & g++-8
+      os: linux
       arch: amd64
       addons:
         apt:
@@ -22,16 +25,46 @@ matrix:
           packages:
             - g++-8
       env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
-    - os: linux
+      
+    - name: explicitly test with HDF5 libraries
+      os: linux
       arch: arm64
       addons:
         apt:
           packages:
-            - libhdf5-serial-dev
+            - libhdf5-dev
       env:
         - HDF5="system"
         - H5_INCLUDE="-I/usr/include/hdf5/serial"
         - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
+  
+    - name: CPython 3.7.6 on Ubuntu 16.04 (Xenial Xerus)
+      language: python
+      os: linux
+      dist: xenial
+      python: 3.7.6
+      script: 
+        - cd scripts && python3 -m pip install -r requirements.txt && cd ..
+        - make && make test
+
+    - name: CPython 3.6.10 on Ubuntu 16.04 (Xenial Xerus)
+      language: python
+      os: linux
+      dist: xenial
+      python: 3.6.10
+      script: 
+        - cd scripts && python3 -m pip install -r requirements.txt && cd ..
+        - make && make test
+      
+    - name: CPython 3.5.9 on Ubuntu 16.04 (Xenial Xerus)
+      language: python
+      os: linux
+      dist: xenial
+      python: 3.5.9
+      script: 
+        - cd scripts && python3 -m pip install -r requirements.txt && cd ..
+        - make && make test
+
 
 before_script:
     # Suppress all compiler warnings for hdf5 Makefile
@@ -41,3 +74,4 @@ before_script:
 
 script:
     - make && make test
+
