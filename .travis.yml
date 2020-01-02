@@ -4,7 +4,7 @@ language: generic
 
 matrix:
   include:
-    - name: Using GNU compilers gcc-4.9 & g++-4.9
+    - name: GNU compilers gcc-4.9 & g++-4.9
       os: linux
       arch: amd64
       addons:
@@ -25,8 +25,8 @@ matrix:
           packages:
             - g++-8
       env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
-      
-    - name: explicitly test with HDF5 libraries
+
+    - name: ARM64 build with system packaged HDF5 library
       os: linux
       arch: arm64
       addons:
@@ -37,13 +37,13 @@ matrix:
         - HDF5="system"
         - H5_INCLUDE="-I/usr/include/hdf5/serial"
         - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
-  
+
     - name: CPython 3.7.6 on Ubuntu 16.04 (Xenial Xerus)
       language: python
       os: linux
       dist: xenial
       python: 3.7.6
-      script: 
+      script:
         - cd scripts && python3 -m pip install -r requirements.txt && cd ..
         - make && make test
 
@@ -52,16 +52,16 @@ matrix:
       os: linux
       dist: xenial
       python: 3.6.10
-      script: 
+      script:
         - cd scripts && python3 -m pip install -r requirements.txt && cd ..
         - make && make test
-      
+
     - name: CPython 3.5.9 on Ubuntu 16.04 (Xenial Xerus)
       language: python
       os: linux
       dist: xenial
       python: 3.5.9
-      script: 
+      script:
         - cd scripts && python3 -m pip install -r requirements.txt && cd ..
         - make && make test
 
