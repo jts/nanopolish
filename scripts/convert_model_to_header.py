@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 # Convert a .model file into a .inl file that can be directly compiled into nanopolish
 
-
 import argparse
 
 def assign(name, value):
