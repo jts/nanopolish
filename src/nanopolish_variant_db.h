@@ -110,6 +110,10 @@ class VariantGroup
         // Set the score computed by the HMM for a variant combination for a single read
         void set_combination_read_score(size_t combination_idx, const std::string& read_id, double score);
         double get_combination_read_score(size_t combination_idx, const std::string& read_id) const;
+        
+        // Set/get the strand for an input read
+        void set_read_strand(const std::string& read_id, bool is_rc);
+        bool is_read_rc(const std::string& read_id) const;
 
         // Return the IDs and sum scores of all reads used in this group
         std::vector<std::pair<std::string, double>> get_read_sum_scores() const;
@@ -123,6 +127,9 @@ class VariantGroup
         std::vector<VariantCombination> m_combinations;
         std::vector<ReadScoreMap> m_scores;
         std::map<std::string, double> m_read_score_sum;
+        
+        typedef std::map<std::string, bool> ReadStrandMap;
+        ReadStrandMap m_read_strands;
 };
 
 class VariantDB

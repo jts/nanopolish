@@ -172,6 +172,18 @@ double VariantGroup::get_combination_read_score(size_t combination_idx, const st
     return itr->second;
 }
 
+void VariantGroup::set_read_strand(const std::string& read_id, bool is_rc)
+{
+    m_read_strands[read_id] = is_rc;
+}
+
+bool VariantGroup::is_read_rc(const std::string& read_id) const
+{
+    const auto& itr = m_read_strands.find(read_id);
+    assert(itr != m_read_strands.end());
+    return itr->second;
+}
+
 std::vector<std::pair<std::string, double>> VariantGroup::get_read_sum_scores() const
 {
     std::vector<std::pair<std::string, double>> out;
