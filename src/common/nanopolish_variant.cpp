@@ -350,11 +350,14 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         best_set = base_set;
     }
 
+    // Calculate strand bias metrics and the number of reads supporting each variant
+
     // Calculate how many reads support the reference and alt allele on each strand
     // this is input into the fisher exact test for strand bias
     size_t total_variants = variant_group.get_num_variants();
     DoubleMatrix read_variant_assignment;
     allocate_matrix(read_variant_assignment, group_reads.size(), total_variants);
+    std::vector<double> read_variant_support(variant_group.get_num_variants(), 0.0f);
 
     for(size_t vc_id = 0; vc_id < variant_group.get_num_combinations(); ++vc_id) {
 
@@ -369,8 +372,13 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             for(size_t vi = 0; vi < vc.get_num_variants(); ++vi) {
                 size_t var_id = vc.get_variant_id(vi);
                 assert(var_id < total_variants);
+
+                // for strand bias
                 double curr = get(read_variant_assignment, ri, var_id);
                 set(read_variant_assignment, ri, var_id, curr + posterior_read_from_haplotype);
+
+                // for read support
+                read_variant_support[var_id] += posterior_read_from_haplotype;
             }
         }
     }
@@ -387,24 +395,6 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
 
             size_t idx = 2 * alt_support + strand;
             allele_strand_support[var_idx][idx] += 1;
-        }
-    }
-
-    // Calculate the number of reads that support each variant allele
-    std::vector<double> read_variant_support(variant_group.get_num_variants(), 0.0f);
-    for(size_t vc_id = 0; vc_id < variant_group.get_num_combinations(); ++vc_id) {
-
-        const VariantCombination& vc = variant_group.get_combination(vc_id);
-
-        for(size_t ri = 0; ri < group_reads.size(); ++ri) {
-            const std::string& read_id = group_reads[ri].first;
-            double read_sum = group_reads[ri].second;
-            double read_haplotype_score = variant_group.get_combination_read_score(vc_id, read_id);
-            double posterior_read_from_haplotype = exp(read_haplotype_score - read_sum);
-
-            for(size_t var_idx = 0; var_idx < vc.get_num_variants(); ++var_idx) {
-                read_variant_support[vc.get_variant_id(var_idx)] += posterior_read_from_haplotype;
-            }
         }
     }
 
@@ -446,9 +436,12 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
 
         int fisher_scaled = (int)(-4.343 * log(two) + .499);
         v.add_info("StrandFisherTest", fisher_scaled);
-        if(fisher_scaled > 20) {
+
+        /*
+        if(fisher_scaled > 30) {
             v.filter = "StrandBias";
         }
+        */
 
         if(group_reads.size() > 0) {
             v.genotype = make_genotype(var_count, ploidy);
