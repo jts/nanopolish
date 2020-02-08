@@ -118,7 +118,8 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
     herr_t status;
     float raw_unit;
     raw_table rawtbl = { 0, 0, 0, NULL };
-
+    size_t tmp_nsample;
+    
     // mostly from scrappie
     std::string raw_read_group = fast5_get_raw_read_group(fh, read_id);
 
@@ -158,6 +159,19 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
         rawptr[i] = (rawptr[i] + scaling.offset) * raw_unit;
     }
 
+    // filter the outliers in pA
+    for (size_t i = nsample-1; i >0 ; i--) {
+        //filter sample > 200 pA and less than 0 pA
+        if(rawptr[i]>200 || rawptr[i]<0){
+            tmp_nsample=tmp_nsample-1;
+            for (size_t dd=i;dd<nsample;dd++){
+                rawptr[dd]=rawptr[dd+1];
+            }
+        }
+    }
+ //to update the value of rawtbl
+ nsample=tmp_nsample;
+ rawtbl = (raw_table) { nsample, 0, nsample, rawptr };
  cleanup4:
     H5Sclose(space);
  cleanup3:
