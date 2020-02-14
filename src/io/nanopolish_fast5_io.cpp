@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <sstream>
 #include "nanopolish_fast5_io.h"
 
 //#define DEBUG_FAST5_IO 1
@@ -211,11 +212,47 @@ float fast5_read_float_attribute(hid_t group, const char *attribute) {
     return val;
 }
 
+uint64_t fast5_read_uint64_attribute(hid_t group, const char *attribute) {
+    uint64_t val = 0;
+    if (group < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Invalid group passed to %s:%d.", __FILE__, __LINE__);
+#endif
+        return val;
+    }
+
+    hid_t attr = H5Aopen(group, attribute, H5P_DEFAULT);
+    if (attr < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to open attribute '%s' for reading.", attribute);
+#endif
+        return val;
+    }
+
+    H5Aread(attr, H5T_NATIVE_ULLONG, &val);
+    H5Aclose(attr);
+    return val;
+}
+
+uint64_t fast5_get_start_time(fast5_file& fh, const std::string& read_id)
+{
+    std::string raw_read_group = fast5_get_raw_read_group(fh, read_id);
+    hid_t group = H5Gopen(fh.hdf5_file, raw_read_group.c_str(), H5P_DEFAULT);
+    if (group < 0) {
+#ifdef DEBUG_FAST5_IO
+        fprintf(stderr, "Failed to open group %s\n", raw_read_group.c_str());
+#endif
+        return 0;
+    }
+
+    return fast5_read_uint64_attribute(group, "start_time");
+}
+
 //
 fast5_raw_scaling fast5_get_channel_params(fast5_file& fh, const std::string& read_id)
 {
     // from scrappie
-    fast5_raw_scaling scaling = { NAN, NAN, NAN, NAN };
+    fast5_raw_scaling scaling = { 0, NAN, NAN, NAN, NAN };
 
     std::string scaling_path = fh.is_multi_fast5 ? "/read_" + read_id + "/channel_id"
                                                  :  "/UniqueGlobalKey/channel_id";
@@ -227,6 +264,13 @@ fast5_raw_scaling fast5_get_channel_params(fast5_file& fh, const std::string& re
 #endif
         return scaling;
     }
+    
+    //TODO: open group once?
+
+    // channel
+    std::string tmp_id = fast5_get_string_attribute(fh, scaling_path, "channel_number");
+    std::stringstream parser(tmp_id);
+    parser >> scaling.channel_id;
 
     scaling.digitisation = fast5_read_float_attribute(scaling_group, "digitisation");
     scaling.offset = fast5_read_float_attribute(scaling_group, "offset");

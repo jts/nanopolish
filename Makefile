@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io
 
 #
 # Set libraries, paths, flags and options

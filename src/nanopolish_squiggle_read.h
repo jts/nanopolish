@@ -16,6 +16,7 @@
 #include "nanopolish_read_db.h"
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_fast5_io.h"
+#include "nanopolish_fast5_loader.h"
 #include <string>
 
 enum PoreType
@@ -112,6 +113,7 @@ class SquiggleRead
 
         SquiggleRead() {} // legacy TODO remove
         SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags = 0);
+        SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const uint32_t flags = 0);
         ~SquiggleRead();
 
         //
@@ -283,6 +285,7 @@ class SquiggleRead
         std::vector<float> samples;
         double sample_rate;
         int64_t sample_start_time;
+        int channel_id;
 
         // summary stats
         double events_per_base[2];
@@ -304,7 +307,7 @@ class SquiggleRead
         void load_from_events(const uint32_t flags);
 
         // Load all read data from raw samples
-        void load_from_raw(fast5_file& f5_file, const uint32_t flags);
+        void load_from_raw(const Fast5Data& fast5_data, const uint32_t flags);
 
         // Version-specific intialization functions
         void _load_R7(uint32_t si);

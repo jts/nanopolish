@@ -7,6 +7,7 @@
 // associated signal data
 //
 #include <zlib.h>
+#include <set>
 #include <fstream>
 #include <ostream>
 #include <iostream>
@@ -255,6 +256,19 @@ size_t ReadDB::get_num_reads_with_path() const
         }
     }
     return num_reads_with_path;
+}
+
+//
+std::vector<std::string> ReadDB::get_unique_fast5s() const
+{
+    std::set<std::string> fast5s;
+    for(const auto& iter : m_data) {
+        const ReadDBData& entry = iter.second;
+        fast5s.insert(entry.signal_data_path);
+    }
+
+    std::vector<std::string> fast5s_vec(fast5s.begin(), fast5s.end());
+    return fast5s_vec;
 }
 
 bool ReadDB::check_signal_paths() const

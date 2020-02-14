@@ -10,6 +10,7 @@
 #define NANOPOLISH_READ_DB
 
 #include <map>
+#include <vector>
 #include "htslib/faidx.h"
 
 struct ReadDBData
@@ -56,6 +57,9 @@ class ReadDB
         // returns the number of reads in the database
         size_t get_num_reads() const { return m_data.size(); }
  
+        // return a vector of all unique fast5 files in the index
+        std::vector<std::string> get_unique_fast5s() const;
+
         //
         // Summaries and sanity checks
         //
