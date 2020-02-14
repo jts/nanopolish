@@ -121,6 +121,10 @@ std::vector<std::string> split(std::string in, char delimiter);
 // returns true if the provided string ends with the given suffix
 bool ends_with(const std::string& str, const std::string& suffix);
 
+// returns the filename with the given extension removed
+// if extension is not found the fn is returned unmodified
+std::string strip_extension(const std::string& str, const std::string& ext);
+
 // parse a region string (chr:start-end)
 void parse_region_string(const std::string& region, std::string& contig, int& start, int& end);
 

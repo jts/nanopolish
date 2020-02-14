@@ -10,6 +10,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <inttypes.h>
 #include <assert.h>
 #include <math.h>
@@ -20,6 +21,7 @@
 #include <set>
 #include <omp.h>
 #include <getopt.h>
+#include <unistd.h>
 #include "htslib/faidx.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
@@ -33,6 +35,7 @@
 #include "nanopolish_bam_processor.h"
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_read_db.h"
+#include "fs_support.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
@@ -100,6 +103,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --watch=DIR                      watch the run directory DIR and process data as it is generated\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -114,6 +118,7 @@ namespace opt
     static std::string models_fofn;
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
+    static std::string watch_dir;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 512;
@@ -123,7 +128,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:m:K:q:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -135,6 +140,7 @@ static const struct option longopts[] = {
     { "threads",          required_argument, NULL, 't' },
     { "models-fofn",      required_argument, NULL, 'm' },
     { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
+    { "watch",            required_argument, NULL, OPT_WATCH_DIR },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
@@ -337,6 +343,83 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     }
 }
 
+//
+// Watch mode
+//
+struct FileBatch
+{
+    bool ready_to_call() { return !fast5_path.empty() && !fastq_path.empty() && !called; }
+
+    std::string fast5_path;
+    std::string fastq_path;
+    bool called = false;
+};
+
+//
+bool process_batch(const FileBatch& batch, const faidx_t* fai)
+{
+    return true;
+}
+
+//
+void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fai)
+{
+    std::string base_dir = opt::watch_dir;
+    std::string fast5_dir = base_dir + "/fast5_pass";
+    std::string fastq_dir = base_dir + "/fastq_pass";
+
+    // basename -> FileBatch
+    std::unordered_map<std::string, FileBatch> batches;
+
+    while(1) {
+        fprintf(stderr, "checking %s for new files\n", fast5_dir.c_str());
+
+        // update file db with fast5s
+        std::vector<std::string> fast5_files = list_directory(fast5_dir);
+        for(const auto& fn : fast5_files) {
+            if(ends_with(fn, ".fast5")) {
+                std::string basename = strip_extension(fn, ".fast5");
+                batches[basename].fast5_path = fast5_dir + "/" + fn;
+            }
+        }
+
+        // update file db with fastqs
+        std::vector<std::string> fastq_files = list_directory(fastq_dir);
+        for(const auto& fn : fastq_files) {
+            if(ends_with(fn, ".fastq")) {
+                std::string basename = strip_extension(fn, ".fastq");
+                batches[basename].fastq_path = fastq_dir + "/" + fn;
+            }
+        }
+
+        // iterate over collection and see which files need to be processed
+        for(auto& e : batches) {
+            if(e.second.ready_to_call()) {
+                fprintf(stderr, "Processing %s\n", e.first.c_str());
+                bool success = process_batch(e.second, fai);
+                e.second.called = success;
+            }
+        }
+
+        fprintf(stderr, "Waiting for next batch\n");
+        sleep(30);
+    }
+}
+
+void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
+{
+    ReadDB read_db;
+    read_db.load(opt::reads_file);
+
+    // the BamProcessor framework calls the input function with the
+    // bam record, read index, etc passed as parameters
+    // bind the other parameters the worker function needs here
+    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
+    processor.parallel_run(f);
+
+}
+
 void parse_call_methylation_options(int argc, char** argv)
 {
     bool die = false;
@@ -354,6 +437,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'v': opt::verbose++; break;
             case 'K': arg >> opt::batch_size; break;
             case OPT_MIN_SEPARATION: arg >> opt::min_separation; break;
+            case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << CALL_METHYLATION_USAGE_MESSAGE;
@@ -378,27 +462,29 @@ void parse_call_methylation_options(int argc, char** argv)
         die = true;
     }
 
-    if(opt::reads_file.empty()) {
-        std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
-        die = true;
-    }
-
     if(opt::genome_file.empty()) {
         std::cerr << SUBPROGRAM ": a --genome file must be provided\n";
         die = true;
     }
 
+    if(opt::watch_dir.empty()) {
+        if(opt::reads_file.empty()) {
+            std::cerr << SUBPROGRAM ": a --reads file must be provided\n";
+            die = true;
+        }
+
+        if(opt::bam_file.empty()) {
+            std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
+            die = true;
+        }
+    }
+
     if(opt::methylation_type.empty()) {
-        std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";  
+        std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";
         die = true;
     }
     else {
         mtest_alphabet = get_alphabet_by_name(opt::methylation_type);
-    }
-
-    if(opt::bam_file.empty()) {
-        std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
-        die = true;
     }
 
     if(!opt::models_fofn.empty()) {
@@ -416,8 +502,6 @@ void parse_call_methylation_options(int argc, char** argv)
 int call_methylation_main(int argc, char** argv)
 {
     parse_call_methylation_options(argc, argv);
-    ReadDB read_db;
-    read_db.load(opt::reads_file);
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -444,12 +528,11 @@ int call_methylation_main(int argc, char** argv)
                                  "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
                                  "num_calling_strands\tnum_motifs\tsequence\n");
 
-    // the BamProcessor framework calls the input function with the 
-    // bam record, read index, etc passed as parameters
-    // bind the other parameters the worker function needs here
-    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
-    BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
-    processor.parallel_run(f);
+    if(!opt::watch_dir.empty()) {
+        call_methylation_watch_mode(handles, fai);
+    } else {
+        call_methylation_from_bam(handles, fai);
+    }
 
     // cleanup
     if(handles.site_writer != stdout) {

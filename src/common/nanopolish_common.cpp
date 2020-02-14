@@ -73,6 +73,21 @@ bool ends_with(const std::string& str, const std::string& suffix)
     }
     return pos + suffix.size() == str.length();
 }
+
+std::string strip_extension(const std::string& str, const std::string& ext)
+{
+    if(ext.length() > str.length()) {
+        return str;
+    }
+
+    size_t ext_pos = str.length() - ext.length();
+    if(str.substr(ext_pos) == ext) {
+        return str.substr(0, ext_pos);
+    } else {
+        return str;
+    }
+}
+
 // from: http://stackoverflow.com/questions/9330915/number-of-combinations-n-choose-r-in-c
 size_t nChoosek(size_t n, size_t k)
 {
