@@ -20,6 +20,7 @@ CC ?= gcc
 HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
+MINIMAP2 ?= install
 
 HDF5_VERSION ?= 1.8.14
 EIGEN_VERSION ?= 3.2.5
@@ -61,6 +62,17 @@ else
     LIBS += -lhts
 endif
 
+# Default to build and link the libminimap2 submodule
+ifeq ($(MINIMAP2), install)
+    MINIMAP2_LIB = ./minimap2/libminimap2.a
+    MINIMAP2_INCLUDE = -I./minimap2
+else
+    # Use system-wide htslib
+    MINIMAP2_LIB =
+    MINIMAP2_INCLUDE =
+    LIBS += -lminimap2
+endif
+
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
 
@@ -71,7 +83,7 @@ EIGEN_INCLUDE = -I./eigen/
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
 
 # Add include flags
-CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(MINIMAP2_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
 
 # Main programs to build
 PROGRAM = nanopolish
@@ -85,6 +97,9 @@ all: depend $(PROGRAM)
 #
 htslib/libhts.a:
 	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
+
+minimap2/libminimap2.a:
+	cd minimap2 && make || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
@@ -137,12 +152,12 @@ depend: .depend
 	$(CC) -o $@ -c $(CFLAGS) $(CPPFLAGS) $(H5_INCLUDE) -fPIC $<
 
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(EIGEN_CHECK)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 # Link test executable
-$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 .PHONY: test
 test: $(TEST_PROGRAM)

@@ -23,6 +23,9 @@
 #include <getopt.h>
 #include <unistd.h>
 #include "htslib/faidx.h"
+#include "htslib/kseq.h"
+#include "htslib/bgzf.h"
+#include "htslib/kstring.h"
 #include "nanopolish_eventalign.h"
 #include "nanopolish_iupac.h"
 #include "nanopolish_poremodel.h"
@@ -39,6 +42,9 @@
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+#include "minimap.h"
+#include "bseq.h"
+#include "mmpriv.h"
 
 using namespace std::placeholders;
 
@@ -355,20 +361,181 @@ struct FileBatch
     bool called = false;
 };
 
-//
-bool process_batch(const FileBatch& batch, const faidx_t* fai)
+// init kseq reader
+KSEQ_INIT(gzFile, gzread)
+
+// hack, remove
+static inline char *kstrdup(const kstring_t *s)
 {
+	char *t;
+	t = (char*)malloc(s->l + 1);
+	memcpy(t, s->s, s->l + 1);
+	return t;
+}
+
+void bseq_destroy(mm_bseq1_t* s)
+{
+    free(s->name);
+    s->name = NULL;
+
+    free(s->seq);
+    s->seq = NULL;
+
+    if(s->qual) {
+        free(s->qual);
+        s->qual = NULL;
+    }
+    if(s->comment) {
+        free(s->comment);
+        s->comment = NULL;
+    }
+}
+
+static inline void kseq2bseq(kseq_t *ks, mm_bseq1_t *s, int with_qual, int with_comment)
+{
+	int i;
+	if (ks->name.l == 0)
+		fprintf(stderr, "[WARNING]\033[1;31m empty sequence name in the input.\033[0m\n");
+	s->name = kstrdup(&ks->name);
+	s->seq = kstrdup(&ks->seq);
+	for (i = 0; i < (int)ks->seq.l; ++i) // convert U to T
+		if (s->seq[i] == 'u' || s->seq[i] == 'U')
+			--s->seq[i];
+	s->qual = with_qual && ks->qual.l? kstrdup(&ks->qual) : 0;
+	s->comment = with_comment && ks->comment.l? kstrdup(&ks->comment) : 0;
+	s->l_seq = ks->seq.l;
+}
+
+// minimap2's kstring is different than htslib, which causes problems
+typedef struct __mm2_kstring_t {
+    unsigned l, m;
+    char *s;
+} mm2_kstring_t;
+
+//
+bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
+{
+    // build index from read_id -> read_sequence, and align reads
+    mm_tbuf_t *tbuf = mm_tbuf_init();
+    std::unordered_map<std::string, std::string> m_read_sequence_map;
+
+    // Read fastq file
+    FILE* read_fp = fopen(batch.fastq_path.c_str(), "r");
+    if(read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s for read\n", batch.fastq_path.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    gzFile gz_read_fp = gzdopen(fileno(read_fp), "r");
+    if(gz_read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s using gzdopen\n", batch.fastq_path.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    int ret = 0;
+    kseq_t* seq = kseq_init(gz_read_fp);
+    while((ret = kseq_read(seq)) >= 0) {
+        //
+        m_read_sequence_map[seq->name.s] = seq->seq.s;
+
+        //
+        mm_reg1_t *reg;
+        int j, i, n_reg;
+        reg = mm_map(mi, seq->seq.l, seq->seq.s, &n_reg, tbuf, &mopt, 0); // get all hits for the query
+        fprintf(stderr, "found %d regs for %s\n", n_reg, seq->name.s);
+        for (j = 0; j < n_reg; ++j) { // traverse hits and print them out
+            mm_reg1_t *r = &reg[j];
+            assert(r->p); // with MM_F_CIGAR, this should not be NULL
+
+            // build a sam record
+            mm_bseq1_t bseq;
+            kseq2bseq(seq, &bseq, 0, 0);
+
+            mm2_kstring_t s = { 0, 0, NULL };
+            mm_write_sam((kstring_t*)&s, mi, &bseq, r, n_reg, reg);
+
+            // convert record to bam
+            kstring_t ks_str = { s.l, s.m, s.s };
+
+            //bam1_t* record = bam_init1();
+            //int parse_ret = sam_parse1(&ks_str, hdr, record);
+            //sam_write1(stderr, hdr, &record);
+
+            bseq_destroy(&bseq);
+            //fprintf(stderr, "SAM: %s\n", s.s);
+            free(r->p);
+            free(s.s);
+
+            s = { 0, 0, NULL };
+        }
+        free(reg);
+        break;
+    }
+
+    // clean up fastq reader
+    kseq_destroy(seq);
+    gzclose(gz_read_fp);
+    fclose(read_fp);
+    seq = NULL;
+
+    fprintf(stderr, "read %zu sequences from %s\n", m_read_sequence_map.size(), batch.fastq_path.c_str());
+
+    mm_tbuf_destroy(tbuf);
     return true;
 }
+
 
 //
 void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fai)
 {
+    // load minimap2 index structures
+    mm_idxopt_t iopt;
+    mm_mapopt_t mopt;
+
+    mm_verbose = 2; // disable message output to stderr
+    mm_set_opt(0, &iopt, &mopt);
+    mopt.flag |= MM_F_CIGAR; // perform alignment
+    iopt.flag = 0; iopt.k = 15; // map-ont parameters
+
+    /*
+    // open query file for reading; you may use your favorite FASTA/Q parser
+    gzFile f = gzopen(argv[2], "r");
+    assert(f);
+    kseq_t *ks = kseq_init(f);
+    */
+
+    // Build header string from fai file
+    kstring_t header_str = { 0, 0, NULL };
+    for (int i = 0; i < faidx_nseq(fai); ++i) {
+        const char* tname = faidx_iseq(fai, i);
+	    ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
+    }
+    fprintf(stderr, "header: %s\n", header_str.s);
+
+    // Parse string to get header
+    bam_hdr_t* hdr = sam_hdr_parse(header_str.l, header_str.s);
+    free(header_str.s);
+    header_str = { 0, 0, NULL };
+
+    // open index reader
+    mm_idx_reader_t *r = mm_idx_reader_open(opt::genome_file.c_str(), &iopt, 0);
+    // read the first part of the index
+    mm_idx_t *mi = mm_idx_reader_read(r, opt::num_threads);
+    mm_mapopt_update(&mopt, mi);
+
+    //  hacky way to reject multi-part indices, which I don't want to support now
+    mm_idx_t *mi_done = mm_idx_reader_read(r, opt::num_threads);
+    if(mi == NULL || mi_done != NULL) {
+        fprintf(stderr, "Could not read minimap2 index\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // setup paths to watch
     std::string base_dir = opt::watch_dir;
     std::string fast5_dir = base_dir + "/fast5_pass";
     std::string fastq_dir = base_dir + "/fastq_pass";
 
-    // basename -> FileBatch
+    // map from basename -> FileBatch to track state of each file
     std::unordered_map<std::string, FileBatch> batches;
 
     while(1) {
@@ -396,14 +563,21 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
         for(auto& e : batches) {
             if(e.second.ready_to_call()) {
                 fprintf(stderr, "Processing %s\n", e.first.c_str());
-                bool success = process_batch(e.second, fai);
+                bool success = process_batch(e.second, fai, hdr, mopt, mi);
                 e.second.called = success;
+                break;
             }
         }
 
+        break;
         fprintf(stderr, "Waiting for next batch\n");
         sleep(30);
     }
+
+    // cleanup
+    mm_idx_destroy(mi);
+    mm_idx_reader_close(r);
+    bam_hdr_destroy(hdr);
 }
 
 void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
