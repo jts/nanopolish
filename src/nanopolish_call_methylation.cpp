@@ -110,6 +110,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --watch=DIR                      watch the run directory DIR and process data as it is generated\n"
+"      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -125,6 +126,7 @@ namespace opt
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
     static std::string watch_dir;
+    static int watch_write_bam;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 512;
@@ -134,7 +136,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:m:K:q:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
 static const struct option longopts[] = {
     { "verbose",          no_argument,       NULL, 'v' },
@@ -147,6 +149,7 @@ static const struct option longopts[] = {
     { "models-fofn",      required_argument, NULL, 'm' },
     { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
     { "watch",            required_argument, NULL, OPT_WATCH_DIR },
+    { "watch-write-bam",  required_argument, NULL, OPT_WATCH_WRITE_BAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
@@ -406,7 +409,10 @@ static inline void kseq2bseq(kseq_t *ks, mm_bseq1_t *s, int with_qual, int with_
 	s->l_seq = ks->seq.l;
 }
 
-// minimap2's kstring is different than htslib, which causes problems
+// HACK
+// minimap2's kstring has members with a different size than htslib
+// this caused the sam record from mm_write_sam, to be corrupt
+// so we created a shadow version here
 typedef struct __mm2_kstring_t {
     unsigned l, m;
     char *s;
@@ -415,6 +421,9 @@ typedef struct __mm2_kstring_t {
 //
 bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
 {
+    htsFile* out_fp = hts_open("watch_test.bam", "bw");
+    sam_hdr_write(out_fp, hdr);
+
     // build index from read_id -> read_sequence, and align reads
     mm_tbuf_t *tbuf = mm_tbuf_init();
     std::unordered_map<std::string, std::string> m_read_sequence_map;
@@ -457,19 +466,18 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
             // convert record to bam
             kstring_t ks_str = { s.l, s.m, s.s };
 
-            //bam1_t* record = bam_init1();
-            //int parse_ret = sam_parse1(&ks_str, hdr, record);
-            //sam_write1(stderr, hdr, &record);
+            bam1_t* record = bam_init1();
+            int parse_ret = sam_parse1(&ks_str, hdr, record);
+            int write_ret = sam_write1(out_fp, hdr, record);
 
             bseq_destroy(&bseq);
-            //fprintf(stderr, "SAM: %s\n", s.s);
+            bam_destroy1(record);
+
             free(r->p);
             free(s.s);
-
             s = { 0, 0, NULL };
         }
         free(reg);
-        break;
     }
 
     // clean up fastq reader
@@ -481,6 +489,7 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     fprintf(stderr, "read %zu sequences from %s\n", m_read_sequence_map.size(), batch.fastq_path.c_str());
 
     mm_tbuf_destroy(tbuf);
+    hts_close(out_fp);
     return true;
 }
 
@@ -488,6 +497,19 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
 //
 void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fai)
 {
+    // build sam/bam header structure by parsing the faidx,
+    // converting it to a string then  string from fai file
+    kstring_t header_str = { 0, 0, NULL };
+    for (int i = 0; i < faidx_nseq(fai); ++i) {
+        const char* tname = faidx_iseq(fai, i);
+	    ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
+    }
+
+    // Parse string to get header
+    bam_hdr_t* hdr = sam_hdr_parse(header_str.l, header_str.s);
+    free(header_str.s);
+    header_str = { 0, 0, NULL };
+
     // load minimap2 index structures
     mm_idxopt_t iopt;
     mm_mapopt_t mopt;
@@ -497,28 +519,9 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
     mopt.flag |= MM_F_CIGAR; // perform alignment
     iopt.flag = 0; iopt.k = 15; // map-ont parameters
 
-    /*
-    // open query file for reading; you may use your favorite FASTA/Q parser
-    gzFile f = gzopen(argv[2], "r");
-    assert(f);
-    kseq_t *ks = kseq_init(f);
-    */
-
-    // Build header string from fai file
-    kstring_t header_str = { 0, 0, NULL };
-    for (int i = 0; i < faidx_nseq(fai); ++i) {
-        const char* tname = faidx_iseq(fai, i);
-	    ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
-    }
-    fprintf(stderr, "header: %s\n", header_str.s);
-
-    // Parse string to get header
-    bam_hdr_t* hdr = sam_hdr_parse(header_str.l, header_str.s);
-    free(header_str.s);
-    header_str = { 0, 0, NULL };
-
     // open index reader
     mm_idx_reader_t *r = mm_idx_reader_open(opt::genome_file.c_str(), &iopt, 0);
+
     // read the first part of the index
     mm_idx_t *mi = mm_idx_reader_read(r, opt::num_threads);
     mm_mapopt_update(&mopt, mi);
@@ -565,11 +568,10 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
                 fprintf(stderr, "Processing %s\n", e.first.c_str());
                 bool success = process_batch(e.second, fai, hdr, mopt, mi);
                 e.second.called = success;
-                break;
+                exit(1);
             }
         }
 
-        break;
         fprintf(stderr, "Waiting for next batch\n");
         sleep(30);
     }
@@ -591,7 +593,6 @@ void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
     auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.parallel_run(f);
-
 }
 
 void parse_call_methylation_options(int argc, char** argv)
@@ -612,6 +613,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'K': arg >> opt::batch_size; break;
             case OPT_MIN_SEPARATION: arg >> opt::min_separation; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
+            case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;
             case OPT_HELP:
                 std::cout << CALL_METHYLATION_USAGE_MESSAGE;
