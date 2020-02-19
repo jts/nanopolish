@@ -38,6 +38,7 @@
 #include "nanopolish_bam_processor.h"
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_read_db.h"
+#include "nanopolish_fast5_processor.h"
 #include "fs_support.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -158,9 +159,10 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+
 // Test motif sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
-                                    const ReadDB& read_db,
+                                    SquiggleRead& sr,
                                     const faidx_t* fai,
                                     const bam_hdr_t* hdr,
                                     const bam1_t* record,
@@ -168,10 +170,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                                     int region_start,
                                     int region_end)
 {
-    // Load a squiggle read for the mapped read
-    std::string read_name = bam_get_qname(record);
     std::string read_orientation = bam_is_rev(record) ? "-" : "+";
-    SquiggleRead sr(read_name, read_db);
 
     // An output map from reference positions to scored motif sites
     std::map<int, ScoredSite> site_score_map;
@@ -353,6 +352,47 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     }
 }
 
+void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
+                                             const ReadDB& read_db,
+                                             const faidx_t* fai,
+                                             const bam_hdr_t* hdr,
+                                             const bam1_t* record,
+                                             size_t read_idx,
+                                             int region_start,
+                                             int region_end)
+{
+    // Load a squiggle read for the mapped read
+    std::string read_name = bam_get_qname(record);
+    SquiggleRead sr(read_name, read_db);
+    calculate_methylation_for_read(handles, sr, fai, hdr, record, read_idx, region_start, region_end);
+}
+
+void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
+                                               const std::unordered_map<std::string, std::string>& sequence_map,
+                                               const std::unordered_map<std::string, bam1_t*>& alignment_map,
+                                               const faidx_t* fai,
+                                               const bam_hdr_t* hdr,
+                                               const Fast5Data& fast5_data)
+{
+    const std::string& read_name = fast5_data.read_name;
+    const auto& a_iter = alignment_map.find(read_name);
+    if(a_iter == alignment_map.end()) {
+        // no alignment, skip
+        return;
+    }
+
+    const auto& s_iter = sequence_map.find(read_name);
+    if(s_iter == sequence_map.end()) {
+        // no sequence, skip
+        return;
+    }
+
+    bam1_t* b = a_iter->second;
+    SquiggleRead sr(s_iter->second, fast5_data);
+
+    calculate_methylation_for_read(handles, sr, fai, hdr, b, -1, -1, -1);
+}
+
 //
 // Watch mode
 //
@@ -420,7 +460,7 @@ typedef struct __mm2_kstring_t {
 } mm2_kstring_t;
 
 //
-bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
+bool process_batch(const OutputHandles& handles, const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
 {
     htsFile* out_fp = hts_open("watch_test.bam", "bw");
     sam_hdr_write(out_fp, hdr);
@@ -428,8 +468,8 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     // build indices:
     //  read_id -> read_sequence
     //  read_id -> primary alignment
-    std::unordered_map<std::string, std::string> m_read_sequence_map;
-    std::unordered_map<std::string, bam1_t*> m_read_alignment_map;
+    std::unordered_map<std::string, std::string> read_sequence_map;
+    std::unordered_map<std::string, bam1_t*> read_alignment_map;
 
     // Read fastq file
     FILE* read_fp = fopen(batch.fastq_path.c_str(), "r");
@@ -449,13 +489,19 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     kseq_t* seq = kseq_init(gz_read_fp);
     while((ret = kseq_read(seq)) >= 0) {
         //
-        m_read_sequence_map[seq->name.s] = seq->seq.s;
+        read_sequence_map[seq->name.s] = seq->seq.s;
+
+        /* debug
+        if(strcmp(seq->name.s, "197dd16a-84cc-48eb-8a54-6ccfcabaec85") != 0) {
+            continue;
+        }
+        */
 
         //
         mm_reg1_t *reg;
         int j, i, n_reg;
         reg = mm_map(mi, seq->seq.l, seq->seq.s, &n_reg, tbuf, &mopt, 0); // get all hits for the query
-        fprintf(stderr, "found %d regs for %s\n", n_reg, seq->name.s);
+
         for (j = 0; j < n_reg; ++j) { // traverse hits and print them out
             mm_reg1_t *r = &reg[j];
             assert(r->p); // with MM_F_CIGAR, this should not be NULL
@@ -479,7 +525,7 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
                 (record->core.qual >= opt::min_mapping_quality))
             {
                 int write_ret = sam_write1(out_fp, hdr, record);
-                m_read_alignment_map[seq->name.s] = record;
+                read_alignment_map[seq->name.s] = record;
             }
             bseq_destroy(&bseq);
 
@@ -491,8 +537,20 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     }
     mm_tbuf_destroy(tbuf);
 
+    // use fast5 processor to iterate over the signal reads, and run our call-methylation function
+    Fast5Processor processor(batch.fast5_path, opt::num_threads);
+    auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
+                                                                  std::ref(read_sequence_map),
+                                                                  std::ref(read_alignment_map),
+                                                                  fai,
+                                                                  hdr,
+                                                                  _1);
+
+    // call.
+    processor.parallel_run(f);
+
     // clean up bam records
-    for(auto& x : m_read_alignment_map) {
+    for(auto& x : read_alignment_map) {
         bam_destroy1(x.second);
         x.second = NULL;
     }
@@ -503,12 +561,9 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     fclose(read_fp);
     seq = NULL;
 
-    fprintf(stderr, "read %zu sequences from %s\n", m_read_sequence_map.size(), batch.fastq_path.c_str());
-
     hts_close(out_fp);
     return true;
 }
-
 
 //
 void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fai)
@@ -582,7 +637,7 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
         for(auto& e : batches) {
             if(e.second.ready_to_call()) {
                 fprintf(stderr, "Processing %s\n", e.first.c_str());
-                bool success = process_batch(e.second, fai, hdr, mopt, mi);
+                bool success = process_batch(handles, e.second, fai, hdr, mopt, mi);
                 e.second.called = success;
                 break;
             }
@@ -606,7 +661,7 @@ void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+    auto f = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
     processor.parallel_run(f);

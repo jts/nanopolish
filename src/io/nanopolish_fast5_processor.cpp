@@ -24,6 +24,15 @@ Fast5Processor::Fast5Processor(const ReadDB& read_db,
     m_fast5s = read_db.get_unique_fast5s();
 }
 
+Fast5Processor::Fast5Processor(const std::string& fast5_file,
+                               const int num_threads,
+                               const int batch_size) :
+                                m_num_threads(num_threads),
+                                m_batch_size(batch_size)
+{
+    m_fast5s.push_back(fast5_file);
+}
+
 Fast5Processor::~Fast5Processor()
 {
 }
@@ -34,9 +43,7 @@ void Fast5Processor::parallel_run(fast5_processor_work_function func)
     int prev_num_threads = omp_get_num_threads();
     omp_set_num_threads(m_num_threads);
 
-    fprintf(stderr, "[fast5 processor] processing %zu fast5s\n", m_fast5s.size());
     for(size_t i = 0; i < m_fast5s.size(); ++i) {
-        fprintf(stderr, "[fast5 processor] reading %s\n", m_fast5s[i].c_str());
         fast5_file f5_file = fast5_open(m_fast5s[i]);
         if(!fast5_is_open(f5_file)) {
             continue;
@@ -67,7 +74,6 @@ void Fast5Processor::parallel_run(fast5_processor_work_function func)
         fast5_close(f5_file);
 
         // run in parallel
-        fprintf(stderr, "[fast5 processor] compute\n");
         #pragma omp parallel for schedule(dynamic)
         for(size_t j = 0; j < fast5_data.size(); ++j) {
             func(fast5_data[j]);

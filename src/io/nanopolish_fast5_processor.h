@@ -21,7 +21,14 @@ class Fast5Processor
 {
 
     public:
+
+        // process all fast5s in the db
         Fast5Processor(const ReadDB& read_db,
+                       const int num_threads,
+                       const int batch_size=4000);
+        
+        // process a single fast5
+        Fast5Processor(const std::string& fast5_file,
                        const int num_threads,
                        const int batch_size=4000);
 
@@ -29,14 +36,6 @@ class Fast5Processor
 
         // process each record in parallel, using the input function
         void parallel_run(fast5_processor_work_function f);
-
-        /*
-        void parallel_run( std::function<void(const bam_hdr_t* hdr, 
-                                     const bam1_t* record,
-                                     size_t read_idx,
-                                     int region_start,
-                                     int region_end)> func);
-        */
 
     private:
 

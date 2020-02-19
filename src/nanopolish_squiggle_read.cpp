@@ -67,15 +67,8 @@ void SquiggleScalings::set6(double _shift,
 }
 
 //
-SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags) :
-    read_name(name),
-    nucleotide_type(SRNT_DNA),
-    pore_type(PT_UNKNOWN),
-    f_p(nullptr)
+SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags)
 {
-
-    this->events_per_base[0] = events_per_base[1] = 0.0f;
-    this->base_model[0] = this->base_model[1] = NULL;
     this->fast5_path = read_db.get_signal_path(this->read_name);
     g_total_reads += 1;
     if(this->fast5_path == "") {
@@ -83,29 +76,36 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         return;
     }
 
-    // Get the read type from the fast5 file
-    this->read_sequence = read_db.get_read_sequence(read_name);
+    std::string sequence = read_db.get_read_sequence(read_name);
     Fast5Data data = Fast5Loader::load_read(fast5_path, this->read_name);
-    if(data.is_valid && !this->read_sequence.empty()) {
-        load_from_raw(data, flags);
-        assert(data.rt.n > 0);
-        free(data.rt.raw);
+    if(data.is_valid && !sequence.empty()) {
+        init(sequence, data, flags);
     } else {
         fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
         g_bad_fast5_file += 1;
     }
-    
 
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }
 }
 
-SquiggleRead::SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const uint32_t flags) :
-                    nucleotide_type(SRNT_DNA),
-                    pore_type(PT_UNKNOWN),
-                    f_p(nullptr)
+SquiggleRead::SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const uint32_t flags)
 {
+    init(read_db.get_read_sequence(data.read_name), data, flags);
+}
+
+SquiggleRead::SquiggleRead(const std::string& sequence, const Fast5Data& data, const uint32_t flags)
+{
+    init(sequence, data, flags);
+}
+
+//
+void SquiggleRead::init(const std::string& read_sequence, const Fast5Data& data, const uint32_t flags)
+{
+    this->nucleotide_type = SRNT_DNA;
+    this->pore_type = PT_UNKNOWN;
+    this->f_p = nullptr;
 
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->base_model[0] = this->base_model[1] = NULL;
@@ -114,7 +114,7 @@ SquiggleRead::SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const u
     assert(data.rt.n > 0);
 
     this->read_name = data.read_name;
-    this->read_sequence = read_db.get_read_sequence(read_name);
+    this->read_sequence = read_sequence;
 
     // sometimes the basecaller will emit very short sequences, which causes problems
     if(this->read_sequence.length() > 20) {
@@ -125,7 +125,6 @@ SquiggleRead::SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const u
         assert(this->base_model[0] != NULL);
     }
 }
-
 
 SquiggleRead::~SquiggleRead()
 {

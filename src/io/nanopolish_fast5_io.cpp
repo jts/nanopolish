@@ -78,7 +78,7 @@ std::vector<std::string> fast5_get_multi_read_groups(fast5_file& fh)
     
         // copy the group name
         H5Lget_name_by_idx(fh.hdf5_file, "/", H5_INDEX_NAME, H5_ITER_INC, group_idx, buffer, buffer_size, H5P_DEFAULT);
-        buffer[size] = '\0';
+        buffer[size - 1] = '\0';
         out.push_back(buffer);
     }
 
