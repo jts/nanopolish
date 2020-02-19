@@ -105,12 +105,18 @@ struct ScoredSite
 
 struct WatchStatus
 {
+    WatchStatus() : timer("") {}
+
     int processed_fast5s = 0;
     int total_fast5s = 0;
+    Progress timer;
 
     void update(const std::string& message)
     {
-        fprintf(stderr, "\r[call-methylation] fast5 progress: %d/%d [%s]", processed_fast5s, total_fast5s, message.c_str());
+        double elapsed_seconds = timer.get_elapsed_seconds();
+        double seconds_per_file = processed_fast5s > 0 ? elapsed_seconds / processed_fast5s : 0.0;
+
+        fprintf(stderr, "\r[call-methylation] fast5 progress: %d/%d %.2lfs/fast5 [%s]", processed_fast5s, seconds_per_file, total_fast5s, message.c_str());
     }
 };
 

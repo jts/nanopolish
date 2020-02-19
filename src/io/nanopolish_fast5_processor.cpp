@@ -50,7 +50,9 @@ void Fast5Processor::parallel_run(fast5_processor_work_function func)
         }
 
         std::vector<Fast5Data> fast5_data;
+
         std::vector<std::string> reads = fast5_get_multi_read_groups(f5_file);
+        
         for(size_t j = 0; j < reads.size(); j++) {
             // groups have names like "read_<uuid>"
             // we're only interested in the uuid bit
