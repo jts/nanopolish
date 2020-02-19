@@ -54,13 +54,33 @@ using namespace std::placeholders;
 //
 struct OutputHandles
 {
-    FILE* site_writer;
+    FILE* site_writer = NULL;
+    htsFile* bam_writer = NULL;
+
+    void write_site_header() {
+        // Write header
+        fprintf(site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
+                             "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
+                             "num_calling_strands\tnum_motifs\tsequence\n");
+    }
+
+    void close() {
+        if(site_writer != stdout) {
+            fclose(site_writer);
+            site_writer = NULL;
+        }
+
+        if(bam_writer != NULL) {
+            hts_close(bam_writer);
+            bam_writer = NULL;
+        }
+    }
 };
 
 struct ScoredSite
 {
-    ScoredSite() 
-    { 
+    ScoredSite()
+    {
         ll_unmethylated[0] = 0;
         ll_unmethylated[1] = 0;
         ll_methylated[0] = 0;
@@ -81,7 +101,17 @@ struct ScoredSite
 
     //
     static bool sort_by_position(const ScoredSite& a, const ScoredSite& b) { return a.start_position < b.start_position; }
+};
 
+struct WatchStatus
+{
+    int processed_fast5s = 0;
+    int total_fast5s = 0;
+
+    void update(const std::string& message)
+    {
+        fprintf(stderr, "\r[call-methylation] fast5 progress: %d/%d [%s]", processed_fast5s, total_fast5s, message.c_str());
+    }
 };
 
 //
@@ -151,7 +181,7 @@ static const struct option longopts[] = {
     { "models-fofn",      required_argument, NULL, 'm' },
     { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
     { "watch",            required_argument, NULL, OPT_WATCH_DIR },
-    { "watch-write-bam",  required_argument, NULL, OPT_WATCH_WRITE_BAM },
+    { "watch-write-bam",  no_argument,       NULL, OPT_WATCH_WRITE_BAM },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
@@ -460,10 +490,23 @@ typedef struct __mm2_kstring_t {
 } mm2_kstring_t;
 
 //
-bool process_batch(const OutputHandles& handles, const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
+bool process_batch(const std::string& basename, const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi, WatchStatus& status)
 {
-    htsFile* out_fp = hts_open("watch_test.bam", "bw");
-    sam_hdr_write(out_fp, hdr);
+    // Initialize writers
+    OutputHandles handles;
+
+    std::string calls_outname = basename + ".methylation_calls.tsv";
+    handles.site_writer = fopen(calls_outname.c_str(), "w");
+    handles.write_site_header();
+
+    // optionall open a bam to write the alignments to
+    if(opt::watch_write_bam) {
+        std::string bam_outname = basename + ".bam";
+        handles.bam_writer = hts_open(bam_outname.c_str(), "bw");
+        sam_hdr_write(handles.bam_writer, hdr);
+    } else {
+        handles.bam_writer = NULL;
+    }
 
     // build indices:
     //  read_id -> read_sequence
@@ -483,6 +526,8 @@ bool process_batch(const OutputHandles& handles, const FileBatch& batch, const f
         fprintf(stderr, "error: could not open %s using gzdopen\n", batch.fastq_path.c_str());
         exit(EXIT_FAILURE);
     }
+
+    status.update("aligning " + basename);
 
     mm_tbuf_t *tbuf = mm_tbuf_init();
     int ret = 0;
@@ -524,7 +569,9 @@ bool process_batch(const OutputHandles& handles, const FileBatch& batch, const f
                 (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
                 (record->core.qual >= opt::min_mapping_quality))
             {
-                int write_ret = sam_write1(out_fp, hdr, record);
+                if(handles.bam_writer != NULL) {
+                    int write_ret = sam_write1(handles.bam_writer, hdr, record);
+                }
                 read_alignment_map[seq->name.s] = record;
             }
             bseq_destroy(&bseq);
@@ -538,6 +585,7 @@ bool process_batch(const OutputHandles& handles, const FileBatch& batch, const f
     mm_tbuf_destroy(tbuf);
 
     // use fast5 processor to iterate over the signal reads, and run our call-methylation function
+    status.update("calling " + basename);
     Fast5Processor processor(batch.fast5_path, opt::num_threads);
     auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
                                                                   std::ref(read_sequence_map),
@@ -561,13 +609,16 @@ bool process_batch(const OutputHandles& handles, const FileBatch& batch, const f
     fclose(read_fp);
     seq = NULL;
 
-    hts_close(out_fp);
+    handles.close();
+
     return true;
 }
 
 //
-void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fai)
+void run_watch_mode(const faidx_t* fai)
 {
+    WatchStatus status;
+
     // build sam/bam header structure by parsing the faidx,
     // converting it to a string then  string from fai file
     kstring_t header_str = { 0, 0, NULL };
@@ -613,10 +664,12 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
     std::unordered_map<std::string, FileBatch> batches;
 
     while(1) {
-        fprintf(stderr, "checking %s for new files\n", fast5_dir.c_str());
+        status.update("checking for new files");
 
         // update file db with fast5s
         std::vector<std::string> fast5_files = list_directory(fast5_dir);
+        status.total_fast5s = fast5_files.size();
+
         for(const auto& fn : fast5_files) {
             if(ends_with(fn, ".fast5")) {
                 std::string basename = strip_extension(fn, ".fast5");
@@ -636,14 +689,14 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
         // iterate over collection and see which files need to be processed
         for(auto& e : batches) {
             if(e.second.ready_to_call()) {
-                fprintf(stderr, "Processing %s\n", e.first.c_str());
-                bool success = process_batch(handles, e.second, fai, hdr, mopt, mi);
+                bool success = process_batch(e.first, e.second, fai, hdr, mopt, mi, status);
                 e.second.called = success;
-                break;
+                status.processed_fast5s += 1;
             }
         }
-        break;
+
         fprintf(stderr, "Waiting for next batch\n");
+        status.update("sleeping");
         sleep(30);
     }
 
@@ -653,10 +706,15 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
     bam_hdr_destroy(hdr);
 }
 
-void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
+void run_from_bam(const faidx_t* fai)
 {
     ReadDB read_db;
     read_db.load(opt::reads_file);
+
+    // Initialize writers
+    OutputHandles handles;
+    handles.site_writer = stdout;
+    handles.write_site_header();
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
@@ -767,25 +825,12 @@ int call_methylation_main(int argc, char** argv)
     }
 #endif
 
-    // Initialize writers
-    OutputHandles handles;
-    handles.site_writer = stdout;
-
-    // Write header
-    fprintf(handles.site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
-                                 "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
-                                 "num_calling_strands\tnum_motifs\tsequence\n");
-
     if(!opt::watch_dir.empty()) {
-        call_methylation_watch_mode(handles, fai);
+        run_watch_mode(fai);
     } else {
-        call_methylation_from_bam(handles, fai);
+        run_from_bam(fai);
     }
 
-    // cleanup
-    if(handles.site_writer != stdout) {
-        fclose(handles.site_writer);
-    }
 
     fai_destroy(fai);
 
