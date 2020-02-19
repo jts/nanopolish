@@ -132,6 +132,7 @@ namespace opt
     static int batch_size = 512;
     static int min_separation = 10;
     static int min_flank = 10;
+    static int min_mapping_quality = 20;
 }
 
 static const char* shortopts = "r:b:g:t:w:m:K:q:vn";
@@ -424,9 +425,11 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
     htsFile* out_fp = hts_open("watch_test.bam", "bw");
     sam_hdr_write(out_fp, hdr);
 
-    // build index from read_id -> read_sequence, and align reads
-    mm_tbuf_t *tbuf = mm_tbuf_init();
+    // build indices:
+    //  read_id -> read_sequence
+    //  read_id -> primary alignment
     std::unordered_map<std::string, std::string> m_read_sequence_map;
+    std::unordered_map<std::string, bam1_t*> m_read_alignment_map;
 
     // Read fastq file
     FILE* read_fp = fopen(batch.fastq_path.c_str(), "r");
@@ -441,6 +444,7 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
         exit(EXIT_FAILURE);
     }
 
+    mm_tbuf_t *tbuf = mm_tbuf_init();
     int ret = 0;
     kseq_t* seq = kseq_init(gz_read_fp);
     while((ret = kseq_read(seq)) >= 0) {
@@ -468,16 +472,29 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
 
             bam1_t* record = bam_init1();
             int parse_ret = sam_parse1(&ks_str, hdr, record);
-            int write_ret = sam_write1(out_fp, hdr, record);
 
+            // only store the primary alignment for each read
+            if( (record->core.flag & BAM_FSECONDARY) == 0 &&
+                (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
+                (record->core.qual >= opt::min_mapping_quality))
+            {
+                int write_ret = sam_write1(out_fp, hdr, record);
+                m_read_alignment_map[seq->name.s] = record;
+            }
             bseq_destroy(&bseq);
-            bam_destroy1(record);
 
             free(r->p);
             free(s.s);
             s = { 0, 0, NULL };
         }
         free(reg);
+    }
+    mm_tbuf_destroy(tbuf);
+
+    // clean up bam records
+    for(auto& x : m_read_alignment_map) {
+        bam_destroy1(x.second);
+        x.second = NULL;
     }
 
     // clean up fastq reader
@@ -488,7 +505,6 @@ bool process_batch(const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, m
 
     fprintf(stderr, "read %zu sequences from %s\n", m_read_sequence_map.size(), batch.fastq_path.c_str());
 
-    mm_tbuf_destroy(tbuf);
     hts_close(out_fp);
     return true;
 }
@@ -568,10 +584,10 @@ void call_methylation_watch_mode(const OutputHandles& handles, const faidx_t* fa
                 fprintf(stderr, "Processing %s\n", e.first.c_str());
                 bool success = process_batch(e.second, fai, hdr, mopt, mi);
                 e.second.called = success;
-                exit(1);
+                break;
             }
         }
-
+        break;
         fprintf(stderr, "Waiting for next batch\n");
         sleep(30);
     }
@@ -592,6 +608,7 @@ void call_methylation_from_bam(const OutputHandles& handles, const faidx_t* fai)
     // bind the other parameters the worker function needs here
     auto f = std::bind(calculate_methylation_for_read, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
+    processor.set_min_mapping_quality(opt::min_mapping_quality);
     processor.parallel_run(f);
 }
 
