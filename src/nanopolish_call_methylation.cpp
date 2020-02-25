@@ -412,7 +412,7 @@ void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
 {
     const std::string& read_name = fast5_data.read_name;
     const auto& a_iter = alignment_map.find(read_name);
-    if(a_iter == alignment_map.end()) {
+    if(a_iter == alignment_map.end() || a_iter->second == NULL) {
         // no alignment, skip
         return;
     }
@@ -423,9 +423,11 @@ void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
         return;
     }
 
+    //
     bam1_t* b = a_iter->second;
     SquiggleRead sr(s_iter->second, fast5_data);
 
+    //
     calculate_methylation_for_read(handles, sr, fai, hdr, b, -1, -1, -1);
 }
 
@@ -443,15 +445,6 @@ struct FileBatch
 
 // init kseq reader
 KSEQ_INIT(gzFile, gzread)
-
-// hack, remove
-static inline char *kstrdup(const kstring_t *s)
-{
-	char *t;
-	t = (char*)malloc(s->l + 1);
-	memcpy(t, s->s, s->l + 1);
-	return t;
-}
 
 void bseq_destroy(mm_bseq1_t* s)
 {
@@ -471,21 +464,6 @@ void bseq_destroy(mm_bseq1_t* s)
     }
 }
 
-static inline void kseq2bseq(kseq_t *ks, mm_bseq1_t *s, int with_qual, int with_comment)
-{
-	int i;
-	if (ks->name.l == 0)
-		fprintf(stderr, "[WARNING]\033[1;31m empty sequence name in the input.\033[0m\n");
-	s->name = kstrdup(&ks->name);
-	s->seq = kstrdup(&ks->seq);
-	for (i = 0; i < (int)ks->seq.l; ++i) // convert U to T
-		if (s->seq[i] == 'u' || s->seq[i] == 'U')
-			--s->seq[i];
-	s->qual = with_qual && ks->qual.l? kstrdup(&ks->qual) : 0;
-	s->comment = with_comment && ks->comment.l? kstrdup(&ks->comment) : 0;
-	s->l_seq = ks->seq.l;
-}
-
 // HACK
 // minimap2's kstring has members with a different size than htslib
 // this caused the sam record from mm_write_sam, to be corrupt
@@ -494,6 +472,116 @@ typedef struct __mm2_kstring_t {
     unsigned l, m;
     char *s;
 } mm2_kstring_t;
+
+void populate_maps_from_fastq(OutputHandles& handles,
+                              const std::string& fastq_filename,
+                              std::unordered_map<std::string, std::string>& read_sequence_map,
+                              std::unordered_map<std::string, bam1_t*>& read_alignment_map,
+                              bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
+{
+    // Read fastq file
+    FILE* read_fp = fopen(fastq_filename.c_str(), "r");
+    if(read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s for read\n", fastq_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    gzFile gz_read_fp = gzdopen(fileno(read_fp), "r");
+    if(gz_read_fp == NULL) {
+        fprintf(stderr, "error: could not open %s using gzdopen\n", fastq_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    int ret = 0;
+    kseq_t* seq = kseq_init(gz_read_fp);
+    while((ret = kseq_read(seq)) >= 0) {
+        //
+        read_sequence_map[seq->name.s] = seq->seq.s;
+    }
+    kseq_destroy(seq);
+    seq = NULL;
+
+    // get vector of names, so we can use parallel for
+    std::vector<std::string> read_names;
+    for(const auto& e : read_sequence_map) {
+        read_names.push_back(e.first);
+
+        // pre-populate alignment table
+        read_alignment_map[e.first] = NULL;
+    }
+
+    // initialize minimap2's thread storage
+    std::vector<mm_tbuf_t*> tbuf(opt::num_threads, NULL);
+    for(size_t i = 0; i < tbuf.size(); ++i) {
+        tbuf[i] = mm_tbuf_init();
+        assert(tbuf[i] != NULL);
+    }
+
+    #pragma omp parallel for
+    for(size_t ri = 0; ri < read_names.size(); ++ri) {
+
+        const std::string& read_name = read_names[ri];
+        const std::string& sequence = read_sequence_map[read_name];
+
+        //
+        mm_reg1_t *reg;
+        int j, i, n_reg;
+        size_t thread_id = omp_get_thread_num();
+        assert(thread_id < tbuf.size());
+
+        reg = mm_map(mi, sequence.length(), sequence.c_str(), &n_reg, tbuf[thread_id], &mopt, 0); // get all hits for the query
+
+        for (j = 0; j < n_reg; ++j) { // traverse hits and print them out
+            mm_reg1_t *r = &reg[j];
+            assert(r->p); // with MM_F_CIGAR, this should not be NULL
+
+            // build a sam record
+            mm_bseq1_t bseq;
+            bseq.name = strndup(read_name.c_str(), read_name.length());
+            bseq.seq = strndup(sequence.c_str(), sequence.length());
+            bseq.l_seq = sequence.length();
+            bseq.qual = NULL;
+            bseq.comment = NULL;
+
+            mm2_kstring_t s = { 0, 0, NULL };
+            mm_write_sam((kstring_t*)&s, mi, &bseq, r, n_reg, reg);
+
+            // convert record to bam
+            kstring_t ks_str = { s.l, s.m, s.s };
+
+            bam1_t* record = bam_init1();
+            int parse_ret = sam_parse1(&ks_str, hdr, record);
+
+            // only store the primary alignment for each read
+            if( (record->core.flag & BAM_FSECONDARY) == 0 &&
+                (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
+                (record->core.qual >= opt::min_mapping_quality))
+            {
+                if(handles.bam_writer != NULL) {
+                    #pragma omp critical
+                    int write_ret = sam_write1(handles.bam_writer, hdr, record);
+                }
+                read_alignment_map[read_name] = record;
+            }
+            bseq_destroy(&bseq);
+
+            free(r->p);
+            free(s.s);
+            s = { 0, 0, NULL };
+        }
+        free(reg);
+    }
+
+    for(size_t i = 0; i < tbuf.size(); ++i) {
+        mm_tbuf_destroy(tbuf[i]);
+        tbuf[i] = NULL;
+    }
+
+    // clean up fastq reader
+    gzclose(gz_read_fp);
+    fclose(read_fp);
+    seq = NULL;
+}
 
 //
 bool process_batch(const std::string& basename, const FileBatch& batch, const faidx_t* fai, bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi, WatchStatus& status)
@@ -519,76 +607,8 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     //  read_id -> primary alignment
     std::unordered_map<std::string, std::string> read_sequence_map;
     std::unordered_map<std::string, bam1_t*> read_alignment_map;
-
-    // Read fastq file
-    FILE* read_fp = fopen(batch.fastq_path.c_str(), "r");
-    if(read_fp == NULL) {
-        fprintf(stderr, "error: could not open %s for read\n", batch.fastq_path.c_str());
-        exit(EXIT_FAILURE);
-    }
-
-    gzFile gz_read_fp = gzdopen(fileno(read_fp), "r");
-    if(gz_read_fp == NULL) {
-        fprintf(stderr, "error: could not open %s using gzdopen\n", batch.fastq_path.c_str());
-        exit(EXIT_FAILURE);
-    }
-
     status.update("aligning " + basename);
-
-    mm_tbuf_t *tbuf = mm_tbuf_init();
-    int ret = 0;
-    kseq_t* seq = kseq_init(gz_read_fp);
-    while((ret = kseq_read(seq)) >= 0) {
-        //
-        read_sequence_map[seq->name.s] = seq->seq.s;
-
-        /* debug
-        if(strcmp(seq->name.s, "197dd16a-84cc-48eb-8a54-6ccfcabaec85") != 0) {
-            continue;
-        }
-        */
-
-        //
-        mm_reg1_t *reg;
-        int j, i, n_reg;
-        reg = mm_map(mi, seq->seq.l, seq->seq.s, &n_reg, tbuf, &mopt, 0); // get all hits for the query
-
-        for (j = 0; j < n_reg; ++j) { // traverse hits and print them out
-            mm_reg1_t *r = &reg[j];
-            assert(r->p); // with MM_F_CIGAR, this should not be NULL
-
-            // build a sam record
-            mm_bseq1_t bseq;
-            kseq2bseq(seq, &bseq, 0, 0);
-
-            mm2_kstring_t s = { 0, 0, NULL };
-            mm_write_sam((kstring_t*)&s, mi, &bseq, r, n_reg, reg);
-
-            // convert record to bam
-            kstring_t ks_str = { s.l, s.m, s.s };
-
-            bam1_t* record = bam_init1();
-            int parse_ret = sam_parse1(&ks_str, hdr, record);
-
-            // only store the primary alignment for each read
-            if( (record->core.flag & BAM_FSECONDARY) == 0 &&
-                (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
-                (record->core.qual >= opt::min_mapping_quality))
-            {
-                if(handles.bam_writer != NULL) {
-                    int write_ret = sam_write1(handles.bam_writer, hdr, record);
-                }
-                read_alignment_map[seq->name.s] = record;
-            }
-            bseq_destroy(&bseq);
-
-            free(r->p);
-            free(s.s);
-            s = { 0, 0, NULL };
-        }
-        free(reg);
-    }
-    mm_tbuf_destroy(tbuf);
+    populate_maps_from_fastq(handles, batch.fastq_path, read_sequence_map, read_alignment_map, hdr, mopt, mi);
 
     // use fast5 processor to iterate over the signal reads, and run our call-methylation function
     status.update("calling " + basename);
@@ -608,12 +628,6 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
         bam_destroy1(x.second);
         x.second = NULL;
     }
-
-    // clean up fastq reader
-    kseq_destroy(seq);
-    gzclose(gz_read_fp);
-    fclose(read_fp);
-    seq = NULL;
 
     handles.close();
 
@@ -831,12 +845,12 @@ int call_methylation_main(int argc, char** argv)
     }
 #endif
 
+    omp_set_num_threads(opt::num_threads);
     if(!opt::watch_dir.empty()) {
         run_watch_mode(fai);
     } else {
         run_from_bam(fai);
     }
-
 
     fai_destroy(fai);
 

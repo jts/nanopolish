@@ -11,6 +11,8 @@
 
 #include <time.h>
 
+#define HAVE_CLOCK_GETTIME 1
+
 class Progress
 {
     public:
