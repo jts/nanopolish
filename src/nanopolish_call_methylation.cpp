@@ -146,8 +146,13 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-"      --watch=DIR                      watch the run directory DIR and process data as it is generated\n"
+"      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
 "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
+"  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
+"  -i, --watch-process-index=IDX        in watch mode, the index of this process is IDX\n"
+"                                       the previous two options allow you to run multiple independent methylation\n"
+"                                       calling processes against a single directory. Each process will only call\n"
+"                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
@@ -164,6 +169,8 @@ namespace opt
     static std::string motif_methylation_model_type = "reftrained";
     static std::string watch_dir;
     static int watch_write_bam;
+    static int watch_process_total = 1;
+    static int watch_process_index = 0;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 512;
@@ -172,29 +179,30 @@ namespace opt
     static int min_mapping_quality = 20;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:K:q:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
 static const struct option longopts[] = {
-    { "verbose",          no_argument,       NULL, 'v' },
-    { "reads",            required_argument, NULL, 'r' },
-    { "bam",              required_argument, NULL, 'b' },
-    { "genome",           required_argument, NULL, 'g' },
-    { "methylation",      required_argument, NULL, 'q' },
-    { "window",           required_argument, NULL, 'w' },
-    { "threads",          required_argument, NULL, 't' },
-    { "models-fofn",      required_argument, NULL, 'm' },
-    { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
-    { "watch",            required_argument, NULL, OPT_WATCH_DIR },
-    { "watch-write-bam",  no_argument,       NULL, OPT_WATCH_WRITE_BAM },
-    { "progress",         no_argument,       NULL, OPT_PROGRESS },
-    { "help",             no_argument,       NULL, OPT_HELP },
-    { "version",          no_argument,       NULL, OPT_VERSION },
-    { "batchsize",        no_argument,       NULL, 'K' },
+    { "verbose",              no_argument,       NULL, 'v' },
+    { "reads",                required_argument, NULL, 'r' },
+    { "bam",                  required_argument, NULL, 'b' },
+    { "genome",               required_argument, NULL, 'g' },
+    { "methylation",          required_argument, NULL, 'q' },
+    { "window",               required_argument, NULL, 'w' },
+    { "threads",              required_argument, NULL, 't' },
+    { "models-fofn",          required_argument, NULL, 'm' },
+    { "watch-process-total",  required_argument, NULL, 'c' },
+    { "watch-process-index",  required_argument, NULL, 'i' },
+    { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
+    { "watch",                required_argument, NULL, OPT_WATCH_DIR },
+    { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
+    { "progress",             no_argument,       NULL, OPT_PROGRESS },
+    { "help",                 no_argument,       NULL, OPT_HELP },
+    { "version",              no_argument,       NULL, OPT_VERSION },
+    { "batchsize",            no_argument,       NULL, 'K' },
     { NULL, 0, NULL, 0 }
 };
-
 
 // Test motif sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
@@ -688,7 +696,6 @@ void run_watch_mode(const faidx_t* fai)
 
         // update file db with fast5s
         std::vector<std::string> fast5_files = list_directory(fast5_dir);
-        status.total_fast5s = fast5_files.size();
 
         for(const auto& fn : fast5_files) {
             if(ends_with(fn, ".fast5")) {
@@ -706,6 +713,28 @@ void run_watch_mode(const faidx_t* fai)
             }
         }
 
+        // filter batches to the subset we want to handle in this process
+        std::unordered_map<std::string, FileBatch>::iterator iter = batches.begin();
+        while(iter != batches.end()) {
+            size_t suffix_pos = iter->first.rfind("_");
+            if(suffix_pos == std::string::npos) {
+                fprintf(stderr, "Error: invalid suffix to file %s\n", iter->first.c_str());
+                exit(EXIT_FAILURE);
+            }
+
+            std::stringstream parser(iter->first.substr(suffix_pos + 1));
+            size_t file_numeric_suffix;
+            parser >> file_numeric_suffix;
+            if(file_numeric_suffix % opt::watch_process_total != opt::watch_process_index) {
+                // remove file from batch
+                iter = batches.erase(iter);
+            } else {
+                // keep file
+                iter++;
+            }
+        }
+        status.total_fast5s = batches.size();
+
         // iterate over collection and see which files need to be processed
         for(auto& e : batches) {
             if(e.second.ready_to_call()) {
@@ -715,8 +744,7 @@ void run_watch_mode(const faidx_t* fai)
             }
         }
 
-        fprintf(stderr, "Waiting for next batch\n");
-        status.update("sleeping");
+        status.update("Waiting for next batch - sleeping");
         sleep(30);
     }
 
@@ -761,6 +789,8 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'w': arg >> opt::region; break;
             case 'v': opt::verbose++; break;
             case 'K': arg >> opt::batch_size; break;
+            case 'c': arg >> opt::watch_process_total; break;
+            case 'i': arg >> opt::watch_process_index; break;
             case OPT_MIN_SEPARATION: arg >> opt::min_separation; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;
@@ -808,9 +838,13 @@ void parse_call_methylation_options(int argc, char** argv)
     if(opt::methylation_type.empty()) {
         std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";
         die = true;
-    }
-    else {
+    } else {
         mtest_alphabet = get_alphabet_by_name(opt::methylation_type);
+    }
+
+    if(opt::watch_process_index >= opt::watch_process_total) {
+        std::cerr << SUBPROGRAM ": invalid --watch-process-index (must be less than --watch-process-count)\n";
+        die = true;
     }
 
     if(!opt::models_fofn.empty()) {
