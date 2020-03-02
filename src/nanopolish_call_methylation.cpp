@@ -472,15 +472,6 @@ void bseq_destroy(mm_bseq1_t* s)
     }
 }
 
-// HACK
-// minimap2's kstring has members with a different size than htslib
-// this caused the sam record from mm_write_sam, to be corrupt
-// so we created a shadow version here
-typedef struct __mm2_kstring_t {
-    unsigned l, m;
-    char *s;
-} mm2_kstring_t;
-
 void populate_maps_from_fastq(OutputHandles& handles,
                               const std::string& fastq_filename,
                               std::unordered_map<std::string, std::string>& read_sequence_map,
@@ -551,24 +542,24 @@ void populate_maps_from_fastq(OutputHandles& handles,
             bseq.qual = NULL;
             bseq.comment = NULL;
 
-            mm2_kstring_t s = { 0, 0, NULL };
-            mm_write_sam((kstring_t*)&s, mi, &bseq, r, n_reg, reg);
+            kstring_t s = { 0, 0, NULL };
+            mm_write_sam(&s, mi, &bseq, r, n_reg, reg);
 
             // convert record to bam
-            kstring_t ks_str = { s.l, s.m, s.s };
-
             bam1_t* record = bam_init1();
-            int parse_ret = sam_parse1(&ks_str, hdr, record);
+            int parse_ret = sam_parse1(&s, hdr, record);
+
+            // if the write bam option is turned on, write all alignments
+            if(handles.bam_writer != NULL) {
+                #pragma omp critical
+                int write_ret = sam_write1(handles.bam_writer, hdr, record);
+            }
 
             // only store the primary alignment for each read
             if( (record->core.flag & BAM_FSECONDARY) == 0 &&
                 (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
                 (record->core.qual >= opt::min_mapping_quality))
             {
-                if(handles.bam_writer != NULL) {
-                    #pragma omp critical
-                    int write_ret = sam_write1(handles.bam_writer, hdr, record);
-                }
                 read_alignment_map[read_name] = record;
             }
             bseq_destroy(&bseq);
