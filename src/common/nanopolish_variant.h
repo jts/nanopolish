@@ -50,7 +50,7 @@ struct Variant
 
         fprintf(fp, "%s\t%zu\t%s\t", ref_name.c_str(), ref_position + 1, ".");
         fprintf(fp, "%s\t%s\t%.1lf\t", ref_seq.c_str(), alt_seq.c_str(), quality);
-        fprintf(fp, "%s\t%s\t%s\t%s\n", "PASS", info.c_str(), gt_def, gt_str);
+        fprintf(fp, "%s\t%s\t%s\t%s\n", filter.empty() ? "PASS" : filter.c_str(), info.c_str(), gt_def, gt_str);
     }
 
     void read_vcf(const std::string& line)
@@ -63,7 +63,7 @@ struct Variant
         ss >> ref_seq;
         ss >> alt_seq;
         ss >> quality;
-        ss >> dummy; // FILTER, not used
+        ss >> filter;
         ss >> info;
         ss >> dummy; // GT tag
         ss >> genotype;
@@ -98,6 +98,7 @@ struct Variant
     std::string ref_seq;
     std::string alt_seq;
     double quality;
+    std::string filter;
     std::string info;
     std::string genotype;
 };

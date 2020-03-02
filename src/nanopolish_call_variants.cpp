@@ -1162,6 +1162,10 @@ int call_variants_main(int argc, char** argv)
 
     //
     header_fields.push_back(
+            Variant::make_vcf_tag_string("FILTER", "StrandBias", 1, "Integer",
+                "Variant failed the fisher strand bias test"));
+
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
                                       "The number of event-space reads used to call the variant"));
 
@@ -1180,6 +1184,14 @@ int call_variants_main(int argc, char** argv)
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
                 "The inferred number of copies of the allele"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "StrandSupport", 4, "Integer",
+                "Number of reads supporting the REF and ALT allele, by strand"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "StrandFisherTest", 1, "Integer",
+                "Strand bias fisher test"));
 
     if(opt::calculate_all_support) {
         header_fields.push_back(
