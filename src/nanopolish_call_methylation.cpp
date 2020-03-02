@@ -597,7 +597,11 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     if(opt::watch_write_bam) {
         std::string bam_outname = basename + ".bam";
         handles.bam_writer = hts_open(bam_outname.c_str(), "bw");
-        sam_hdr_write(handles.bam_writer, hdr);
+        int ret = sam_hdr_write(handles.bam_writer, hdr);
+        if(ret != 0) {
+            fprintf(stderr, "Error writing SAM header\n");
+            exit(EXIT_FAILURE);
+        }
     } else {
         handles.bam_writer = NULL;
     }
