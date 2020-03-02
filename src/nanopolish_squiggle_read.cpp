@@ -69,15 +69,15 @@ void SquiggleScalings::set6(double _shift,
 //
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags)
 {
-    this->fast5_path = read_db.get_signal_path(this->read_name);
+    this->fast5_path = read_db.get_signal_path(name);
     g_total_reads += 1;
     if(this->fast5_path == "") {
         g_bad_fast5_file += 1;
         return;
     }
 
-    std::string sequence = read_db.get_read_sequence(read_name);
-    Fast5Data data = Fast5Loader::load_read(fast5_path, this->read_name);
+    std::string sequence = read_db.get_read_sequence(name);
+    Fast5Data data = Fast5Loader::load_read(fast5_path, name);
     if(data.is_valid && !sequence.empty()) {
         init(sequence, data, flags);
     } else {

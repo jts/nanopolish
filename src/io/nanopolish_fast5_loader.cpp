@@ -30,6 +30,7 @@ Fast5Data Fast5Loader::load_read(const std::string& filename, const std::string&
         return data;
     }
 
+    data.read_name = read_name;
     data.is_valid = true;
 
     // metadata
