@@ -11,15 +11,15 @@
 
 #include <time.h>
 
-#define HAVE_CLOCK_GETTIME 1
+//#define HAVE_CLOCK_GETTIME 1
 
 class Progress
 {
     public:
-        
+
         Progress(const std::string message) : m_os(std::cerr), m_message(message)
         {
-#if HAVE_CLOCK_GETTIME            
+#if HAVE_CLOCK_GETTIME
             timespec start;
             clock_gettime(CLOCK_REALTIME, &start);
             m_start_time = start.tv_sec;
@@ -32,7 +32,7 @@ class Progress
         void print(float progress) const
         {
 
-            // print 
+            // print
             unsigned max_leader = 40;
             unsigned bar_width = 50;
 
@@ -42,9 +42,9 @@ class Progress
             } else {
                 leader = m_message + std::string(max_leader - m_message.size(), ' '); // pad
             }
-            
+
             m_os << leader << " [";
-            
+
             unsigned pos = bar_width * progress;
             for (unsigned i = 0; i < bar_width; ++i) {
                 if (i < pos) m_os << "=";
@@ -54,8 +54,8 @@ class Progress
             m_os << "] " << unsigned(progress * 100.0) << "% in " << get_elapsed_seconds() << "s\r";
             m_os.flush();
         }
-        
-        // 
+
+        //
         void end() const
         {
             print(1.0);
@@ -65,7 +65,7 @@ class Progress
         double get_elapsed_seconds() const
         {
             // get current time
-#if HAVE_CLOCK_GETTIME            
+#if HAVE_CLOCK_GETTIME
             timespec now;
             clock_gettime(CLOCK_REALTIME, &now);
             return now.tv_sec - m_start_time;
