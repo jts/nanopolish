@@ -413,14 +413,17 @@ void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
 
 void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
                                                const std::unordered_map<std::string, std::string>& sequence_map,
-                                               const std::unordered_map<std::string, bam1_t*>& alignment_map,
+                                               const std::unordered_map<std::string, std::vector<bam1_t*>>& alignment_map,
                                                const faidx_t* fai,
                                                const bam_hdr_t* hdr,
                                                const Fast5Data& fast5_data)
 {
     const std::string& read_name = fast5_data.read_name;
     const auto& a_iter = alignment_map.find(read_name);
-    if(a_iter == alignment_map.end() || a_iter->second == NULL) {
+    assert(a_iter != alignment_map.end());
+    const std::vector<bam1_t*> bam_records = a_iter->second;
+
+    if(bam_records.empty()) {
         // no alignment, skip
         return;
     }
@@ -432,11 +435,12 @@ void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
     }
 
     //
-    bam1_t* b = a_iter->second;
     SquiggleRead sr(s_iter->second, fast5_data);
 
     //
-    calculate_methylation_for_read(handles, sr, fai, hdr, b, -1, -1, -1);
+    for(size_t i = 0; i < bam_records.size(); ++i) {
+        calculate_methylation_for_read(handles, sr, fai, hdr, bam_records[i], -1, -1, -1);
+    }
 }
 
 //
@@ -475,7 +479,7 @@ void bseq_destroy(mm_bseq1_t* s)
 void populate_maps_from_fastq(OutputHandles& handles,
                               const std::string& fastq_filename,
                               std::unordered_map<std::string, std::string>& read_sequence_map,
-                              std::unordered_map<std::string, bam1_t*>& read_alignment_map,
+                              std::unordered_map<std::string, std::vector<bam1_t*>>& read_alignment_map,
                               bam_hdr_t* hdr, mm_mapopt_t mopt, mm_idx_t* mi)
 {
     // Read fastq file
@@ -506,7 +510,7 @@ void populate_maps_from_fastq(OutputHandles& handles,
         read_names.push_back(e.first);
 
         // pre-populate alignment table
-        read_alignment_map[e.first] = NULL;
+        read_alignment_map[e.first] = std::vector<bam1_t*>();
     }
 
     // initialize minimap2's thread storage
@@ -549,18 +553,15 @@ void populate_maps_from_fastq(OutputHandles& handles,
             bam1_t* record = bam_init1();
             int parse_ret = sam_parse1(&s, hdr, record);
 
-            // if the write bam option is turned on, write all alignments
+            // if the write bam option is turned on, write the alignment to disk
             if(handles.bam_writer != NULL) {
                 #pragma omp critical
                 int write_ret = sam_write1(handles.bam_writer, hdr, record);
             }
 
-            // only store the primary alignment for each read
-            if( (record->core.flag & BAM_FSECONDARY) == 0 &&
-                (record->core.flag & BAM_FSUPPLEMENTARY) == 0 &&
-                (record->core.qual >= opt::min_mapping_quality))
-            {
-                read_alignment_map[read_name] = record;
+            // store alignment
+            if(record->core.qual >= opt::min_mapping_quality) {
+                read_alignment_map[read_name].push_back(record);
             }
             bseq_destroy(&bseq);
 
@@ -605,7 +606,7 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     //  read_id -> read_sequence
     //  read_id -> primary alignment
     std::unordered_map<std::string, std::string> read_sequence_map;
-    std::unordered_map<std::string, bam1_t*> read_alignment_map;
+    std::unordered_map<std::string, std::vector<bam1_t*>> read_alignment_map;
     status.update("aligning " + basename);
     populate_maps_from_fastq(handles, batch.fastq_path, read_sequence_map, read_alignment_map, hdr, mopt, mi);
 
@@ -623,11 +624,15 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     processor.parallel_run(f);
 
     // clean up bam records
+    size_t count = 0;
     for(auto& x : read_alignment_map) {
-        bam_destroy1(x.second);
-        x.second = NULL;
+        std::vector<bam1_t*> bam_records = x.second;
+        for(size_t i = 0; i < bam_records.size(); ++i) {
+            bam_destroy1(bam_records[i]);
+            count += 1;
+        }
+        bam_records.clear();
     }
-
     handles.close();
 
     return true;
