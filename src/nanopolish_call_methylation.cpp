@@ -106,7 +106,7 @@ struct ScoredSite
 struct WatchStatus
 {
     WatchStatus() : timer("") {}
-
+    ~WatchStatus() { fprintf(stderr, "\n"); } // end status line
     int processed_fast5s = 0;
     int total_fast5s = 0;
     Progress timer;
@@ -116,7 +116,7 @@ struct WatchStatus
         double elapsed_seconds = timer.get_elapsed_seconds();
         double seconds_per_file = processed_fast5s > 0 ? elapsed_seconds / processed_fast5s : 0.0;
 
-        fprintf(stderr, "\r[call-methylation] fast5 progress: %d/%d %.2lfs/fast5 [%s]", processed_fast5s, seconds_per_file, total_fast5s, message.c_str());
+        fprintf(stderr, "\33[2K\r[call-methylation] fast5 progress: %d/%d %.2lfs/fast5 [%s]", processed_fast5s, seconds_per_file, total_fast5s, message.c_str());
     }
 };
 
@@ -687,7 +687,10 @@ void run_watch_mode(const faidx_t* fai)
     // map from basename -> FileBatch to track state of each file
     std::unordered_map<std::string, FileBatch> batches;
 
-    while(1) {
+    // loop until we haven't seen new files for about 30 minutes
+    const int MAX_ITERATIONS_UNTIL_STOP = 30;
+    int iteration_count = 0;
+    while(iteration_count < MAX_ITERATIONS_UNTIL_STOP) {
         status.update("checking for new files");
 
         // update file db with fast5s
@@ -737,11 +740,13 @@ void run_watch_mode(const faidx_t* fai)
                 bool success = process_batch(e.first, e.second, fai, hdr, mopt, mi, status);
                 e.second.called = success;
                 status.processed_fast5s += 1;
+                iteration_count = 0;
             }
         }
 
         status.update("Waiting for next batch - sleeping");
-        sleep(30);
+        iteration_count += 1;
+        sleep(60);
     }
 
     // cleanup
