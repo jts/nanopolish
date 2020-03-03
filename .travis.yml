@@ -26,18 +26,18 @@ matrix:
             - g++-8
       env: "CC=gcc-8 CXX=g++-8 AR=gcc-ar-8 NM=gcc-nm-8 RANLIB=gcc-ranlib-8"
 
-    - name: ARM64 build with system packaged HDF5 library
-      os: linux
-      arch: arm64
-      addons:
-        apt:
-          packages:
-            - libhdf5-dev
-      env:
-        - HDF5="system"
-        - H5_INCLUDE="-I/usr/include/hdf5/serial"
-        - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
-        - ARM=1
+#    - name: ARM64 build with system packaged HDF5 library
+#      os: linux
+#      arch: arm64
+#      addons:
+#        apt:
+#          packages:
+#            - libhdf5-dev
+#      env:
+#        - HDF5="system"
+#        - H5_INCLUDE="-I/usr/include/hdf5/serial"
+#        - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
+#        - ARM=1
 
     - name: CPython 3.7.6 on Ubuntu 16.04 (Xenial Xerus)
       language: python
