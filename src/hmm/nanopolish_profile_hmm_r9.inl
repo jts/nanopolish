@@ -25,12 +25,13 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
         float p_stay = 1 - (1 / read_events_per_base);
 #ifndef USE_EXTERNAL_PARAMS
         float p_skip = 0.0025;
-        float p_bad = 1e-10;
+        float p_bad = 0.001;
         float p_bad_self = p_bad;
         float p_skip_self = 0.3;
 
         if(data.read->pore_type == PT_R10) {
             p_skip = 0.025;
+            p_bad = 1e-10;
         }
 #else
         extern float g_p_skip, g_p_skip_self, g_p_bad, g_p_bad_self;
