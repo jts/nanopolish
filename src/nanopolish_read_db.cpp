@@ -16,6 +16,7 @@
 #include "htslib/kseq.h"
 #include "htslib/bgzf.h"
 #include "nanopolish_read_db.h"
+#include "fs_support.hpp"
 
 #define READ_DB_SUFFIX ".readdb"
 #define GZIPPED_READS_SUFFIX ".index"
@@ -98,6 +99,11 @@ ReadDB::~ReadDB()
 //
 void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename)
 {
+    if(is_directory(input_filename)) {
+        fprintf(stderr, "error: %s is a directory, not a FASTA/FASTQ file\n", input_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
     // Open readers
     FILE* read_fp = fopen(input_filename.c_str(), "r");
     if(read_fp == NULL) {
