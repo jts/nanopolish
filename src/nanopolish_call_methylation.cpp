@@ -36,9 +36,10 @@
 #include "H5pubconf.h"
 #include "profiler.h"
 #include "progress.h"
+#include "common/logsum.h"
 
 using namespace std::placeholders;
-
+using namespace std;
 //
 // Structs
 //
@@ -51,10 +52,13 @@ struct ScoredSite
 {
     ScoredSite() 
     { 
+        for(int i = 0; i < 3; ++i) {
+            ll_methylated[i][0] = 0;
+            ll_methylated[i][1] = 0;
+        }
+
         ll_unmethylated[0] = 0;
         ll_unmethylated[1] = 0;
-        ll_methylated[0] = 0;
-        ll_methylated[1] = 0;
         strands_scored = 0;
     }
 
@@ -66,7 +70,8 @@ struct ScoredSite
 
     // scores per strand
     double ll_unmethylated[2];
-    double ll_methylated[2];
+    double ll_methylated[3][2];
+    double ll_scores[4];
     int strands_scored;
 
     //
@@ -95,14 +100,13 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
-"  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-"  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
-"  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
+"  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,gpc,cpggpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
-"      --model=FILE                     use the model from FILE\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -112,13 +116,13 @@ namespace opt
     static std::string bam_file;
     static std::string genome_file;
     static std::string methylation_type = "cpg";
-    static std::string model_filename;
+    static std::string models_fofn;
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 512;
-    static int min_separation = 10;
+    static int min_separation = 5;
     static int min_flank = 10;
 }
 
@@ -134,7 +138,7 @@ static const struct option longopts[] = {
     { "methylation",      required_argument, NULL, 'q' },
     { "window",           required_argument, NULL, 'w' },
     { "threads",          required_argument, NULL, 't' },
-    { "model",            required_argument, NULL, 'm' },
+    { "models-fofn",      required_argument, NULL, 'm' },
     { "min-separation",   required_argument, NULL, OPT_MIN_SEPARATION },
     { "progress",         no_argument,       NULL, OPT_PROGRESS },
     { "help",             no_argument,       NULL, OPT_HELP },
@@ -159,7 +163,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     SquiggleRead sr(read_name, read_db);
 
     // An output map from reference positions to scored motif sites
-    std::map<int, ScoredSite> site_score_map;
+    std::vector<ScoredSite> site_score_map;
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         if(!sr.has_events_for_strand(strand_idx)) {
@@ -167,8 +171,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         }
 
         size_t k = sr.get_model_k(strand_idx);
-
-        // check if there is a motif model for this strand
         if(!PoreModelSet::has_model(sr.get_model_kit_name(strand_idx),
                                     opt::methylation_type,
                                     sr.get_model_strand_name(strand_idx),
@@ -180,12 +182,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         // Build the event-to-reference map for this read from the bam record
         SequenceAlignmentRecord seq_align_record(record);
         EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-
-        std::vector<double> site_scores;
-        std::vector<int> site_starts;
-        std::vector<int> site_ends;
-        std::vector<int> site_count;
-
 
         std::string contig = hdr->target_name[record->core.tid];
         int ref_start_pos = record->core.pos;
@@ -274,43 +270,58 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             data.event_stop_idx = e2;
             data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
 
+            // Aggregate score
+            int start_position = motif_sites[start_idx] + ref_start_pos;
+            ScoredSite ss;
+            ss.chromosome = contig;
+            ss.start_position = start_position;
+            ss.end_position = motif_sites[end_idx - 1] + ref_start_pos;
+            ss.n_motif = end_idx - start_idx;
+            ss.strands_scored += 1;
+
+            // extract the motif site(s) with a k-mers worth of surrounding context
+            size_t site_output_start = motif_sites[start_idx] - 3;
+            size_t site_output_end =  motif_sites[end_idx - 1] + mtest_alphabet->recognition_length() + 2;
+            std::string out_seq = ref_seq.substr(site_output_start, site_output_end - site_output_start + 1);
+            ss.sequence = out_seq;
+            
             // Calculate the likelihood of the unmethylated sequence
             HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
             double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
+            ss.ll_unmethylated[strand_idx] = unmethylated_score;
 
-            // Methylate all motifs in the sequence and score again
-            std::string m_subseq = mtest_alphabet->methylate(subseq);
-            std::string rc_m_subseq = mtest_alphabet->reverse_complement(m_subseq);
+            int matched_motifs = 0;
 
-            // Calculate the likelihood of the methylated sequence
-            HMMInputSequence methylated(m_subseq, rc_m_subseq, mtest_alphabet);
-            double methylated_score = profile_hmm_score(methylated, data, hmm_flags);
+            for(size_t motif_idx = 0; motif_idx < mtest_alphabet->num_recognition_sites(); ++motif_idx){
+                if(!mtest_alphabet->contains_motif(out_seq, motif_idx))
+                    continue;
+                else
+                    matched_motifs++;
 
-            // Aggregate score
-            int start_position = motif_sites[start_idx] + ref_start_pos;
-            auto iter = site_score_map.find(start_position);
-            if(iter == site_score_map.end()) {
-                // insert new score into the map
-                ScoredSite ss;
-                ss.chromosome = contig;
-                ss.start_position = start_position;
-                ss.end_position = motif_sites[end_idx - 1] + ref_start_pos;
-                ss.n_motif = end_idx - start_idx;
+                // Methylate current motif in the sequence and score again
+                std::string m_subseq = mtest_alphabet->methylate_motif(subseq, motif_idx);
+                std::string rc_m_subseq = mtest_alphabet->reverse_complement(m_subseq);
 
-                // extract the motif site(s) with a k-mers worth of surrounding context
-                size_t site_output_start = motif_sites[start_idx] - k + 1;
-                size_t site_output_end =  motif_sites[end_idx - 1] + k;
-                ss.sequence = ref_seq.substr(site_output_start, site_output_end - site_output_start);
+                // Calculate the likelihood of the methylated sequence
+                HMMInputSequence methylated(m_subseq, rc_m_subseq, mtest_alphabet);
+                double methylated_score = profile_hmm_score(methylated, data, hmm_flags);                
+                ss.ll_methylated[motif_idx][strand_idx] = methylated_score;
 
-                // insert into the map
-                iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
+                // If more than one motif, calculate for all motifs methylated at end
+                if(matched_motifs > 1 && motif_idx == mtest_alphabet->num_recognition_sites() - 1) {
+
+                    // Methylate all motifs in the sequence and score again
+                    std::string m_subseq = mtest_alphabet->methylate(subseq);
+                    std::string rc_m_subseq = mtest_alphabet->reverse_complement(m_subseq);
+
+                    // Calculate the likelihood of the methylated sequence
+                    HMMInputSequence methylated(m_subseq, rc_m_subseq, mtest_alphabet);
+                    double methylated_score = profile_hmm_score(methylated, data, hmm_flags);                    
+                    ss.ll_methylated[++motif_idx][strand_idx] = methylated_score;
+                }                
             }
+            site_score_map.push_back(ss);
 
-            // set strand-specific score
-            // upon output below the strand scores will be summed
-            iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
-            iter->second.ll_methylated[strand_idx] = methylated_score;
-            iter->second.strands_scored += 1;
         } // for group
     } // for strands
 
@@ -318,22 +329,54 @@ void calculate_methylation_for_read(const OutputHandles& handles,
     {
         // write all sites for this read
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
+            for(size_t motif_idx = 0; motif_idx < mtest_alphabet->num_recognition_sites(); ++motif_idx) {
+                const ScoredSite& ss = *iter;
 
-            const ScoredSite& ss = iter->second;
-            double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
-            double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
-            double diff = sum_ll_m - sum_ll_u;
+                if(!mtest_alphabet->contains_motif(ss.sequence.c_str(), motif_idx))
+                    continue;
 
-            // do not output if outside the window boundaries
-            if((region_start != -1 && ss.start_position < region_start) ||
-               (region_end != -1 && ss.end_position >= region_end)) {
-                continue;
+                double sum_ll_m0 = ss.ll_methylated[0][0] + ss.ll_methylated[0][1];
+                double sum_ll_m1 = ss.ll_methylated[1][0] + ss.ll_methylated[1][1];
+                double sum_ll_m2 = ss.ll_methylated[2][0] + ss.ll_methylated[2][1];
+                double sum_ll_un = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
+                double diff = 0;
+                double sum_ll_m = 0;
+                double sum_ll_u = 0;
+
+                if(motif_idx == 0) {
+                    if (sum_ll_m2 != 0) {
+                        sum_ll_m = p7_FLogsum(sum_ll_m0, sum_ll_m2);
+                        sum_ll_u = p7_FLogsum(sum_ll_m1, sum_ll_un);
+                        diff = sum_ll_m  - sum_ll_u;
+                    }
+                    else {
+                        sum_ll_m = sum_ll_m0;
+                        sum_ll_u = sum_ll_un;
+                        diff = sum_ll_m - sum_ll_u;
+                    }
+                }
+                else {
+                    if (sum_ll_m2 != 0) {
+                        sum_ll_m = p7_FLogsum(sum_ll_m1, sum_ll_m2);
+                        sum_ll_u = p7_FLogsum(sum_ll_m0, sum_ll_un);
+                        diff = sum_ll_m  - sum_ll_u;
+                    }
+                    else {
+                        sum_ll_m = sum_ll_m1;
+                        sum_ll_u = sum_ll_un;
+                        diff = sum_ll_m - sum_ll_u;
+                    }
+                }
+                
+                std::string sequence = mtest_alphabet->methylate_motif(ss.sequence.c_str(), motif_idx);
+                std::string called_motif = mtest_alphabet->get_recognition_site(motif_idx);
+                int n_motifs = std::count(sequence.begin(), sequence.end(), METHYLATED_SYMBOL);
+
+                fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
+                fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
+                fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
+                fprintf(handles.site_writer, "%d\t%d\t%s\t%s\n", ss.strands_scored, n_motifs, called_motif.c_str(), sequence.c_str());
             }
-
-            fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
-            fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
-            fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
-            fprintf(handles.site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
         }
     }
 }
@@ -350,7 +393,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
-            case 'm': arg >> opt::model_filename; break;
+            case 'm': arg >> opt::models_fofn; break;
             case 'w': arg >> opt::region; break;
             case 'v': opt::verbose++; break;
             case 'K': arg >> opt::batch_size; break;
@@ -402,6 +445,11 @@ void parse_call_methylation_options(int argc, char** argv)
         die = true;
     }
 
+    if(!opt::models_fofn.empty()) {
+        // initialize the model set from the fofn
+        PoreModelSet::initialize(opt::models_fofn);
+    }
+
     if (die)
     {
         std::cout << "\n" << CALL_METHYLATION_USAGE_MESSAGE;
@@ -414,12 +462,6 @@ int call_methylation_main(int argc, char** argv)
     parse_call_methylation_options(argc, argv);
     ReadDB read_db;
     read_db.load(opt::reads_file);
-    
-    // Read the input model and import it
-    if(!opt::model_filename.empty()) {
-        PoreModel model(opt::model_filename);
-        PoreModelSet::add_model(model);
-    }
 
     // load reference fai file
     faidx_t *fai = fai_load(opt::genome_file.c_str());
@@ -439,7 +481,7 @@ int call_methylation_main(int argc, char** argv)
     // Write header
     fprintf(handles.site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
                                  "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
-                                 "num_calling_strands\tnum_motifs\tsequence\n");
+                                 "num_calling_strands\tnum_motifs\tmotif\tsequence\n");
 
     // the BamProcessor framework calls the input function with the 
     // bam record, read index, etc passed as parameters
