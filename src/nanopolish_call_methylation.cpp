@@ -22,6 +22,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <zlib.h>
 #include "htslib/faidx.h"
 #include "htslib/kseq.h"
 #include "htslib/bgzf.h"
