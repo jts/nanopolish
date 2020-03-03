@@ -37,6 +37,7 @@ matrix:
         - HDF5="system"
         - H5_INCLUDE="-I/usr/include/hdf5/serial"
         - LDFLAGS="-L/usr/lib/aarch64-linux-gnu/hdf5/serial"
+        - ARM=1
 
     - name: CPython 3.7.6 on Ubuntu 16.04 (Xenial Xerus)
       language: python

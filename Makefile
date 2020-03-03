@@ -73,6 +73,12 @@ else
     LIBS += -lminimap2
 endif
 
+ifeq ($(ARM), 1)
+    MINIMAP2_OPT=arm_neon=1
+else
+    MINIMAP2_OPT=
+endif
+
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
 
@@ -99,7 +105,7 @@ htslib/libhts.a:
 	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 minimap2/libminimap2.a:
-	cd minimap2 && make || exit 255
+	cd minimap2 && make $(MINIMAP2_OPT) || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
