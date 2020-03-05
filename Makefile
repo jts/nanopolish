@@ -23,7 +23,7 @@ HTS ?= install
 MINIMAP2 ?= install
 
 HDF5_VERSION ?= 1.8.14
-EIGEN_VERSION ?= 3.2.5
+EIGEN_VERSION ?= 3.3.7
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
