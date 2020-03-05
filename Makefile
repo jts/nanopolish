@@ -11,7 +11,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 LIBS = -lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
-CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64 
+CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64
 LDFLAGS ?=
 CXX ?= g++
 CC ?= gcc
@@ -102,10 +102,10 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
-	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
+	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 minimap2/libminimap2.a:
-	cd minimap2 && make $(MINIMAP2_OPT) || exit 255
+	$(MAKE) -C minimap2 $(MINIMAP2_OPT) || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
@@ -118,8 +118,8 @@ lib/libhdf5.a:
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
-		make && make install
+		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
+	$(MAKE) -C hdf5-$(HDF5_VERSION) && $(MAKE) -C hdf5-$(HDF5_VERSION) install
 
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
