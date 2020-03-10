@@ -63,7 +63,10 @@ class AlignmentDB
         // annotations. This call is to support using scrappie basecalls
         // with metrichor events.
         void set_alternative_basecalls_bam(const std::string& alternative_sequence_bam);
-        
+
+        // optionally, only use reads with this tag
+        void set_read_group(const std::string& read_group) { m_read_group = read_group; }
+
         const std::string& get_reference() const { return m_region_ref_sequence; }
 
         bool are_coordinates_valid(const std::string& contig,
@@ -143,6 +146,8 @@ class AlignmentDB
         std::string m_region_contig;
         int m_region_start;
         int m_region_end;
+
+        std::string m_read_group;
 
         // cached alignments for a region
         ReadDB m_read_db;
