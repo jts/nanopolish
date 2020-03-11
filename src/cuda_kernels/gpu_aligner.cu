@@ -4,6 +4,8 @@
 #include <vector>
 #include "nanopolish_profile_hmm_r9.h"
 
+int gpu_aligner_debug = 0;
+
 #define MAX_STATES 256
 
 #define EXPAND_TO_STRING(X) #X
@@ -686,8 +688,9 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
     std::vector<ScoreSet> scoreSets;
     scoreSets.resize(numScoreSets);
 
+    if(gpu_aligner_debug) fprintf(stderr,"Generating variants:\n");
     for(int scoreSetIdx=0; scoreSetIdx<numScoreSets;scoreSetIdx++){
-
+        if(gpu_aligner_debug)  fprintf(stderr,"scoreSetIdx=%d\t",scoreSetIdx);
         auto input_variants = input_variants_vector[scoreSetIdx];
         auto base_haplotype = base_haplotypes[scoreSetIdx];
         auto event_sequences = event_sequences_vector[scoreSetIdx];
@@ -708,41 +711,109 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
 
         // Make methylated versions of each input sequence. Once for the base haplotype and once each for each variant
         std::vector<HMMInputSequence> sequences;
-        HMMInputSequence base_sequence = generate_methylated_alternatives(base_haplotype.get_sequence(),
-                                                                          methylation_types)[0];
+        std::vector<HMMInputSequence> base_sequence_vector = generate_methylated_alternatives(base_haplotype.get_sequence(),methylation_types);
+ 
+#ifdef MULTI_MODEL
+        std::vector<size_t> num_models_vector;
+        std::vector<size_t> score_offsets_vector;
+        size_t offset = 0;
+        size_t num_models = base_sequence_vector.size();
+        num_models_vector.push_back(num_models);
+        score_offsets_vector.push_back(offset);
+        if(gpu_aligner_debug) fprintf(stderr,"num_models_base=%ld,offset_base=%ld\t",num_models,offset);
+        offset += num_models;
+        for (auto base_sequence: base_sequence_vector){
+             sequences.push_back(base_sequence);
+        }
 
+#else
+        HMMInputSequence base_sequence = base_sequence_vector[0];
         sequences.push_back(base_sequence);
+#endif
 
         for (auto v: variant_haplotypes){
-            auto variant_sequence = generate_methylated_alternatives(v.get_sequence(), methylation_types)[0];
+            auto variant_sequence_vector = generate_methylated_alternatives(v.get_sequence(), methylation_types);
+#ifdef MULTI_MODEL
+            size_t num_models = variant_sequence_vector.size();
+            num_models_vector.push_back(num_models);
+            score_offsets_vector.push_back(offset);
+            if(gpu_aligner_debug) fprintf(stderr,"num_models_var=%ld,offset_var=%ld\t",num_models,offset);
+            offset += num_models;
+            for (auto variant_sequence: variant_sequence_vector){
+                sequences.push_back(variant_sequence);
+            }
+#else
+            auto variant_sequence = variant_sequence_vector[0];
             sequences.push_back(variant_sequence);
+#endif
         }
 
         ScoreSet s = {
             sequences,
             event_sequences
+#ifdef MULTI_MODEL
+            ,
+            num_models_vector,
+            score_offsets_vector
+#endif
         };
 
         scoreSets[scoreSetIdx] = s;
+        if(gpu_aligner_debug) fprintf(stderr,"\n");
     }
+    if(gpu_aligner_debug) fprintf(stderr,"\n");
 
     std::vector<Variant> v;
     if (!event_sequences_vector.empty()) {
-
+        if(gpu_aligner_debug) fprintf(stderr,"Calling scoreKernelMod\n");
         auto scoresMod = scoreKernelMod(scoreSets, alignment_flags);
-
+        if(gpu_aligner_debug) fprintf(stderr,"Unpacking scores\n");    
         // results are now ready, need to unpack them
         for (int scoreSetIdx=0; scoreSetIdx<numScoreSets; scoreSetIdx++){
+            if(gpu_aligner_debug) fprintf(stderr,"scoreSetIdx=%d\t",scoreSetIdx);
             std::vector<std::vector<double>> scores = scoresMod[scoreSetIdx]; // scores for this candidate, including all variants and base(zeroth)
+        #ifdef MULTI_MODEL
+            ScoreSet s = scoreSets[scoreSetIdx];
+            int numVariants = s.num_models_vector.size() -1;
+        #else    
             int numVariants = scores.size() - 1; // subtract one for the base
-            int numScores = scores[0].size();
-
+        #endif    
+            int numScores = scores[0].size();     
             for (int variantIndex = 0; variantIndex < numVariants; variantIndex++) { // index 0 is the base scores
                 double totalScore = 0.0;
                 for (int k = 0; k < numScores; k++) {
                     if (fabs(totalScore) < screen_score_threshold) {
+                    #ifdef MULTI_MODEL    
+                        size_t num_models = s.num_models_vector[0];
+                        double num_model_penalty = log(num_models);
+                        double score = scores[0][k] - num_model_penalty;
+                        for(size_t seq_idx = 1; seq_idx < num_models; ++seq_idx) {
+                            double alt_score = scores[seq_idx][k] - num_model_penalty;
+                            score = add_logs(score, alt_score);
+                        }
+                        double baseScore = score;
+                        if (k==0 && variantIndex==0 && gpu_aligner_debug) fprintf(stderr,"num_models_base=%ld,offset_base=%ld\t",num_models,0);
+
+                        if(variantIndex+1 >= s.num_models_vector.size()){
+                            if(gpu_aligner_debug) fprintf(stderr,"\nscoreSetIdx=%d, variantIndex=%d, k=%d, \n",scoreSetIdx,variantIndex,k);
+                            assert(0);
+                        }
+                        num_models = s.num_models_vector[variantIndex+1];
+                        size_t score_offset = s.score_offsets_vector[variantIndex+1];
+                        num_model_penalty = log(num_models);
+                        score = scores[score_offset][k] - num_model_penalty;
+                        for(size_t seq_idx = 1; seq_idx < num_models; ++seq_idx) {
+                            double alt_score = scores[score_offset + seq_idx][k] - num_model_penalty;
+                            score = add_logs(score, alt_score);
+                        }
+                        double variantScore = score;
+                        if (k==0 && gpu_aligner_debug) fprintf(stderr,"num_models_var=%ld,offset_var=%ld\t",num_models,score_offset);
+                 
+                    #else
                         double baseScore = scores[0][k];
-                        totalScore += (scores[variantIndex + 1][k] - baseScore);
+                        double variantScore = scores[variantIndex + 1][k];
+                    #endif    
+                        totalScore += (variantScore - baseScore);
                     }
                 }
                 // get the old variant:
@@ -750,8 +821,11 @@ std::vector<Variant> GpuAligner::variantScoresThresholded(std::vector<std::vecto
                 unScoredVariant.quality = totalScore;
                 unScoredVariant.info = "";
                 v.push_back(unScoredVariant);
-            }
+                //std::cout << "score " << totalScore << std::endl;
+            } 
+            if(gpu_aligner_debug) fprintf(stderr,"\n");
         }
+        if(gpu_aligner_debug) fprintf(stderr,"\n");
     }
     return v;
 }

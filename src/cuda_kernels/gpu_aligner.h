@@ -46,10 +46,16 @@
 #define MAX_NUM_VARIANTS_PER_LOCUS 10
 #define MAX_NUM_WORKERS 16
 
+#define MULTI_MODEL 1
+
 //Data to be scored
 typedef struct {
     std::vector<HMMInputSequence> stateSequences;
     std::vector<HMMInputData> rawData;
+#ifdef  MULTI_MODEL   
+    std::vector<size_t> num_models_vector;
+    std::vector<size_t> score_offsets_vector;
+#endif
 } ScoreSet;
 
 class GpuAligner

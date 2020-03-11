@@ -21,3 +21,7 @@ hdf5-1.*.tar.gz
 3.2.5.tar.bz2
 eigen/
 local*
+test/ecoli_2kb_region*
+/*.txt
+
+

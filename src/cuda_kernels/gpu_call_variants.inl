@@ -100,6 +100,7 @@ void locusRangeBaseEditCandidateGPU(int start,
         if (variant.quality > 0) {
             std::lock_guard<std::mutex> lock(outVariantsMutex);
             out_variants.push_back(variant);
+            variant.write_vcf(stdout);
         }
     }
 
