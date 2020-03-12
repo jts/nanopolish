@@ -486,6 +486,19 @@ std::vector<SequenceAlignmentRecord> AlignmentDB::_load_sequence_by_region(const
             continue;
         }
 
+        if(!this->m_read_group.empty()) {
+            uint8_t* tag_ptr = bam_aux_get(handles.bam_record, "RG");
+            if(tag_ptr == NULL) {
+                // no read group skip
+                continue;
+            }
+
+            char* rg_str = bam_aux2Z(tag_ptr);
+            if(rg_str != m_read_group) {
+                continue;
+            }
+        }
+
         records.emplace_back(handles.bam_record);
     }
 
