@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io
 
 #
 # Set libraries, paths, flags and options
@@ -11,7 +11,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 LIBS = -lz
 CXXFLAGS ?= -g -O3
 CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
-CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64 
+CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64
 LDFLAGS ?=
 CXX ?= g++
 CC ?= gcc
@@ -20,9 +20,10 @@ CC ?= gcc
 HDF5 ?= install
 EIGEN ?= install
 HTS ?= install
+MINIMAP2 ?= install
 
 HDF5_VERSION ?= 1.8.14
-EIGEN_VERSION ?= 3.2.5
+EIGEN_VERSION ?= 3.3.7
 
 # Check operating system, OSX doesn't have -lrt
 UNAME_S := $(shell uname -s)
@@ -61,6 +62,23 @@ else
     LIBS += -lhts
 endif
 
+# Default to build and link the libminimap2 submodule
+ifeq ($(MINIMAP2), install)
+    MINIMAP2_LIB = ./minimap2/libminimap2.a
+    MINIMAP2_INCLUDE = -I./minimap2
+else
+    # Use system-wide htslib
+    MINIMAP2_LIB =
+    MINIMAP2_INCLUDE =
+    LIBS += -lminimap2
+endif
+
+ifeq ($(ARM), 1)
+    MINIMAP2_OPT=arm_neon=1
+else
+    MINIMAP2_OPT=
+endif
+
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
 
@@ -71,7 +89,7 @@ EIGEN_INCLUDE = -I./eigen/
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
 
 # Add include flags
-CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(MINIMAP2_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE)
 
 # Main programs to build
 PROGRAM = nanopolish
@@ -84,7 +102,10 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
-	cd htslib && make htslib_default_libs="-lz -lm -lbz2" || exit 255
+	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
+
+minimap2/libminimap2.a:
+	$(MAKE) -C minimap2 $(MINIMAP2_OPT) || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
@@ -97,8 +118,8 @@ lib/libhdf5.a:
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. && \
-		make && make install
+		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
+	$(MAKE) -C hdf5-$(HDF5_VERSION) && $(MAKE) -C hdf5-$(HDF5_VERSION) install
 
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
@@ -141,12 +162,12 @@ depend: .depend
 	$(CC) -o $@ -c $(CFLAGS) $(CPPFLAGS) $(H5_INCLUDE) -fPIC $<
 
 # Link main executable
-$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(EIGEN_CHECK)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(PROGRAM): src/main/nanopolish.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(EIGEN_CHECK)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 # Link test executable
-$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB)
-	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
+$(TEST_PROGRAM): src/test/nanopolish_test.o $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB)
+	$(CXX) -o $@ $(CXXFLAGS) $(CPPFLAGS) -fPIC $< $(CPP_OBJ) $(C_OBJ) $(HTS_LIB) $(MINIMAP2_LIB) $(H5_LIB) $(LIBS) $(LDFLAGS)
 
 .PHONY: test
 test: $(TEST_PROGRAM)

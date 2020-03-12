@@ -21,6 +21,8 @@ extern "C" {
 
 // From scrappie
 typedef struct {
+
+    int channel_id;
     // Parameters for scaling raw data from ADC values to pA
     float digitisation;
     float offset;
@@ -78,6 +80,9 @@ std::string fast5_get_experiment_type(fast5_file& fh, const std::string& read_id
 // Get sample rate, and ADC-to-pA scalings
 fast5_raw_scaling fast5_get_channel_params(fast5_file& fh, const std::string& read_id);
 
+// Get the start time of this read
+uint64_t fast5_get_start_time(fast5_file& fh, const std::string& read_id);
+
 //
 // Internal utility functions
 //
@@ -90,6 +95,5 @@ std::string fast5_get_raw_read_group(fast5_file& fh, const std::string& read_id)
 
 //
 std::string fast5_get_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name);
-
 
 #endif

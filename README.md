@@ -6,6 +6,10 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.12.1: improve how `nanopolish index` handles summary files, add support for selecting reads by BAM read group tags (for `nanopolish variants`)
+
+* 0.12.0: live methylation calling, methylation LLR threshold changes as described [here](http://simpsonlab.github.io/2020/03/03/nanopolish-v0.12.0/)
+
 * 0.11.1: `nanopolish polya` now supports SQK-RNA-002 kits with automatic backwards-compatibility with SQK-RNA-001
 
 * 0.11.0: support for multi-fast5 files. `nanopolish methyltrain` now subsamples input data, improving speed and memory usage
@@ -18,13 +22,18 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 A compiler that supports C++11 is needed to build nanopolish. Development of the code is performed using [gcc-4.8](https://gcc.gnu.org/gcc-4.8/).
 
-By default, nanopolish will download and compile all of its required dependencies. Some users however may want to use system-wide versions of the libraries. To turn off the automatic installation of dependencies set `HDF5=noinstall`, `EIGEN=noinstall` or `HTS=noinstall` parameters when running `make` as appropriate. The current versions and compile options for the dependencies are:
+By default, nanopolish will download and compile all of its required dependencies. Some users however may want to use system-wide versions of the libraries. To turn off the automatic installation of dependencies set `HDF5=noinstall`, `EIGEN=noinstall`, `HTS=noinstall` or `MINIMAP2=noinstall` parameters when running `make` as appropriate. The current versions and compile options for the dependencies are:
 
 * [libhdf5-1.8.14](http://www.hdfgroup.org/HDF5/release/obtain5.html) compiled with multi-threading support `--enable-threadsafe`
 * [eigen-3.2.5](http://eigen.tuxfamily.org)
-* [htslib-1.4](http://github.com/samtools/htslib) 
+* [htslib-1.4](http://github.com/samtools/htslib)
+* [minimap2-d2de282](http://github.com/lh3/minimap2)
 
-Additionally the helper `scripts` require [biopython](http://www.biopython.org) and [pysam](http://pysam.readthedocs.io/en/latest/installation.html).
+In order to use the additional python3 scripts within `/scripts`, install the dependencies via
+
+```
+pip install -r scripts/requirements.txt --user
+```
 
 
 ## Installation instructions

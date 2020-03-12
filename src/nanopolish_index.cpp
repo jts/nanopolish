@@ -122,7 +122,7 @@ void index_path(ReadDB& read_db, const std::string& path, const std::multimap<st
                 // recurse
                 index_path(read_db, full_fn, fast5_to_read_name_map);
             } else if (is_fast5) {
-                if(!fast5_to_read_name_map.empty()) {
+                if(in_map) {
                     index_file_from_map(read_db, full_fn, fast5_to_read_name_map);
                 } else {
                     index_file_from_fast5(read_db, full_fn);
@@ -176,7 +176,6 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
     std::vector<std::string> fields = split(header, '\t');
 
     const std::string READ_NAME_STR = "read_id";
-    const std::string FILENAME_STR = "filename";
     size_t filename_idx = -1;
     size_t read_name_idx = -1;
 
@@ -185,13 +184,14 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
             read_name_idx = i;
         }
 
-        if(fields[i] == FILENAME_STR) {
+        // 19/11/05: support live basecalling summary files
+        if(fields[i] == "filename" || fields[i] == "filename_fast5") {
             filename_idx = i;
         }
     }
 
     if(filename_idx == -1) {
-        exit_bad_header(FILENAME_STR, filename);
+        exit_bad_header("fast5 filename", filename);
     }
 
     if(read_name_idx == -1) {
@@ -274,6 +274,54 @@ void parse_index_options(int argc, char** argv)
     opt::reads_file = argv[optind++];
 }
 
+void clean_fast5_map(std::multimap<std::string, std::string>& mmap)
+{
+    std::map<std::string, int> fast5_read_count;
+    for(const auto& iter : mmap) {
+        fast5_read_count[iter.first]++;
+    }
+
+    // calculate the mode of the read counts per fast5
+    std::map<size_t, size_t> read_count_distribution;
+    for(const auto& iter : fast5_read_count) {
+        read_count_distribution[iter.second]++;
+    }
+
+    size_t mode = 0;
+    size_t mode_count = 0;
+    for(const auto& iter : read_count_distribution) {
+        if(iter.second > mode_count) {
+            mode = iter.first;
+            mode_count = iter.second;
+        }
+    }
+
+    // this is the default number of reads per fast5 and we expect the summary file to support that
+    // this code is to detect whether the user selected a different number of reads (ARTIC recommends 1000)
+    // so the summary file still works
+    int EXPECTED_ENTRIES_PER_FAST5 = 4000;
+    if(mode_count > 20) {
+        EXPECTED_ENTRIES_PER_FAST5 = mode;
+    }
+
+    std::vector<std::string> invalid_entries;
+    for(const auto& iter : fast5_read_count) {
+        if(iter.second != EXPECTED_ENTRIES_PER_FAST5) {
+            //fprintf(stderr, "warning: %s has %d entries in the summary and will be indexed the slow way\n", iter.first.c_str(), iter.second);
+            invalid_entries.push_back(iter.first);
+        }
+    }
+
+    if(invalid_entries.size() > 0) {
+        fprintf(stderr, "warning: detected invalid summary file entries for %zu of %zu fast5 files\n", invalid_entries.size(), fast5_read_count.size());
+        fprintf(stderr, "These files will be indexed without using the summary file, which is slow.\n");
+    }
+
+    for(const auto& fast5_name : invalid_entries) {
+        mmap.erase(fast5_name);
+    }
+}
+
 int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
@@ -287,6 +335,13 @@ int index_main(int argc, char** argv)
         }
         parse_sequencing_summary(ss_filename, fast5_to_read_name_map);
     }
+
+    // Detect non-unique fast5 file names in the summary file
+    // This occurs when a file with the same name (abc_0.fast5) appears in both fast5_pass
+    // and fast5_fail. This will be fixed by ONT but in the meantime we check for
+    // fast5 files that have a non-standard number of reads (>4000) and remove them
+    // from the map. These fast5s will be indexed the slow way.
+    clean_fast5_map(fast5_to_read_name_map);
 
     // import read names, and possibly fast5 paths, from the fasta/fastq file
     ReadDB read_db;

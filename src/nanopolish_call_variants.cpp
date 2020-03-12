@@ -94,6 +94,7 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "      --min-flanking-sequence=N        distance from alignment end to calculate variants (default: 30)\n"
 "      --max-rounds=N                   perform N rounds of consensus sequence improvement (default: 50)\n"
 "  -c, --candidates=VCF                 read variant candidates from VCF, rather than discovering them from aligned reads\n"
+"      --read-group=RG                  only use alignments with read group tag RG\n"
 "  -a, --alternative-basecalls-bam=FILE if an alternative basecaller was used that does not output event annotations\n"
 "                                       then use basecalled sequences from FILE. The signal-level events will still be taken from the -b bam.\n"
 "      --calculate-all-support          when making a call, also calculate the support of the 3 other possible bases\n"
@@ -114,6 +115,7 @@ namespace opt
     static std::string consensus_output;
     static std::string alternative_model_type = DEFAULT_MODEL_TYPE;
     static std::string alternative_basecalls_bam;
+    static std::string read_group;
     static double min_candidate_frequency = 0.2f;
     static int min_candidate_depth = 20;
     static int calculate_all_support = false;
@@ -156,7 +158,9 @@ enum { OPT_HELP = 1,
        OPT_P_SKIP_SELF,
        OPT_P_BAD,
        OPT_P_BAD_SELF,
-       OPT_MIN_FLANKING_SEQUENCE };
+       OPT_MIN_FLANKING_SEQUENCE,
+       OPT_READ_GROUP
+     };
 
 static const struct option longopts[] = {
     { "verbose",                   no_argument,       NULL, 'v' },
@@ -175,6 +179,7 @@ static const struct option longopts[] = {
     { "alternative-basecalls-bam", required_argument, NULL, 'a' },
     { "methylation-aware",         required_argument, NULL, 'q' },
     { "min-flanking-sequence",     required_argument, NULL, OPT_MIN_FLANKING_SEQUENCE },
+    { "read-group",                required_argument, NULL, OPT_READ_GROUP },
     { "effort",                    required_argument, NULL, OPT_EFFORT },
     { "max-rounds",                required_argument, NULL, OPT_MAX_ROUNDS },
     { "genotype",                  required_argument, NULL, OPT_GENOTYPE },
@@ -891,6 +896,10 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
         alignments.set_alternative_basecalls_bam(opt::alternative_basecalls_bam);
     }
 
+    if(!opt::read_group.empty()) {
+        alignments.set_read_group(opt::read_group);
+    }
+
     alignments.load_region(contig, region_start - BUFFER, region_end + BUFFER);
 
     // if the end of the region plus the buffer sequence goes past
@@ -1055,6 +1064,7 @@ void parse_call_variants_options(int argc, char** argv)
             case OPT_P_BAD: arg >> g_p_bad; break;
             case OPT_P_BAD_SELF: arg >> g_p_bad_self; break;
             case OPT_MIN_FLANKING_SEQUENCE: arg >> opt::min_flanking_sequence; break;
+            case OPT_READ_GROUP: arg >> opt::read_group; break;
             case OPT_HELP:
                 std::cout << CONSENSUS_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -1183,6 +1193,10 @@ int call_variants_main(int argc, char** argv)
 
     //
     header_fields.push_back(
+            Variant::make_vcf_tag_string("FILTER", "StrandBias", 1, "Integer",
+                "Variant failed the fisher strand bias test"));
+
+    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
                                       "The number of event-space reads used to call the variant"));
 
@@ -1201,6 +1215,14 @@ int call_variants_main(int argc, char** argv)
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
                 "The inferred number of copies of the allele"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "StrandSupport", 4, "Integer",
+                "Number of reads supporting the REF and ALT allele, by strand"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "StrandFisherTest", 1, "Integer",
+                "Strand bias fisher test"));
 
     if(opt::calculate_all_support) {
         header_fields.push_back(

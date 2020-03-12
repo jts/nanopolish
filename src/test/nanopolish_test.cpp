@@ -386,6 +386,7 @@ std::string event_alignment_to_string(const std::vector<HMMAlignmentState>& alig
     return out;
 }
 
+#if 0
 TEST_CASE( "hmm", "[hmm]") {
 
     // load the FAST5
@@ -451,6 +452,7 @@ TEST_CASE( "hmm", "[hmm]") {
         REQUIRE(lp == Approx(expected_forward[si]));
     }
 }
+#endif
 
 std::vector< StateTrainingData >
 generate_training_data(const ParamMixture& mixture, size_t n_data,

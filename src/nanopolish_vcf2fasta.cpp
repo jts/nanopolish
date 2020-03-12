@@ -237,7 +237,7 @@ int vcf2fasta_main(int argc, char** argv)
         // make a vector holding either a literal character or an index to the variant that needs to be applied
         std::vector<uint32_t> consensus_record(length);
         for(size_t i = 0; i < length; ++i) {
-            consensus_record[i] = seq[i];
+            consensus_record[i] = toupper(seq[i]);
         }
 
         size_t num_skipped = 0;

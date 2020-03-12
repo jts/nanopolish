@@ -7,6 +7,7 @@
 // associated signal data
 //
 #include <zlib.h>
+#include <set>
 #include <fstream>
 #include <ostream>
 #include <iostream>
@@ -15,6 +16,7 @@
 #include "htslib/kseq.h"
 #include "htslib/bgzf.h"
 #include "nanopolish_read_db.h"
+#include "fs_support.hpp"
 
 #define READ_DB_SUFFIX ".readdb"
 #define GZIPPED_READS_SUFFIX ".index"
@@ -97,6 +99,11 @@ ReadDB::~ReadDB()
 //
 void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename)
 {
+    if(is_directory(input_filename)) {
+        fprintf(stderr, "error: %s is a directory, not a FASTA/FASTQ file\n", input_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
+
     // Open readers
     FILE* read_fp = fopen(input_filename.c_str(), "r");
     if(read_fp == NULL) {
@@ -255,6 +262,19 @@ size_t ReadDB::get_num_reads_with_path() const
         }
     }
     return num_reads_with_path;
+}
+
+//
+std::vector<std::string> ReadDB::get_unique_fast5s() const
+{
+    std::set<std::string> fast5s;
+    for(const auto& iter : m_data) {
+        const ReadDBData& entry = iter.second;
+        fast5s.insert(entry.signal_data_path);
+    }
+
+    std::vector<std::string> fast5s_vec(fast5s.begin(), fast5s.end());
+    return fast5s_vec;
 }
 
 bool ReadDB::check_signal_paths() const

@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 Plot a random segmentation from a dataset.
 

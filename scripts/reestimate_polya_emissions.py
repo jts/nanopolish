@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 reestimate_polya_emissions.py: given two `polya-samples` TSV files based on different
 underlying kmer models (with the newer TSV giving failing poly(A) segmentations),

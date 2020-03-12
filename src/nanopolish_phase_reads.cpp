@@ -59,7 +59,9 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 
 static const char *PHASE_READS_USAGE_MESSAGE =
 "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa variants.vcf\n"
-"Train a duration model\n"
+"Output a BAM file where each record shows the combination of alleles from variants.vcf that each read supports.\n"
+"variants.vcf can be any VCF file but only SNPs will be phased and variants that have a homozygous reference genotype (0/0)\n"
+"will be skipped.\n"
 "\n"
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
@@ -80,7 +82,7 @@ namespace opt
     static std::string genome_file;
     static std::string variants_file;
     static std::string region;
-    
+
     static unsigned progress = 0;
     static unsigned num_threads = 1;
     static unsigned batch_size = 128;
@@ -187,13 +189,13 @@ void phase_single_read(const ReadDB& read_db,
     const double BAM_Q_OFFSET = 0;
     int tid = omp_get_thread_num();
     uint32_t alignment_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
-    
+
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
 
     // load read
     SquiggleRead sr(read_name, read_db);
-    
+
     std::string ref_name = hdr->target_name[record->core.tid];
     int alignment_start_pos = record->core.pos;
     int alignment_end_pos = bam_endpos(record);
@@ -224,7 +226,7 @@ void phase_single_read(const ReadDB& read_db,
                                                         alignment_start_pos,
                                                         alignment_end_pos,
                                                         &fetched_len);
-    
+
     // convert to upper case to avoid calling c>C as variants
     std::transform(reference_seq.begin(), reference_seq.end(), reference_seq.begin(), ::toupper);
 
