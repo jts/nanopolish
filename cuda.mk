@@ -10,10 +10,6 @@ NVCCFLAGS ?= -g  -lineinfo -Xcompiler -Wall -std=c++11 -I. -I$(CUDA_INCLUDE) -O3
 CPPFLAGS += -I$(CUDA_INCLUDE)
 CPPFLAGS += -DHAVE_CUDA=1
 
-ifdef asan
-	NVCCFLAGS += -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer
-endif
-
 # Sub directories containing CUDA source code
 SUBDIRS += src/cuda_kernels
 # Find the source files by searching subdirectories

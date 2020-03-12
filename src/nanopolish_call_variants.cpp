@@ -347,7 +347,6 @@ std::vector<Variant> generate_candidate_single_base_edits(const AlignmentDB& ali
             scored_variant.info = "";
             if(scored_variant.quality > 0) {
                 out_variants.push_back(scored_variant);
-                scored_variant.write_vcf(stdout);
             }
         }
 

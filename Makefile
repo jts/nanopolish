@@ -55,12 +55,6 @@ else
     LIBS += -lhts
 endif
 
-ifdef asan
-	CFLAGS += -fsanitize=address -fno-omit-frame-pointer
-	CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer
-	LDFLAGS += -fsanitize=address -fno-omit-frame-pointer
-endif
-
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
 
