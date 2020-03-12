@@ -5,7 +5,7 @@ CUDA_ROOT = /usr/local/cuda
 CUDA_LIB ?= $(CUDA_ROOT)/lib64
 CUDA_INCLUDE ?= $(CUDA_ROOT)/include
 CURTFLAGS = -L$(CUDA_LIB) -lcudart_static -lrt 
-NVCCFLAGS ?= -std=c++11 -I. -I$(CUDA_INCLUDE) -O3 -use_fast_math --default-stream per-thread -restrict
+NVCCFLAGS ?= -g  -lineinfo -Xcompiler -Wall -std=c++11 -I. -I$(CUDA_INCLUDE) -O3 -use_fast_math --default-stream per-thread -restrict
 
 CPPFLAGS += -I$(CUDA_INCLUDE)
 CPPFLAGS += -DHAVE_CUDA=1
