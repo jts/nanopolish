@@ -281,7 +281,29 @@ void clean_fast5_map(std::multimap<std::string, std::string>& mmap)
         fast5_read_count[iter.first]++;
     }
 
+    // calculate the mode of the read counts per fast5
+    std::map<size_t, size_t> read_count_distribution;
+    for(const auto& iter : fast5_read_count) {
+        read_count_distribution[iter.second]++;
+    }
+
+    size_t mode = 0;
+    size_t mode_count = 0;
+    for(const auto& iter : read_count_distribution) {
+        if(iter.second > mode_count) {
+            mode = iter.first;
+            mode_count = iter.second;
+        }
+    }
+
+    // this is the default number of reads per fast5 and we expect the summary file to support that
+    // this code is to detect whether the user selected a different number of reads (ARTIC recommends 1000)
+    // so the summary file still works
     int EXPECTED_ENTRIES_PER_FAST5 = 4000;
+    if(mode_count > 20) {
+        EXPECTED_ENTRIES_PER_FAST5 = mode;
+    }
+
     std::vector<std::string> invalid_entries;
     for(const auto& iter : fast5_read_count) {
         if(iter.second != EXPECTED_ENTRIES_PER_FAST5) {
