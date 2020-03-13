@@ -176,5 +176,5 @@ test: $(TEST_PROGRAM)
 .PHONY: clean
 clean:
 	rm -f $(PROGRAM) $(TEST_PROGRAM) $(CPP_OBJ) $(C_OBJ) \
-		src/cuda_kernels/GpuAligner.o \
+		src/cuda_kernels/gpu_aligner.o \
 		src/main/nanopolish.o src/test/nanopolish_test.o
