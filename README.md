@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.12.2: add RefContext info to VCF output of `nanopolish variants`
+
 * 0.12.1: improve how `nanopolish index` handles summary files, add support for selecting reads by BAM read group tags (for `nanopolish variants`)
 
 * 0.12.0: live methylation calling, methylation LLR threshold changes as described [here](http://simpsonlab.github.io/2020/03/03/nanopolish-v0.12.0/)
