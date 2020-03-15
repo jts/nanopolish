@@ -18,7 +18,7 @@
 #include "logsum.h"
 
 #define PACKAGE_NAME "nanopolish"
-#define PACKAGE_VERSION "0.12.2"
+#define PACKAGE_VERSION "0.12.2a"
 #define PACKAGE_BUGREPORT "https://github.com/jts/nanopolish/issues"
 
 //
