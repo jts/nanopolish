@@ -105,7 +105,7 @@ htslib/libhts.a:
 	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 minimap2/libminimap2.a:
-	$(MAKE) -C minimap2 $(MINIMAP2_OPT) || exit 255
+	$(MAKE) -C minimap2 $(MINIMAP2_OPT) libminimap2.a || exit 255
 
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
