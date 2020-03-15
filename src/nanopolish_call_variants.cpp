@@ -208,8 +208,9 @@ std::string get_single_contig_or_fail()
     }
 
     const char* name = faidx_iseq(fai, 0);
+    std::string ret(name);
     fai_destroy(fai);
-    return std::string(name);
+    return ret;
 }
 
 int get_contig_length(const std::string& contig)
