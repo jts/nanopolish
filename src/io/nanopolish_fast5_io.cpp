@@ -244,8 +244,9 @@ uint64_t fast5_get_start_time(fast5_file& fh, const std::string& read_id)
 #endif
         return 0;
     }
-
-    return fast5_read_uint64_attribute(group, "start_time");
+    uint64_t t = fast5_read_uint64_attribute(group, "start_time");
+    H5Gclose(group);
+    return t;
 }
 
 //
