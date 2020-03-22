@@ -212,7 +212,9 @@ std::string get_single_contig_or_fail()
     }
 
     const char* name = faidx_iseq(fai, 0);
-    return std::string(name);
+    std::string ret(name);
+    fai_destroy(fai);
+    return ret;
 }
 
 int get_contig_length(const std::string& contig)
@@ -1193,10 +1195,6 @@ int call_variants_main(int argc, char** argv)
 
     //
     header_fields.push_back(
-            Variant::make_vcf_tag_string("FILTER", "StrandBias", 1, "Integer",
-                "Variant failed the fisher strand bias test"));
-
-    header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "TotalReads", 1, "Integer",
                                       "The number of event-space reads used to call the variant"));
 
@@ -1215,14 +1213,18 @@ int call_variants_main(int argc, char** argv)
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "AlleleCount", 1, "Integer",
                 "The inferred number of copies of the allele"));
-    
+
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "StrandSupport", 4, "Integer",
                 "Number of reads supporting the REF and ALT allele, by strand"));
-    
+
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "StrandFisherTest", 1, "Integer",
                 "Strand bias fisher test"));
+
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "RefContext", 1, "String",
+                "The reference sequence context surrounding the variant call"));
 
     if(opt::calculate_all_support) {
         header_fields.push_back(
@@ -1249,12 +1251,27 @@ int call_variants_main(int argc, char** argv)
     }
 
     // write the variants
-    for(const auto& v : haplotype.get_variants()) {
+    faidx_t *fai = fai_load(opt::genome_file.c_str());
+    for(auto& v : haplotype.get_variants()) {
 
         if(!opt::snps_only || v.is_snp()) {
+            int context_start_base = v.ref_position - 5;
+            if(context_start_base < 0) {
+                context_start_base = 0;
+            }
+            int context_end_base = v.ref_position + v.ref_seq.length() + 4;
+            if(context_end_base >= contig_length) {
+                context_end_base = contig_length - 1;
+            }
+  
+            int len;
+            std::string context = get_reference_region_ts(fai, v.ref_name.c_str(), context_start_base, context_end_base, &len);
+            v.add_info("RefContext", context);
             v.write_vcf(out_fp);
         }
     }
+    fai_destroy(fai);
+    fai = NULL;
 
     //
     if(out_fp != stdout) {

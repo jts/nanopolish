@@ -435,6 +435,11 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
                         &left, &right, &two);
 
         int fisher_scaled = (int)(-4.343 * log(two) + .499);
+        
+        // clamp when there's underflow
+        if(fisher_scaled < 0) {
+            fisher_scaled = 1000;
+        }
         v.add_info("StrandFisherTest", fisher_scaled);
 
         /*

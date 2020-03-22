@@ -448,7 +448,10 @@ BamHandles _initialize_bam_itr(const std::string& bam_filename,
 
     // load bam file
     handles.bam_fh = sam_open(bam_filename.c_str(), "r");
-    assert(handles.bam_fh != NULL);
+    if(handles.bam_fh == NULL) {
+        fprintf(stderr, "Error - could not open bam file %s for read\n", bam_filename.c_str());
+        exit(EXIT_FAILURE);
+    }
 
     // load bam index file
     hts_idx_t* bam_idx = sam_index_load(handles.bam_fh, bam_filename.c_str());
