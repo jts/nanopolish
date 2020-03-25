@@ -1204,6 +1204,10 @@ int call_variants_main(int argc, char** argv)
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "StrandFisherTest", 1, "Integer",
                 "Strand bias fisher test"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "SOR", 1, "Float",
+                "StrandOddsRatio test from GATK"));
 
     header_fields.push_back(
             Variant::make_vcf_tag_string("INFO", "RefContext", 1, "String",

@@ -424,20 +424,25 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         v.add_info("AlleleCount", var_count);
         v.add_info("SupportFraction", read_variant_support[vi] / group_reads.size());
 
+        int ref_fwd = allele_strand_support[vi][0];
+        int ref_rev = allele_strand_support[vi][1];
+
+        int alt_fwd = allele_strand_support[vi][2];
+        int alt_rev = allele_strand_support[vi][3];
+
         std::stringstream sfbs;
-        sfbs << ((double)allele_strand_support[vi][2] / (allele_strand_support[vi][0] + allele_strand_support[vi][2])) << ","
-             << ((double)allele_strand_support[vi][3] / (allele_strand_support[vi][1] + allele_strand_support[vi][3]));
+        sfbs << ((double)alt_fwd / (ref_fwd + alt_fwd)) << ","
+             << ((double)alt_rev / (ref_rev + alt_rev));
         v.add_info("SupportFractionByStrand", sfbs.str());
 
         std::stringstream ssss;
-        ssss << allele_strand_support[vi][0] << "," << allele_strand_support[vi][1] << ","
-             << allele_strand_support[vi][2] << "," << allele_strand_support[vi][3];
+        ssss << ref_fwd << "," << ref_rev << ","
+             << alt_fwd << "," << alt_rev;
         v.add_info("StrandSupport", ssss.str());
 
-
         double left, right, two;
-        kt_fisher_exact(allele_strand_support[vi][0], allele_strand_support[vi][1],
-                        allele_strand_support[vi][2], allele_strand_support[vi][3],
+        kt_fisher_exact(ref_fwd, ref_rev,
+                        alt_fwd, alt_rev,
                         &left, &right, &two);
 
         int fisher_scaled = (int)(-4.343 * log(two) + .499);
@@ -447,6 +452,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             fisher_scaled = 1000;
         }
         v.add_info("StrandFisherTest", fisher_scaled);
+
 
         /*
         if(fisher_scaled > 30) {
