@@ -424,10 +424,16 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         v.add_info("AlleleCount", var_count);
         v.add_info("SupportFraction", read_variant_support[vi] / group_reads.size());
 
+        std::stringstream sfbs;
+        sfbs << ((double)allele_strand_support[vi][2] / (allele_strand_support[vi][0] + allele_strand_support[vi][2])) << ","
+             << ((double)allele_strand_support[vi][3] / (allele_strand_support[vi][1] + allele_strand_support[vi][3]));
+        v.add_info("SupportFractionByStrand", sfbs.str());
+
         std::stringstream ssss;
         ssss << allele_strand_support[vi][0] << "," << allele_strand_support[vi][1] << ","
              << allele_strand_support[vi][2] << "," << allele_strand_support[vi][3];
         v.add_info("StrandSupport", ssss.str());
+
 
         double left, right, two;
         kt_fisher_exact(allele_strand_support[vi][0], allele_strand_support[vi][1],
@@ -435,7 +441,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
                         &left, &right, &two);
 
         int fisher_scaled = (int)(-4.343 * log(two) + .499);
-        
+
         // clamp when there's underflow
         if(fisher_scaled < 0) {
             fisher_scaled = 1000;

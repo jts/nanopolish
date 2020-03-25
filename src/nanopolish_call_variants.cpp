@@ -1180,6 +1180,10 @@ int call_variants_main(int argc, char** argv)
     header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "SupportFraction", 1, "Float",
                                       "The fraction of event-space reads that support the variant"));
+    
+    header_fields.push_back(
+            Variant::make_vcf_tag_string("INFO", "SupportFractionByStrand", 2, "Float",
+                "Fraction of event-space reads that support the variant for each strand"));
 
     header_fields.push_back(
         Variant::make_vcf_tag_string("INFO", "BaseCalledReadsWithVariant", 1, "Integer",
