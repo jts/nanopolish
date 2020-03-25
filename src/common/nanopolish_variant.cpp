@@ -260,6 +260,21 @@ void score_variant_group(VariantGroup& variant_group,
 #endif
 }
 
+double calculate_sor(double ref_fwd, double ref_rev, double alt_fwd, double alt_rev)
+{
+    // to avoid zeros
+    ref_fwd += 1;
+    ref_rev += 1;
+    alt_fwd += 1;
+    alt_rev += 1;
+
+    double r = (ref_fwd * alt_rev) / (alt_fwd * ref_rev);
+    double sym_ratio = r + (1.0/r);
+    double ref_ratio = std::min(ref_fwd, ref_rev) / std::max(ref_fwd, ref_rev);
+    double alt_ratio = std::min(alt_fwd, alt_rev) / std::max(alt_fwd, alt_rev);
+    return log(sym_ratio) + log(ref_ratio) - log(alt_ratio);
+}
+
 std::vector<Variant> simple_call(VariantGroup& variant_group,
                                  const int ploidy,
                                  const bool genotype_all_input_variants)
@@ -453,6 +468,9 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         }
         v.add_info("StrandFisherTest", fisher_scaled);
 
+        // GATK StrandOddsRatio from: https://gatk.broadinstitute.org/hc/en-us/articles/360036732071-StrandOddsRatio
+        double sor = calculate_sor(ref_fwd, ref_rev, alt_fwd, alt_rev);
+        v.add_info("SOR", sor);
 
         /*
         if(fisher_scaled > 30) {
