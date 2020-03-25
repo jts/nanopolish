@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.12.5: make SupportFractionByStrand calculation consistent with SupportFraction
+
 * 0.12.4: add SupportFractionByStrand and SOR to VCF
 
 * 0.12.3: fix hdf5 file handle leak
