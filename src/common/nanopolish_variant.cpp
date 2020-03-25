@@ -305,7 +305,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
 
         // The current combination is represented as a vector of haplotype IDs
         std::vector<size_t> current_set = vc_sets.get();
-        
+
         // Check if the current set consists of entirely of haplotypes without variants
         bool is_base_set = true;
         for(size_t i = 0; i < current_set.size(); ++i) {
@@ -339,7 +339,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             */
             set_score += set_sum;
         }
-        
+
         if(is_base_set) {
             base_score = set_score;
             base_set = current_set;
@@ -398,7 +398,7 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         }
     }
 
-    std::vector<std::vector<int> > allele_strand_support;
+    std::vector<std::vector<double> > allele_strand_support;
     for(size_t var_idx = 0; var_idx < variant_group.get_num_variants(); ++var_idx) {
         allele_strand_support.push_back({0, 0, 0, 0});
 
@@ -406,10 +406,9 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
             const std::string& read_id = group_reads[ri].first;
             size_t strand = variant_group.is_read_rc(read_id);
             double pp_alt = get(read_variant_assignment, ri, var_idx);
-            size_t alt_support = pp_alt > 0.5;
 
-            size_t idx = 2 * alt_support + strand;
-            allele_strand_support[var_idx][idx] += 1;
+            allele_strand_support[var_idx][0 + strand] += (1 - pp_alt);
+            allele_strand_support[var_idx][2 + strand] += pp_alt;
         }
     }
 
@@ -439,11 +438,11 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         v.add_info("AlleleCount", var_count);
         v.add_info("SupportFraction", read_variant_support[vi] / group_reads.size());
 
-        int ref_fwd = allele_strand_support[vi][0];
-        int ref_rev = allele_strand_support[vi][1];
+        double ref_fwd = allele_strand_support[vi][0];
+        double ref_rev = allele_strand_support[vi][1];
 
-        int alt_fwd = allele_strand_support[vi][2];
-        int alt_rev = allele_strand_support[vi][3];
+        double alt_fwd = allele_strand_support[vi][2];
+        double alt_rev = allele_strand_support[vi][3];
 
         std::stringstream sfbs;
         sfbs << ((double)alt_fwd / (ref_fwd + alt_fwd)) << ","
@@ -451,8 +450,8 @@ std::vector<Variant> simple_call(VariantGroup& variant_group,
         v.add_info("SupportFractionByStrand", sfbs.str());
 
         std::stringstream ssss;
-        ssss << ref_fwd << "," << ref_rev << ","
-             << alt_fwd << "," << alt_rev;
+        ssss << (int)std::round(ref_fwd) << "," << (int)std::round(ref_rev) << ","
+             << (int)std::round(alt_fwd) << "," << (int)std::round(alt_rev);
         v.add_info("StrandSupport", ssss.str());
 
         double left, right, two;
