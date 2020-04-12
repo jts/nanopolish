@@ -12,11 +12,14 @@
 #define TRANS_CLIP_SELF 0.9
 #define TRANS_START_TO_CLIP 0.5
 
+extern double hmm_indel_bias_factor;
+
 inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, const HMMInputSequence& sequence, const HMMInputData& data)
 {
     std::vector<BlockTransitions> transitions(num_kmers);
-    
+
     double read_events_per_base = data.read->events_per_base[data.strand];
+    read_events_per_base *= hmm_indel_bias_factor;
 
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
 

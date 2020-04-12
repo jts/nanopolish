@@ -89,6 +89,8 @@ static const char *CONSENSUS_USAGE_MESSAGE =
 "  -o, --outfile=FILE                   write result to FILE [default: stdout]\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "  -m, --min-candidate-frequency=F      extract candidate variants from the aligned reads when the variant frequency is at least F (default 0.2)\n"
+"  -i, --indel-bias=F                   bias HMM transition parameters to favor insertions (F<1) or deletions (F>1).\n"
+"                                       this value is automatically set depending on --consensus, but can be manually set if spurious indels are called\n"
 "  -d, --min-candidate-depth=D          extract candidate variants from the aligned reads when the depth is at least D (default: 20)\n"
 "  -x, --max-haplotypes=N               consider at most N haplotype combinations (default: 1000)\n"
 "      --min-flanking-sequence=N        distance from alignment end to calculate variants (default: 30)\n"
@@ -136,7 +138,7 @@ namespace opt
     static std::vector<std::string> methylation_types;
 }
 
-static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:p:v";
+static const char* shortopts = "r:b:g:t:w:o:e:m:c:d:a:x:q:p:i:v";
 
 enum { OPT_HELP = 1,
        OPT_VERSION,
@@ -169,6 +171,7 @@ static const struct option longopts[] = {
     { "outfile",                   required_argument, NULL, 'o' },
     { "threads",                   required_argument, NULL, 't' },
     { "min-candidate-frequency",   required_argument, NULL, 'm' },
+    { "indel-bias",                required_argument, NULL, 'i' },
     { "min-candidate-depth",       required_argument, NULL, 'd' },
     { "max-haplotypes",            required_argument, NULL, 'x' },
     { "candidates",                required_argument, NULL, 'c' },
@@ -1007,10 +1010,13 @@ Haplotype call_variants_for_region(const std::string& contig, int region_start, 
     return called_haplotype;
 }
 
+extern double hmm_indel_bias_factor;
+
 void parse_call_variants_options(int argc, char** argv)
 {
     std::string methylation_motifs_str;
     bool die = false;
+    bool bias_override = false;
     for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
@@ -1021,6 +1027,7 @@ void parse_call_variants_options(int argc, char** argv)
             case 'w': arg >> opt::window; break;
             case 'o': arg >> opt::output_file; break;
             case 'm': arg >> opt::min_candidate_frequency; break;
+            case 'i': arg >> hmm_indel_bias_factor; bias_override = true; break;
             case 'd': arg >> opt::min_candidate_depth; break;
             case 'x': arg >> opt::max_haplotypes; break;
             case 'c': arg >> opt::candidates_file; break;
@@ -1102,6 +1109,11 @@ void parse_call_variants_options(int argc, char** argv)
             const Alphabet* alphabet = get_alphabet_by_name(mtype);
             assert(alphabet != NULL);
         }
+    }
+
+    // set hmm indel bias, if not overridden
+    if(!bias_override) {
+        hmm_indel_bias_factor = opt::consensus_mode ? 0.9 : 0.8;    
     }
 
     if (die)

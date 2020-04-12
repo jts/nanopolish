@@ -11,6 +11,13 @@
 //#define DEBUG_FILL
 //#define PRINT_TRAINING_MESSAGES 1
 
+// nanopolish consensus is designed to correct
+// draft assemblies, which tend to have more deletions
+// than insertions, so the default HMM parameters favor insertions.
+// this doesn't hold for other modes (e.g. reference-based variant calling) so we
+// provide this value to change the deletion/insertion balance
+double hmm_indel_bias_factor = 1.0;
+
 void profile_hmm_forward_initialize_r9(FloatMatrix& fm)
 {
     // initialize forward calculation
