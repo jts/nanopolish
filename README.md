@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.13.0: modify HMM transitions to allow the balance between insertions and deletions to be changed depending on mode (consensus vs reference variants)
+
 * 0.12.5: make SupportFractionByStrand calculation consistent with SupportFraction
 
 * 0.12.4: add SupportFractionByStrand and SOR to VCF
