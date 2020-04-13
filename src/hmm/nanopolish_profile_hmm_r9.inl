@@ -20,6 +20,7 @@ inline std::vector<BlockTransitions> calculate_transitions(uint32_t num_kmers, c
 
     double read_events_per_base = data.read->events_per_base[data.strand];
     read_events_per_base *= hmm_indel_bias_factor;
+    read_events_per_base = std::max(1.25, read_events_per_base);
 
     for(uint32_t ki = 0; ki < num_kmers; ++ki) {
 
