@@ -119,6 +119,8 @@ void SquiggleRead::init(const std::string& read_sequence, const Fast5Data& data,
     // such reads
     if(this->read_sequence.length() > 20 && data.is_valid && data.rt.n > 0) {
         load_from_raw(data, flags);
+    } else {
+        g_bad_fast5_file += 1;
     }
 
     if(!this->events[0].empty()) {
