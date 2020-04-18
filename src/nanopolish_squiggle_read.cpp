@@ -110,14 +110,14 @@ void SquiggleRead::init(const std::string& read_sequence, const Fast5Data& data,
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->base_model[0] = this->base_model[1] = NULL;
     g_total_reads += 1;
-    assert(data.is_valid);
-    assert(data.rt.n > 0);
 
     this->read_name = data.read_name;
     this->read_sequence = read_sequence;
 
     // sometimes the basecaller will emit very short sequences, which causes problems
-    if(this->read_sequence.length() > 20) {
+    // also there can be rare issues with the signal in the fast5 and we want to skip
+    // such reads
+    if(this->read_sequence.length() > 20 && data.is_valid && data.rt.n > 0) {
         load_from_raw(data, flags);
     }
 
