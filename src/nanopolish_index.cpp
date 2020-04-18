@@ -306,7 +306,7 @@ void clean_fast5_map(std::multimap<std::string, std::string>& mmap)
 
     std::vector<std::string> invalid_entries;
     for(const auto& iter : fast5_read_count) {
-        if(iter.second != EXPECTED_ENTRIES_PER_FAST5) {
+        if(iter.second > EXPECTED_ENTRIES_PER_FAST5) {
             //fprintf(stderr, "warning: %s has %d entries in the summary and will be indexed the slow way\n", iter.first.c_str(), iter.second);
             invalid_entries.push_back(iter.first);
         }
