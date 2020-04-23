@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.13.2: fix memory leak when loading signal data
+
 * 0.13.1: fix `nanopolish index` performance issue for some barcoding runs
 
 * 0.13.0: modify HMM transitions to allow the balance between insertions and deletions to be changed depending on mode (consensus vs reference variants)
