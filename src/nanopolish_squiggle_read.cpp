@@ -88,6 +88,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }
+    free(data.rt.raw);
+    data.rt.raw = NULL;
 }
 
 SquiggleRead::SquiggleRead(const ReadDB& read_db, const Fast5Data& data, const uint32_t flags)
