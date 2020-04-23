@@ -24,6 +24,9 @@ Fast5Loader::~Fast5Loader()
 Fast5Data Fast5Loader::load_read(const std::string& filename, const std::string& read_name)
 {
     Fast5Data data;
+    data.rt.n = 0;
+    data.rt.raw = NULL;
+
     fast5_file f5_file = fast5_open(filename);
     if(!fast5_is_open(f5_file)) {
         data.is_valid = false;
