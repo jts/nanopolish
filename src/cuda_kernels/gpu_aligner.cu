@@ -466,7 +466,7 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
         auto scoreSet = scoreSets[scoreSetIdx];
         int firstReadIdxinScoreSet = globalReadIdx;
 
-        //Read data
+        //Populate host buffers with data from raw reads.
         for (int eventSequenceIdx=0; eventSequenceIdx < scoreSet.rawData.size(); eventSequenceIdx++) {
             auto e = scoreSet.rawData[eventSequenceIdx];
             numReads++;
@@ -521,15 +521,22 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
         auto & sequences = scoreSet.stateSequences;
         numSequences += sequences.size();
-
+        //Populate host buffers with data from sequences.
         for (int i = 0; i<sequences.size(); i++) {
             auto sequence = sequences[i];
 
+            // The offset to the sequence in the sequence buffer
             sequenceOffsetsHost[globalSequenceIdx] = kmerOffset;
 
             int sequenceLength = sequence.length();
             // TODO: k must be set per read, per score set not fixed
-            const uint32_t k = scoreSet.rawData[0].pore_model->k; 
+            // If there is no raw data associated with this scoreSet, then a default of k=1 is used.
+            // The sequence is copied to the device, although it is not actually used since there are no
+            // raw reads to compute candidates with.
+            uint32_t k = 1;
+            if (scoreSet.rawData.size() > 0){
+                 k = scoreSet.rawData[0].pore_model->k;
+            }
             int numKmers = sequenceLength - k + 1;
 
             for(size_t ki = 0; ki < numKmers; ++ki) {
@@ -548,14 +555,13 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
 
             sequenceLengthsHost[globalSequenceIdx] = numKmers;
 
-            // Loop over the raw reads, producing a cartesian product of reads and sequences
+            // Loop over the raw reads, producing a Cartesian product of reads and sequences
             auto numReadsInScoreSet = scoreSet.rawData.size();
             for (int r=0; r<numReadsInScoreSet; r++){
                 seqIdxHost[globalScoreIdx] = globalSequenceIdx;
                 readIdxHost[globalScoreIdx] = firstReadIdxinScoreSet + r;
                 globalScoreIdx++;
             }
-
             globalSequenceIdx++;
         }
     }
@@ -622,33 +628,35 @@ std::vector<std::vector<std::vector<double>>> GpuAligner::scoreKernelMod(std::ve
     dim3 dimBlock(blockSize);
     dim3 dimGrid(numBlocks);
 
-    //printf("Launching get scores mod kernel\n");
-    getScoresMod <<< dimGrid, dimBlock, 0, streams[0]>>> (poreModelDev,
-                                                          readLengthsDev,
-                                                          eventStartsDev,
-                                                          eventStridesDev,
-                                                          eventsPerBaseDev,
-                                                          scaleDev,
-                                                          shiftDev,
-                                                          varDev,
-                                                          logVarDev,
-                                                          eventOffsetsDev,
-                                                          eventMeansDev,
-                                                          modelOffsetsDev,
-                                                          preFlankingDev,
-                                                          postFlankingDev,
-                                                          sequenceLengthsDev,
-                                                          sequenceOffsetsDev,
-                                                          kmerRanksDev,
-                                                          seqIdxDev,
-                                                          readIdxDev,
-                                                          globalScoreIdx,
-                                                          scoresDev);
-    cudaError_t err = cudaGetLastError();
+    if (globalScoreIdx > 0){
+        getScoresMod <<< dimGrid, dimBlock, 0, streams[0]>>> (poreModelDev,
+                                                              readLengthsDev,
+                                                              eventStartsDev,
+                                                              eventStridesDev,
+                                                              eventsPerBaseDev,
+                                                              scaleDev,
+                                                              shiftDev,
+                                                              varDev,
+                                                              logVarDev,
+                                                              eventOffsetsDev,
+                                                              eventMeansDev,
+                                                              modelOffsetsDev,
+                                                              preFlankingDev,
+                                                              postFlankingDev,
+                                                              sequenceLengthsDev,
+                                                              sequenceOffsetsDev,
+                                                              kmerRanksDev,
+                                                              seqIdxDev,
+                                                              readIdxDev,
+                                                              globalScoreIdx,
+                                                              scoresDev);
+        cudaError_t err = cudaGetLastError();
 
-    if (err != cudaSuccess)
-        printf("Errors during kernel execution: %s\n", cudaGetErrorString(err));
+        if (err != cudaSuccess){
+            printf("Errors during GPU kernel execution: %s\n", cudaGetErrorString(err));
+        }
 
+    }
     cudaMemcpyAsync(returnValuesHost, scoresDev, globalScoreIdx * sizeof(float), cudaMemcpyDeviceToHost, streams[0]);
     cudaStreamSynchronize(streams[0]);
 
