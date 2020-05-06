@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <math.h>
+#include <random>
 #include <sys/time.h>
 #include <algorithm>
 #include <sstream>
@@ -199,6 +200,19 @@ enum HMMState
 struct ViterbiOutputs {
     std::vector<float> scores;
     std::vector<HMMState> labels;
+};
+
+// struct DurationRange containing 95% ci and median read rate
+struct DurationRange {
+    double read_rate; // median read rate
+    double read_rate_lower; // lower bound on read rate
+    double read_rate_upper; // upper bound on read rate
+};
+
+struct PolyALengthRange {
+    double polya_length;
+    double polya_length_lower;
+    double polya_length_upper;
 };
 
 class SegmentationHMM {
@@ -560,13 +574,36 @@ double estimate_eventalign_duration_profile(SquiggleRead& sr,
     return read_rate;
 }
 
+
+std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durations_per_kmer)
+{
+    std::vector<double> bootstrapped_medians;
+    std::vector<double> sample;
+    sample.resize(durations_per_kmer.size(), 0.0);
+
+    std::mt19937 rng(durations_per_kmer.size());
+    std::uniform_int_distribution<int> gen(0, durations_per_kmer.size());
+    
+    for (size_t i=0; i<100; i++) {
+        for (size_t j=0; j<durations_per_kmer.size(); j++) {
+            sample[j] = durations_per_kmer[gen(rng)];
+        }
+        std::sort(sample.begin(), sample.end());
+        bootstrapped_medians.push_back(
+            sample[sample.size() / 2]
+        );
+    }
+    return bootstrapped_medians;
+}
+
+
 // compute a read-rate based on kmer-to-event mapping, collapsed by consecutive 5mer identity:
-double estimate_unaligned_duration_profile(const SquiggleRead& sr,
-                                           const faidx_t* fai,
-                                           const bam_hdr_t* hdr,
-                                           const bam1_t* record,
-                                           const size_t read_idx,
-                                           const size_t strand_idx)
+DurationRange estimate_unaligned_duration_profile(const SquiggleRead& sr,
+                                                  const faidx_t* fai,
+                                                  const bam_hdr_t* hdr,
+                                                  const bam1_t* record,
+                                                  const size_t read_idx,
+                                                  const size_t strand_idx)
 {
     // get kmer stats:
     size_t basecalled_k = sr.get_base_model(strand_idx)->k;
@@ -587,15 +624,22 @@ double estimate_unaligned_duration_profile(const SquiggleRead& sr,
         }
     }
 
-    std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
-    assert(durations_per_kmer.size() > 0);
-    double median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
+
+    std::vector<double> bootstrapped_durations = get_bootstrapped_median_durations(durations_per_kmer);
+    std::sort(bootstrapped_durations.begin(), bootstrapped_durations.end());
+
+    double median_duration = bootstrapped_durations[bootstrapped_durations.size() / 2];
+    double lower_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.025)];
+    double upper_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.975)];
 
     // this is our estimator of read rate, currently we use the median duration
     // per k-mer as its more robust to outliers caused by stalls
     double read_rate = 1.0 / median_duration;
+    double read_rate_lower = 1.0 / upper_duration;
+    double read_rate_upper = 1.0 / lower_duration;
 
-    return read_rate;
+    DurationRange read_rate_range = { read_rate, read_rate_lower, read_rate_upper };
+    return read_rate_range;
 }
 
 // fetch the raw event durations for a given read:
@@ -635,7 +679,7 @@ std::vector<double> fetch_event_durations(const SquiggleRead& sr,
 // * estimate_polya_length : return an estimate of the read rate for this read.
 // ================================================================================
 // Compute an estimate of the number of nucleotides in the poly-A tail
-double estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_indices, const double read_rate)
+PolyALengthRange estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_indices, const DurationRange& read_rate_range)
 {
     // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
     // (n.b.: everything in 5'->3' order due to inversion in SquiggleRead constructor, but our
@@ -653,12 +697,17 @@ double estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_
     double estimation_error_offset = -5;
 
     // length of the poly(A) tail, in nucleotides:
-    double polya_length = polya_duration * read_rate + estimation_error_offset;
+    double polya_length = polya_duration * read_rate_range.read_rate + estimation_error_offset;
+    double polya_length_lower = polya_duration * read_rate_range.read_rate_lower + estimation_error_offset;
+    double polya_length_upper = polya_duration * read_rate_range.read_rate_upper + estimation_error_offset;
 
     // ensure estimated length is non-negative:
     polya_length = std::max(0.0, polya_length);
+    polya_length_lower = std::max(0.0, polya_length_lower);
+    polya_length_upper = std::max(0.0, polya_length_upper);
 
-    return polya_length;
+    PolyALengthRange polya_length_range = { polya_length, polya_length_lower, polya_length_upper };
+    return polya_length_range;
 }
 
 // ================================================================================
@@ -761,7 +810,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
-	{
+    {
             fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos);
             if (opt::verbose == 1) {
@@ -794,11 +843,11 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     std::string post_segmentation_qc_flag = post_segmentation_qc(region_indices, sr);
 
     //----- compute duration profile for the read:
-    double read_rate = estimate_unaligned_duration_profile(sr, fai, hdr, record, read_idx, strand_idx);
+    DurationRange read_rate_range = estimate_unaligned_duration_profile(sr, fai, hdr, record, read_idx, strand_idx);
 
     //----- estimate number of nucleotides in poly-A tail & post-estimation QC:
-    double polya_length = estimate_polya_length(sr, region_indices, read_rate);
-    std::string post_estimation_qc_flag = post_estimation_qc(region_indices, sr, read_rate, polya_length);
+    PolyALengthRange polya_length_range = estimate_polya_length(sr, region_indices, read_rate_range);
+    std::string post_estimation_qc_flag = post_estimation_qc(region_indices, sr, read_rate_range.read_rate, polya_length_range.polya_length);
 
     //----- Resolve QC flag based on priority:
     std::string qc_tag;
@@ -818,12 +867,16 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     double polya_sample_start = region_indices.adapter+1;
     double polya_sample_end = region_indices.polya;
     double transcr_sample_start = region_indices.polya+1;
+
     #pragma omp critical
     {
-        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\n",
+        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos,
-                leader_sample_start, adapter_sample_start, polya_sample_start,
-                transcr_sample_start, read_rate, polya_length, qc_tag.c_str());
+                leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
+                read_rate_range.read_rate, read_rate_range.read_rate_lower, read_rate_range.read_rate_upper,
+                polya_length_range.polya_length,
+                polya_length_range.polya_length_lower, polya_length_range.polya_length_upper,
+                qc_tag.c_str());
         // if `verbose == 1`, print the samples (picoAmps) of the read,
         // up to the first 1000 samples of transcript region:
         if (opt::verbose == 1) {
@@ -874,7 +927,7 @@ int polya_main(int argc, char** argv)
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
     // print header line:
-    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tqc_tag\n");
+    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tread_rate_ci_lower\tread_rate_ci_upper\tpolya_length\tpolya_length_ci_lower\tpolya_length_ci_upper\tqc_tag\n");
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
