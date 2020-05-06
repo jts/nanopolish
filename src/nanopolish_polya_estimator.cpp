@@ -63,6 +63,7 @@ static const char *POLYA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -w, --window=STR                     only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)\n"
+"  -n  --nboots                         the number of bootstraps to use for computing 95% confidence intervals\n"
 "  -r, --reads=FILE                     the 1D ONT direct RNA reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome assembly for the reads is in FILE\n"
