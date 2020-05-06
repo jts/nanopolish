@@ -79,6 +79,7 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
+    static size_t n_boots = 100;
 }
 
 static const char* shortopts = "r:b:g:t:w:v";
@@ -91,6 +92,7 @@ static const struct option longopts[] = {
     { "bam",              required_argument, NULL, 'b' },
     { "genome",           required_argument, NULL, 'g' },
     { "window",           required_argument, NULL, 'w' },
+    { "nboots",           required_argument, NULL, 'n' },
     { "threads",          required_argument, NULL, 't' },
     { "help",             no_argument,       NULL, OPT_HELP },
     { "version",          no_argument,       NULL, OPT_VERSION },
@@ -110,6 +112,7 @@ void parse_polya_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
             case 'w': arg >> opt::region; break;
+            case 'n': arg >> opt::n_boots; break;
             case OPT_HELP:
                 std::cout << POLYA_USAGE_MESSAGE;
                 exit(EXIT_SUCCESS);
@@ -575,7 +578,8 @@ double estimate_eventalign_duration_profile(SquiggleRead& sr,
 }
 
 
-std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durations_per_kmer)
+std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durations_per_kmer,
+                                                      size_t n_boots)
 {
     std::vector<double> bootstrapped_medians;
     std::vector<double> sample;
@@ -584,7 +588,7 @@ std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durat
     std::mt19937 rng(durations_per_kmer.size());
     std::uniform_int_distribution<int> gen(0, durations_per_kmer.size());
     
-    for (size_t i=0; i<100; i++) {
+    for (size_t i=0; i<n_boots; i++) {
         for (size_t j=0; j<durations_per_kmer.size(); j++) {
             sample[j] = durations_per_kmer[gen(rng)];
         }
@@ -603,7 +607,8 @@ DurationRange estimate_unaligned_duration_profile(const SquiggleRead& sr,
                                                   const bam_hdr_t* hdr,
                                                   const bam1_t* record,
                                                   const size_t read_idx,
-                                                  const size_t strand_idx)
+                                                  const size_t strand_idx,
+                                                  const size_t n_boots)
 {
     // get kmer stats:
     size_t basecalled_k = sr.get_base_model(strand_idx)->k;
@@ -625,7 +630,7 @@ DurationRange estimate_unaligned_duration_profile(const SquiggleRead& sr,
     }
 
 
-    std::vector<double> bootstrapped_durations = get_bootstrapped_median_durations(durations_per_kmer);
+    std::vector<double> bootstrapped_durations = get_bootstrapped_median_durations(durations_per_kmer, n_boots);
     std::sort(bootstrapped_durations.begin(), bootstrapped_durations.end());
 
     double median_duration = bootstrapped_durations[bootstrapped_durations.size() / 2];
@@ -782,6 +787,7 @@ std::string post_estimation_qc(const Segmentation& region_indices, const Squiggl
 void estimate_polya_for_single_read(const ReadDB& read_db,
                                     const faidx_t* fai,
                                     FILE* out_fp,
+                                    size_t n_boots,
                                     const bam_hdr_t* hdr,
                                     const bam1_t* record,
                                     size_t read_idx,
@@ -810,12 +816,12 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     SquiggleRead sr(read_name, read_db, SRF_LOAD_RAW_SAMPLES);
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
-    {
-            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
+        {
+            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos);
             if (opt::verbose == 1) {
                 fprintf(out_fp,
-                    "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tREAD_FAILED_LOAD\n",
+                    "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
                     read_name.substr(0,6).c_str(), ref_name.c_str());
             }
             if (opt::verbose == 2) {
@@ -843,7 +849,9 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     std::string post_segmentation_qc_flag = post_segmentation_qc(region_indices, sr);
 
     //----- compute duration profile for the read:
-    DurationRange read_rate_range = estimate_unaligned_duration_profile(sr, fai, hdr, record, read_idx, strand_idx);
+    DurationRange read_rate_range = estimate_unaligned_duration_profile(sr, fai, hdr,
+                                                                        record, read_idx, strand_idx,
+                                                                        n_boots);
 
     //----- estimate number of nucleotides in poly-A tail & post-estimation QC:
     PolyALengthRange polya_length_range = estimate_polya_length(sr, region_indices, read_rate_range);
@@ -932,7 +940,7 @@ int polya_main(int argc, char** argv)
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, _1, _2, _3, _4, _5);
+    auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, opt::n_boots, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
 
