@@ -592,7 +592,7 @@ std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durat
     sample.resize(durations_per_kmer.size(), 0.0);
 
     std::mt19937 rng(durations_per_kmer.size());
-    std::uniform_int_distribution<int> gen(0, durations_per_kmer.size());
+    std::uniform_int_distribution<int> gen(0, durations_per_kmer.size() - 1);
     
     for (size_t i=0; i<n_boots; i++) {
         for (size_t j=0; j<durations_per_kmer.size(); j++) {
