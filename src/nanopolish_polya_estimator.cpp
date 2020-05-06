@@ -63,7 +63,7 @@ static const char *POLYA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -w, --window=STR                     only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)\n"
-"  -n  --nboots                         the number of bootstraps to use for computing 95% confidence intervals\n"
+"  -n  --nboots=INT                     the number of bootstraps to use for computing 95% confidence intervals\n"
 "  -r, --reads=FILE                     the 1D ONT direct RNA reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome assembly for the reads is in FILE\n"
@@ -149,6 +149,11 @@ void parse_polya_options(int argc, char** argv)
 
     if(opt::bam_file.empty()) {
         std::cerr << SUBPROGRAM ": a --bam file must be provided\n";
+        die = true;
+    }
+
+    if((opt::n_boots > 10000)||(opt::n_boots < 1)) {
+        std::cerr << SUBPROGRAM ": --nboots should be between 1 and 10000\n";
         die = true;
     }
 
