@@ -588,6 +588,8 @@ std::vector<double> get_bootstrapped_median_durations(std::vector<double> &durat
                                                       size_t n_boots)
 {
     std::vector<double> bootstrapped_medians;
+    bootstrapped_medians.reserve(n_boots);
+
     std::vector<double> sample;
     sample.resize(durations_per_kmer.size(), 0.0);
 
