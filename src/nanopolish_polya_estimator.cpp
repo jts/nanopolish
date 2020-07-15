@@ -63,7 +63,8 @@ static const char *POLYA_USAGE_MESSAGE =
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
 "  -w, --window=STR                     only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)\n"
-"  -n  --nboots=INT                     the number of bootstraps to use for computing 95% confidence intervals\n"
+"  -c, --ci                             whether to calculate confidence intervals for read rate and poly-A length (off by default)\n"
+"  -n, --nboots=INT                     the number of bootstraps to use for computing 95% confidence intervals\n"
 "  -r, --reads=FILE                     the 1D ONT direct RNA reads are in fasta FILE\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the reference genome assembly for the reads is in FILE\n"
@@ -80,10 +81,11 @@ namespace opt
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 128;
-    static size_t n_boots = 100;
+    static unsigned int conf_invs;
+    static int n_boots = 100;
 }
 
-static const char* shortopts = "r:b:g:t:w:v";
+static const char* shortopts = "r:b:g:w:cn:t:v";
 
 enum { OPT_HELP = 1, OPT_VERSION };
 
@@ -93,6 +95,7 @@ static const struct option longopts[] = {
     { "bam",              required_argument, NULL, 'b' },
     { "genome",           required_argument, NULL, 'g' },
     { "window",           required_argument, NULL, 'w' },
+    { "ci",               no_argument,       NULL, 'c' },
     { "nboots",           required_argument, NULL, 'n' },
     { "threads",          required_argument, NULL, 't' },
     { "help",             no_argument,       NULL, OPT_HELP },
@@ -113,6 +116,7 @@ void parse_polya_options(int argc, char** argv)
             case 't': arg >> opt::num_threads; break;
             case 'v': opt::verbose++; break;
             case 'w': arg >> opt::region; break;
+            case 'c': opt::conf_invs++; break;
             case 'n': arg >> opt::n_boots; break;
             case OPT_HELP:
                 std::cout << POLYA_USAGE_MESSAGE;
@@ -616,6 +620,7 @@ DurationRange estimate_unaligned_duration_profile(const SquiggleRead& sr,
                                                   const bam1_t* record,
                                                   const size_t read_idx,
                                                   const size_t strand_idx,
+                                                  const size_t conf_invs,
                                                   const size_t n_boots)
 {
     // get kmer stats:
@@ -637,13 +642,20 @@ DurationRange estimate_unaligned_duration_profile(const SquiggleRead& sr,
         }
     }
 
+    double median_duration, lower_duration, upper_duration;
+    if(conf_invs == 0) {
+        std::sort(durations_per_kmer.begin(), durations_per_kmer.end());
+        median_duration = durations_per_kmer[durations_per_kmer.size() / 2];
+        lower_duration = median_duration;
+        upper_duration = median_duration;
+    } else {
+        std::vector<double> bootstrapped_durations = get_bootstrapped_median_durations(durations_per_kmer, n_boots);
+        std::sort(bootstrapped_durations.begin(), bootstrapped_durations.end());
 
-    std::vector<double> bootstrapped_durations = get_bootstrapped_median_durations(durations_per_kmer, n_boots);
-    std::sort(bootstrapped_durations.begin(), bootstrapped_durations.end());
-
-    double median_duration = bootstrapped_durations[bootstrapped_durations.size() / 2];
-    double lower_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.025)];
-    double upper_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.975)];
+        median_duration = bootstrapped_durations[bootstrapped_durations.size() / 2];
+        lower_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.025)];
+        upper_duration = bootstrapped_durations[std::floor(bootstrapped_durations.size() * 0.975)];
+    }
 
     // this is our estimator of read rate, currently we use the median duration
     // per k-mer as its more robust to outliers caused by stalls
@@ -795,6 +807,7 @@ std::string post_estimation_qc(const Segmentation& region_indices, const Squiggl
 void estimate_polya_for_single_read(const ReadDB& read_db,
                                     const faidx_t* fai,
                                     FILE* out_fp,
+                                    size_t conf_invs,
                                     size_t n_boots,
                                     const bam_hdr_t* hdr,
                                     const bam1_t* record,
@@ -825,8 +838,13 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
         {
-            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
-                read_name.c_str(), ref_name.c_str(), record->core.pos);
+            if (conf_invs == 0) {
+                fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
+                    read_name.c_str(), ref_name.c_str(), record->core.pos);
+            } else {
+                fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
+                    read_name.c_str(), ref_name.c_str(), record->core.pos);
+            }
             if (opt::verbose == 1) {
                 fprintf(out_fp,
                     "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
@@ -859,7 +877,7 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     //----- compute duration profile for the read:
     DurationRange read_rate_range = estimate_unaligned_duration_profile(sr, fai, hdr,
                                                                         record, read_idx, strand_idx,
-                                                                        n_boots);
+                                                                        conf_invs, n_boots);
 
     //----- estimate number of nucleotides in poly-A tail & post-estimation QC:
     PolyALengthRange polya_length_range = estimate_polya_length(sr, region_indices, read_rate_range);
@@ -886,13 +904,20 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
 
     #pragma omp critical
     {
-        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\n",
-                read_name.c_str(), ref_name.c_str(), record->core.pos,
-                leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
-                read_rate_range.read_rate, read_rate_range.read_rate_lower, read_rate_range.read_rate_upper,
-                polya_length_range.polya_length,
-                polya_length_range.polya_length_lower, polya_length_range.polya_length_upper,
-                qc_tag.c_str());
+        if (conf_invs == 0) {
+            fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\n",
+                    read_name.c_str(), ref_name.c_str(), record->core.pos,
+                    leader_sample_start, adapter_sample_start, polya_sample_start,
+                    transcr_sample_start, read_rate_range.read_rate, polya_length_range.polya_length, qc_tag.c_str());
+        } else {
+            fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\n",
+                    read_name.c_str(), ref_name.c_str(), record->core.pos,
+                    leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
+                    read_rate_range.read_rate, read_rate_range.read_rate_lower, read_rate_range.read_rate_upper,
+                    polya_length_range.polya_length,
+                    polya_length_range.polya_length_lower, polya_length_range.polya_length_upper,
+                    qc_tag.c_str());
+        }
         // if `verbose == 1`, print the samples (picoAmps) of the read,
         // up to the first 1000 samples of transcript region:
         if (opt::verbose == 1) {
@@ -943,12 +968,16 @@ int polya_main(int argc, char** argv)
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
     // print header line:
-    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tread_rate_ci_lower\tread_rate_ci_upper\tpolya_length\tpolya_length_ci_lower\tpolya_length_ci_upper\tqc_tag\n");
+    if (opt::conf_invs == 0) {
+        fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tqc_tag\n");
+    } else {
+        fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tread_rate_ci_lower\tread_rate_ci_upper\tpolya_length\tpolya_length_ci_lower\tpolya_length_ci_upper\tqc_tag\n");
+    }
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, opt::n_boots, _1, _2, _3, _4, _5);
+    auto f = std::bind(estimate_polya_for_single_read, std::ref(read_db), std::ref(fai), stdout, opt::conf_invs, opt::n_boots, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads);
     processor.parallel_run(f);
 
