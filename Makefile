@@ -124,10 +124,10 @@ lib/libhdf5.a:
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
 	if [ ! -e $(EIGEN_VERSION).tar.bz2 ]; then \
-		wget http://bitbucket.org/eigen/eigen/get/$(EIGEN_VERSION).tar.bz2; \
+		wget https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-$(EIGEN_VERSION).tar.bz2; \
 	fi
-	tar -xjf $(EIGEN_VERSION).tar.bz2 || exit 255
-	mv eigen-eigen-* eigen || exit 255
+	tar -xjf eigen-$(EIGEN_VERSION).tar.bz2 || exit 255
+	mv eigen-$(EIGEN_VERSION) eigen || exit 255
 
 #
 # Source files
