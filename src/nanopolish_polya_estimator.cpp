@@ -547,10 +547,19 @@ struct BernoulliOutputs {
     std::vector<BernoulliState> labels;
 };
 
+// Container for output tracing on `-vvv` verbose output mode:
+struct BernoulliTrace {
+    std::vector<float> polyi_loglkhds;
+    std::vector<float> polya_loglkhds;
+    std::vector<int> bernoullis;
+    std::vector<float> scaled;
+    std::vector<float> raw;
+};
+
 class BernoulliHMM {
 private:
     float state_transitions[BERN_NUM_STATES][BERN_NUM_STATES] = {
-        {0.90f, 0.10f},
+        {0.80f, 0.20f},
         {0.00f, 1.00f}
     };
     // initial state probabilities:
@@ -580,10 +589,10 @@ private:
     inline float emit_log_proba_gaussian(const float x, const BernoulliState state) const
     {
         // sometimes samples can exceed reasonable bounds due to mechanical issues;
-        // in that case, we should clamp it to 100:
+        // in that case, we should clamp it to the global mean:
         float xx;
         if (x > 200.0f || x < 40.0f) {
-            xx = 100.0f;
+            xx = this->global_mean;
         } else {
             xx = x;
         }
@@ -672,6 +681,43 @@ public:
         std::cout << std::endl;
 
         return bernoullis;
+    }
+
+    // Return a binarized signal trace; this is used primarily in verbose output mode (`-vvv`).
+    BernoulliTrace trace(const SquiggleRead& sr, int start, int stop) const {
+        // fetch raw squiggle of polya-polyi region:
+        std::vector<float> squiggle(&sr.samples[start], &sr.samples[stop]);
+
+        // scale and shift based on parameters:
+        std::vector<float> signal(&sr.samples[start], &sr.samples[stop]);
+        for (size_t i = 0; i < signal.size(); ++i) {
+            signal[i] = (squiggle.at(i) - sr.scalings[0].shift) / sr.scalings[0].scale;
+        }
+
+        // compute instance mean of scaled & shifted signal:
+        float instance_mean = 0.00f;
+        for (size_t i = 0; i < signal.size(); ++i) {
+            instance_mean = instance_mean + signal.at(i);
+        }
+        instance_mean = instance_mean / static_cast<float>(signal.size());
+
+        // compute log-likelihood sequences:
+        std::vector<float> loglkhd_polyi(signal.size(), 0.0f);
+        std::vector<float> loglkhd_polya(signal.size(), 0.0f);
+        for (size_t i = 0; i < signal.size(); ++i) {
+            float s = signal.at(i) - instance_mean + this->global_mean;
+            float loglkhd_pI = this->emit_log_proba_gaussian(s, BERN_POLYI);
+            float loglkhd_pA = this->emit_log_proba_gaussian(s, BERN_POLYA);
+            loglkhd_polyi[i] = loglkhd_pI;
+            loglkhd_polya[i] = loglkhd_pA;
+        }
+
+	// compute binarized values:
+        std::vector<int> bernoullis = this->log_lkhd_ratio_sequence(signal);
+
+        // construct BernoulliTrace output and return:
+        BernoulliTrace bern_trace = { loglkhd_polyi, loglkhd_polya, bernoullis, signal, squiggle };
+        return bern_trace;
     }
 
     // Viterbi implementation for BernoulliHMM with a 0-1 signal as input.
@@ -880,33 +926,24 @@ std::vector<double> fetch_event_durations(const SquiggleRead& sr,
 // ================================================================================
 // Poly-A Tail Length Estimation
 //   Estimate the number of nucleotides in the poly-A region.
-// * estimate_polya_length : return an estimate of the read rate for this read.
+// * estimate_region_length : return an estimate of the nucleotide length of a squiggle region.
 // ================================================================================
-// Compute an estimate of the number of nucleotides in the poly-A tail
-double estimate_polya_length(const SquiggleRead& sr, const Segmentation& region_indices, const double read_rate)
+// Compute an estimate of the number of nucleotides in a squiggle region (e.g. the poly-A tail)
+double estimate_region_length(const SquiggleRead& sr, const size_t region_start, const size_t region_end, const double read_rate)
 {
-    // start and end times (sample indices) of the poly(A) tail, in original 3'->5' time-direction:
-    // (n.b.: everything in 5'->3' order due to inversion in SquiggleRead constructor, but our
-    // `region_indices` struct has everything in 3'->5' order)
-    double num_samples = sr.samples.size();
-    double polya_sample_start = region_indices.adapter + 1;
-    double polya_sample_end = region_indices.polya;
-    double adapter_sample_start = region_indices.leader;
-    double leader_sample_start = region_indices.start;
-
-    // calculate duration of poly(A) region (in seconds)
-    double polya_duration = (region_indices.polya - (region_indices.adapter + 1)) / sr.sample_rate;
+    // calculate duration of squiggle region region (in seconds)
+    double region_duration = (region_end - (region_start + 1)) / sr.sample_rate;
 
     // Empirically determined offset to handle modal bias of the estimator:
-    double estimation_error_offset = -5;
+    double estimation_error_offset = -5.00;
 
-    // length of the poly(A) tail, in nucleotides:
-    double polya_length = polya_duration * read_rate + estimation_error_offset;
+    // length of the region, in nucleotides:
+    double region_length = region_duration * read_rate + estimation_error_offset;
 
     // ensure estimated length is non-negative:
-    polya_length = std::max(0.0, polya_length);
+    region_length = std::max(0.0, region_length);
 
-    return polya_length;
+    return region_length;
 }
 
 // ================================================================================
@@ -971,8 +1008,8 @@ std::string post_estimation_qc(const Segmentation& region_indices, const Squiggl
 
 // QC pass to remove erroneous POLY{A,I} detection calls.
 std::string post_boolhmm_detetection_qc(const BernoulliSegmentation& segmentation, int region_length) {
-    // empirically-discovered threshold for number of samples needed for POLYA or POLYI region to be detected:
-    double cutoff = 200;
+    // empirically-determined threshold for number of samples needed for POLYA or POLYI region to be detected:
+    double cutoff = 100.00f;
     // detect regions:
     bool polyi_found = false;
     if (segmentation.polyi > cutoff) {
@@ -1037,22 +1074,26 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
         {
-            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
-                read_name.c_str(), ref_name.c_str(), record->core.pos);
+            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tNONE\t-1.0\tREAD_FAILED_LOAD\n",
+                    read_name.c_str(), ref_name.c_str(), record->core.pos);
             if (opt::verbose == 1) {
                 fprintf(out_fp,
-                    "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tREAD_FAILED_LOAD\n",
-                    read_name.substr(0,6).c_str(), ref_name.c_str());
+                        "polya-samples\t%s\t%s\t-1\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tNONE\tREAD_FAILED_LOAD\n",
+                        read_name.substr(0,6).c_str(), ref_name.c_str());
             }
             if (opt::verbose == 2) {
                 fprintf(out_fp, "polya-durations\t%s\t-1\t-1.0\tREAD_FAILED_LOAD\n", read_name.substr(0,6).c_str());
+            }
+            if (opt::verbose == 3) {
+                fprintf(out_fp, "polya-bern\t%s\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\t-1.0\tNONE\n",
+                        read_name.substr(0,6).c_str());
             }
         }
         return;
     }
 
-    //----- print clipping data if `verbose > 2` set:
-    if (opt::verbose > 2) {
+    //----- print clipping data if `verbose > 3` set:
+    if (opt::verbose > 3) {
         fprintf(stderr, "[polya] read: %s length: %zu prefix clip: %zu suffix clip %zu\n",
                 read_name.c_str(), sr.read_sequence.length(), prefix_clip, suffix_clip);
     }
@@ -1071,9 +1112,9 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     //----- compute duration profile for the read:
     double read_rate = estimate_unaligned_duration_profile(sr, fai, hdr, record, read_idx, strand_idx);
 
-    //----- estimate number of nucleotides in poly-A tail & post-estimation QC:
-    double polya_length = estimate_polya_length(sr, region_indices, read_rate);
-    std::string post_estimation_qc_flag = post_estimation_qc(region_indices, sr, read_rate, polya_length);
+    //----- estimate number of nucleotides in joint (poly-I++poly-A) tail & post-estimation QC:
+    double total_length = estimate_region_length(sr, region_indices.adapter, region_indices.polya, read_rate);
+    std::string post_estimation_qc_flag = post_estimation_qc(region_indices, sr, read_rate, total_length);
 
     //----- Resolve QC flag based on priority:
     std::string qc_tag;
@@ -1100,12 +1141,41 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
     double polya_sample_start = region_indices.adapter+1;
     double polya_sample_end = region_indices.polya;
     double transcr_sample_start = region_indices.polya+1;
+    double switchpoint;
+    if (poly_segmentation.polyi == -1) {
+        switchpoint = -1.0;
+    } else {
+        switchpoint = polya_sample_start + static_cast<double>(poly_segmentation.polyi);
+    }
+
+    //----- Detect POLY(A) & POLY(I) tail lengths (if they exist):
+    double polyi_length, polya_length;
+    if (poly_detect_tag == "A+I") {
+        // estimate both polyi and polya lengths (as subcomponents of the total length):
+        double polyi_fraction = std::max(0.00, (switchpoint - polya_sample_start) / (polya_sample_end - polya_sample_start));
+        polya_length = (1.00 - polyi_fraction) * total_length;
+        polyi_length = polyi_fraction * total_length;
+    } else if (poly_detect_tag == "POLYI-ONLY") {
+        // estimate POLY(I) length only:
+        polya_length = -1.00;
+        polyi_length = total_length;
+    } else if (poly_detect_tag == "POLYA-ONLY") {
+        // estimate POLY(A) length only:
+        polya_length = total_length;
+        polyi_length = -1.00;
+    } else {
+        // Neither tail exists:
+        polya_length = -1.00;
+        polyi_length = -1.00;
+    }
+
     #pragma omp critical
     {
-        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\t%s\n",
+        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%.2lf\t%.2lf\t%s\t%.1lf\t%s\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos,
                 leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
-                read_rate, polya_length, poly_detect_tag.c_str(), qc_tag.c_str());
+                read_rate, total_length, polya_length, polyi_length,
+                poly_detect_tag.c_str(), switchpoint, qc_tag.c_str());
         // if `verbose == 1`, print the samples (picoAmps) of the read,
         // up to the first 1000 samples of transcript region:
         if (opt::verbose == 1) {
@@ -1140,6 +1210,26 @@ void estimate_polya_for_single_read(const ReadDB& read_db,
                     read_name.substr(0,6).c_str(), i, dura, qc_tag.c_str());
             }
         }
+        // if `verbose == 3` print the tuples containing triplets (binarized value, log-lkhd-polya, log-lkhd-polyi)
+        if (opt::verbose == 3) {
+            BernoulliTrace bern_trace = boolhmm.trace(sr, region_indices.adapter+1, region_indices.polya);
+            size_t bern_trace_size = bern_trace.scaled.size();
+            if (bern_trace_size < 1) {
+                fprintf(out_fp, "polya-bern\t%s\t0\t0\t-1.0\t-1.0\t-1.0\t-1.0\t%s\n",
+                        read_name.substr(0,6).c_str(), poly_detect_tag.c_str());
+            } else {
+                for (size_t i = 0; i < bern_trace_size; ++i) {
+                    float bt_polya_loglkhd = bern_trace.polya_loglkhds.at(i);
+                    float bt_polyi_loglkhd = bern_trace.polyi_loglkhds.at(i);
+                    int bt_binary = bern_trace.bernoullis.at(i);
+                    float bt_raw = bern_trace.raw.at(i);
+                    float bt_scaled = bern_trace.scaled.at(i);
+                    fprintf(out_fp, "polya-bern\t%s\t%zu\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%s\n",
+                            read_name.substr(0,6).c_str(), i, bt_binary, bt_polya_loglkhd, bt_polyi_loglkhd,
+                            bt_scaled, bt_raw, poly_detect_tag.c_str());
+                }
+            }
+        }
     }
 }
 
@@ -1156,7 +1246,7 @@ int polya_main(int argc, char** argv)
     faidx_t *fai = fai_load(opt::genome_file.c_str());
 
     // print header line:
-    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\tpolya_length\tdetected\tqc_tag\n");
+    fprintf(stdout, "readname\tcontig\tposition\tleader_start\tadapter_start\tpolya_start\ttranscript_start\tread_rate\ttotal_tail_length\tpolya_length\tpolyi_length\tdetected\tswitchpoint\tqc_tag\n");
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
