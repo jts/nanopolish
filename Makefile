@@ -60,7 +60,7 @@ ifeq ($(HTS), install)
 else
     # Use system-wide htslib
     HTS_LIB =
-    HTS_INCLUDE =
+    HTS_INCLUDE ?=
     LIBS += -lhts
 endif
 
