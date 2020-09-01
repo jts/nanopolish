@@ -46,9 +46,11 @@ endif
 # Default to automatically installing EIGEN
 ifeq ($(EIGEN), install)
     EIGEN_CHECK = eigen/INSTALL
+    EIGEN_INCLUDE = -I./eigen/
 else
     # Use system-wide eigen
     EIGEN_CHECK =
+    EIGEN_INCLUDE ?=
 endif
 
 # Default to build and link the libhts submodule
@@ -81,9 +83,6 @@ endif
 
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
-
-# Include the header-only eigen library
-EIGEN_INCLUDE = -I./eigen/
 
 # Include the src subdirectories
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
