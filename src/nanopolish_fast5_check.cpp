@@ -104,7 +104,7 @@ void parse_fast5_check_options(int argc, char** argv)
 void check_read(fast5_file& f5_fh, const std::string& read_name)
 {
     fast5_raw_scaling scaling = fast5_get_channel_params(f5_fh, read_name);
-    if(isnan(scaling.digitisation)) {
+    if(scaling.digitisation != scaling.digitisation) {
         fprintf(stdout, "\t[read] ERROR: could not read scaling for %s\n", read_name.c_str());
     }
     raw_table rt = fast5_get_raw_samples(f5_fh, read_name, scaling);
