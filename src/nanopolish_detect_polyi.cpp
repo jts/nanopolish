@@ -154,7 +154,7 @@ void parse_detect_polyi_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 }
-// [===== ===== ===== ====== ===== TODO: EDIT BELOW THIS LINE ===== ===== ===== ====== =====]
+
 // ================================================================================
 // Segmentation Hidden Markov Model
 //   Define an HMM class `SegmentationHMM` with all relevant functions necessary for
@@ -670,7 +670,6 @@ public:
                 bernoullis.at(i) = 0;
             }
         }
-        std::cout << std::endl;
 
         return bernoullis;
     }
