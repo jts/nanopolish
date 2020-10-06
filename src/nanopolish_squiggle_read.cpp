@@ -72,6 +72,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->fast5_path = read_db.get_signal_path(name);
     g_total_reads += 1;
     if(this->fast5_path == "") {
+        fprintf(stderr, "[warning] fast5 skipped because path is empty (%s)\n", name.c_str());
         g_bad_fast5_file += 1;
         return;
     }
@@ -122,6 +123,7 @@ void SquiggleRead::init(const std::string& read_sequence, const Fast5Data& data,
     if(this->read_sequence.length() > 20 && data.is_valid && data.rt.n > 0) {
         load_from_raw(data, flags);
     } else {
+        fprintf(stderr, "[warning] fast5 because read is short (%zu) or load failure (%s)\n", read_sequence.length(), data.read_name.c_str());
         g_bad_fast5_file += 1;
     }
 
