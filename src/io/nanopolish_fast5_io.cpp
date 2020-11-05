@@ -15,6 +15,8 @@
 //#define DEBUG_FAST5_IO 1
 
 #define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
+#define DATASET "DS1" //This needs to be verified
+#define H5Z_FILTER_VBZ 307 //We need to find out what the numerical value for this is
 
 int verbose = 0;
 
@@ -430,4 +432,35 @@ close_group:
     H5Gclose(group);
 
     return out;
+}
+
+bool fast5_is_vbz_compressed(fast5_file& fh) {
+
+    hid_t dset, dcpl; 
+
+    H5Z_filter_t filter_id = 0;
+
+    char filter_name[80];
+
+    size_t nelmts = 1; /* number of elements in cd_values */
+
+    unsigned int values_out[1] = {99}; 
+
+    unsigned int flags;
+
+    dset = H5Dopen (fh.hdf5_file, DATASET, H5P_DEFAULT);
+
+    dcpl = H5Dget_create_plist (dset);
+
+    filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name), filter_name, NULL);
+
+    if(filter_name == "vbz")
+        return true;
+    else 
+        return false
+
+    if(filter_id == H5Z_FILTER_VBZ)
+        return true;
+    else 
+        return false;
 }
