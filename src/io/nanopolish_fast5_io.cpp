@@ -454,10 +454,12 @@ bool fast5_is_vbz_compressed(fast5_file& fh) {
 
     filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name), filter_name, NULL);
 
+    printf("%s  %d",filter_name,filter_id);
+
     if(filter_name == "vbz")
         return true;
     else 
-        return false
+        return false;
 
     if(filter_id == H5Z_FILTER_VBZ)
         return true;
