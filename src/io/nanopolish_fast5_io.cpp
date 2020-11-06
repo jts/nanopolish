@@ -15,7 +15,7 @@
 //#define DEBUG_FAST5_IO 1
 
 #define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
-#define DATASET "DS1" //This needs to be verified
+
 #define H5Z_FILTER_VBZ 307 //We need to find out what the numerical value for this is
 
 int verbose = 0;
@@ -434,7 +434,7 @@ close_group:
     return out;
 }
 
-bool fast5_is_vbz_compressed(fast5_file& fh) {
+bool fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
 
     hid_t dset, dcpl; 
 
@@ -448,7 +448,13 @@ bool fast5_is_vbz_compressed(fast5_file& fh) {
 
     unsigned int flags;
 
-    dset = H5Dopen (fh.hdf5_file, DATASET, H5P_DEFAULT);
+    // mostly from scrappie
+    std::string raw_read_group = fast5_get_raw_read_group(fh, read_id);
+
+    // Create data set name
+    std::string signal_path = raw_read_group + "/Signal";
+
+    dset = H5Dopen (fh.hdf5_file, signal_path.c_str(), H5P_DEFAULT);
 
     dcpl = H5Dget_create_plist (dset);
 
