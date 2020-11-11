@@ -16,7 +16,7 @@
 
 #define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
 
-#define H5Z_FILTER_VBZ 307 //We need to find out what the numerical value for this is
+#define H5Z_FILTER_VBZ 32020 //We need to find out what the numerical value for this is
 
 int verbose = 0;
 
@@ -145,6 +145,8 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
     H5Sget_simple_extent_dims(space, &nsample, NULL);
     rawptr = (float*)calloc(nsample, sizeof(float));
     status = H5Dread(dset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, rawptr);
+    fprintf(stdout, "Status: %d \t", status);
+    fprintf(stdout, "Return: %d \n", fast5_is_vbz_compressed(fh, read_id));
 
     if (status < 0) {
         free(rawptr);
@@ -434,7 +436,7 @@ close_group:
     return out;
 }
 
-bool fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
+uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
 
     hid_t dset, dcpl; 
 
@@ -460,15 +462,8 @@ bool fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
 
     filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name), filter_name, NULL);
 
-    printf("%s  %d",filter_name,filter_id);
-
-    if(filter_name == "vbz")
-        return true;
-    else 
-        return false;
-
     if(filter_id == H5Z_FILTER_VBZ)
-        return true;
+        return 1;
     else 
-        return false;
+        return 0;
 }
