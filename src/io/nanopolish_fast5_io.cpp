@@ -439,15 +439,10 @@ close_group:
 uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
 
     hid_t dset, dcpl; 
-
     H5Z_filter_t filter_id = 0;
-
     char filter_name[80];
-
     size_t nelmts = 1; /* number of elements in cd_values */
-
     unsigned int values_out[1] = {99}; 
-
     unsigned int flags;
 
     // mostly from scrappie
@@ -461,6 +456,9 @@ uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
     dcpl = H5Dget_create_plist (dset);
 
     filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name), filter_name, NULL);
+
+    H5Pclose (dcpl);
+    H5Dclose (dset);
 
     if(filter_id == H5Z_FILTER_VBZ)
         return 1;
