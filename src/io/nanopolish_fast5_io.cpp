@@ -145,10 +145,12 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
     H5Sget_simple_extent_dims(space, &nsample, NULL);
     rawptr = (float*)calloc(nsample, sizeof(float));
     status = H5Dread(dset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, rawptr);
-    fprintf(stdout, "Status: %d \t", status);
-    fprintf(stdout, "Return: %d \n", fast5_is_vbz_compressed(fh, read_id));
 
     if (status < 0) {
+	if(fast5_is_vbz_compressed(fh, read_id) == 1) {
+	    fprintf(stderr, "The fast5 file is compressed with VBZ but the required plugin is not loaded. Please read the instructions here: https://github.com/nanoporetech/vbz_compression/issues/5\n");
+	    exit(EXIT_FAILURE);
+	}
         free(rawptr);
 #ifdef DEBUG_FAST5_IO
         fprintf(stderr, "Failed to read raw data from dataset %s.\n", signal_path.c_str());
