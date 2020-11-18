@@ -455,7 +455,7 @@ uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
 
     dcpl = H5Dget_create_plist (dset);
 
-    filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name), filter_name, NULL);
+    filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name) - 1, filter_name, NULL);
 
     H5Pclose (dcpl);
     H5Dclose (dset);
