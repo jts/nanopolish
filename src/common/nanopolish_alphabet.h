@@ -142,7 +142,6 @@ class Alphabet
                     }
                 } else {
                     // complement a single base
-                    assert(str[i] != METHYLATED_SYMBOL);
                     out[j--] = complement(str[i++]);
                 }
             }
@@ -201,11 +200,30 @@ class Alphabet
                     if(match.length == recognition_length()) {
                         // Replace by the methylated version
                         out.replace(i, recognition_length(), get_recognition_site_methylated(j));
-                        stride = match.length; // skip to end of match
                         break;
                     }
                 }
 
+                i += stride;
+            }
+            return out;
+        }
+
+        // If the alphabet supports methylated bases, convert str
+        // to a methylated string for a single motif
+        virtual std::string methylate_motif(const std::string& str, size_t motif_idx) const
+        {
+            std::string out(str);
+            size_t i = 0;
+            while(i < out.length()) {
+                size_t stride = 1;
+                RecognitionMatch match = match_to_site(str, i, get_recognition_site(motif_idx), recognition_length());
+                // Require the recognition site to be completely matched
+                if(match.length == recognition_length()) {
+                    // Replace by the methylated version
+                    out.replace(i, recognition_length(), get_recognition_site_methylated(motif_idx));
+                    stride = match.length; // skip to end of match
+                }
                 i += stride;
             }
             return out;
@@ -235,6 +253,21 @@ class Alphabet
                 i += stride;
             }
             return out;
+        }
+
+        // check if the motif at index motif_idx is in str
+        virtual bool contains_motif(const std::string& str, size_t motif_idx) const
+        {
+            size_t i = 0;
+            while(i < str.length()) {
+                RecognitionMatch match = match_to_site(str, i, get_recognition_site(motif_idx), recognition_length());
+                // Require the recognition site to be completely matched
+                if(match.length == recognition_length()) {
+                    return true;
+                }
+                i++;
+            }
+            return false;
         }
 
         // does this alphabet contain all of the nucleotides in bases?
@@ -376,6 +409,26 @@ struct MethylGpCAlphabet : public Alphabet
 };
 
 //
+// methyl-cytosine in CG or GC context
+//
+struct MethylCpGGpCAlphabet : public Alphabet
+{
+    // member variables, expanded by macrocs
+    BASIC_MEMBER_BOILERPLATE
+    METHYLATION_MEMBER_BOILERPLATE
+
+    // member functions
+    BASIC_ACCESSOR_BOILERPLATE
+    METHYLATION_ACCESSOR_BOILERPLATE
+
+    // does this alphabet contain all of the nucleotides in bases?
+    virtual inline bool contains_all(const char *bases) const
+    {
+        return strspn(bases, _base) == strlen(bases);
+    }
+};
+
+//
 // Dam methylation: methyl-adenine in GATC context
 // 
 struct MethylDamAlphabet : public Alphabet
@@ -419,6 +472,7 @@ struct MethylDcmAlphabet : public Alphabet
 extern DNAAlphabet gDNAAlphabet;
 extern MethylCpGAlphabet gMCpGAlphabet;
 extern MethylGpCAlphabet gMethylGpCAlphabet;
+extern MethylCpGGpCAlphabet gMethylCpGGpCAlphabet;
 extern MethylDamAlphabet gMethylDamAlphabet;
 extern MethylDcmAlphabet gMethylDcmAlphabet;
 extern UtoTRNAAlphabet gUtoTRNAAlphabet;

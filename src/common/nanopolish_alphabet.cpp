@@ -128,6 +128,39 @@ const char* MethylGpCAlphabet::_recognition_sites_methylated[] = { "GM" };
 const char* MethylGpCAlphabet::_recognition_sites_methylated_complement[] = { "MG" };
 
 //
+// methyl-cytosine in CG or GC context
+//
+const uint8_t MethylCpGGpCAlphabet::_rank[256] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,2,0,0,0,0,0,3,0,0,
+    0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+const char* MethylCpGGpCAlphabet::_name = "cpggpc";
+const char* MethylCpGGpCAlphabet::_base = "ACGMT";
+const char* MethylCpGGpCAlphabet::_complement = "TGCGA";
+const uint32_t MethylCpGGpCAlphabet::_size = 5;
+
+const uint32_t MethylCpGGpCAlphabet::_num_recognition_sites = 2;
+const uint32_t MethylCpGGpCAlphabet::_recognition_length = 2;
+const char* MethylCpGGpCAlphabet::_recognition_sites[] = { "CG", "GC" };
+const char* MethylCpGGpCAlphabet::_recognition_sites_methylated[] = { "MG", "GM" };
+const char* MethylCpGGpCAlphabet::_recognition_sites_methylated_complement[] = { "GM", "MG" };
+
+//
 // Dam methylation: methyl-adenine in GATC context
 //
 const uint8_t MethylDamAlphabet::_rank[256] = {
@@ -197,6 +230,7 @@ const char* MethylDcmAlphabet::_recognition_sites_methylated_complement[] = { "G
 DNAAlphabet gDNAAlphabet;
 MethylCpGAlphabet gMCpGAlphabet;
 MethylGpCAlphabet gMethylGpCAlphabet;
+MethylCpGGpCAlphabet gMethylCpGGpCAlphabet;
 MethylDamAlphabet gMethylDamAlphabet;
 MethylDcmAlphabet gMethylDcmAlphabet;
 UtoTRNAAlphabet gUtoTRNAAlphabet;
@@ -206,6 +240,7 @@ std::vector<const Alphabet*> get_alphabet_list()
     std::vector<const Alphabet*> list = { &gDNAAlphabet, 
                                           &gMCpGAlphabet, 
                                           &gMethylGpCAlphabet,
+                                          &gMethylCpGGpCAlphabet,
                                           &gMethylDamAlphabet,
                                           &gMethylDcmAlphabet,
                                           &gUtoTRNAAlphabet };
