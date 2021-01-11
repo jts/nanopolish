@@ -898,14 +898,19 @@ int methyltrain_main(int argc, char** argv)
     read_db.load(opt::reads_file);
 
     // Import the models to train into the pore model set
+    fprintf(stderr, "Check if models_fofn empty.\n");
     assert(!opt::models_fofn.empty());
+    fprintf(stderr, "models_fofn is not empty.\n");
     std::vector<const PoreModel*> imported_models = PoreModelSet::initialize(opt::models_fofn);
+    fprintf(stderr, "Check if imported_models empty.\n");
     assert(!imported_models.empty());
-
+    fprintf(stderr, "imported_models is not empty.\n");
     // Grab one of the pore models to extract the kit name from (they should all have the same one)
     const PoreModel& tmp_model = *imported_models.front();
+    fprintf(stderr, "Get kit name.\n");
 
     std::string training_kit = tmp_model.metadata.get_kit_name();
+    fprintf(stderr, "Found kit name.\n");
     mtrain_alphabet = tmp_model.pmalphabet;
     size_t training_k = tmp_model.k;
     fprintf(stderr, "Training %s for alphabet %s for %zu-mers\n", training_kit.c_str(), mtrain_alphabet->get_name(), training_k);

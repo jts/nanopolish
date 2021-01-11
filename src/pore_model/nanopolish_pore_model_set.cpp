@@ -45,12 +45,13 @@ std::vector<const PoreModel*> PoreModelSet::initialize(const std::string& fofn_f
 
     std::string model_filename;
     while(getline(fofn_reader, model_filename)) {
-
+        fprintf(stderr, "Model file name: %s\n", model_filename.c_str());
         // read the model
         PoreModel p(model_filename);
-
+        fprintf(stderr, "Read the model name\n");
         // add the model and push the new reference to it to the output
         const PoreModel* imported = model_set.register_model(p);
+        fprintf(stderr, "imported the model\n");
         out.push_back(imported);
     }
     return out;
