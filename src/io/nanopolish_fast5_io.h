@@ -96,4 +96,6 @@ std::string fast5_get_raw_read_group(fast5_file& fh, const std::string& read_id)
 //
 std::string fast5_get_string_attribute(fast5_file& fh, const std::string& group_name, const std::string& attribute_name);
 
+uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id);
+
 #endif

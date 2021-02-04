@@ -46,9 +46,11 @@ endif
 # Default to automatically installing EIGEN
 ifeq ($(EIGEN), install)
     EIGEN_CHECK = eigen/INSTALL
+    EIGEN_INCLUDE = -I./eigen/
 else
     # Use system-wide eigen
     EIGEN_CHECK =
+    EIGEN_INCLUDE ?=
 endif
 
 # Default to build and link the libhts submodule
@@ -58,7 +60,7 @@ ifeq ($(HTS), install)
 else
     # Use system-wide htslib
     HTS_LIB =
-    HTS_INCLUDE =
+    HTS_INCLUDE ?=
     LIBS += -lhts
 endif
 
@@ -81,9 +83,6 @@ endif
 
 # Include the header-only fast5 library
 FAST5_INCLUDE = -I./fast5/include
-
-# Include the header-only eigen library
-EIGEN_INCLUDE = -I./eigen/
 
 # Include the src subdirectories
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
@@ -124,10 +123,10 @@ lib/libhdf5.a:
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
 	if [ ! -e $(EIGEN_VERSION).tar.bz2 ]; then \
-		wget http://bitbucket.org/eigen/eigen/get/$(EIGEN_VERSION).tar.bz2; \
+		wget https://gitlab.com/libeigen/eigen/-/archive/$(EIGEN_VERSION)/eigen-$(EIGEN_VERSION).tar.bz2; \
 	fi
-	tar -xjf $(EIGEN_VERSION).tar.bz2 || exit 255
-	mv eigen-eigen-* eigen || exit 255
+	tar -xjf eigen-$(EIGEN_VERSION).tar.bz2 || exit 255
+	mv eigen-$(EIGEN_VERSION) eigen || exit 255
 
 #
 # Source files

@@ -20,6 +20,8 @@
 #include "nanopolish_phase_reads.h"
 #include "nanopolish_vcf2fasta.h"
 #include "nanopolish_polya_estimator.h"
+#include "nanopolish_fast5_check.h"
+#include "nanopolish_detect_polyi.h"
 #include "nanopolish_train_poremodel_from_basecalls.h"
 
 int print_usage(int argc, char **argv);
@@ -35,10 +37,12 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"getmodel",    getmodel_main},
     {"variants",    call_variants_main},
     {"methyltrain", methyltrain_main},
-    {"scorereads",  scorereads_main} ,
-    {"phase-reads", phase_reads_main} ,
-    {"vcf2fasta",   vcf2fasta_main} ,
-    {"polya",  polya_main} ,
+    {"scorereads",  scorereads_main},
+    {"phase-reads", phase_reads_main},
+    {"vcf2fasta",   vcf2fasta_main},
+    {"polya",  polya_main},
+    {"detect-polyi", detect_polyi_main} ,
+    {"fast5-check",  fast5_check_main},
     {"call-methylation",  call_methylation_main}
 };
 

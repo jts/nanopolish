@@ -16,6 +16,8 @@
 
 #define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
 
+#define H5Z_FILTER_VBZ 32020 //We need to find out what the numerical value for this is
+
 int verbose = 0;
 
 //
@@ -145,6 +147,10 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
     status = H5Dread(dset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, rawptr);
 
     if (status < 0) {
+	if(fast5_is_vbz_compressed(fh, read_id) == 1) {
+	    fprintf(stderr, "The fast5 file is compressed with VBZ but the required plugin is not loaded. Please read the instructions here: https://github.com/nanoporetech/vbz_compression/issues/5\n");
+	    exit(EXIT_FAILURE);
+	}
         free(rawptr);
 #ifdef DEBUG_FAST5_IO
         fprintf(stderr, "Failed to read raw data from dataset %s.\n", signal_path.c_str());
@@ -430,4 +436,34 @@ close_group:
     H5Gclose(group);
 
     return out;
+}
+
+uint8_t fast5_is_vbz_compressed(fast5_file& fh, const std::string& read_id) {
+
+    hid_t dset, dcpl; 
+    H5Z_filter_t filter_id = 0;
+    char filter_name[80];
+    size_t nelmts = 1; /* number of elements in cd_values */
+    unsigned int values_out[1] = {99}; 
+    unsigned int flags;
+
+    // mostly from scrappie
+    std::string raw_read_group = fast5_get_raw_read_group(fh, read_id);
+
+    // Create data set name
+    std::string signal_path = raw_read_group + "/Signal";
+
+    dset = H5Dopen (fh.hdf5_file, signal_path.c_str(), H5P_DEFAULT);
+
+    dcpl = H5Dget_create_plist (dset);
+
+    filter_id = H5Pget_filter2 (dcpl, (unsigned) 0, &flags, &nelmts, values_out, sizeof(filter_name) - 1, filter_name, NULL);
+
+    H5Pclose (dcpl);
+    H5Dclose (dset);
+
+    if(filter_id == H5Z_FILTER_VBZ)
+        return 1;
+    else 
+        return 0;
 }
