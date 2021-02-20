@@ -22,7 +22,7 @@ float profile_hmm_score(const HMMInputSequence& sequence, const std::vector<HMMI
 
 float profile_hmm_score(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    if(data.read->pore_type == PT_R9) {
+    if(data.read->pore_type == PORETYPE_R9) {
         return profile_hmm_score_r9(sequence, data, flags);
     } else {
         return profile_hmm_score_r7(sequence, data, flags);
@@ -57,7 +57,7 @@ float profile_hmm_score_set(const std::vector<HMMInputSequence>& sequences, cons
 
 std::vector<HMMAlignmentState> profile_hmm_align(const HMMInputSequence& sequence, const HMMInputData& data, const uint32_t flags)
 {
-    if(data.read->pore_type == PT_R9) {
+    if(data.read->pore_type == PORETYPE_R9) {
         return profile_hmm_align_r9(sequence, data, flags);
     } else {
         return profile_hmm_align_r7(sequence, data, flags);

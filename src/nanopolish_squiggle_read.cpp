@@ -106,7 +106,7 @@ SquiggleRead::SquiggleRead(const std::string& sequence, const Fast5Data& data, c
 void SquiggleRead::init(const std::string& read_sequence, const Fast5Data& data, const uint32_t flags)
 {
     this->nucleotide_type = SRNT_DNA;
-    this->pore_type = PT_UNKNOWN;
+    this->pore_type = PORETYPE_UNKNOWN;
     this->f_p = nullptr;
 
     this->events_per_base[0] = events_per_base[1] = 0.0f;
@@ -219,7 +219,7 @@ void SquiggleRead::load_from_events(const uint32_t flags)
         // in this case, we have to set this strand to be invalid
         if(!event_maps_1d[si].empty()) {
             // run version-specific load
-            if(pore_type == PT_R7) {
+            if(pore_type == PORETYPE_R7) {
                 _load_R7(si);
             } else {
                 _load_R9(si, read_sequences_1d[si], event_maps_1d[si], p_model_states, flags);
@@ -231,10 +231,10 @@ void SquiggleRead::load_from_events(const uint32_t flags)
 
     // Build the map from k-mers of the read sequence to events
     if(read_type == SRT_2D) {
-        if(pore_type == PT_R9) {
+        if(pore_type == PORETYPE_R9) {
             build_event_map_2d_r9();
         } else {
-            assert(pore_type == PT_R7);
+            assert(pore_type == PORETYPE_R7);
             build_event_map_2d_r7();
         }
     } else {
@@ -298,7 +298,7 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
     }
 
     this->read_type = SRT_TEMPLATE;
-    this->pore_type = PT_R9;
+    this->pore_type = PORETYPE_R9;
 
     // Set the base model for this read to either the nucleotide or U->T RNA model
     this->base_model[strand_idx] = PoreModelSet::get_model(kit, alphabet, strand_str, k);
@@ -1122,11 +1122,11 @@ void SquiggleRead::detect_pore_type()
     assert(f_p and f_p->is_open());
     if (f_p->have_basecall_model(0))
     {
-        pore_type = PT_R7;
+        pore_type = PORETYPE_R7;
     }
     else
     {
-        pore_type = PT_R9;
+        pore_type = PORETYPE_R9;
     }
 }
 
