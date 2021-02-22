@@ -70,7 +70,6 @@ void SquiggleScalings::set6(double _shift,
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags)
 {
     this->fast5_path = read_db.get_signal_path(name);
-    g_total_reads += 1;
     if(this->fast5_path == "") {
         g_bad_fast5_file += 1;
         return;
