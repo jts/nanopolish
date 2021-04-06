@@ -113,7 +113,7 @@ inline bool sortByPosition(const Variant& a, const Variant& b)
 class VariantKeyComp
 {
     public: 
-        inline bool operator()(const Variant& a, const Variant& b)
+        inline bool operator()(const Variant& a, const Variant& b) const
         {
             return a.key() < b.key();
         }
@@ -122,7 +122,7 @@ class VariantKeyComp
 class VariantKeyEqualityComp
 {
     public: 
-        inline bool operator()(const Variant& a, const Variant& b)
+        inline bool operator()(const Variant& a, const Variant& b) const
         {
             return a.key() == b.key();
         }
