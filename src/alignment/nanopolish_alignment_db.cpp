@@ -461,14 +461,14 @@ BamHandles _initialize_bam_itr(const std::string& bam_filename,
 
     // read the bam header to get the contig ID
     bam_hdr_t* hdr = sam_hdr_read(handles.bam_fh);
-    int contig_id = bam_name2id(hdr, contig.c_str());
+    int contig_id = sam_hdr_name2tid(hdr, contig.c_str());
     
     // Initialize iteration
     handles.bam_record = bam_init1();
     handles.itr = sam_itr_queryi(bam_idx, contig_id, start_position, stop_position);
 
     hts_idx_destroy(bam_idx);
-    bam_hdr_destroy(hdr);
+    sam_hdr_destroy(hdr);
     return handles;
 }
 

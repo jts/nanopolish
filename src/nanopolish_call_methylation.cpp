@@ -757,7 +757,7 @@ void run_watch_mode(const faidx_t* fai)
     // cleanup
     mm_idx_destroy(mi);
     mm_idx_reader_close(r);
-    bam_hdr_destroy(hdr);
+    sam_hdr_destroy(hdr);
 }
 
 void run_from_bam(const faidx_t* fai)

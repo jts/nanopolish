@@ -41,7 +41,7 @@ BamProcessor::BamProcessor(const std::string& bam_file,
 
 BamProcessor::~BamProcessor()
 {
-    bam_hdr_destroy(m_hdr);
+    sam_hdr_destroy(m_hdr);
     sam_close(m_bam_fh);
     hts_idx_destroy(m_bam_idx);
 }

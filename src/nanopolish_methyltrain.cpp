@@ -865,7 +865,7 @@ void train_one_round(const ReadDB& read_db,
 
     // cleanup
     sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
+    sam_hdr_destroy(hdr);
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);

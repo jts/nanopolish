@@ -453,7 +453,7 @@ int scorereads_main(int argc, char** argv)
 
     // cleanup
     sam_itr_destroy(itr);
-    bam_hdr_destroy(hdr);
+    sam_hdr_destroy(hdr);
     fai_destroy(fai);
     sam_close(bam_fh);
     hts_idx_destroy(bam_idx);
