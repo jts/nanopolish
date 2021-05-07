@@ -205,6 +205,71 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
+void project_calls_to_read(const std::string& ref_seq,
+                           const bam1_t* record,
+                           const int ref_start_pos,
+                           const std::map<int, ScoredSite>& calls)
+{
+    std::map<int, int> reference_to_read_map;
+    for(auto iter : calls) {
+        const ScoredSite& call = iter.second;
+        const std::string& seq = call.sequence;
+        int sp = call.start_position;
+
+        int first_cg_pos = -1;
+        for(size_t j = 0; j < seq.size() - 1; j++) {
+            if(seq[j] == 'C' && seq[j+1] == 'G') {
+                
+                // start pos records the position of the first CG, we need to offset here
+                // since the group sequence contains some flank
+                if(first_cg_pos == -1) {
+                    first_cg_pos = j;
+                }
+                reference_to_read_map[sp + j - first_cg_pos] = -1;
+            }
+        }
+    }
+
+    std::vector<AlignedSegment> segments = get_aligned_segments(record);
+    for(size_t i = 0; i < segments.size(); ++i) {
+        const AlignedSegment& segment = segments[i];
+        for(size_t j = 0; j < segment.size(); ++j) {
+            int ref_pos = segment[j].ref_pos;
+            int read_pos = segment[j].read_pos;
+
+            auto iter = reference_to_read_map.find(ref_pos);
+            if(iter != reference_to_read_map.end()) {
+                iter->second = read_pos;
+            }
+        }
+    }
+
+    // copy sequence out of the record
+    uint8_t* pseq = bam_get_seq(record);
+    std::string read_sequence;
+    read_sequence.resize(record->core.l_qseq);
+    for(int i = 0; i < record->core.l_qseq; ++i) {
+        read_sequence[i] = seq_nt16_str[bam_seqi(pseq, i)];
+    }
+
+    for(const auto iter : reference_to_read_map) {
+        int ref_pos = iter.first;
+        int read_pos = iter.second;
+        char ref_base = ref_seq[ref_pos - ref_start_pos];
+        char read_base = read_pos >= 0 ? read_sequence[read_pos] : '-';
+
+        std::string annotation;
+        if(ref_base == read_base) {
+            annotation = "MATCH";
+        } else if(read_base == '-') {
+            annotation = "DELETION";
+        } else {
+            annotation = "MISMATCH";
+        }
+        fprintf(stdout, "CALL_PROJECTION\t%d\t%d\t%c\t%c\t%s\n", ref_pos, read_pos, ref_base, read_base, annotation.c_str());
+    }
+}
+
 // Test motif sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
                                     SquiggleRead& sr,
@@ -219,6 +284,20 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 
     // An output map from reference positions to scored motif sites
     std::map<int, ScoredSite> site_score_map;
+    
+    // Retrieve reference
+    std::string contig = hdr->target_name[record->core.tid];
+    int ref_start_pos = record->core.pos;
+    int ref_end_pos =  bam_endpos(record);
+
+    // Extract the reference sequence for this region
+    int fetched_len = 0;
+    assert(ref_end_pos >= ref_start_pos);
+    std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos,
+                                                  ref_end_pos, &fetched_len);
+
+    // Remove non-ACGT bases from this reference segment
+    ref_seq = gDNAAlphabet.disambiguate(ref_seq);
 
     for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
         if(!sr.has_events_for_strand(strand_idx)) {
@@ -246,18 +325,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         std::vector<int> site_count;
 
 
-        std::string contig = hdr->target_name[record->core.tid];
-        int ref_start_pos = record->core.pos;
-        int ref_end_pos =  bam_endpos(record);
-
-        // Extract the reference sequence for this region
-        int fetched_len = 0;
-        assert(ref_end_pos >= ref_start_pos);
-        std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos,
-                                                      ref_end_pos, &fetched_len);
-
-        // Remove non-ACGT bases from this reference segment
-        ref_seq = gDNAAlphabet.disambiguate(ref_seq);
 
         // Scan the sequence for motifs
         std::vector<int> motif_sites;
@@ -625,7 +692,7 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
                                                                   hdr,
                                                                   _1);
 
-    // call.
+    // call
     processor.parallel_run(f);
 
     // clean up bam records
