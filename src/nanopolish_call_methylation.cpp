@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <iterator>
 #include <set>
 #include <omp.h>
 #include <getopt.h>
@@ -40,6 +41,7 @@
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_read_db.h"
 #include "nanopolish_fast5_processor.h"
+#include "nanopolish_bam_utils.h"
 #include "fs_support.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -270,6 +272,112 @@ void project_calls_to_read(const std::string& ref_seq,
     }
 }
 
+bam1_t* create_modbam_record(const bam1_t* record,
+                             std::string& ref_seq,
+                             const int ref_start_pos,
+                             const std::map<int, ScoredSite>& calls)
+{
+    
+
+    // determine the symbol for the unmodified and modified base
+    assert(mtest_alphabet->num_recognition_sites() == 1);
+    char unmodified_symbol = 'N';
+    char modified_symbol = METHYLATED_SYMBOL;
+    const char* modified_motif = mtest_alphabet->get_recognition_site_methylated(0);
+    for(size_t i = 0; i < mtest_alphabet->recognition_length(); ++i) {
+        if(modified_motif[i] == modified_symbol) {
+            assert(unmodified_symbol == 'N');
+            unmodified_symbol = mtest_alphabet->get_recognition_site(0)[i];
+        }
+    }
+    assert(unmodified_symbol != 'N');
+
+    // Convert the calls into a vector of indicies relative to the start of ref_seq and probabilities
+    std::vector<int> indices; 
+    std::vector<uint8_t> probabilities; 
+
+    for(auto iter : calls) {
+        const ScoredSite& call = iter.second;
+        const std::string& seq = call.sequence;
+
+        // convert the positions we've called at to Ms
+        std::string m_seq = mtest_alphabet->methylate(seq);
+
+        // start_position gives the position of the first site in the group
+        // we need to record an offset here so we don't count the flank
+        int start_pos = call.start_position;
+        size_t flank_offset = m_seq.find_first_of(METHYLATED_SYMBOL);
+        assert(flank_offset != std::string::npos);
+        
+        // this is shared across all CGs in the site
+        double methylation_probability = exp(call.ll_methylated[0]) / ( exp(call.ll_methylated[0]) + exp(call.ll_unmethylated[0]) );
+        uint8_t methylation_probability_code = std::min(255, (int)(methylation_probability * 255));
+
+        for(size_t j = 0; j < m_seq.size(); j++) {
+            if(m_seq[j] == METHYLATED_SYMBOL) {
+                int reference_position = start_pos + j - flank_offset;
+                int reference_index = reference_position - ref_start_pos;
+                indices.push_back(reference_index);
+                probabilities.push_back(methylation_probability_code);
+            }
+        }
+    }
+
+    std::string delta_str;
+    delta_str += unmodified_symbol;
+    delta_str += "+m";
+
+    int count_start = 0;
+    for(size_t call_index = 0; call_index < indices.size(); ++call_index) {
+        // Count the number of unmodified bases preceding this position
+        int count = 0;
+        for(size_t j = count_start; j < indices[call_index]; ++j) {
+            count += ref_seq[j] == unmodified_symbol;
+        }
+        
+        //fprintf(stderr, "TAG_CONSTRUCT\t%d\t%d\t%d\t%s\n", indices[call_index] + ref_start_pos, count, probabilities[call_index], ref_seq.substr(indices[call_index], 2).c_str());
+
+        // this intentionally adds a delimiter to the first element
+        delta_str += ',';
+        delta_str += std::to_string(count);
+
+        count_start = indices[call_index] + 1;
+    }
+
+    // rewrite SEQ/cigar with reference sequence
+    bam1_t* out_record = bam_init1();
+
+    // basic stats
+    out_record->core.tid = record->core.tid;
+    out_record->core.pos = record->core.pos;
+    out_record->core.qual = record->core.qual;
+    out_record->core.flag = 0;
+    out_record->core.bin = record->core.bin;
+
+    // no read pairs
+    out_record->core.mtid = -1;
+    out_record->core.mpos = -1;
+    out_record->core.isize = 0;
+
+    std::string read_name = bam_get_qname(record);
+    std::string outqual(ref_seq.length(), 30);
+
+    std::vector<uint32_t> cigar;
+    uint32_t cigar_op = ref_seq.size() << BAM_CIGAR_SHIFT | BAM_CMATCH;
+    cigar.push_back(cigar_op);
+    write_bam_vardata(out_record, read_name, cigar, ref_seq, outqual);
+    
+    fprintf(stderr, "%s STR %s\n", bam_get_qname(record), delta_str.c_str());
+    int status = bam_aux_update_str(out_record, "Mm", delta_str.size() + 1, delta_str.c_str());
+    assert(status == 0);
+    
+    status = bam_aux_update_array(out_record, "Ml", 'C', probabilities.size(), probabilities.data());
+    assert(status == 0);
+
+    return out_record;
+}
+
+
 // Test motif sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
                                     SquiggleRead& sr,
@@ -323,8 +431,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         std::vector<int> site_starts;
         std::vector<int> site_ends;
         std::vector<int> site_count;
-
-
 
         // Scan the sequence for motifs
         std::vector<int> motif_sites;
@@ -461,6 +567,19 @@ void calculate_methylation_for_read(const OutputHandles& handles,
             fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
             fprintf(handles.site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
         }
+        
+        // if the write bam option is turned on, write the alignment to disk
+        if(handles.bam_writer != NULL) {
+            bam1_t* modbam_record = create_modbam_record(record, ref_seq, ref_start_pos, site_score_map);
+            
+            int write_ret = sam_write1(handles.bam_writer, hdr, modbam_record);
+            if(write_ret < 0) {
+                fprintf(stderr, "error writing bam %d\n", write_ret);
+            }
+
+            bam_destroy1(modbam_record); // automatically frees malloc'd segment
+        }
+
     }
 }
 
@@ -837,13 +956,24 @@ void run_from_bam(const faidx_t* fai)
     handles.site_writer = stdout;
     handles.write_site_header();
 
+    std::string bam_outname = "test_methylation_tags.bam";
+
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
     auto f = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
+    
+    // initialize bam writer
+    handles.bam_writer = hts_open(bam_outname.c_str(), "bw");
+    int ret = sam_hdr_write(handles.bam_writer, processor.get_bam_header());
+    if(ret != 0) {
+        fprintf(stderr, "Error writing SAM header\n");
+        exit(EXIT_FAILURE);
+    }
     processor.parallel_run(f);
+    handles.close();
 }
 
 void parse_call_methylation_options(int argc, char** argv)
