@@ -6,6 +6,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 
 ## Release notes
 
+* 0.13.3: fix conda build issues, better handling of VBZ-compressed files, integration of module for [nano-COP](https://www.nature.com/articles/s41596-020-00469-y)
+
 * 0.13.2: fix memory leak when loading signal data
 
 * 0.13.1: fix `nanopolish index` performance issue for some barcoding runs
