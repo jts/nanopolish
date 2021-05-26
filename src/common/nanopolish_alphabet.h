@@ -125,10 +125,10 @@ class Alphabet
                 RecognitionMatch match;
 
                 // Does this location (partially) match a methylated recognition site?
-                for(size_t j = 0; j < num_recognition_sites(); ++j) {
-                    match = match_to_site(str, i, get_recognition_site_methylated(j), recognition_length());
+                for(size_t k = 0; k < num_recognition_sites(); ++k) {
+                    match = match_to_site(str, i, get_recognition_site_methylated(k), recognition_length());
                     if(match.length > 0 && match.covers_methylated_site) {
-                        recognition_index = j;
+                        recognition_index = k;
                         break;
                     }
                 }
