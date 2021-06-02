@@ -52,8 +52,16 @@ class PoreModelSet
                                           const std::string& alphabet,
                                           const std::string& strand,
                                           size_t k);
-
+        
+        //
+        // Get a single model
+        //
         static const PoreModel* get_model_by_key(const std::string& key);
+
+        //
+        // Get pointers to all models
+        //
+        static std::vector<const PoreModel*> get_all_models();
 
         //
         // get all the models for the combination of parameters
