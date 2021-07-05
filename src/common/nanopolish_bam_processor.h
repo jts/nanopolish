@@ -12,8 +12,18 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 #include "htslib/hts.h"
 #include "htslib/sam.h"
+
+typedef std::function<void(const bam_hdr_t* hdr,
+          const bam1_t* record,
+          size_t read_idx,
+          int region_start,
+          int region_end)> bam_record_function;
+
+typedef std::function<void(const bam_hdr_t* hdr,
+          const std::vector<bam1_t*> batch)> batch_function;
 
 class BamProcessor
 {
@@ -35,11 +45,7 @@ class BamProcessor
         void set_min_mapping_quality(size_t min_mapq) { m_min_mapping_quality = min_mapq; }
 
         // process each record in parallel, using the input function
-        void parallel_run( std::function<void(const bam_hdr_t* hdr, 
-                                     const bam1_t* record,
-                                     size_t read_idx,
-                                     int region_start,
-                                     int region_end)> func);
+        void parallel_run(bam_record_function record_func, batch_function batch_func = nullptr);
 
     private:
         std::string m_bam_file;
