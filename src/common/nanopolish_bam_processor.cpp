@@ -107,7 +107,11 @@ void BamProcessor::parallel_run(bam_record_function record_func, batch_function 
 
             // do any post-processing of the entire batch (typically I/O)
             if(batch_func) {
-                batch_func(m_hdr, records);
+
+                // the records vector always has size m_batch_size, we may have processed fewer records (if we hit the end of file)
+                std::vector<bam1_t*> batch_records(records.begin(), records.begin() + num_records_buffered);
+                assert(batch_records.size() == num_records_buffered);
+                batch_func(m_hdr, batch_records);
             }
 
             num_reads_realigned += num_records_buffered;

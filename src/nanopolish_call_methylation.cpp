@@ -93,6 +93,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
+"  -o, --modbam-output-name=FILE        write the results as tags in FILE (default: tsv output)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
 "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
@@ -115,6 +116,7 @@ namespace opt
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
     static std::string watch_dir;
+    static std::string modbam_output_name;
     static int watch_write_bam;
     static int watch_process_total = 1;
     static int watch_process_index = 0;
@@ -125,7 +127,7 @@ namespace opt
     static int min_mapping_quality = 20;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:q:c:o:i:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
@@ -140,6 +142,7 @@ static const struct option longopts[] = {
     { "models-fofn",          required_argument, NULL, 'm' },
     { "watch-process-total",  required_argument, NULL, 'c' },
     { "watch-process-index",  required_argument, NULL, 'i' },
+    { "modbam-output-name",   required_argument, NULL, 'o' },
     { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
     { "watch",                required_argument, NULL, OPT_WATCH_DIR },
     { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
@@ -151,6 +154,7 @@ static const struct option longopts[] = {
 };
 
 void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
+                                             MethylationCallingResult& result,
                                              const ReadDB& read_db,
                                              const faidx_t* fai,
                                              const bam_hdr_t* hdr,
@@ -162,10 +166,11 @@ void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
-    calculate_methylation_for_read(handles, sr, opt::calling_parameters, fai, hdr, record, read_idx, region_start, region_end);
+    calculate_methylation_for_read(handles, result, sr, opt::calling_parameters, fai, hdr, record, read_idx, region_start, region_end);
 }
 
 void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
+                                               MethylationCallingResult& result,
                                                const std::unordered_map<std::string, std::string>& sequence_map,
                                                const std::unordered_map<std::string, std::vector<bam1_t*>>& alignment_map,
                                                const faidx_t* fai,
@@ -193,7 +198,7 @@ void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
 
     //
     for(size_t i = 0; i < bam_records.size(); ++i) {
-        calculate_methylation_for_read(handles, sr, opt::calling_parameters, fai, hdr, bam_records[i], -1, -1, -1);
+        calculate_methylation_for_read(handles, result, sr, opt::calling_parameters, fai, hdr, bam_records[i], -1, -1, -1);
     }
 }
 
@@ -370,16 +375,20 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
 
     // use fast5 processor to iterate over the signal reads, and run our call-methylation function
     status.update("calling " + basename);
+    MethylationCallingResult result;
     Fast5Processor processor(batch.fast5_path, opt::num_threads);
     auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
+                                                                  std::ref(result),
                                                                   std::ref(read_sequence_map),
                                                                   std::ref(read_alignment_map),
                                                                   fai,
                                                                   hdr,
                                                                   _1);
-
+    
     // call
     processor.parallel_run(f);
+
+    assert(false && "implement writing batched results");
 
     // clean up bam records
     size_t count = 0;
@@ -513,6 +522,58 @@ void run_watch_mode(const faidx_t* fai)
     bam_hdr_destroy(hdr);
 }
 
+void write_methylation_results_as_tsv(FILE* site_writer, const bam1_t* record, std::map<int, ScoredSite>& site_score_map)
+{
+    std::string read_orientation = bam_is_rev(record) ? "-" : "+";
+
+    // 
+    for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
+
+        const ScoredSite& ss = iter->second;
+        double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
+        double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
+        double diff = sum_ll_m - sum_ll_u;
+        
+        fprintf(site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
+        fprintf(site_writer, "%s\t%.2lf\t", bam_get_qname(record), diff);
+        fprintf(site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
+        fprintf(site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
+    }
+    
+}
+
+void write_methylation_results_for_batch(const OutputHandles& handles,
+                                         MethylationCallingResult& results,
+                                         const MethylationCallingParameters& calling_parameters,
+                                         const bam_hdr_t* hdr,
+                                         const std::vector<bam1_t*> batch)
+{
+    // write all sites for each alignment
+    for(auto record : batch) {
+
+        // tsv
+        if(handles.site_writer != NULL) {
+            write_methylation_results_as_tsv(handles.site_writer, record, results[record]);   
+        }
+        
+        // bam
+        if(handles.bam_writer != NULL) {
+            bam1_t* modbam_record = create_modbam_record(record, results[record], calling_parameters);
+            
+            fprintf(stderr, "Writing record for %zu (%s)\n", record, bam_get_qname(record));
+            int write_ret = sam_write1(handles.bam_writer, hdr, modbam_record);
+            if(write_ret < 0) {
+                fprintf(stderr, "error writing bam %d\n", write_ret);
+            }
+
+            bam_destroy1(modbam_record); 
+        }
+    }
+
+    //
+    results.clear();
+}
+
 void run_from_bam(const faidx_t* fai)
 {
     ReadDB read_db;
@@ -520,26 +581,37 @@ void run_from_bam(const faidx_t* fai)
 
     // Initialize writers
     OutputHandles handles;
-    handles.site_writer = stdout;
-    handles.write_site_header();
-
-    std::string bam_outname = "test_methylation_tags.bam";
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+    MethylationCallingResult result;
+
+    // this function is run on each bam record, which calculates modifications for each alignment and stores them in result
+    auto record_func = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(result), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+
+    // this function processes the results for every batch of reads processed
+    // this is needed so we can write the alignments in the same order that they currently reside in the bam
+    // (since BamProcessor is multithreaded, they may be processed out-of-order)
+    auto batch_func = std::bind(write_methylation_results_for_batch, std::ref(handles), std::ref(result), std::ref(opt::calling_parameters), _1, _2);
+
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
     
-    // initialize bam writer
-    handles.bam_writer = hts_open(bam_outname.c_str(), "bw");
-    int ret = sam_hdr_write(handles.bam_writer, processor.get_bam_header());
-    if(ret != 0) {
-        fprintf(stderr, "Error writing SAM header\n");
-        exit(EXIT_FAILURE);
+    // initialize the writer - tsv (default) or modbam
+    if(opt::modbam_output_name.empty()) {
+        handles.site_writer = stdout;
+        handles.write_site_header();
+    } else {
+        handles.bam_writer = hts_open(opt::modbam_output_name.c_str(), "bw");
+        int ret = sam_hdr_write(handles.bam_writer, processor.get_bam_header());
+        if(ret != 0) {
+            fprintf(stderr, "Error writing SAM header\n");
+            exit(EXIT_FAILURE);
+        }
     }
-    processor.parallel_run(f);
+
+    processor.parallel_run(record_func, batch_func);
     handles.close();
 }
 
@@ -561,6 +633,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'K': arg >> opt::batch_size; break;
             case 'c': arg >> opt::watch_process_total; break;
             case 'i': arg >> opt::watch_process_index; break;
+            case 'o': arg >> opt::modbam_output_name; break;
             case OPT_MIN_SEPARATION: arg >> opt::calling_parameters.min_separation; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;

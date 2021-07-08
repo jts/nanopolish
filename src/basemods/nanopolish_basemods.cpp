@@ -79,26 +79,193 @@ void project_calls_to_read(const std::string& ref_seq,
     }
 }
 
+void get_modification_symbols(const Alphabet* alphabet, char& unmodified_symbol, char modified_symbol)
+{
+    // determine the symbol for the unmodified and modified base
+    assert(alphabet->num_recognition_sites() == 1);
+    unmodified_symbol = 'N';
+    modified_symbol = METHYLATED_SYMBOL;
+    const char* modified_motif = alphabet->get_recognition_site_methylated(0);
+    for(size_t i = 0; i < alphabet->recognition_length(); ++i) {
+        if(modified_motif[i] == modified_symbol) {
+            assert(unmodified_symbol == 'N');
+            unmodified_symbol = alphabet->get_recognition_site(0)[i];
+        }
+    }
+    assert(unmodified_symbol != 'N');
+}
+
+void calculate_call_vectors(const std::map<int, ScoredSite>& calls, 
+                            const Alphabet* alphabet, 
+                            std::vector<size_t>& call_reference_positions,
+                            std::vector<uint8_t>& call_probabilities)
+{
+    for(auto iter : calls) {
+        const ScoredSite& call = iter.second;
+        const std::string& seq = call.sequence;
+
+        // convert the positions we've called at to Ms
+        std::string m_seq = alphabet->methylate(seq);
+
+        // start_position gives the position of the first site in the group
+        // we need to record an offset here so we don't count the flank
+        int start_pos = call.start_position;
+        size_t flank_offset = m_seq.find_first_of(METHYLATED_SYMBOL);
+        assert(flank_offset != std::string::npos);
+        
+        // this is shared across all CGs in the site
+        double methylation_probability = exp(call.ll_methylated[0]) / ( exp(call.ll_methylated[0]) + exp(call.ll_unmethylated[0]) );
+        uint8_t methylation_probability_code = std::min(255, (int)(methylation_probability * 255));
+
+        for(size_t j = 0; j < m_seq.size(); j++) {
+            if(m_seq[j] == METHYLATED_SYMBOL) {
+                int reference_position = start_pos + j - flank_offset;
+                call_reference_positions.push_back(reference_position);
+                call_probabilities.push_back(methylation_probability_code);
+            }
+        }
+    }
+}
+
 bam1_t* create_modbam_record(const bam1_t* record,
-                             std::string& ref_seq,
-                             const int ref_start_pos,
                              const std::map<int, ScoredSite>& calls,
                              const MethylationCallingParameters& calling_parameters)
 {
     
-
-    // determine the symbol for the unmodified and modified base
-    assert(calling_parameters.alphabet->num_recognition_sites() == 1);
     char unmodified_symbol = 'N';
-    char modified_symbol = METHYLATED_SYMBOL;
-    const char* modified_motif = calling_parameters.alphabet->get_recognition_site_methylated(0);
-    for(size_t i = 0; i < calling_parameters.alphabet->recognition_length(); ++i) {
-        if(modified_motif[i] == modified_symbol) {
-            assert(unmodified_symbol == 'N');
-            unmodified_symbol = calling_parameters.alphabet->get_recognition_site(0)[i];
+    char modified_symbol = 'N';
+    get_modification_symbols(calling_parameters.alphabet, unmodified_symbol, modified_symbol);
+
+    // Convert the calls into a vector of reference positions and probabilities
+    std::vector<size_t> call_reference_positions; 
+    std::vector<uint8_t> call_reference_probabilities; 
+
+    calculate_call_vectors(calls, calling_parameters.alphabet, call_reference_positions, call_reference_probabilities);
+
+    // create a map from reference position -> read position from the CIGAR string in the BAM
+    bool rc = bam_is_rev(record);
+    SequenceAlignmentRecord alignment(record);
+
+    std::string original_sequence = !rc ? alignment.sequence : gDNAAlphabet.reverse_complement(alignment.sequence);
+
+    std::map<size_t, size_t> reference_to_read_map;
+    for(auto& aligned_pair : alignment.aligned_bases) {
+        reference_to_read_map[aligned_pair.ref_pos] = !rc ? aligned_pair.read_pos : original_sequence.length() - aligned_pair.read_pos - 1;
+    }
+    
+    // TODO: support/test other modes
+    int strand_offset = !rc ? 0 : 1;
+    assert(calling_parameters.alphabet->get_name() == "cpg");
+
+    // convert the call reference positions into a vector of indices into the SEQ record of the BAM (which is held in SequenceAlignmentRecord)
+    // NB some calls may get dropped so we need to make a new probabilities vector too
+    std::vector<size_t> call_seq_indices;
+    std::vector<uint8_t> call_seq_probabilities;
+    for(size_t i = 0; i < call_reference_positions.size(); ++i) {
+
+        // the rc offset is to account for that fact that when sequencing a CG on the opposite strand
+        // the read base we're interested in is aligned to the G
+
+        // ref       ATTACGTTTA
+        // rc(read)  ATTACGTTTA
+        //                ^
+        size_t reference_position = call_reference_positions[i] + strand_offset;
+        auto iter = reference_to_read_map.find(reference_position);
+        if(iter != reference_to_read_map.end()) {
+            size_t read_index = iter->second;
+            fprintf(stderr, "%s %zu maps to %zu (%c)\n", bam_get_qname(record), call_reference_positions[i], read_index, original_sequence[read_index]);
+            assert(read_index < original_sequence.size());
+            if(original_sequence[read_index] == unmodified_symbol) {
+                call_seq_indices.push_back(read_index);
+                call_seq_probabilities.push_back(call_reference_probabilities[i]);
+            }
         }
     }
-    assert(unmodified_symbol != 'N');
+
+    // reverse arrays when SEQ is reverse complemented so we proceed in the original direction
+    if(rc) {
+        std::reverse(call_seq_indices.begin(), call_seq_indices.end());
+        std::reverse(call_seq_probabilities.begin(), call_seq_probabilities.end());
+    }
+
+    std::string delta_str;
+    delta_str += unmodified_symbol;
+    delta_str += "+m";
+
+    int count_start = 0;
+    for(size_t call_index = 0; call_index < call_seq_indices.size(); ++call_index) {
+        // Count the number of unmodified bases preceding this position
+        int count = 0;
+        for(size_t j = count_start; j < call_seq_indices[call_index]; ++j) {
+            count += original_sequence[j] == unmodified_symbol;
+        }
+        
+        fprintf(stderr, "TAG_CONSTRUCT\t%s\t%d\t%d\t%d\t%s\n", 
+            bam_get_qname(record),
+            call_seq_indices[call_index], 
+            count, 
+            call_seq_probabilities[call_index], 
+            original_sequence.substr(call_seq_indices[call_index], 2).c_str());
+
+        // this intentionally adds a delimiter to the first element
+        delta_str += ',';
+        delta_str += std::to_string(count);
+
+        count_start = call_seq_indices[call_index] + 1;
+    }
+
+    bam1_t* mod_record = bam_dup1(record);
+
+    fprintf(stderr, "%s STR %s\n", bam_get_qname(record), delta_str.c_str());
+    int status = bam_aux_update_str(mod_record, "Mm", delta_str.size() + 1, delta_str.c_str());
+    assert(status == 0);
+    
+    status = bam_aux_update_array(mod_record, "Ml", 'C', call_seq_probabilities.size(), call_seq_probabilities.data());
+    assert(status == 0);
+    return mod_record;
+#if 0
+    // rewrite SEQ/cigar with reference sequence
+    bam1_t* out_record = bam_init1();
+
+    // basic stats
+    out_record->core.tid = record->core.tid;
+    out_record->core.pos = record->core.pos;
+    out_record->core.qual = record->core.qual;
+    out_record->core.flag = 0;
+    out_record->core.bin = record->core.bin;
+
+    // no read pairs
+    out_record->core.mtid = -1;
+    out_record->core.mpos = -1;
+    out_record->core.isize = 0;
+
+    std::string read_name = bam_get_qname(record);
+    std::string outqual(ref_seq.length(), 30);
+
+    std::vector<uint32_t> cigar;
+    uint32_t cigar_op = ref_seq.size() << BAM_CIGAR_SHIFT | BAM_CMATCH;
+    cigar.push_back(cigar_op);
+    write_bam_vardata(out_record, read_name, cigar, ref_seq, outqual);
+    
+    fprintf(stderr, "%s STR %s\n", bam_get_qname(record), delta_str.c_str());
+    int status = bam_aux_update_str(out_record, "Mm", delta_str.size() + 1, delta_str.c_str());
+    assert(status == 0);
+    
+    status = bam_aux_update_array(out_record, "Ml", 'C', probabilities.size(), probabilities.data());
+    assert(status == 0);
+    return out_record;
+#endif
+}
+
+bam1_t* create_reference_modbam_record(const bam1_t* record,
+                                       const std::string& ref_seq,
+                                       const int ref_start_pos,
+                                       const std::map<int, ScoredSite>& calls,
+                                       const MethylationCallingParameters& calling_parameters)
+{
+    char unmodified_symbol = 'N';
+    char modified_symbol = 'N';
+    get_modification_symbols(calling_parameters.alphabet, unmodified_symbol, modified_symbol);
 
     // Convert the calls into a vector of indicies relative to the start of ref_seq and probabilities
     std::vector<int> indices; 
@@ -187,6 +354,7 @@ bam1_t* create_modbam_record(const bam1_t* record,
 
 // Test motif sites in this read for methylation
 void calculate_methylation_for_read(const OutputHandles& handles,
+                                    MethylationCallingResult& result,
                                     SquiggleRead& sr,
                                     const MethylationCallingParameters& calling_parameters,
                                     const faidx_t* fai,
@@ -196,10 +364,15 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                                     int region_start,
                                     int region_end)
 {
-    std::string read_orientation = bam_is_rev(record) ? "-" : "+";
 
-    // An output map from reference positions to scored motif sites
-    std::map<int, ScoredSite> site_score_map;
+    // Insert this bam record into the result structure to initialize a new site score map
+    assert(record != NULL);
+
+    std::map<int, ScoredSite>* site_score_map = NULL;
+    #pragma omp critical
+    {
+        site_score_map = &result[record];
+    }
     
     // Retrieve reference
     std::string contig = hdr->target_name[record->core.tid];
@@ -328,13 +501,21 @@ void calculate_methylation_for_read(const OutputHandles& handles,
 
             // Aggregate score
             int start_position = motif_sites[start_idx] + ref_start_pos;
-            auto iter = site_score_map.find(start_position);
-            if(iter == site_score_map.end()) {
+            int end_position = motif_sites[end_idx - 1] + ref_start_pos;
+            
+            // do not output if outside the window boundaries
+            if((region_start != -1 && start_position < region_start) ||
+               (region_end != -1 && end_position >= region_end)) {
+                continue;
+            }
+
+            auto iter = site_score_map->find(start_position);
+            if(iter == site_score_map->end()) {
                 // insert new score into the map
                 ScoredSite ss;
                 ss.chromosome = contig;
                 ss.start_position = start_position;
-                ss.end_position = motif_sites[end_idx - 1] + ref_start_pos;
+                ss.end_position = end_position;
                 ss.n_motif = end_idx - start_idx;
 
                 // extract the motif site(s) with a k-mers worth of surrounding context
@@ -343,7 +524,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
                 ss.sequence = ref_seq.substr(site_output_start, site_output_end - site_output_start);
 
                 // insert into the map
-                iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
+                iter = site_score_map->insert(std::make_pair(start_position, ss)).first;
             }
 
             // set strand-specific score
@@ -354,10 +535,11 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         } // for group
     } // for strands
 
+#if 0
     #pragma omp critical(call_methylation_write)
     {
         // write all sites for this read
-        for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
+        for(auto iter = site_score_map->begin(); iter != site_score_map->end(); ++iter) {
 
             const ScoredSite& ss = iter->second;
             double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
@@ -378,7 +560,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         
         // if the write bam option is turned on, write the alignment to disk
         if(handles.bam_writer != NULL) {
-            bam1_t* modbam_record = create_modbam_record(record, ref_seq, ref_start_pos, site_score_map, calling_parameters);
+            bam1_t* modbam_record = create_modbam_record(record, ref_seq, ref_start_pos, *site_score_map, calling_parameters);
             
             int write_ret = sam_write1(handles.bam_writer, hdr, modbam_record);
             if(write_ret < 0) {
@@ -389,5 +571,6 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         }
 
     }
+#endif
 }
 

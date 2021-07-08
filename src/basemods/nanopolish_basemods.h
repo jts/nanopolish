@@ -30,7 +30,7 @@ struct OutputHandles
     }
 
     void close() {
-        if(site_writer != stdout) {
+        if(site_writer != stdout && site_writer != NULL) {
             fclose(site_writer);
             site_writer = NULL;
         }
@@ -76,9 +76,18 @@ struct MethylationCallingParameters
     const Alphabet* alphabet = NULL;
 };
 
+// typedefs
+typedef std::map<const bam1_t*, std::map<int, ScoredSite> > MethylationCallingResult;
+
+// Construct a copy of record annotated with base modification tags
+// The returned record must be freed by the caller
+bam1_t* create_modbam_record(const bam1_t* record,
+                             const std::map<int, ScoredSite>& calls,
+                             const MethylationCallingParameters& calling_parameters);
 
 // Process methylation sites in the provided read
 void calculate_methylation_for_read(const OutputHandles& handles,
+                                    MethylationCallingResult& result,
                                     SquiggleRead& sr,
                                     const MethylationCallingParameters& calling_parameters,
                                     const faidx_t* fai,
