@@ -85,6 +85,16 @@ bam1_t* create_modbam_record(const bam1_t* record,
                              const std::map<int, ScoredSite>& calls,
                              const MethylationCallingParameters& calling_parameters);
 
+
+// Construct a new bam record where the read sequence is replaced with the reference
+// and is annotated with methylation tags
+// The returned record must be freed by the caller
+bam1_t* create_reference_modbam_record(const faidx_t* fai,
+                                       const bam_hdr_t* hdr,
+                                       const bam1_t* record,
+                                       const std::map<int, ScoredSite>& calls,
+                                       const MethylationCallingParameters& calling_parameters);
+
 // Process methylation sites in the provided read
 void calculate_methylation_for_read(const OutputHandles& handles,
                                     MethylationCallingResult& result,

@@ -94,6 +94,9 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -o, --modbam-output-name=FILE        write the results as tags in FILE (default: tsv output)\n"
+"  -s, --modbam-style=STRING            modbam output style either 'reference' or 'read' (default: read)\n"
+"                                       when this is set to reference the SEQ field in the output will be the reference\n"
+"                                       sequence spanned by the read\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
 "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
@@ -117,6 +120,7 @@ namespace opt
     static std::string motif_methylation_model_type = "reftrained";
     static std::string watch_dir;
     static std::string modbam_output_name;
+    static std::string modbam_style = "read";
     static int watch_write_bam;
     static int watch_process_total = 1;
     static int watch_process_index = 0;
@@ -127,7 +131,7 @@ namespace opt
     static int min_mapping_quality = 20;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:K:q:c:o:i:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:q:c:o:i:s:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
@@ -143,6 +147,7 @@ static const struct option longopts[] = {
     { "watch-process-total",  required_argument, NULL, 'c' },
     { "watch-process-index",  required_argument, NULL, 'i' },
     { "modbam-output-name",   required_argument, NULL, 'o' },
+    { "modbam-style",         required_argument, NULL, 's' },
     { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
     { "watch",                required_argument, NULL, OPT_WATCH_DIR },
     { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
@@ -545,6 +550,7 @@ void write_methylation_results_as_tsv(FILE* site_writer, const bam1_t* record, s
 void write_methylation_results_for_batch(const OutputHandles& handles,
                                          MethylationCallingResult& results,
                                          const MethylationCallingParameters& calling_parameters,
+                                         const faidx_t* fai,
                                          const bam_hdr_t* hdr,
                                          const std::vector<bam1_t*> batch)
 {
@@ -558,9 +564,15 @@ void write_methylation_results_for_batch(const OutputHandles& handles,
         
         // bam
         if(handles.bam_writer != NULL) {
-            bam1_t* modbam_record = create_modbam_record(record, results[record], calling_parameters);
-            
-            fprintf(stderr, "Writing record for %zu (%s)\n", record, bam_get_qname(record));
+
+            bam1_t* modbam_record = NULL;
+            if(opt::modbam_style == "read") {
+                modbam_record = create_modbam_record(record, results[record], calling_parameters);
+            } else {
+                assert(opt::modbam_style == "reference");
+                modbam_record = create_reference_modbam_record(fai, hdr, record, results[record], calling_parameters);
+            }
+
             int write_ret = sam_write1(handles.bam_writer, hdr, modbam_record);
             if(write_ret < 0) {
                 fprintf(stderr, "error writing bam %d\n", write_ret);
@@ -593,7 +605,7 @@ void run_from_bam(const faidx_t* fai)
     // this function processes the results for every batch of reads processed
     // this is needed so we can write the alignments in the same order that they currently reside in the bam
     // (since BamProcessor is multithreaded, they may be processed out-of-order)
-    auto batch_func = std::bind(write_methylation_results_for_batch, std::ref(handles), std::ref(result), std::ref(opt::calling_parameters), _1, _2);
+    auto batch_func = std::bind(write_methylation_results_for_batch, std::ref(handles), std::ref(result), std::ref(opt::calling_parameters), fai, _1, _2);
 
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
@@ -634,6 +646,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'c': arg >> opt::watch_process_total; break;
             case 'i': arg >> opt::watch_process_index; break;
             case 'o': arg >> opt::modbam_output_name; break;
+            case 's': arg >> opt::modbam_style; break;
             case OPT_MIN_SEPARATION: arg >> opt::calling_parameters.min_separation; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;
@@ -687,6 +700,11 @@ void parse_call_methylation_options(int argc, char** argv)
 
     if(opt::watch_process_index >= opt::watch_process_total) {
         std::cerr << SUBPROGRAM ": invalid --watch-process-index (must be less than --watch-process-count)\n";
+        die = true;
+    }
+
+    if(opt::modbam_style != "read" && opt::modbam_style != "reference") {
+        std::cerr << SUBPROGRAM ": unknown --modbam-style option: " << opt::modbam_style << "\n";
         die = true;
     }
 
