@@ -101,6 +101,7 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
+	cp etc/htslib_config.h htslib/config.h
 	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 minimap2/libminimap2.a:
