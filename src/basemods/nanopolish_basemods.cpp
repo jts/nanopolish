@@ -99,6 +99,8 @@ std::string generate_mm_tag(char unmodified_symbol, const std::string& sequence,
 
         count_start = call_seq_indices[call_index] + 1;
     }
+
+    delta_str += ';';
     return delta_str;
 }
 
