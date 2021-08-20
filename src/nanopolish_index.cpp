@@ -17,7 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <getopt.h>
-
+#include <slow5/slow5.h>
 #include <fast5.hpp>
 #include "nanopolish_index.h"
 #include "nanopolish_common.h"
@@ -40,6 +40,8 @@ static const char *INDEX_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "      --version                        display version\n"
 "  -v, --verbose                        display verbose output\n"
+" -t INT                                number of threads used for bgzf compression (makes indexing faster)\n"
+"      --slow5 FILE                     slow5 file\n"
 "  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
 "  -s, --sequencing-summary             the sequencing summary file from albacore, providing this option will make indexing much faster\n"
 "  -f, --summary-fofn                   file containing the paths to the sequencing summary files (one per line)\n"
@@ -52,6 +54,8 @@ namespace opt
     static std::string reads_file;
     static std::vector<std::string> sequencing_summary_files;
     static std::string sequencing_summary_fofn;
+    static int threads = 1;
+    static char *slow5file = NULL;
 }
 static std::ostream* os_p;
 
@@ -208,7 +212,7 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
     }
 }
 
-static const char* shortopts = "vd:f:s:";
+static const char* shortopts = "vd:f:s:t:";
 
 enum {
     OPT_HELP = 1,
@@ -217,21 +221,24 @@ enum {
 };
 
 static const struct option longopts[] = {
-    { "help",                      no_argument,       NULL, OPT_HELP },
-    { "version",                   no_argument,       NULL, OPT_VERSION },
-    { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL },
-    { "verbose",                   no_argument,       NULL, 'v' },
-    { "directory",                 required_argument, NULL, 'd' },
-    { "sequencing-summary-file",   required_argument, NULL, 's' },
-    { "summary-fofn",              required_argument, NULL, 'f' },
+    { "help",                      no_argument,       NULL, OPT_HELP }, //0
+    { "version",                   no_argument,       NULL, OPT_VERSION }, //1
+    { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL }, //2
+    { "verbose",                   no_argument,       NULL, 'v' }, //3
+    { "directory",                 required_argument, NULL, 'd' }, //4
+    { "sequencing-summary-file",   required_argument, NULL, 's' }, //5
+    { "summary-fofn",              required_argument, NULL, 'f' }, //6
+    { "threads",                   required_argument, NULL, 't'}, //7
+    { "slow5",                     required_argument, NULL, 0}, //8
     { NULL, 0, NULL, 0 }
 };
 
 void parse_index_options(int argc, char** argv)
 {
     bool die = false;
+    int longindex = 0;
     std::vector< std::string> log_level;
-    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
+    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, &longindex)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
             case OPT_HELP:
@@ -247,6 +254,18 @@ void parse_index_options(int argc, char** argv)
             case 's': opt::sequencing_summary_files.push_back(arg.str()); break;
             case 'd': opt::raw_file_directories.push_back(arg.str()); break;
             case 'f': arg >> opt::sequencing_summary_fofn; break;
+            case 't':
+                arg >> opt::threads;
+                if (opt::threads < 1) {
+                    fprintf(stderr, "Number of threads should be larger than 0. You entered %d\n", opt::threads);
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case  0 :
+                if (longindex == 8) {
+                    opt::slow5file = optarg;
+                }
+                break;
         }
     }
 
@@ -269,6 +288,18 @@ void parse_index_options(int argc, char** argv)
     {
         std::cout << "\n" << INDEX_USAGE_MESSAGE;
         exit(EXIT_FAILURE);
+    }
+
+    if(opt::slow5file){
+        if (!opt::sequencing_summary_fofn.empty()) {
+            std::cerr << "Option --summary-fofn will be ignored in slow5 mode\n";
+        }
+        if (!opt::sequencing_summary_files.empty()) {
+            std::cerr << "Option --sequencing-summary-file will be ignored in slow5 mode\n";
+        }
+        if (!opt::raw_file_directories.empty()) {
+            std::cerr << "Option -d will be ignored in slow5 mode\n";
+        }
     }
 
     opt::reads_file = argv[optind++];
@@ -326,44 +357,71 @@ int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
 
-    // Read a map from fast5 files to read name from the sequencing summary files (if any)
-    process_summary_fofn();
-    std::multimap<std::string, std::string> fast5_to_read_name_map;
-    for(const auto& ss_filename : opt::sequencing_summary_files) {
-        if(opt::verbose > 2) {
-            fprintf(stderr, "summary: %s\n", ss_filename.c_str());
+    if(opt::slow5file == NULL){
+        // Read a map from fast5 files to read name from the sequencing summary files (if any)
+        process_summary_fofn();
+        std::multimap<std::string, std::string> fast5_to_read_name_map;
+        for(const auto& ss_filename : opt::sequencing_summary_files) {
+            if(opt::verbose > 2) {
+                fprintf(stderr, "summary: %s\n", ss_filename.c_str());
+            }
+            parse_sequencing_summary(ss_filename, fast5_to_read_name_map);
         }
-        parse_sequencing_summary(ss_filename, fast5_to_read_name_map);
-    }
 
-    // Detect non-unique fast5 file names in the summary file
-    // This occurs when a file with the same name (abc_0.fast5) appears in both fast5_pass
-    // and fast5_fail. This will be fixed by ONT but in the meantime we check for
-    // fast5 files that have a non-standard number of reads (>4000) and remove them
-    // from the map. These fast5s will be indexed the slow way.
-    clean_fast5_map(fast5_to_read_name_map);
+        // Detect non-unique fast5 file names in the summary file
+        // This occurs when a file with the same name (abc_0.fast5) appears in both fast5_pass
+        // and fast5_fail. This will be fixed by ONT but in the meantime we check for
+        // fast5 files that have a non-standard number of reads (>4000) and remove them
+        // from the map. These fast5s will be indexed the slow way.
+        clean_fast5_map(fast5_to_read_name_map);
 
-    // import read names, and possibly fast5 paths, from the fasta/fastq file
-    ReadDB read_db;
-    read_db.build(opt::reads_file);
-    bool all_reads_have_paths = read_db.check_signal_paths();
+        // import read names, and possibly fast5 paths, from the fasta/fastq file
+        ReadDB read_db;
+        read_db.build(opt::reads_file, opt::threads);
+        bool all_reads_have_paths = read_db.check_signal_paths();
 
-    // if the input fastq did not contain a complete set of paths
-    // use the fofn/directory provided to augment the index
-    if(!all_reads_have_paths) {
+        // if the input fastq did not contain a complete set of paths
+        // use the fofn/directory provided to augment the index
+        if(!all_reads_have_paths) {
 
-        for(const auto& dir_name : opt::raw_file_directories) {
-            index_path(read_db, dir_name, fast5_to_read_name_map);
+            for(const auto& dir_name : opt::raw_file_directories) {
+                index_path(read_db, dir_name, fast5_to_read_name_map);
+            }
+        }
+
+        size_t num_with_path = read_db.get_num_reads_with_path();
+        size_t num_reads = read_db.get_num_reads();
+        if(num_with_path == 0) {
+            fprintf(stderr,"No fast5 files found\n");
+            exit(EXIT_FAILURE);
+        } else {
+            read_db.print_stats();
+            read_db.save();
+            if (num_with_path < num_reads * 0.99 ) {
+                fprintf(stderr,"fast5 files could not be located for %ld reads\n",num_reads-num_with_path);
+            }
         }
     }
+    else{
+        slow5_file_t *sp = slow5_open(opt::slow5file,"r");
+        if(sp==NULL){
+            fprintf(stderr,"Error in opening slowfile %s\n",opt::slow5file);
+            exit(EXIT_FAILURE);
+        }
+        int ret=0;
+        ret = slow5_idx_create(sp);
+        if(ret<0){
+            fprintf(stderr,"Error in creating index for slow5 file %s\n",opt::slow5file);
+            exit(EXIT_FAILURE);
+        }
+        slow5_close(sp);
 
-    size_t num_with_path = read_db.get_num_reads_with_path();
-    if(num_with_path == 0) {
-        fprintf(stderr, "Error: no fast5 files found\n");
-        exit(EXIT_FAILURE);
-    } else {
-        read_db.print_stats();
-        read_db.save();
+        ReadDB read_db;
+        read_db.build(opt::reads_file, opt::threads);
+        read_db.clean();
+
     }
+
+
     return 0;
 }

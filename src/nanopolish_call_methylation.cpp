@@ -156,6 +156,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
 "      --progress                       print out a progress message\n"
 "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
+"      --slow5 FILE                     slow5 file\n"
 "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
@@ -178,6 +179,7 @@ namespace opt
     static int min_separation = 10;
     static int min_flank = 10;
     static int min_mapping_quality = 20;
+    static char *slow5file = NULL;
 }
 
 static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
@@ -185,23 +187,24 @@ static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
 static const struct option longopts[] = {
-    { "verbose",              no_argument,       NULL, 'v' },
-    { "reads",                required_argument, NULL, 'r' },
-    { "bam",                  required_argument, NULL, 'b' },
-    { "genome",               required_argument, NULL, 'g' },
-    { "methylation",          required_argument, NULL, 'q' },
-    { "window",               required_argument, NULL, 'w' },
-    { "threads",              required_argument, NULL, 't' },
-    { "models-fofn",          required_argument, NULL, 'm' },
-    { "watch-process-total",  required_argument, NULL, 'c' },
-    { "watch-process-index",  required_argument, NULL, 'i' },
-    { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
-    { "watch",                required_argument, NULL, OPT_WATCH_DIR },
-    { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
-    { "progress",             no_argument,       NULL, OPT_PROGRESS },
-    { "help",                 no_argument,       NULL, OPT_HELP },
-    { "version",              no_argument,       NULL, OPT_VERSION },
-    { "batchsize",            no_argument,       NULL, 'K' },
+    { "verbose",              no_argument,       NULL, 'v' }, //0
+    { "reads",                required_argument, NULL, 'r' }, //1
+    { "bam",                  required_argument, NULL, 'b' }, //2
+    { "genome",               required_argument, NULL, 'g' }, //3
+    { "methylation",          required_argument, NULL, 'q' }, //4
+    { "window",               required_argument, NULL, 'w' }, //5
+    { "threads",              required_argument, NULL, 't' }, //6
+    { "models-fofn",          required_argument, NULL, 'm' }, //7
+    { "watch-process-total",  required_argument, NULL, 'c' }, //8
+    { "watch-process-index",  required_argument, NULL, 'i' }, //9
+    { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION }, //10
+    { "watch",                required_argument, NULL, OPT_WATCH_DIR }, //11
+    { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM }, //12
+    { "progress",             no_argument,       NULL, OPT_PROGRESS }, //13
+    { "help",                 no_argument,       NULL, OPT_HELP }, //14
+    { "version",              no_argument,       NULL, OPT_VERSION }, //15
+    { "batchsize",            no_argument,       NULL, 'K' }, //16
+    { "slow5",                     required_argument, NULL, 0}, //17
     { NULL, 0, NULL, 0 }
 };
 
@@ -762,8 +765,13 @@ void run_watch_mode(const faidx_t* fai)
 
 void run_from_bam(const faidx_t* fai)
 {
-    ReadDB read_db;
-    read_db.load(opt::reads_file);
+    ReadDB read_db                                                                                                                          ;
+    int8_t slow5_mode = 0;
+    if(opt::slow5file){
+        slow5_mode = 1;
+        read_db.open_slow5_file(opt::slow5file);
+    }
+    read_db.load(opt::reads_file, slow5_mode);
 
     // Initialize writers
     OutputHandles handles;
@@ -777,12 +785,16 @@ void run_from_bam(const faidx_t* fai)
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
     processor.parallel_run(f);
+    if(opt::slow5file){
+        read_db.close_slow5_file();
+    }
 }
 
 void parse_call_methylation_options(int argc, char** argv)
 {
     bool die = false;
-    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
+    int longindex = 0;
+    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, &longindex)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
             case 'r': arg >> opt::reads_file; break;
@@ -807,6 +819,11 @@ void parse_call_methylation_options(int argc, char** argv)
             case OPT_VERSION:
                 std::cout << CALL_METHYLATION_VERSION_MESSAGE;
                 exit(EXIT_SUCCESS);
+            case  0 :
+                if (longindex == 17) {
+                    opt::slow5file = optarg;
+                }
+                break;
         }
     }
 

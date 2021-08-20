@@ -31,14 +31,14 @@ ReadDB::ReadDB() : m_fai(NULL)
 }
 
 //
-void ReadDB::build(const std::string& input_reads_filename)
+void ReadDB::build(const std::string& input_reads_filename, int threads)
 {
     // generate output filename
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
 
     // Populate database with read names and convert the fastq
     // input into fasta for faidx
-    import_reads(input_reads_filename, m_indexed_reads_filename);
+    import_reads(input_reads_filename, m_indexed_reads_filename, threads);
 
     // build faidx
     int ret = fai_build(m_indexed_reads_filename.c_str());
@@ -51,36 +51,45 @@ void ReadDB::build(const std::string& input_reads_filename)
 }
 
 //
-void ReadDB::load(const std::string& input_reads_filename)
+void ReadDB::load(const std::string& input_reads_filename, int8_t slow5_mode)
 {
+    flag_use_slow5 = slow5_mode;
     // generate input filenames
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
-    std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
-    
-    //
-    std::ifstream in_file(in_filename.c_str());
     bool success = false;
-    if(in_file.good()) {
-        // read the database
-        std::string line;
-        while(getline(in_file, line)) {
-            std::vector<std::string> fields = split(line, '\t');
+    if(slow5_mode == 0) {
+        std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
+        //
+        std::ifstream in_file(in_filename.c_str());
+        if (in_file.good()) {
+            // read the database
+            std::string line;
+            while (getline(in_file, line)) {
+                std::vector<std::string> fields = split(line, '\t');
 
-            std::string name = "";
-            std::string path = "";
-            if(fields.size() == 2) {
-                name = fields[0];
-                path = fields[1];
-                m_data[name].signal_data_path = path;
+                std::string name = "";
+                std::string path = "";
+                if (fields.size() == 2) {
+                    name = fields[0];
+                    path = fields[1];
+                    m_data[name].signal_data_path = path;
+                }
+            }
+
+            // load faidx
+            m_fai = fai_load3(m_indexed_reads_filename.c_str(), NULL, NULL, 0);
+            if (m_fai != NULL) {
+                success = true;
             }
         }
-
+    }
+    else {
         // load faidx
         m_fai = fai_load3(m_indexed_reads_filename.c_str(), NULL, NULL, 0);
         if(m_fai != NULL) {
             success = true;
         }
-    } 
+    }
 
     if(!success) {
         fprintf(stderr, "error: could not load the index files for input file %s\n", input_reads_filename.c_str());
@@ -97,7 +106,7 @@ ReadDB::~ReadDB()
 }
 
 //
-void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename)
+void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename, int threads)
 {
     if(is_directory(input_filename)) {
         fprintf(stderr, "error: %s is a directory, not a FASTA/FASTQ file\n", input_filename.c_str());
@@ -128,6 +137,13 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
     if(bgzf_write_fp == NULL) {
         fprintf(stderr, "error: could not open %s for bgzipped write\n", out_fasta_filename.c_str());
         exit(EXIT_FAILURE);
+    }
+
+    if(threads>1){
+        int mt_status = bgzf_mt(bgzf_write_fp, threads, 64);
+        if(mt_status!=0){
+            fprintf(stderr,"Setting bgzf multi-threading failed. Proceeding with a single thread.");
+        }
     }
 
     // read input sequences, add to DB and convert to fasta
@@ -250,7 +266,13 @@ void ReadDB::save() const
     }
 }
 
+void ReadDB::clean() const
+{
+    std::string out_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
 
+    remove(out_filename.c_str());
+
+}
 
 //
 size_t ReadDB::get_num_reads_with_path() const
@@ -291,4 +313,32 @@ void ReadDB::print_stats() const
         num_reads_with_path += iter.second.signal_data_path != "";
     }
     fprintf(stderr, "[readdb] num reads: %zu, num reads with path to fast5: %zu\n", m_data.size(), num_reads_with_path);
+}
+
+int ReadDB::use_slow5_mode() const {
+    return flag_use_slow5;
+}
+
+void ReadDB::open_slow5_file(const std::string& path) {
+    slow5_file = slow5_open(path.c_str(),"r");
+    if(slow5_file==NULL){
+        fprintf(stderr,"Error in opening slow5 file %s\n", path.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    int ret=0;
+    ret = slow5_idx_load(slow5_file);
+    if(ret<0){
+        fprintf(stderr,"Error in loading slow5 index\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void ReadDB::close_slow5_file() const {
+    slow5_idx_unload(slow5_file);
+    slow5_close(slow5_file);
+}
+
+slow5_file_t * ReadDB::get_slow5_file() const{
+    return slow5_file;
 }

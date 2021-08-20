@@ -69,24 +69,73 @@ void SquiggleScalings::set6(double _shift,
 //
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags)
 {
-    this->fast5_path = read_db.get_signal_path(name);
-    if(this->fast5_path == "") {
-        g_bad_fast5_file += 1;
+    Fast5Data data;
+    std::string sequence = read_db.get_read_sequence(name);
+    if(sequence.empty()){
+        fprintf(stderr,"[warning] sequence of read %s is empty\n", name.c_str());
         return;
     }
+    if(read_db.use_slow5_mode()){
+        slow5_rec_t *rec = NULL;
+        slow5_file_t * slow5_file = read_db.get_slow5_file();
+        if(!slow5_file){
+            fprintf(stderr, "slow5 file is missing");
+        }
+        if (!slow5_file->index) {
+            fprintf(stderr,"No slow5 index has been loaded\n");
+        }
+        int ret = slow5_get(name.c_str(), &rec, slow5_file);
+        if(ret < 0){
+            fprintf(stderr,"Error in when fetching the read\n");
+        }
 
-    std::string sequence = read_db.get_read_sequence(name);
-    Fast5Data data = Fast5Loader::load_read(fast5_path, name);
-    if(data.is_valid && !sequence.empty()) {
-        init(sequence, data, flags);
-    } else {
-        fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
-        g_bad_fast5_file += 1;
+        data.rt.n = rec->len_raw_signal;
+        data.channel_params.range = rec->range;
+        data.channel_params.offset = rec->offset;
+        data.channel_params.digitisation = rec->digitisation;
+        data.channel_params.sample_rate = rec->sampling_rate;
+
+        int err;
+        char *cid = slow5_aux_get_string(rec, "channel_number", NULL, &err);
+        data.channel_params.channel_id = atoi(cid);
+        data.start_time = slow5_aux_get_uint64(rec, "start_time", &err);
+        data.read_name = name;
+        // metadata
+        char* sequencing_kit = slow5_hdr_get("sequencing_kit", 0, slow5_file->header);
+        data.sequencing_kit = (sequencing_kit)?std::string(sequencing_kit):"";
+        char* experiment_type = slow5_hdr_get("experiment_type", 0, slow5_file->header);
+        data.experiment_type = (experiment_type)?std::string(experiment_type):"";
+
+        // raw data
+        // convert to pA
+        float* rawptr = (float*)calloc(rec->len_raw_signal, sizeof(float));
+        raw_table rawtbl = { 0, 0, 0, NULL };
+        data.rt = (raw_table) { rec->len_raw_signal, 0, rec->len_raw_signal, rawptr };
+        for (size_t i = 0; i < rec->len_raw_signal; i++) {
+            rawptr[i] = (((rec->raw_signal[i])+(rec->offset))*((rec->range)/(rec->digitisation)));
+        }
+        slow5_rec_free(rec);
+        data.is_valid = true;
+
+    }else{
+        this->fast5_path = read_db.get_signal_path(name);
+        if(this->fast5_path == "") {
+            g_bad_fast5_file += 1;
+            return;
+        }
+        data = Fast5Loader::load_read(fast5_path, name);
+        if(!data.is_valid) {
+            g_bad_fast5_file += 1;
+            fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+        }
     }
-
+    if(data.is_valid) {
+        init(sequence, data, flags);
+    }
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }
+
     free(data.rt.raw);
     data.rt.raw = NULL;
 }
