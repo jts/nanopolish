@@ -111,8 +111,14 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         float* rawptr = (float*)calloc(rec->len_raw_signal, sizeof(float));
         raw_table rawtbl = { 0, 0, 0, NULL };
         data.rt = (raw_table) { rec->len_raw_signal, 0, rec->len_raw_signal, rawptr };
-        for (size_t i = 0; i < rec->len_raw_signal; i++) {
-            rawptr[i] = (((rec->raw_signal[i])+(rec->offset))*((rec->range)/(rec->digitisation)));
+        hsize_t nsample = rec->len_raw_signal;
+        float digitisation = rec->digitisation;
+        float offset = rec->offset;
+        float range = rec->range;
+        float raw_unit = range / digitisation;
+        for (size_t i = 0; i < nsample; i++) {
+            float signal = rec->raw_signal[i];
+            rawptr[i] = (signal + offset) * raw_unit;
         }
         slow5_rec_free(rec);
         data.is_valid = true;
@@ -135,7 +141,6 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }
-
     free(data.rt.raw);
     data.rt.raw = NULL;
 }

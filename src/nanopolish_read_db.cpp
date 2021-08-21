@@ -139,13 +139,6 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
         exit(EXIT_FAILURE);
     }
 
-    if(threads>1){
-        int mt_status = bgzf_mt(bgzf_write_fp, threads, 64);
-        if(mt_status!=0){
-            fprintf(stderr,"Setting bgzf multi-threading failed. Proceeding with a single thread.");
-        }
-    }
-
     // read input sequences, add to DB and convert to fasta
     int ret = 0;
     kseq_t* seq = kseq_init(gz_read_fp);
