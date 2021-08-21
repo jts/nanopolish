@@ -40,7 +40,6 @@ static const char *INDEX_USAGE_MESSAGE =
 "      --help                           display this help and exit\n"
 "      --version                        display version\n"
 "  -v, --verbose                        display verbose output\n"
-" -t INT                                number of threads used for bgzf compression (makes indexing faster)\n"
 "      --slow5 FILE                     slow5 file\n"
 "  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
 "  -s, --sequencing-summary             the sequencing summary file from albacore, providing this option will make indexing much faster\n"
@@ -54,7 +53,6 @@ namespace opt
     static std::string reads_file;
     static std::vector<std::string> sequencing_summary_files;
     static std::string sequencing_summary_fofn;
-    static int threads = 1;
     static char *slow5file = NULL;
 }
 static std::ostream* os_p;
@@ -228,8 +226,7 @@ static const struct option longopts[] = {
     { "directory",                 required_argument, NULL, 'd' }, //4
     { "sequencing-summary-file",   required_argument, NULL, 's' }, //5
     { "summary-fofn",              required_argument, NULL, 'f' }, //6
-    { "threads",                   required_argument, NULL, 't'}, //7
-    { "slow5",                     required_argument, NULL, 0}, //8
+    { "slow5",                     required_argument, NULL, 0}, //7
     { NULL, 0, NULL, 0 }
 };
 
@@ -254,15 +251,8 @@ void parse_index_options(int argc, char** argv)
             case 's': opt::sequencing_summary_files.push_back(arg.str()); break;
             case 'd': opt::raw_file_directories.push_back(arg.str()); break;
             case 'f': arg >> opt::sequencing_summary_fofn; break;
-            case 't':
-                arg >> opt::threads;
-                if (opt::threads < 1) {
-                    fprintf(stderr, "Number of threads should be larger than 0. You entered %d\n", opt::threads);
-                    exit(EXIT_FAILURE);
-                }
-                break;
             case  0 :
-                if (longindex == 8) {
+                if (longindex == 7) {
                     opt::slow5file = optarg;
                 }
                 break;
@@ -377,7 +367,7 @@ int index_main(int argc, char** argv)
 
         // import read names, and possibly fast5 paths, from the fasta/fastq file
         ReadDB read_db;
-        read_db.build(opt::reads_file, opt::threads);
+        read_db.build(opt::reads_file);
         bool all_reads_have_paths = read_db.check_signal_paths();
 
         // if the input fastq did not contain a complete set of paths
@@ -417,7 +407,7 @@ int index_main(int argc, char** argv)
         slow5_close(sp);
 
         ReadDB read_db;
-        read_db.build(opt::reads_file, opt::threads);
+        read_db.build(opt::reads_file);
         read_db.clean();
 
     }

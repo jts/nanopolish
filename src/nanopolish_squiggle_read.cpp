@@ -80,13 +80,16 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         slow5_file_t * slow5_file = read_db.get_slow5_file();
         if(!slow5_file){
             fprintf(stderr, "slow5 file is missing");
+            exit(EXIT_FAILURE);
         }
         if (!slow5_file->index) {
             fprintf(stderr,"No slow5 index has been loaded\n");
+            exit(EXIT_FAILURE);
         }
         int ret = slow5_get(name.c_str(), &rec, slow5_file);
         if(ret < 0){
             fprintf(stderr,"Error in when fetching the read\n");
+            exit(EXIT_FAILURE);
         }
 
         data.rt.n = rec->len_raw_signal;
@@ -97,8 +100,15 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
         int err;
         char *cid = slow5_aux_get_string(rec, "channel_number", NULL, &err);
-        data.channel_params.channel_id = atoi(cid);
+        if(err < 0){
+            fprintf(stderr,"[warning] Error in when fetching the channel_number\n");
+        }else{
+            data.channel_params.channel_id = atoi(cid);
+        }
         data.start_time = slow5_aux_get_uint64(rec, "start_time", &err);
+        if(err < 0){
+            fprintf(stderr,"[warning] Error in when fetching the start_time\n");
+        }
         data.read_name = name;
         // metadata
         char* sequencing_kit = slow5_hdr_get("sequencing_kit", 0, slow5_file->header);

@@ -31,14 +31,14 @@ ReadDB::ReadDB() : m_fai(NULL)
 }
 
 //
-void ReadDB::build(const std::string& input_reads_filename, int threads)
+void ReadDB::build(const std::string &input_reads_filename)
 {
     // generate output filename
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
 
     // Populate database with read names and convert the fastq
     // input into fasta for faidx
-    import_reads(input_reads_filename, m_indexed_reads_filename, threads);
+    import_reads(input_reads_filename, m_indexed_reads_filename);
 
     // build faidx
     int ret = fai_build(m_indexed_reads_filename.c_str());
@@ -106,7 +106,7 @@ ReadDB::~ReadDB()
 }
 
 //
-void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename, int threads)
+void ReadDB::import_reads(const std::string& input_filename, const std::string& out_fasta_filename)
 {
     if(is_directory(input_filename)) {
         fprintf(stderr, "error: %s is a directory, not a FASTA/FASTQ file\n", input_filename.c_str());

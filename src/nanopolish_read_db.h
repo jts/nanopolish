@@ -31,7 +31,7 @@ class ReadDB
         //
 
         //  construct the database from an input reads file
-        void build(const std::string& reads_filename, int threads = 0);
+        void build(const std::string &input_reads_filename);
 
         // save the database to disk
         void save() const;
@@ -88,7 +88,7 @@ class ReadDB
         
         //
         void import_reads(const std::string& input_filename,
-                          const std::string& output_fasta_filename, int threads);
+                          const std::string& output_fasta_filename);
 
         // the filename of the indexed data, after converting to fasta
         std::string m_indexed_reads_filename;
