@@ -31,7 +31,7 @@ ReadDB::ReadDB() : m_fai(NULL)
 }
 
 //
-void ReadDB::build(const std::string &input_reads_filename)
+void ReadDB::build(const std::string& input_reads_filename)
 {
     // generate output filename
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;

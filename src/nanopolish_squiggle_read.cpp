@@ -141,8 +141,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         }
         data = Fast5Loader::load_read(fast5_path, name);
         if(!data.is_valid) {
-            g_bad_fast5_file += 1;
             fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+            g_bad_fast5_file += 1;
         }
     }
     if(data.is_valid) {

@@ -210,7 +210,7 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
     }
 }
 
-static const char* shortopts = "vd:f:s:t:";
+static const char* shortopts = "vd:f:s:";
 
 enum {
     OPT_HELP = 1,
@@ -411,7 +411,5 @@ int index_main(int argc, char** argv)
         read_db.clean();
 
     }
-
-
     return 0;
 }
