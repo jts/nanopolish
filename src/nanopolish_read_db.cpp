@@ -51,7 +51,7 @@ void ReadDB::build(const std::string& input_reads_filename)
 }
 
 //
-void ReadDB::load(const std::string &input_reads_filename)
+void ReadDB::load(const std::string& input_reads_filename)
 {
     // generate input filenames
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
@@ -97,12 +97,9 @@ void ReadDB::load(const std::string &input_reads_filename)
 
         // load faidx
         m_fai = fai_load3(m_indexed_reads_filename.c_str(), NULL, NULL, 0);
-        if (m_fai != NULL) {
+        if(m_fai != NULL) {
             success = true;
         }
-
-
-
     }
 
     if(!success) {

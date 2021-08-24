@@ -130,33 +130,33 @@ const Alphabet* mtest_alphabet;
 #define SUBPROGRAM "call-methylation"
 
 static const char *CALL_METHYLATION_VERSION_MESSAGE =
-        SUBPROGRAM " Version " PACKAGE_VERSION "\n"
-        "Written by Jared Simpson.\n"
-        "\n"
-        "Copyright 2015 Ontario Institute for Cancer Research\n";
+SUBPROGRAM " Version " PACKAGE_VERSION "\n"
+"Written by Jared Simpson.\n"
+"\n"
+"Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *CALL_METHYLATION_USAGE_MESSAGE =
-        "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa --methylation cpg\n"
-        "Classify nucleotides as methylated or not.\n"
-        "\n"
-        "  -v, --verbose                        display verbose output\n"
-        "      --version                        display version\n"
-        "      --help                           display this help and exit\n"
-        "  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
-        "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-        "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
-        "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
-        "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-        "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
-        "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
-        "  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
-        "  -i, --watch-process-index=IDX        in watch mode, the index of this process is IDX\n"
-        "                                       the previous two options allow you to run multiple independent methylation\n"
-        "                                       calling processes against a single directory. Each process will only call\n"
-        "                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
-        "      --progress                       print out a progress message\n"
-        "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
-        "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
+    "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa --methylation cpg\n"
+    "Classify nucleotides as methylated or not.\n"
+    "\n"
+    "  -v, --verbose                        display verbose output\n"
+    "      --version                        display version\n"
+    "      --help                           display this help and exit\n"
+    "  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
+    "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
+    "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
+    "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
+    "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+    "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
+    "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
+    "  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
+    "  -i, --watch-process-index=IDX        in watch mode, the index of this process is IDX\n"
+    "                                       the previous two options allow you to run multiple independent methylation\n"
+    "                                       calling processes against a single directory. Each process will only call\n"
+    "                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
+    "      --progress                       print out a progress message\n"
+    "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
+    "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
@@ -185,24 +185,24 @@ static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
 static const struct option longopts[] = {
-        { "verbose",              no_argument,       NULL, 'v' },
-        { "reads",                required_argument, NULL, 'r' },
-        { "bam",                  required_argument, NULL, 'b' },
-        { "genome",               required_argument, NULL, 'g' },
-        { "methylation",          required_argument, NULL, 'q' },
-        { "window",               required_argument, NULL, 'w' },
-        { "threads",              required_argument, NULL, 't' },
-        { "models-fofn",          required_argument, NULL, 'm' },
-        { "watch-process-total",  required_argument, NULL, 'c' },
-        { "watch-process-index",  required_argument, NULL, 'i' },
-        { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
-        { "watch",                required_argument, NULL, OPT_WATCH_DIR },
-        { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
-        { "progress",             no_argument,       NULL, OPT_PROGRESS },
-        { "help",                 no_argument,       NULL, OPT_HELP },
-        { "version",              no_argument,       NULL, OPT_VERSION },
-        { "batchsize",            no_argument,       NULL, 'K' },
-        { NULL, 0, NULL, 0 }
+    { "verbose",              no_argument,       NULL, 'v' },
+    { "reads",                required_argument, NULL, 'r' },
+    { "bam",                  required_argument, NULL, 'b' },
+    { "genome",               required_argument, NULL, 'g' },
+    { "methylation",          required_argument, NULL, 'q' },
+    { "window",               required_argument, NULL, 'w' },
+    { "threads",              required_argument, NULL, 't' },
+    { "models-fofn",          required_argument, NULL, 'm' },
+    { "watch-process-total",  required_argument, NULL, 'c' },
+    { "watch-process-index",  required_argument, NULL, 'i' },
+    { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
+    { "watch",                required_argument, NULL, OPT_WATCH_DIR },
+    { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
+    { "progress",             no_argument,       NULL, OPT_PROGRESS },
+    { "help",                 no_argument,       NULL, OPT_HELP },
+    { "version",              no_argument,       NULL, OPT_VERSION },
+    { "batchsize",            no_argument,       NULL, 'K' },
+    { NULL, 0, NULL, 0 }
 };
 
 // Test motif sites in this read for methylation
@@ -373,7 +373,7 @@ void calculate_methylation_for_read(const OutputHandles& handles,
         } // for group
     } // for strands
 
-#pragma omp critical(call_methylation_write)
+    #pragma omp critical(call_methylation_write)
     {
         // write all sites for this read
         for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
@@ -521,7 +521,7 @@ void populate_maps_from_fastq(OutputHandles& handles,
         assert(tbuf[i] != NULL);
     }
 
-#pragma omp parallel for
+    #pragma omp parallel for
     for(size_t ri = 0; ri < read_names.size(); ++ri) {
 
         const std::string& read_name = read_names[ri];
@@ -556,7 +556,7 @@ void populate_maps_from_fastq(OutputHandles& handles,
 
             // if the write bam option is turned on, write the alignment to disk
             if(handles.bam_writer != NULL) {
-#pragma omp critical
+                #pragma omp critical
                 int write_ret = sam_write1(handles.bam_writer, hdr, record);
             }
 
@@ -619,11 +619,11 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     status.update("calling " + basename);
     Fast5Processor processor(batch.fast5_path, opt::num_threads);
     auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
-                       std::ref(read_sequence_map),
-                       std::ref(read_alignment_map),
-                       fai,
-                       hdr,
-                       _1);
+                                                                    std::ref(read_sequence_map),
+                                                                    std::ref(read_alignment_map),
+                                                                    fai,
+                                                                    hdr,
+                                                                    _1);
 
     // call.
     processor.parallel_run(f);

@@ -31,13 +31,16 @@ class ReadDB
         //
 
         //  construct the database from an input reads file
-        void build(const std::string &reads_filename);
+        void build(const std::string& reads_filename);
 
         // save the database to disk
         void save() const;
 
         // restore the database from disk
-        void load(const std::string &input_reads_filename);
+        void load(const std::string& input_reads_filename);
+
+        // close the database before exiting. Useful when using slow5
+        void close_db() const;
 
         //
         // Data Access
@@ -50,11 +53,9 @@ class ReadDB
         std::string get_signal_path(const std::string& read_id) const;
 
         // useful when using slow5
-        void close_db() const;
         slow5_file_t* get_slow5_file() const;
-        bool get_slow5_mode() const;
         void set_slow5_mode(bool slow5_mode);
-
+        bool get_slow5_mode() const;
 
         // returns true if a read with this ID is in the DB
         bool has_read(const std::string& read_id) const;
@@ -80,7 +81,6 @@ class ReadDB
 
         // print some summary stats about the database
         void print_stats() const;
-
 
     private:
         
