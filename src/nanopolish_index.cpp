@@ -53,7 +53,7 @@ namespace opt
     static std::string reads_file;
     static std::vector<std::string> sequencing_summary_files;
     static std::string sequencing_summary_fofn;
-    static char *slow5file = NULL;
+    static std::string slow5file;
 }
 static std::ostream* os_p;
 
@@ -216,26 +216,26 @@ enum {
     OPT_HELP = 1,
     OPT_VERSION,
     OPT_LOG_LEVEL,
+    OPT_SLOW5_FILE,
 };
 
 static const struct option longopts[] = {
-    { "help",                      no_argument,       NULL, OPT_HELP }, //0
-    { "version",                   no_argument,       NULL, OPT_VERSION }, //1
-    { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL }, //2
-    { "verbose",                   no_argument,       NULL, 'v' }, //3
-    { "directory",                 required_argument, NULL, 'd' }, //4
-    { "sequencing-summary-file",   required_argument, NULL, 's' }, //5
-    { "summary-fofn",              required_argument, NULL, 'f' }, //6
-    { "slow5",                     required_argument, NULL, 0}, //7
+    { "help",                      no_argument,       NULL, OPT_HELP },
+    { "version",                   no_argument,       NULL, OPT_VERSION },
+    { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL },
+    { "slow5",                     required_argument, NULL, OPT_SLOW5_FILE},
+    { "verbose",                   no_argument,       NULL, 'v' },
+    { "directory",                 required_argument, NULL, 'd' },
+    { "sequencing-summary-file",   required_argument, NULL, 's' },
+    { "summary-fofn",              required_argument, NULL, 'f' },
     { NULL, 0, NULL, 0 }
 };
 
 void parse_index_options(int argc, char** argv)
 {
     bool die = false;
-    int longindex = 0;
     std::vector< std::string> log_level;
-    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, &longindex)) != -1;) {
+    for (char c; (c = getopt_long(argc, argv, shortopts, longopts, NULL)) != -1;) {
         std::istringstream arg(optarg != NULL ? optarg : "");
         switch (c) {
             case OPT_HELP:
@@ -247,15 +247,11 @@ void parse_index_options(int argc, char** argv)
             case OPT_LOG_LEVEL:
                 log_level.push_back(arg.str());
                 break;
+            case  OPT_SLOW5_FILE : arg >> opt::slow5file; break;
             case 'v': opt::verbose++; break;
             case 's': opt::sequencing_summary_files.push_back(arg.str()); break;
             case 'd': opt::raw_file_directories.push_back(arg.str()); break;
             case 'f': arg >> opt::sequencing_summary_fofn; break;
-            case  0 :
-                if (longindex == 7) {
-                    opt::slow5file = optarg;
-                }
-                break;
         }
     }
 
@@ -280,7 +276,7 @@ void parse_index_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    if(opt::slow5file){
+    if(!opt::slow5file.empty()){
         if (!opt::sequencing_summary_fofn.empty()) {
             std::cerr << "Option --summary-fofn will be ignored in slow5 mode\n";
         }
@@ -347,7 +343,7 @@ int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
 
-    if(opt::slow5file == NULL){
+    if(opt::slow5file.empty()){
         // Read a map from fast5 files to read name from the sequencing summary files (if any)
         process_summary_fofn();
         std::multimap<std::string, std::string> fast5_to_read_name_map;
@@ -393,22 +389,24 @@ int index_main(int argc, char** argv)
         }
     }
     else{
-        slow5_file_t *sp = slow5_open(opt::slow5file,"r");
-        if(sp==NULL){
-            fprintf(stderr,"Error in opening slowfile %s\n",opt::slow5file);
+        slow5_file_t *sp = slow5_open(opt::slow5file.c_str(),"r");
+        if(sp == NULL){
+            fprintf(stderr,"Error in opening slowfile %s\n",opt::slow5file.c_str());
             exit(EXIT_FAILURE);
         }
         int ret=0;
         ret = slow5_idx_create(sp);
         if(ret<0){
-            fprintf(stderr,"Error in creating index for slow5 file %s\n",opt::slow5file);
+            fprintf(stderr,"Error in creating index for slow5 file %s\n",opt::slow5file.c_str());
             exit(EXIT_FAILURE);
         }
         slow5_close(sp);
 
         ReadDB read_db;
+        read_db.set_slow5_mode(true);
         read_db.build(opt::reads_file);
-        read_db.clean();
+        read_db.add_signal_path("", opt::slow5file.c_str());
+        read_db.save();
 
     }
     return 0;

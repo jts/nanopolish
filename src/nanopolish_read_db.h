@@ -36,11 +36,8 @@ class ReadDB
         // save the database to disk
         void save() const;
 
-        // clean the database on disk for slow5 mode
-        void clean() const;
-
         // restore the database from disk
-        void load(const std::string& reads_filename, int8_t slow_mode = 0);
+        void load(const std::string &input_reads_filename);
 
         //
         // Data Access
@@ -53,9 +50,11 @@ class ReadDB
         std::string get_signal_path(const std::string& read_id) const;
 
         // useful when using slow5
-        void open_slow5_file(const std::string& path);
-        void close_slow5_file() const;
+        void close_db() const;
         slow5_file_t* get_slow5_file() const;
+        bool get_slow5_mode() const;
+        void set_slow5_mode(bool slow5_mode);
+
 
         // returns true if a read with this ID is in the DB
         bool has_read(const std::string& read_id) const;
@@ -82,7 +81,6 @@ class ReadDB
         // print some summary stats about the database
         void print_stats() const;
 
-        int use_slow5_mode() const;
 
     private:
         
@@ -97,7 +95,7 @@ class ReadDB
 
         //
         faidx_t* m_fai;
-        int flag_use_slow5;
+        bool slow5_mode = false;
         slow5_file_t* slow5_file; //useful when using slow5
 };
 
