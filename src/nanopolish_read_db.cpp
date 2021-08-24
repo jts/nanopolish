@@ -59,15 +59,15 @@ void ReadDB::load(const std::string& input_reads_filename)
     std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
     //
     std::ifstream in_file(in_filename.c_str());
-    if (in_file.good()) {
+    if(in_file.good()) {
         // read the database
         std::string line;
-        while (getline(in_file, line)) {
+        while(getline(in_file, line)) {
             std::vector<std::string> fields = split(line, '\t');
 
             std::string name = "";
             std::string path = "";
-            if (fields.size() == 2) {
+            if(fields.size() == 2) {
                 name = fields[0];
                 path = fields[1];
                 slow5_mode = (path.find(".slow5") != -1 || path.find(".blow5") != -1);

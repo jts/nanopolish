@@ -136,27 +136,27 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
 "Copyright 2015 Ontario Institute for Cancer Research\n";
 
 static const char *CALL_METHYLATION_USAGE_MESSAGE =
-    "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa --methylation cpg\n"
-    "Classify nucleotides as methylated or not.\n"
-    "\n"
-    "  -v, --verbose                        display verbose output\n"
-    "      --version                        display version\n"
-    "      --help                           display this help and exit\n"
-    "  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
-    "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
-    "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
-    "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
-    "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
-    "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
-    "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
-    "  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
-    "  -i, --watch-process-index=IDX        in watch mode, the index of this process is IDX\n"
-    "                                       the previous two options allow you to run multiple independent methylation\n"
-    "                                       calling processes against a single directory. Each process will only call\n"
-    "                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
-    "      --progress                       print out a progress message\n"
-    "  -K  --batchsize=NUM                  the batch size (default: 512)\n"
-    "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
+"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa --methylation cpg\n"
+"Classify nucleotides as methylated or not.\n"
+"\n"
+"  -v, --verbose                        display verbose output\n"
+"      --version                        display version\n"
+"      --help                           display this help and exit\n"
+"  -r, --reads=FILE                     the ONT reads are in fasta/fastq FILE\n"
+"  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
+"  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
+"  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
+"  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
+"      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
+"  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
+"  -i, --watch-process-index=IDX        in watch mode, the index of this process is IDX\n"
+"                                       the previous two options allow you to run multiple independent methylation\n"
+"                                       calling processes against a single directory. Each process will only call\n"
+"                                       files when X mod TOTAL == IDX, where X is the suffix of the fast5 file.\n"
+"      --progress                       print out a progress message\n"
+"  -K  --batchsize=NUM                  the batch size (default: 512)\n"
+"\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
@@ -619,11 +619,11 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
     status.update("calling " + basename);
     Fast5Processor processor(batch.fast5_path, opt::num_threads);
     auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
-                                                                    std::ref(read_sequence_map),
-                                                                    std::ref(read_alignment_map),
-                                                                    fai,
-                                                                    hdr,
-                                                                    _1);
+                                                                  std::ref(read_sequence_map),
+                                                                  std::ref(read_alignment_map),
+                                                                  fai,
+                                                                  hdr,
+                                                                  _1);
 
     // call.
     processor.parallel_run(f);
