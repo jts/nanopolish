@@ -39,9 +39,6 @@ class ReadDB
         // restore the database from disk
         void load(const std::string& reads_filename);
 
-        // close the database before exiting. Useful when using slow5
-        void close_db() const;
-
         //
         // Data Access
         // 

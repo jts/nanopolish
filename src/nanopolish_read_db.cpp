@@ -55,10 +55,10 @@ void ReadDB::load(const std::string& input_reads_filename)
 {
     // generate input filenames
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
-    bool success = false;
     std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
     //
     std::ifstream in_file(in_filename.c_str());
+    bool success = false;
     if(in_file.good()) {
         // read the database
         std::string line;
@@ -113,6 +113,10 @@ ReadDB::~ReadDB()
 {
     if(m_fai != NULL) {
         fai_destroy(m_fai);
+    }
+    if(slow5_mode){
+        slow5_idx_unload(slow5_file);
+        slow5_close(slow5_file);
     }
 }
 
@@ -315,13 +319,6 @@ void ReadDB::print_stats() const
 
 bool ReadDB::get_slow5_mode() const {
     return slow5_mode;
-}
-
-void ReadDB::close_db() const {
-    if(slow5_mode){
-        slow5_idx_unload(slow5_file);
-        slow5_close(slow5_file);
-    }
 }
 
 slow5_file_t * ReadDB::get_slow5_file() const{

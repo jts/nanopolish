@@ -777,7 +777,6 @@ void run_from_bam(const faidx_t* fai)
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
     processor.parallel_run(f);
-    read_db.close_db();
 }
 
 void parse_call_methylation_options(int argc, char** argv)
