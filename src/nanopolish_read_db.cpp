@@ -70,7 +70,7 @@ void ReadDB::load(const std::string& input_reads_filename)
             if(fields.size() == 2) {
                 name = fields[0];
                 path = fields[1];
-                slow5_mode = (path.find(".slow5") != -1 || path.find(".blow5") != -1);
+                slow5_mode = (path.rfind(".slow5") != -1 || path.rfind(".blow5") != -1);
                 if(slow5_mode){
                     m_data["slow5"].signal_data_path = path;
                     break;
@@ -82,14 +82,14 @@ void ReadDB::load(const std::string& input_reads_filename)
         if(slow5_mode){
             std::string slow5_path = m_data["slow5"].signal_data_path;
             slow5_file = slow5_open(slow5_path.c_str(),"r");
-            if(slow5_file==NULL){
+            if(slow5_file == NULL){
                 fprintf(stderr,"Error in opening slow5 file %s\n", slow5_path.c_str());
                 exit(EXIT_FAILURE);
             }
 
-            int ret=0;
+            int ret = 0;
             ret = slow5_idx_load(slow5_file);
-            if(ret<0){
+            if(ret < 0) {
                 fprintf(stderr,"Error in loading slow5 index\n");
                 exit(EXIT_FAILURE);
             }
@@ -114,11 +114,10 @@ ReadDB::~ReadDB()
     if(m_fai != NULL) {
         fai_destroy(m_fai);
     }
-    if(slow5_mode){
-        if(slow5_file){
-            slow5_idx_unload(slow5_file);
-            slow5_close(slow5_file);
-        }
+
+    if(slow5_mode && slow5_file) {
+        slow5_idx_unload(slow5_file);
+        slow5_close(slow5_file);
     }
 }
 
@@ -323,7 +322,7 @@ bool ReadDB::get_slow5_mode() const {
     return slow5_mode;
 }
 
-slow5_file_t * ReadDB::get_slow5_file() const{
+slow5_file_t* ReadDB::get_slow5_file() const{
     return slow5_file;
 }
 

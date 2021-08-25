@@ -75,18 +75,19 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         fprintf(stderr,"[warning] sequence of read %s is empty\n", name.c_str());
         return;
     }
-    if(read_db.get_slow5_mode()){
-        slow5_file_t * slow5_file = read_db.get_slow5_file();
-        if(!slow5_file){
+
+    if(read_db.get_slow5_mode()) {
+        slow5_file_t* slow5_file = read_db.get_slow5_file();
+        if(!slow5_file) {
             fprintf(stderr, "slow5 file is missing");
             exit(EXIT_FAILURE);
         }
-        if (!slow5_file->index) {
+        if(!slow5_file->index) {
             fprintf(stderr,"No slow5 index has been loaded\n");
             exit(EXIT_FAILURE);
         }
         data = Fast5Loader::load_read(slow5_file, name);
-    }else{
+    } else {
         this->fast5_path = read_db.get_signal_path(name);
         if(this->fast5_path == "") {
             g_bad_fast5_file += 1;

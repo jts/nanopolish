@@ -58,7 +58,7 @@ Fast5Data Fast5Loader::load_read(slow5_file_t *slow5_file, const std::string &re
     slow5_rec_t *rec = NULL;
     int ret = slow5_get(read_name.c_str(), &rec, slow5_file);
     if(ret < 0){
-        fprintf(stderr,"Error in when fetching the read\n");
+        fprintf(stderr,"Error when fetching the read\n");
         data.is_valid = false;
         return data;
     }
@@ -72,13 +72,13 @@ Fast5Data Fast5Loader::load_read(slow5_file_t *slow5_file, const std::string &re
     int err;
     char *cid = slow5_aux_get_string(rec, "channel_number", NULL, &err);
     if(err < 0){
-        fprintf(stderr,"[warning] Error in when fetching the channel_number\n");
+        fprintf(stderr,"[warning] Error when fetching the channel_number\n");
     }else{
         data.channel_params.channel_id = atoi(cid);
     }
     data.start_time = slow5_aux_get_uint64(rec, "start_time", &err);
     if(err < 0){
-        fprintf(stderr,"[warning] Error in when fetching the start_time\n");
+        fprintf(stderr,"[warning] Error when fetching the start_time\n");
     }
     data.read_name = read_name;
     // metadata

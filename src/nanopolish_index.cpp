@@ -53,7 +53,7 @@ namespace opt
     static std::string reads_file;
     static std::vector<std::string> sequencing_summary_files;
     static std::string sequencing_summary_fofn;
-    static std::string slow5file;
+    static std::string slow5_file;
 }
 static std::ostream* os_p;
 
@@ -247,7 +247,7 @@ void parse_index_options(int argc, char** argv)
             case OPT_LOG_LEVEL:
                 log_level.push_back(arg.str());
                 break;
-            case  OPT_SLOW5_FILE : arg >> opt::slow5file; break;
+            case  OPT_SLOW5_FILE : arg >> opt::slow5_file; break;
             case 'v': opt::verbose++; break;
             case 's': opt::sequencing_summary_files.push_back(arg.str()); break;
             case 'd': opt::raw_file_directories.push_back(arg.str()); break;
@@ -276,7 +276,7 @@ void parse_index_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    if(!opt::slow5file.empty()){
+    if(!opt::slow5_file.empty()){
         if (!opt::sequencing_summary_fofn.empty()) {
             std::cerr << "Option --summary-fofn will be ignored in slow5 mode\n";
         }
@@ -343,7 +343,7 @@ int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
 
-    if(opt::slow5file.empty()){
+    if(opt::slow5_file.empty()) {
         // Read a map from fast5 files to read name from the sequencing summary files (if any)
         process_summary_fofn();
         std::multimap<std::string, std::string> fast5_to_read_name_map;
@@ -389,15 +389,15 @@ int index_main(int argc, char** argv)
         }
     }
     else{
-        slow5_file_t *sp = slow5_open(opt::slow5file.c_str(),"r");
+        slow5_file_t *sp = slow5_open(opt::slow5_file.c_str(), "r");
         if(sp == NULL){
-            fprintf(stderr,"Error in opening slowfile %s\n",opt::slow5file.c_str());
+            fprintf(stderr,"Error in opening slowfile %s\n", opt::slow5_file.c_str());
             exit(EXIT_FAILURE);
         }
-        int ret=0;
+        int ret = 0;
         ret = slow5_idx_create(sp);
-        if(ret<0){
-            fprintf(stderr,"Error in creating index for slow5 file %s\n",opt::slow5file.c_str());
+        if(ret < 0) {
+            fprintf(stderr, "Error in creating index for slow5 file %s\n", opt::slow5_file.c_str());
             exit(EXIT_FAILURE);
         }
         slow5_close(sp);
@@ -405,7 +405,7 @@ int index_main(int argc, char** argv)
         ReadDB read_db;
         read_db.set_slow5_mode(true);
         read_db.build(opt::reads_file);
-        read_db.add_signal_path("", opt::slow5file.c_str());
+        read_db.add_signal_path("", opt::slow5_file.c_str());
         read_db.save();
 
     }
