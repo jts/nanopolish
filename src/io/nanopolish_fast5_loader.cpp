@@ -82,9 +82,9 @@ Fast5Data Fast5Loader::load_read(slow5_file_t *slow5_file, const std::string &re
     }
     data.read_name = read_name;
     // metadata
-    char* sequencing_kit = slow5_hdr_get("sequencing_kit", 0, slow5_file->header);
+    char* sequencing_kit = slow5_hdr_get("sequencing_kit", rec->read_group, slow5_file->header);
     data.sequencing_kit = (sequencing_kit)?std::string(sequencing_kit):"";
-    char* experiment_type = slow5_hdr_get("experiment_type", 0, slow5_file->header);
+    char* experiment_type = slow5_hdr_get("experiment_type", rec->read_group, slow5_file->header);
     data.experiment_type = (experiment_type)?std::string(experiment_type):"";
 
     // raw data
