@@ -69,21 +69,38 @@ void SquiggleScalings::set6(double _shift,
 //
 SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const uint32_t flags)
 {
-    this->fast5_path = read_db.get_signal_path(name);
-    if(this->fast5_path == "") {
-        g_bad_fast5_file += 1;
+    Fast5Data data;
+    std::string sequence = read_db.get_read_sequence(name);
+    if(sequence.empty()){
+        fprintf(stderr,"[warning] sequence of read %s is empty\n", name.c_str());
         return;
     }
-
-    std::string sequence = read_db.get_read_sequence(name);
-    Fast5Data data = Fast5Loader::load_read(fast5_path, name);
-    if(data.is_valid && !sequence.empty()) {
-        init(sequence, data, flags);
-    } else {
-        fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
-        g_bad_fast5_file += 1;
+    if(read_db.get_slow5_mode()){
+        slow5_file_t * slow5_file = read_db.get_slow5_file();
+        if(!slow5_file){
+            fprintf(stderr, "slow5 file is missing");
+            exit(EXIT_FAILURE);
+        }
+        if (!slow5_file->index) {
+            fprintf(stderr,"No slow5 index has been loaded\n");
+            exit(EXIT_FAILURE);
+        }
+        data = Fast5Loader::load_read(slow5_file, name);
+    }else{
+        this->fast5_path = read_db.get_signal_path(name);
+        if(this->fast5_path == "") {
+            g_bad_fast5_file += 1;
+            return;
+        }
+        data = Fast5Loader::load_read(fast5_path, name);
+        if(!data.is_valid) {
+            fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+            g_bad_fast5_file += 1;
+        }
     }
-
+    if(data.is_valid) {
+        init(sequence, data, flags);
+    }
     if(!this->events[0].empty()) {
         assert(this->base_model[0] != NULL);
     }

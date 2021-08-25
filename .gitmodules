@@ -7,3 +7,6 @@
 [submodule "minimap2"]
 	path = minimap2
 	url = https://github.com/lh3/minimap2
+[submodule "slow5lib"]
+	path = slow5lib
+	url = https://github.com/hasindu2008/slow5lib

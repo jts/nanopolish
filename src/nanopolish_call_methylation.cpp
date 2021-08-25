@@ -653,7 +653,7 @@ void run_watch_mode(const faidx_t* fai)
     kstring_t header_str = { 0, 0, NULL };
     for (int i = 0; i < faidx_nseq(fai); ++i) {
         const char* tname = faidx_iseq(fai, i);
-	    ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
+        ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
     }
 
     // Parse string to get header

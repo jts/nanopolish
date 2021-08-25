@@ -12,6 +12,7 @@
 #include <map>
 #include "nanopolish_fast5_loader.h"
 #include "nanopolish_fast5_io.h"
+#include <slow5/slow5.h>
 
 // structure holding all of the information we want to get out of a fast5 file
 struct Fast5Data
@@ -34,6 +35,7 @@ class Fast5Loader
     public:
 
         static Fast5Data load_read(const std::string& filename, const std::string& read_name);
+        static Fast5Data load_read(slow5_file_t *slow5_file, const std::string& read_name);
 
         // destructor
         ~Fast5Loader();
