@@ -83,7 +83,7 @@ std::string generate_mm_tag(char unmodified_symbol, const std::string& sequence,
 {
     std::string delta_str;
     delta_str += unmodified_symbol;
-    delta_str += "+m";
+    delta_str += "+m?";
 
     int count_start = 0;
     for(size_t call_index = 0; call_index < call_seq_indices.size(); ++call_index) {
