@@ -115,8 +115,10 @@ ReadDB::~ReadDB()
         fai_destroy(m_fai);
     }
     if(slow5_mode){
-        slow5_idx_unload(slow5_file);
-        slow5_close(slow5_file);
+        if(slow5_file){
+            slow5_idx_unload(slow5_file);
+            slow5_close(slow5_file);
+        }
     }
 }
 

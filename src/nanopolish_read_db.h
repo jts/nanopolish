@@ -94,7 +94,7 @@ class ReadDB
         faidx_t* m_fai;
         //useful when using slow5
         bool slow5_mode = false;
-        slow5_file_t* slow5_file;
+        slow5_file_t* slow5_file = NULL;
 };
 
 #endif
