@@ -22,7 +22,7 @@ EIGEN ?= install
 HTS ?= install
 
 HDF5_VERSION ?= 1.10.5
-EIGEN_VERSION ?= 3.2.5
+EIGEN_VERSION ?= 3.3.7
 
 # Default to automatically installing hdf5
 ifeq ($(HDF5), install)
@@ -97,10 +97,10 @@ lib/libhdf5.a:
 # Download and install eigen if not already downloaded
 eigen/INSTALL:
 	if [ ! -e $(EIGEN_VERSION).tar.bz2 ]; then \
-		wget http://bitbucket.org/eigen/eigen/get/$(EIGEN_VERSION).tar.bz2; \
+		wget https://gitlab.com/libeigen/eigen/-/archive/$(EIGEN_VERSION)/eigen-$(EIGEN_VERSION).tar.bz2; \
 	fi
-	tar -xjf $(EIGEN_VERSION).tar.bz2 || exit 255
-	mv eigen-eigen-* eigen || exit 255
+	tar -xjf eigen-$(EIGEN_VERSION).tar.bz2 || exit 255
+	mv eigen-$(EIGEN_VERSION) eigen || exit 255
 
 #
 # Source files
