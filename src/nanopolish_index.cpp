@@ -405,7 +405,7 @@ int index_main(int argc, char** argv)
         ReadDB read_db;
         read_db.set_slow5_mode(true);
         read_db.build(opt::reads_file);
-        read_db.add_signal_path("", opt::slow5_file.c_str());
+        read_db.add_signal_path("*", opt::slow5_file.c_str());
         read_db.save();
 
     }
