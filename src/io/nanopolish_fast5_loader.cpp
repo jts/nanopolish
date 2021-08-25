@@ -53,11 +53,14 @@ Fast5Data Fast5Loader::load_read(const std::string& filename, const std::string&
 Fast5Data Fast5Loader::load_read(slow5_file_t *slow5_file, const std::string &read_name)
 {
     Fast5Data data;
+    data.rt.n = 0;
+    data.rt.raw = NULL;
     slow5_rec_t *rec = NULL;
     int ret = slow5_get(read_name.c_str(), &rec, slow5_file);
     if(ret < 0){
         fprintf(stderr,"Error in when fetching the read\n");
-        exit(EXIT_FAILURE);
+        data.is_valid = false;
+        return data;
     }
 
     data.rt.n = rec->len_raw_signal;
