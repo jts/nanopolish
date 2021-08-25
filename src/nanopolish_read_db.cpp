@@ -59,6 +59,7 @@ void ReadDB::load(const std::string& input_reads_filename)
     //
     std::ifstream in_file(in_filename.c_str());
     bool success = false;
+    bool first = true;
     if(in_file.good()) {
         // read the database
         std::string line;
@@ -70,10 +71,14 @@ void ReadDB::load(const std::string& input_reads_filename)
             if(fields.size() == 2) {
                 name = fields[0];
                 path = fields[1];
-                slow5_mode = (path.rfind(".slow5") != -1 || path.rfind(".blow5") != -1);
-                if(slow5_mode){
-                    m_data["slow5"].signal_data_path = path;
-                    break;
+
+                if(first) {
+                    slow5_mode = (path.rfind(".slow5") != -1 || path.rfind(".blow5") != -1);
+                    if(slow5_mode){
+                        m_data["slow5"].signal_data_path = path;
+                        break;
+                    }
+                    first = false;
                 }
                 m_data[name].signal_data_path = path;
             }
