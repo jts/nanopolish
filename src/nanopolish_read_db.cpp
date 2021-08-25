@@ -56,10 +56,10 @@ void ReadDB::load(const std::string& input_reads_filename)
     // generate input filenames
     m_indexed_reads_filename = input_reads_filename + GZIPPED_READS_SUFFIX;
     std::string in_filename = m_indexed_reads_filename + READ_DB_SUFFIX;
-    
     //
     std::ifstream in_file(in_filename.c_str());
     bool success = false;
+    bool first = true;
     if(in_file.good()) {
         // read the database
         std::string line;
@@ -71,7 +71,32 @@ void ReadDB::load(const std::string& input_reads_filename)
             if(fields.size() == 2) {
                 name = fields[0];
                 path = fields[1];
+
+                if(first) {
+                    slow5_mode = (path.rfind(".slow5") != -1 || path.rfind(".blow5") != -1);
+                    if(slow5_mode){
+                        m_data["slow5"].signal_data_path = path;
+                        break;
+                    }
+                    first = false;
+                }
                 m_data[name].signal_data_path = path;
+            }
+        }
+
+        if(slow5_mode){
+            std::string slow5_path = m_data["slow5"].signal_data_path;
+            slow5_file = slow5_open(slow5_path.c_str(),"r");
+            if(slow5_file == NULL){
+                fprintf(stderr,"Error in opening slow5 file %s\n", slow5_path.c_str());
+                exit(EXIT_FAILURE);
+            }
+
+            int ret = 0;
+            ret = slow5_idx_load(slow5_file);
+            if(ret < 0) {
+                fprintf(stderr,"Error in loading slow5 index\n");
+                exit(EXIT_FAILURE);
             }
         }
 
@@ -80,7 +105,7 @@ void ReadDB::load(const std::string& input_reads_filename)
         if(m_fai != NULL) {
             success = true;
         }
-    } 
+    }
 
     if(!success) {
         fprintf(stderr, "error: could not load the index files for input file %s\n", input_reads_filename.c_str());
@@ -93,6 +118,11 @@ ReadDB::~ReadDB()
 {
     if(m_fai != NULL) {
         fai_destroy(m_fai);
+    }
+
+    if(slow5_mode && slow5_file) {
+        slow5_idx_unload(slow5_file);
+        slow5_close(slow5_file);
     }
 }
 
@@ -159,9 +189,11 @@ void ReadDB::import_reads(const std::string& input_filename, const std::string& 
             fprintf(stderr, "Warning: duplicate read name %s found in fasta file\n", seq->name.s);
             continue;
         }
-        
-        // add path
-        add_signal_path(seq->name.s, path);
+
+        if(!slow5_mode){
+            // add path
+            add_signal_path(seq->name.s, path);
+        }
 
         // write sequence in gzipped fasta for fai indexing later
         std::string out_record;
@@ -250,8 +282,6 @@ void ReadDB::save() const
     }
 }
 
-
-
 //
 size_t ReadDB::get_num_reads_with_path() const
 {
@@ -291,4 +321,16 @@ void ReadDB::print_stats() const
         num_reads_with_path += iter.second.signal_data_path != "";
     }
     fprintf(stderr, "[readdb] num reads: %zu, num reads with path to fast5: %zu\n", m_data.size(), num_reads_with_path);
+}
+
+bool ReadDB::get_slow5_mode() const {
+    return slow5_mode;
+}
+
+slow5_file_t* ReadDB::get_slow5_file() const{
+    return slow5_file;
+}
+
+void ReadDB::set_slow5_mode(bool mode) {
+    slow5_mode = mode;
 }
