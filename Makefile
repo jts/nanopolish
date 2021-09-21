@@ -16,6 +16,10 @@ LDFLAGS ?=
 CXX ?= g++
 CC ?= gcc
 
+ifeq ($(zstd),1)
+LDFLAGS += -lzstd
+endif
+
 # Change the value of HDF5, EIGEN, or HTS below to any value to disable compilation of bundled code
 HDF5 ?= install
 EIGEN ?= install
