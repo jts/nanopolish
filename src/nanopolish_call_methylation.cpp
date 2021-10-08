@@ -147,6 +147,7 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
+"      --min-mapping-quality=NUM        only use reads with mapQ >= NUM (default: 20)\n"
 "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
 "      --watch-write-bam                in watch mode, write the alignments for each fastq\n"
 "  -c, --watch-process-total=TOTAL      in watch mode, there are TOTAL calling processes running against this directory\n"
@@ -182,7 +183,7 @@ namespace opt
 
 static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
 
-enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
+enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_MIN_MAPPING_QUALITY, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
 static const struct option longopts[] = {
     { "verbose",              no_argument,       NULL, 'v' },
@@ -196,6 +197,7 @@ static const struct option longopts[] = {
     { "watch-process-total",  required_argument, NULL, 'c' },
     { "watch-process-index",  required_argument, NULL, 'i' },
     { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
+    { "min-mapping-quality",  required_argument, NULL, OPT_MIN_MAPPING_QUALITY },
     { "watch",                required_argument, NULL, OPT_WATCH_DIR },
     { "watch-write-bam",      no_argument,       NULL, OPT_WATCH_WRITE_BAM },
     { "progress",             no_argument,       NULL, OPT_PROGRESS },
@@ -653,7 +655,7 @@ void run_watch_mode(const faidx_t* fai)
     kstring_t header_str = { 0, 0, NULL };
     for (int i = 0; i < faidx_nseq(fai); ++i) {
         const char* tname = faidx_iseq(fai, i);
-	    ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
+        ksprintf(&header_str, "@SQ\tSN:%s\tLN:%d\n", tname, faidx_seq_len(fai, tname));
     }
 
     // Parse string to get header
@@ -798,6 +800,7 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'c': arg >> opt::watch_process_total; break;
             case 'i': arg >> opt::watch_process_index; break;
             case OPT_MIN_SEPARATION: arg >> opt::min_separation; break;
+            case OPT_MIN_MAPPING_QUALITY: arg >> opt::min_mapping_quality; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;
             case OPT_PROGRESS: opt::progress = true; break;
