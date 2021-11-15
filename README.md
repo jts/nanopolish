@@ -129,7 +129,7 @@ nanopolish vcf2fasta -g draft.fa polished.*.vcf > polished_genome.fa
 
 ## Calling Methylation
 
-nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](http://www.nature.com/nmeth/journal/vaop/ncurrent/full/nmeth.4184.html). We've posted a tutorial on how to call methylation [here](http://nanopolish.readthedocs.io/en/latest/quickstart_call_methylation.html).
+nanopolish can use the signal-level information measured by the sequencer to detect 5-mC as described [here](https://www.nature.com/articles/nmeth.4184). We've posted a tutorial on how to call methylation [here](http://nanopolish.readthedocs.io/en/latest/quickstart_call_methylation.html).
 
 ## To run using docker
 
