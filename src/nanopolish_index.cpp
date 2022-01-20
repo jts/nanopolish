@@ -17,7 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <getopt.h>
-
+#include <slow5/slow5.h>
 #include <fast5.hpp>
 #include "nanopolish_index.h"
 #include "nanopolish_common.h"
@@ -28,22 +28,23 @@
 #include "nanopolish_fast5_io.h"
 
 static const char *INDEX_VERSION_MESSAGE =
-SUBPROGRAM " Version " PACKAGE_VERSION "\n"
-"Written by Jared Simpson.\n"
-"\n"
-"Copyright 2017 Ontario Institute for Cancer Research\n";
+        SUBPROGRAM " Version " PACKAGE_VERSION "\n"
+        "Written by Jared Simpson.\n"
+        "\n"
+        "Copyright 2017 Ontario Institute for Cancer Research\n";
 
 static const char *INDEX_USAGE_MESSAGE =
-"Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] -d nanopore_raw_file_directory reads.fastq\n"
-"Build an index mapping from basecalled reads to the signals measured by the sequencer\n"
-"\n"
-"      --help                           display this help and exit\n"
-"      --version                        display version\n"
-"  -v, --verbose                        display verbose output\n"
-"  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
-"  -s, --sequencing-summary             the sequencing summary file from albacore, providing this option will make indexing much faster\n"
-"  -f, --summary-fofn                   file containing the paths to the sequencing summary files (one per line)\n"
-"\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
+        "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] -d nanopore_raw_file_directory reads.fastq\n"
+        "Build an index mapping from basecalled reads to the signals measured by the sequencer\n"
+        "\n"
+        "      --help                           display this help and exit\n"
+        "      --version                        display version\n"
+        "  -v, --verbose                        display verbose output\n"
+        "      --slow5 FILE                     slow5 file\n"
+        "  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
+        "  -s, --sequencing-summary             the sequencing summary file from albacore, providing this option will make indexing much faster\n"
+        "  -f, --summary-fofn                   file containing the paths to the sequencing summary files (one per line)\n"
+        "\nReport bugs to " PACKAGE_BUGREPORT "\n\n";
 
 namespace opt
 {
@@ -52,6 +53,7 @@ namespace opt
     static std::string reads_file;
     static std::vector<std::string> sequencing_summary_files;
     static std::string sequencing_summary_fofn;
+    static std::string slow5file;
 }
 static std::ostream* os_p;
 
@@ -122,7 +124,7 @@ void index_path(ReadDB& read_db, const std::string& path, const std::multimap<st
                 // recurse
                 index_path(read_db, full_fn, fast5_to_read_name_map);
             } else if (is_fast5) {
-                if(!fast5_to_read_name_map.empty()) {
+                if(in_map) {
                     index_file_from_map(read_db, full_fn, fast5_to_read_name_map);
                 } else {
                     index_file_from_fast5(read_db, full_fn);
@@ -176,7 +178,6 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
     std::vector<std::string> fields = split(header, '\t');
 
     const std::string READ_NAME_STR = "read_id";
-    const std::string FILENAME_STR = "filename";
     size_t filename_idx = -1;
     size_t read_name_idx = -1;
 
@@ -185,13 +186,14 @@ void parse_sequencing_summary(const std::string& filename, std::multimap<std::st
             read_name_idx = i;
         }
 
-        if(fields[i] == FILENAME_STR) {
+        // 19/11/05: support live basecalling summary files
+        if(fields[i] == "filename" || fields[i] == "filename_fast5") {
             filename_idx = i;
         }
     }
 
     if(filename_idx == -1) {
-        exit_bad_header(FILENAME_STR, filename);
+        exit_bad_header("fast5 filename", filename);
     }
 
     if(read_name_idx == -1) {
@@ -214,17 +216,19 @@ enum {
     OPT_HELP = 1,
     OPT_VERSION,
     OPT_LOG_LEVEL,
+    OPT_SLOW5_FILE,
 };
 
 static const struct option longopts[] = {
-    { "help",                      no_argument,       NULL, OPT_HELP },
-    { "version",                   no_argument,       NULL, OPT_VERSION },
-    { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL },
-    { "verbose",                   no_argument,       NULL, 'v' },
-    { "directory",                 required_argument, NULL, 'd' },
-    { "sequencing-summary-file",   required_argument, NULL, 's' },
-    { "summary-fofn",              required_argument, NULL, 'f' },
-    { NULL, 0, NULL, 0 }
+        { "help",                      no_argument,       NULL, OPT_HELP },
+        { "version",                   no_argument,       NULL, OPT_VERSION },
+        { "log-level",                 required_argument, NULL, OPT_LOG_LEVEL },
+        { "slow5",                     required_argument, NULL, OPT_SLOW5_FILE},
+        { "verbose",                   no_argument,       NULL, 'v' },
+        { "directory",                 required_argument, NULL, 'd' },
+        { "sequencing-summary-file",   required_argument, NULL, 's' },
+        { "summary-fofn",              required_argument, NULL, 'f' },
+        { NULL, 0, NULL, 0 }
 };
 
 void parse_index_options(int argc, char** argv)
@@ -243,6 +247,7 @@ void parse_index_options(int argc, char** argv)
             case OPT_LOG_LEVEL:
                 log_level.push_back(arg.str());
                 break;
+            case  OPT_SLOW5_FILE : arg >> opt::slow5file; break;
             case 'v': opt::verbose++; break;
             case 's': opt::sequencing_summary_files.push_back(arg.str()); break;
             case 'd': opt::raw_file_directories.push_back(arg.str()); break;
@@ -271,44 +276,138 @@ void parse_index_options(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
+    if(!opt::slow5file.empty()){
+        if (!opt::sequencing_summary_fofn.empty()) {
+            std::cerr << "Option --summary-fofn will be ignored in slow5 mode\n";
+        }
+        if (!opt::sequencing_summary_files.empty()) {
+            std::cerr << "Option --sequencing-summary-file will be ignored in slow5 mode\n";
+        }
+        if (!opt::raw_file_directories.empty()) {
+            std::cerr << "Option -d will be ignored in slow5 mode\n";
+        }
+    }
+
     opt::reads_file = argv[optind++];
+}
+
+void clean_fast5_map(std::multimap<std::string, std::string>& mmap)
+{
+    std::map<std::string, int> fast5_read_count;
+    for(const auto& iter : mmap) {
+        fast5_read_count[iter.first]++;
+    }
+
+    // calculate the mode of the read counts per fast5
+    std::map<size_t, size_t> read_count_distribution;
+    for(const auto& iter : fast5_read_count) {
+        read_count_distribution[iter.second]++;
+    }
+
+    size_t mode = 0;
+    size_t mode_count = 0;
+    for(const auto& iter : read_count_distribution) {
+        if(iter.second > mode_count) {
+            mode = iter.first;
+            mode_count = iter.second;
+        }
+    }
+
+    // this is the default number of reads per fast5 and we expect the summary file to support that
+    // this code is to detect whether the user selected a different number of reads (ARTIC recommends 1000)
+    // so the summary file still works
+    int EXPECTED_ENTRIES_PER_FAST5 = 4000;
+    if(mode_count > 20) {
+        EXPECTED_ENTRIES_PER_FAST5 = mode;
+    }
+
+    std::vector<std::string> invalid_entries;
+    for(const auto& iter : fast5_read_count) {
+        if(iter.second > EXPECTED_ENTRIES_PER_FAST5) {
+            //fprintf(stderr, "warning: %s has %d entries in the summary and will be indexed the slow way\n", iter.first.c_str(), iter.second);
+            invalid_entries.push_back(iter.first);
+        }
+    }
+
+    if(invalid_entries.size() > 0) {
+        fprintf(stderr, "warning: detected invalid summary file entries for %zu of %zu fast5 files\n", invalid_entries.size(), fast5_read_count.size());
+        fprintf(stderr, "These files will be indexed without using the summary file, which is slow.\n");
+    }
+
+    for(const auto& fast5_name : invalid_entries) {
+        mmap.erase(fast5_name);
+    }
 }
 
 int index_main(int argc, char** argv)
 {
     parse_index_options(argc, argv);
 
-    // Read a map from fast5 files to read name from the sequencing summary files (if any)
-    process_summary_fofn();
-    std::multimap<std::string, std::string> fast5_to_read_name_map;
-    for(const auto& ss_filename : opt::sequencing_summary_files) {
-        if(opt::verbose > 2) {
-            fprintf(stderr, "summary: %s\n", ss_filename.c_str());
+    if(opt::slow5file.empty()){
+        // Read a map from fast5 files to read name from the sequencing summary files (if any)
+        process_summary_fofn();
+        std::multimap<std::string, std::string> fast5_to_read_name_map;
+        for(const auto& ss_filename : opt::sequencing_summary_files) {
+            if(opt::verbose > 2) {
+                fprintf(stderr, "summary: %s\n", ss_filename.c_str());
+            }
+            parse_sequencing_summary(ss_filename, fast5_to_read_name_map);
         }
-        parse_sequencing_summary(ss_filename, fast5_to_read_name_map);
-    }
 
-    // import read names, and possibly fast5 paths, from the fasta/fastq file
-    ReadDB read_db;
-    read_db.build(opt::reads_file);
-    bool all_reads_have_paths = read_db.check_signal_paths();
+        // Detect non-unique fast5 file names in the summary file
+        // This occurs when a file with the same name (abc_0.fast5) appears in both fast5_pass
+        // and fast5_fail. This will be fixed by ONT but in the meantime we check for
+        // fast5 files that have a non-standard number of reads (>4000) and remove them
+        // from the map. These fast5s will be indexed the slow way.
+        clean_fast5_map(fast5_to_read_name_map);
 
-    // if the input fastq did not contain a complete set of paths
-    // use the fofn/directory provided to augment the index
-    if(!all_reads_have_paths) {
+        // import read names, and possibly fast5 paths, from the fasta/fastq file
+        ReadDB read_db;
+        read_db.build(opt::reads_file);
+        bool all_reads_have_paths = read_db.check_signal_paths();
 
-        for(const auto& dir_name : opt::raw_file_directories) {
-            index_path(read_db, dir_name, fast5_to_read_name_map);
+        // if the input fastq did not contain a complete set of paths
+        // use the fofn/directory provided to augment the index
+        if(!all_reads_have_paths) {
+
+            for(const auto& dir_name : opt::raw_file_directories) {
+                index_path(read_db, dir_name, fast5_to_read_name_map);
+            }
+        }
+
+        size_t num_with_path = read_db.get_num_reads_with_path();
+        size_t num_reads = read_db.get_num_reads();
+        if(num_with_path == 0) {
+            fprintf(stderr,"No fast5 files found\n");
+            exit(EXIT_FAILURE);
+        } else {
+            read_db.print_stats();
+            read_db.save();
+            if (num_with_path < num_reads * 0.99 ) {
+                fprintf(stderr,"fast5 files could not be located for %ld reads\n",num_reads-num_with_path);
+            }
         }
     }
+    else{
+        slow5_file_t *sp = slow5_open(opt::slow5file.c_str(),"r");
+        if(sp == NULL){
+            fprintf(stderr,"Error in opening slowfile %s\n",opt::slow5file.c_str());
+            exit(EXIT_FAILURE);
+        }
+        int ret=0;
+        ret = slow5_idx_create(sp);
+        if(ret<0){
+            fprintf(stderr,"Error in creating index for slow5 file %s\n",opt::slow5file.c_str());
+            exit(EXIT_FAILURE);
+        }
+        slow5_close(sp);
 
-    size_t num_with_path = read_db.get_num_reads_with_path();
-    if(num_with_path == 0) {
-        fprintf(stderr, "Error: no fast5 files found\n");
-        exit(EXIT_FAILURE);
-    } else {
-        read_db.print_stats();
+        ReadDB read_db;
+        read_db.set_slow5_mode(true);
+        read_db.build(opt::reads_file);
+        read_db.add_signal_path("*", opt::slow5file.c_str());
         read_db.save();
+
     }
     return 0;
 }

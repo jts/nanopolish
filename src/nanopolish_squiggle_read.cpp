@@ -75,46 +75,102 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
 
     this->events_per_base[0] = events_per_base[1] = 0.0f;
     this->base_model[0] = this->base_model[1] = NULL;
-    this->fast5_path = read_db.get_signal_path(this->read_name);
-    g_total_reads += 1;
-    if(this->fast5_path == "") {
-        g_bad_fast5_file += 1;
-        return;
-    }
 
-    // Get the read type from the fast5 file
-    fast5_file f5_file = fast5_open(fast5_path);
-    if(fast5_is_open(f5_file)) {
+    if(read_db.get_slow5_mode()){
+        fprintf(stderr, "slow5_mode!\n");
+        slow5_file_t * slow5_file = read_db.get_slow5_file();
+        if(!slow5_file){
+            fprintf(stderr, "slow5 file is missing");
+            exit(EXIT_FAILURE);
+        }
+        if (!slow5_file->index) {
+            fprintf(stderr,"No slow5 index has been loaded\n");
+            exit(EXIT_FAILURE);
+        }
+        slow5_rec_t *rec = NULL;
+        int ret = slow5_get(read_name.c_str(), &rec, slow5_file);
+        if(ret < 0){
+            fprintf(stderr,"Error in when fetching the read\n");
+        }
 
-        std::string sequencing_kit = fast5_get_sequencing_kit(f5_file, this->read_name);
-        std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
-        std::string flowcell_type = fast5_get_flowcell_type(f5_file, this->read_name);
+        // metadata
+        char* sequencing_kit_c = slow5_hdr_get("sequencing_kit", rec->read_group, slow5_file->header);
+        char* experiment_type_c = slow5_hdr_get("experiment_type", rec->read_group, slow5_file->header);
+
+        std::string sequencing_kit = (sequencing_kit_c)?std::string(sequencing_kit_c):"";
+        std::string experiment_type = (experiment_type_c)?std::string(experiment_type_c):"";
+
+        char* flowcell_type_c = slow5_hdr_get("flow_cell_product_code", rec->read_group, slow5_file->header);
+        // not found, try context_tags + flow_cell_product_code
+        if(!flowcell_type_c) {
+            flowcell_type_c  = slow5_hdr_get("flowcell_type", rec->read_group, slow5_file->header);
+        }
+        std::string flowcell_type = (flowcell_type_c)?std::string(flowcell_type_c):"";
+        // Flowcell type should always be uppercase
+        std::transform(flowcell_type.begin(), flowcell_type.end(), flowcell_type.begin(), ::toupper);
 
         // Try to detect whether this read is DNA or RNA
         // Fix issue 531: experiment_type in fast5 is "rna" for cDNA kit dcs108
         bool rna_experiment = experiment_type == "rna" || experiment_type == "internal_rna";
         this->nucleotide_type = rna_experiment && sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
 
-        //fprintf(stderr, "fast5: %s detected flowcell type: %s\n", this->fast5_path.c_str(), flowcell_type.c_str());
         // pre-release R10 uses "cust" flowcell type so we fall back to checking for
         // the pore type in the path. this should be removed eventually once
         // we no longer want to support pre-release R10
         bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
-        bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
-        if( flowcell_type == "FLO-MIN110" || (cust_or_unknown_fct && has_r10_path )) {
+        if( flowcell_type == "FLO-MIN110") {
             this->pore_type = PT_R10;
         } else {
             this->pore_type = PT_R9;
         }
 
         this->read_sequence = read_db.get_read_sequence(read_name);
-        load_from_raw(f5_file, flags);
+        load_from_raw_slow5(slow5_file, rec, flags);
+        slow5_rec_free(rec);
 
-        fast5_close(f5_file);
+//        data = Fast5Loader::load_read(slow5_file, name);
+    }else{
+        this->fast5_path = read_db.get_signal_path(this->read_name);
+        g_total_reads += 1;
+        if(this->fast5_path == "") {
+            g_bad_fast5_file += 1;
+            return;
+        }
 
-    } else {
-        fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
-        g_bad_fast5_file += 1;
+        // Get the read type from the fast5 file
+        fast5_file f5_file = fast5_open(fast5_path);
+        if(fast5_is_open(f5_file)) {
+
+            std::string sequencing_kit = fast5_get_sequencing_kit(f5_file, this->read_name);
+            std::string experiment_type = fast5_get_experiment_type(f5_file, this->read_name);
+            std::string flowcell_type = fast5_get_flowcell_type(f5_file, this->read_name);
+
+            // Try to detect whether this read is DNA or RNA
+            // Fix issue 531: experiment_type in fast5 is "rna" for cDNA kit dcs108
+            bool rna_experiment = experiment_type == "rna" || experiment_type == "internal_rna";
+            this->nucleotide_type = rna_experiment && sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
+
+            //fprintf(stderr, "fast5: %s detected flowcell type: %s\n", this->fast5_path.c_str(), flowcell_type.c_str());
+            // pre-release R10 uses "cust" flowcell type so we fall back to checking for
+            // the pore type in the path. this should be removed eventually once
+            // we no longer want to support pre-release R10
+            bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
+            bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
+            if( flowcell_type == "FLO-MIN110" || (cust_or_unknown_fct && has_r10_path )) {
+                this->pore_type = PT_R10;
+            } else {
+                this->pore_type = PT_R9;
+            }
+
+            this->read_sequence = read_db.get_read_sequence(read_name);
+            load_from_raw(f5_file, flags);
+
+            fast5_close(f5_file);
+
+        } else {
+            fprintf(stderr, "[warning] fast5 file is unreadable and will be skipped: %s\n", fast5_path.c_str());
+            g_bad_fast5_file += 1;
+        }
     }
 
     if(!this->events[0].empty()) {
@@ -299,7 +355,7 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
 
         // prepare data structures for the final calibration
         std::vector<EventAlignment> alignment =
-            get_eventalignment_for_1d_basecalls(read_sequence, alphabet, this->base_to_event_map, this->base_model[strand_idx]->k, strand_idx, 0);
+                get_eventalignment_for_1d_basecalls(read_sequence, alphabet, this->base_to_event_map, this->base_model[strand_idx]->k, strand_idx, 0);
 
         // run recalibration to get the best set of scaling parameters and the residual
         // between the (scaled) event levels and the model.
@@ -330,7 +386,187 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
         g_qc_fail_reads += 1;
         events[0].clear();
         events[1].clear();
-    } 
+    }
+}
+
+void SquiggleRead::load_from_raw_slow5(slow5_file_t* slow5File, slow5_rec_t *rec , const uint32_t flags)
+{
+    // File not in db, can't load
+    if(this->read_sequence == "") {
+        return;
+    }
+
+    //
+    this->read_type = SRT_TEMPLATE;
+    std::string strand_str = "template";
+    size_t strand_idx = 0;
+
+    // default to R9 parameters
+    std::string alphabet = "nucleotide";
+    std::string kit = "r9.4_450bps";
+    size_t k = 6;
+    const detector_param* ed_params = &event_detection_defaults;
+
+    if(this->pore_type == PT_R10) {
+        kit = "r10_450bps";
+        k = 9;
+        ed_params = &event_detection_r10;
+    }
+
+    if(this->nucleotide_type == SRNT_RNA) {
+        assert(this->pore_type == PT_R9);
+        kit = "r9.4_70bps";
+        alphabet = "u_to_t_rna";
+        k = 5;
+        ed_params = &event_detection_rna;
+
+        std::replace(this->read_sequence.begin(), this->read_sequence.end(), 'U', 'T');
+    }
+
+
+    // Set the base model for this read to either the nucleotide or U->T RNA model
+    this->base_model[strand_idx] = PoreModelSet::get_model(kit, alphabet, strand_str, k);
+    assert(this->base_model[strand_idx] != NULL);
+
+    // from scrappie
+
+    this->sample_rate = rec->sampling_rate;
+
+    // raw data
+    // convert to pA
+    float* rawptr = (float*)calloc(rec->len_raw_signal, sizeof(float));
+    raw_table rawtbl = { 0, 0, 0, NULL };
+    raw_table rt = (raw_table) { rec->len_raw_signal, 0, rec->len_raw_signal, rawptr };
+    hsize_t nsample = rec->len_raw_signal;
+    float digitisation = rec->digitisation;
+    float offset = rec->offset;
+    float range = rec->range;
+    float raw_unit = range / digitisation;
+    for (size_t i = 0; i < nsample; i++) {
+        float signal = rec->raw_signal[i];
+        rawptr[i] = (signal + offset) * raw_unit;
+    }
+    if(rt.n == 0) {
+        if(rt.raw != NULL) {
+            free(rt.raw);
+        }
+        return;
+    }
+
+    // trim using scrappie's internal method
+    // parameters taken directly from scrappie defaults
+    int trim_start = 200;
+    int trim_end = 10;
+    int varseg_chunk = 100;
+    float varseg_thresh = 0.0;
+    trim_and_segment_raw(rt, trim_start, trim_end, varseg_chunk, varseg_thresh);
+    event_table et = detect_events(rt, *ed_params);
+    assert(rt.n > 0);
+    assert(et.n > 0);
+
+    //
+    this->scalings[strand_idx] = estimate_scalings_using_mom(this->read_sequence,
+                                                             *this->base_model[strand_idx],
+                                                             et);
+
+
+    // copy events into nanopolish's format
+    this->events[strand_idx].resize(et.n);
+    double start_time = 0;
+    for(size_t i = 0; i < et.n; ++i) {
+        float length_in_seconds = et.event[i].length / this->sample_rate;
+        this->events[strand_idx][i] = { et.event[i].mean, et.event[i].stdv, start_time, length_in_seconds, logf(et.event[i].stdv) };
+        start_time += length_in_seconds;
+    }
+
+    if(flags & SRF_LOAD_RAW_SAMPLES) {
+        this->sample_start_time = 0;
+        this->samples.resize(rt.n);
+        for(size_t i = 0; i < this->samples.size(); ++i) {
+            assert(rt.start + i < rt.n);
+            this->samples[i] = rt.raw[rt.start + i];
+        }
+    }
+
+    // If sequencing RNA, reverse the events to be 5'->3'
+    if(this->nucleotide_type == SRNT_RNA) {
+        std::reverse(this->events[strand_idx].begin(), this->events[strand_idx].end());
+    }
+
+    // clean up scrappie raw and event tables
+    assert(rt.raw != NULL);
+    assert(et.event != NULL);
+    free(rt.raw);
+    free(et.event);
+
+    // align events to the basecalled read
+    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, *this->base_model[strand_idx], read_sequence);
+
+    // transform alignment into the base-to-event map
+    if(event_alignment.size() > 0) {
+
+        // create base-to-event map
+        size_t n_kmers = read_sequence.size() - this->get_model_k(strand_idx) + 1;
+        this->base_to_event_map.clear();
+        this->base_to_event_map.resize(n_kmers);
+
+        size_t max_event = 0;
+        size_t min_event = std::numeric_limits<size_t>::max();
+
+        size_t prev_event_idx = -1;
+        for(size_t i = 0; i < event_alignment.size(); ++i) {
+
+            size_t k_idx = event_alignment[i].ref_pos;
+            size_t event_idx = event_alignment[i].read_pos;
+            IndexPair& elem = this->base_to_event_map[k_idx].indices[strand_idx];
+            if(event_idx != prev_event_idx) {
+                if(elem.start == -1) {
+                    elem.start = event_idx;
+                }
+                elem.stop = event_idx;
+            }
+
+            max_event = std::max(max_event, event_idx);
+            min_event = std::min(min_event, event_idx);
+            prev_event_idx = event_idx;
+        }
+
+        events_per_base[strand_idx] = (double)(max_event - min_event) / n_kmers;
+
+        // prepare data structures for the final calibration
+        std::vector<EventAlignment> alignment =
+                get_eventalignment_for_1d_basecalls(read_sequence, alphabet, this->base_to_event_map, this->base_model[strand_idx]->k, strand_idx, 0);
+
+        // run recalibration to get the best set of scaling parameters and the residual
+        // between the (scaled) event levels and the model.
+        // internally this function will set shift/scale/etc of the pore model
+        bool calibrated = recalibrate_model(*this, *this->base_model[strand_idx], strand_idx, alignment, true, false);
+
+#ifdef DEBUG_MODEL_SELECTION
+        fprintf(stderr, "[calibration] read: %s events: %zu"
+                         " scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
+                                read_name.substr(0, 6).c_str(), this->events[strand_idx].size(), this->scalings[strand_idx].scale,
+                                this->scalings[strand_idx].shift, this->scalings[strand_idx].drift, this->scalings[strand_idx].var);
+#endif
+
+        // QC calibration
+        if(!calibrated || this->scalings[strand_idx].var > MIN_CALIBRATION_VAR) {
+            events[strand_idx].clear();
+            g_failed_calibration_reads += 1;
+        }
+    } else {
+        // Could not align, fail this read
+        this->events[strand_idx].clear();
+        this->events_per_base[strand_idx] = 0.0f;
+        g_failed_alignment_reads += 1;
+    }
+
+    // Filter poor quality reads that have too many "stays"
+    if(!this->events[strand_idx].empty() && this->events_per_base[strand_idx] > 5.0) {
+        g_qc_fail_reads += 1;
+        events[0].clear();
+        events[1].clear();
+    }
 }
 
 // Return a vector of eventalignments for the events that made up the basecalls in the read

@@ -325,6 +325,8 @@ class SquiggleRead
 
         // Load all read data from raw samples
         void load_from_raw(fast5_file& f5_file, const uint32_t flags);
+        void load_from_raw_slow5(slow5_file_t* slow5File, slow5_rec_t *rec, const uint32_t flags);
+
 
         void _find_kmer_event_pair(const std::string& read_sequence_1d,
                                    std::vector<fast5::Basecall_Event>& events,

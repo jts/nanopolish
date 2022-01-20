@@ -11,6 +11,7 @@
 
 #include <map>
 #include "htslib/faidx.h"
+#include <slow5/slow5.h>
 
 struct ReadDBData
 {
@@ -46,6 +47,11 @@ class ReadDB
         
         // returns the path to the signal data for the given read
         std::string get_signal_path(const std::string& read_id) const;
+
+        // useful when using slow5
+        slow5_file_t* get_slow5_file() const;
+        void set_slow5_mode(bool slow5_mode);
+        bool get_slow5_mode() const;
         
         // returns true if a read with this ID is in the DB
         bool has_read(const std::string& read_id) const;
@@ -82,6 +88,9 @@ class ReadDB
 
         //
         faidx_t* m_fai;
+        //useful when using slow5
+        bool slow5_mode = false;
+        slow5_file_t* slow5_file = NULL;
 };
 
 #endif
