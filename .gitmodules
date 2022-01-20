@@ -4,3 +4,6 @@
 [submodule "fast5"]
 	path = fast5
 	url = https://github.com/mateidavid/fast5
+[submodule "slow5lib"]
+	path = slow5lib
+	url = git@github.com:hasindu2008/slow5lib.git
