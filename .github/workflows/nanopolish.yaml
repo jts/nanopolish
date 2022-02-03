@@ -5,8 +5,7 @@ on: [ push ]
 jobs:
     build-and-test:
         runs-on: ubuntu-latest
-        compiler: gcc
-        gcc: 8
+        cc: "g++"
         steps:
         - uses: actions/checkout@v2
           #- name: install cppunit
