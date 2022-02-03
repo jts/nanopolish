@@ -5,9 +5,14 @@ on: [ push ]
 jobs:
     build-and-test:
         runs-on: ubuntu-latest
-        cc: "g++"
         steps:
         - uses: actions/checkout@v2
+        - name: Set up GCC
+          uses: ./
+          with:
+              version: 8
+              platform: x86
+              cc: 1
           #- name: install cppunit
           #- run: sudo apt install -y libcppunit-dev
         - name: make
