@@ -7,14 +7,16 @@ jobs:
         runs-on: ubuntu-latest
         steps:
         - uses: actions/checkout@v2
-        - name: Set up GCC
-          uses: ./
-          with:
-              version: 8
-              platform: x86
-              cc: 1
+          #        - name: Set up GCC
+          #          uses: ./
+          #with:
+          #    version: 8
+              #              platform: x86
+              #    cc: 1
           #- name: install cppunit
           #- run: sudo apt install -y libcppunit-dev
+        - name: export H5_CFLAGS
+          run: export H5_CFLAGS="-w"
         - name: make
           run: make
         - name: make test
