@@ -7,6 +7,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
         - uses: actions/checkout@v2
+          submodules: 'true'
         - name: export H5_CFLAGS
           run: export H5_CFLAGS="-w"
         - name: make
