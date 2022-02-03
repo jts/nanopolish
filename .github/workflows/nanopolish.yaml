@@ -9,7 +9,5 @@ jobs:
         - uses: actions/checkout@v2
           with:
             submodules: recursive
-        - name: export H5_CFLAGS
-          run: export H5_CFLAGS="-w"
         - name: make
-          run: export H5_CFLAGS="-w" && make && make test
+          run: make && make test
