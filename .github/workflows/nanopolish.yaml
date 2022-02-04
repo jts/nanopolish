@@ -1,0 +1,13 @@
+name: nanopolish
+
+on: [ push ]
+
+jobs:
+    build-and-test:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v2
+          with:
+            submodules: recursive
+        - name: make
+          run: make && make test
