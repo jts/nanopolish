@@ -17,11 +17,11 @@
 #include <math.h>
 #include <sys/time.h>
 #include <algorithm>
+#include <fstream>
 #include <sstream>
 #include <set>
 #include <omp.h>
 #include <getopt.h>
-#include <fast5.hpp>
 #include "htslib/faidx.h"
 #include "nanopolish_common.h"
 #include "nanopolish_variant.h"

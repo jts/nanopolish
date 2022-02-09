@@ -6,6 +6,7 @@
 // nanopolish_variants -- tools for calling variants
 //
 #include <algorithm>
+#include <fstream>
 #include <map>
 #include <iterator>
 #include <iomanip>

@@ -300,7 +300,6 @@ class SquiggleRead
 
     private:
         // private data
-        fast5::File* f_p;
         std::string basecall_group;
 
         SquiggleRead(const SquiggleRead&) {}
@@ -318,22 +317,6 @@ class SquiggleRead
                       const std::vector<EventRangeForBase>& event_map_1d,
                       const std::vector<double>& p_model_states,
                       const uint32_t flags);
-
-        // make a map from a base of the 1D read sequence to the range of events supporting that base
-        std::vector<EventRangeForBase> build_event_map_1d(const std::string& read_sequence_1d,
-                                                          uint32_t strand,
-                                                          std::vector<fast5::Basecall_Event>& f5_events,
-                                                          size_t k);
-
-        std::vector<EventRangeForBase> read_reconstruction(const std::string& read_sequence_1d,
-                                                           uint32_t strand,
-                                                           std::vector<fast5::Basecall_Event>& f5_events,
-                                                           size_t k);
-
-        void _find_kmer_event_pair(const std::string& read_sequence_1d,
-                                   std::vector<fast5::Basecall_Event>& events,
-                                   size_t& k_idx,
-                                   size_t& event_idx) const;
 
         // as above but for the 2D sequence. this fills in both the template and complete event indices
         void build_event_map_2d_r7();
