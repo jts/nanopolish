@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io src/basemods
 
 #
 # Set libraries, paths, flags and options
@@ -112,6 +112,7 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
+	cp etc/htslib_config.h htslib/config.h
 	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
 
 minimap2/libminimap2.a:
