@@ -310,7 +310,7 @@ void phase_single_read(const ReadDB& read_db,
 
                 int out_position = v.ref_position - alignment_start_pos;
                 if(read_outseq[out_position] != v.ref_seq[0]) {
-                    fprintf(stderr, "warning: reference base at position %d does not match variant record (%c != %c)\n",
+                    fprintf(stderr, "warning: reference base at position %zu does not match variant record (%c != %c)\n",
                         v.ref_position, v.ref_seq[0], read_outseq[out_position]);
                 }
                 read_outseq[out_position] = call;
