@@ -7,6 +7,7 @@
 // a collection of pore models that SquiggleReads
 // can load during initialization.
 //
+#include <fstream>
 #include "nanopolish_pore_model_set.h"
 #include "nanopolish_builtin_models.h"
 

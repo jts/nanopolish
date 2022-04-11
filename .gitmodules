@@ -1,9 +1,6 @@
 [submodule "htslib"]
 	path = htslib
 	url = https://github.com/samtools/htslib
-[submodule "fast5"]
-	path = fast5
-	url = https://github.com/mateidavid/fast5
 [submodule "minimap2"]
 	path = minimap2
 	url = https://github.com/lh3/minimap2
