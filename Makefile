@@ -34,7 +34,7 @@ else
     ARM_MAC=1
     ARM=1
     SDK=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-    MAC_FLAGS = -isysroot $(SDK) -I/usr/include -L/usr/lib
+    MAC_FLAGS = -isysroot $(SDK) -L/usr/lib
 endif
 
 CXXFLAGS += $(MAC_FLAGS)
@@ -144,7 +144,7 @@ lib/libhdf5.a:
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
+		./configure CFLAGS="$(MAC_FLAGS)" CPPFLAGS="$(MAC_FLAGS)" --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
 	$(MAKE) -C hdf5-$(HDF5_VERSION) && $(MAKE) -C hdf5-$(HDF5_VERSION) install
 
 # Download and install eigen if not already downloaded
