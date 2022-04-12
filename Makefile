@@ -27,20 +27,25 @@ HTS ?= install
 MINIMAP2 ?= install
 SLOW5LIB ?= install
 
-# Check whether we're building on an ARM mac
-ifneq (,$(findstring arm64-apple,$(MACHTYPE)))
-	ARM_MAC=0
-else
-    ARM_MAC=1
-    ARM=1
+MACHINE := $(shell gcc -dumpmachine)
+
+# when building on MacOS we only support gcc, but need to set some paths
+ifneq (,$(findstring apple,$(MACHINE)))
     SDK := $(shell xcrun --sdk macosx --show-sdk-path)
     MAC_FLAGS = -isysroot $(SDK) -L/usr/lib
+    MAC=1
+    CXXFLAGS += $(MAC_FLAGS)
+    CFLAGS += $(MAC_FLAGS)
 endif
 
-CXXFLAGS += $(MAC_FLAGS)
-CFLAGS += $(MAC_FLAGS)
+# set an ARM-specific flag
+ifneq (,$(findstring arm64,$(MACHINE)))
+    ARM=1
+else
+    ARM=0
+endif
 
-ifeq ($(ARM_MAC), 1)
+ifeq ($(MAC), 1)
     HDF5_VERSION ?= 1.13.0
 else
     HDF5_VERSION ?= 1.8.14
