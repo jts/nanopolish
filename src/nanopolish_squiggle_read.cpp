@@ -7,6 +7,7 @@
 // space nanopore read
 //
 #include <algorithm>
+#include <limits>
 #include "nanopolish_common.h"
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_pore_model_set.h"
