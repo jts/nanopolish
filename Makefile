@@ -33,7 +33,7 @@ ifneq (,$(findstring arm64-apple,$(MACHTYPE)))
 else
     ARM_MAC=1
     ARM=1
-    SDK=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    SDK := $(shell xcrun --sdk macosx --show-sdk-path)
     MAC_FLAGS = -isysroot $(SDK) -L/usr/lib
 endif
 
