@@ -126,7 +126,7 @@ all: depend $(PROGRAM)
 #
 htslib/libhts.a:
 	cp etc/htslib_config.h htslib/config.h
-	$(MAKE) -C htslib CFLAGS="$(MAC_FLAGS)" LDFLAGS="$(MAC_FLAGS)" htslib_default_libs="-lz -lm -lbz2" || exit 255
+	$(MAKE) -C htslib CFLAGS="$(MAC_FLAGS)" LDFLAGS="$(MAC_FLAGS)" htslib_default_libs="-lz -lm -lbz2" NONCONFIGURE_OBJS="" || exit 255
 
 minimap2/libminimap2.a:
 	$(MAKE) -C minimap2 $(MINIMAP2_OPT) CFLAGS="$(MAC_FLAGS)" libminimap2.a || exit 255
