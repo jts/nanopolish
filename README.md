@@ -5,6 +5,7 @@
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
 ## Release notes
+* 0.14.0: support modification bam files, compile on M1 apple hardware
 
 * 0.13.3: fix conda build issues, better handling of VBZ-compressed files, integration of module for [nano-COP](https://www.nature.com/articles/s41596-020-00469-y)
 
@@ -42,8 +43,8 @@ By default, nanopolish will download and compile all of its required dependencie
 
 * [libhdf5-1.8.14](http://www.hdfgroup.org/HDF5/release/obtain5.html) compiled with multi-threading support `--enable-threadsafe`
 * [eigen-3.2.5](http://eigen.tuxfamily.org)
-* [htslib-1.4](http://github.com/samtools/htslib)
-* [minimap2-d2de282](http://github.com/lh3/minimap2)
+* [htslib-1.15.1](http://github.com/samtools/htslib)
+* [minimap2-fe35e67](http://github.com/lh3/minimap2)
 
 In order to use the additional python3 scripts within `/scripts`, install the dependencies via
 
