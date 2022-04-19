@@ -38,11 +38,16 @@ ifneq (,$(findstring apple,$(MACHINE)))
     CFLAGS += $(MAC_FLAGS)
 endif
 
+ARM=0
+
 # set an ARM-specific flag
 ifneq (,$(findstring arm64,$(MACHINE)))
     ARM=1
-else
-    ARM=0
+endif
+
+# set an ARM-specific flag
+ifneq (,$(findstring aarch64,$(MACHINE)))
+    ARM=1
 endif
 
 ifeq ($(MAC), 1)
