@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <iterator>
 #include <set>
 #include <omp.h>
 #include <getopt.h>
@@ -40,6 +41,8 @@
 #include "nanopolish_alignment_db.h"
 #include "nanopolish_read_db.h"
 #include "nanopolish_fast5_processor.h"
+#include "nanopolish_bam_utils.h"
+#include "nanopolish_basemods.h"
 #include "fs_support.hpp"
 #include "H5pubconf.h"
 #include "profiler.h"
@@ -50,59 +53,6 @@
 
 using namespace std::placeholders;
 
-//
-// Structs
-//
-struct OutputHandles
-{
-    FILE* site_writer = NULL;
-    htsFile* bam_writer = NULL;
-
-    void write_site_header() {
-        // Write header
-        fprintf(site_writer, "chromosome\tstrand\tstart\tend\tread_name\t"
-                             "log_lik_ratio\tlog_lik_methylated\tlog_lik_unmethylated\t"
-                             "num_calling_strands\tnum_motifs\tsequence\n");
-    }
-
-    void close() {
-        if(site_writer != stdout) {
-            fclose(site_writer);
-            site_writer = NULL;
-        }
-
-        if(bam_writer != NULL) {
-            hts_close(bam_writer);
-            bam_writer = NULL;
-        }
-    }
-};
-
-struct ScoredSite
-{
-    ScoredSite()
-    {
-        ll_unmethylated[0] = 0;
-        ll_unmethylated[1] = 0;
-        ll_methylated[0] = 0;
-        ll_methylated[1] = 0;
-        strands_scored = 0;
-    }
-
-    std::string chromosome;
-    int start_position;
-    int end_position;
-    int n_motif;
-    std::string sequence;
-
-    // scores per strand
-    double ll_unmethylated[2];
-    double ll_methylated[2];
-    int strands_scored;
-
-    //
-    static bool sort_by_position(const ScoredSite& a, const ScoredSite& b) { return a.start_position < b.start_position; }
-};
 
 struct WatchStatus
 {
@@ -117,12 +67,9 @@ struct WatchStatus
         double elapsed_seconds = timer.get_elapsed_seconds();
         double seconds_per_file = processed_fast5s > 0 ? elapsed_seconds / processed_fast5s : 0.0;
 
-        fprintf(stderr, "\33[2K\r[call-methylation] fast5 progress: %d/%d %.2lfs/fast5 [%s]", processed_fast5s, seconds_per_file, total_fast5s, message.c_str());
+        fprintf(stderr, "\33[2K\r[call-methylation] fast5 progress: %d/%d %.2lfs/fast5 [%s]", processed_fast5s, total_fast5s, seconds_per_file, message.c_str());
     }
 };
-
-//
-const Alphabet* mtest_alphabet;
 
 //
 // Getopt
@@ -146,6 +93,10 @@ static const char *CALL_METHYLATION_USAGE_MESSAGE =
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are calling methylation for is in fasta FILE\n"
 "  -q, --methylation=STRING             the type of methylation (cpg,gpc,dam,dcm)\n"
+"  -o, --modbam-output-name=FILE        write the results as tags in FILE (default: tsv output)\n"
+"  -s, --modbam-style=STRING            modbam output style either 'reference' or 'read' (default: read)\n"
+"                                       when this is set to reference the SEQ field in the output will be the reference\n"
+"                                       sequence spanned by the read\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
 "      --min-mapping-quality=NUM        only use reads with mapQ >= NUM (default: 20)\n"
 "      --watch=DIR                      watch the sequencing run directory DIR and call methylation as data is generated\n"
@@ -165,23 +116,23 @@ namespace opt
     static std::string reads_file;
     static std::string bam_file;
     static std::string genome_file;
-    static std::string methylation_type = "cpg";
     static std::string models_fofn;
     static std::string region;
     static std::string motif_methylation_model_type = "reftrained";
     static std::string watch_dir;
+    static std::string modbam_output_name;
+    static std::string modbam_style = "read";
     static int watch_write_bam;
     static int watch_process_total = 1;
     static int watch_process_index = 0;
     static int progress = 0;
     static int num_threads = 1;
     static int batch_size = 512;
-    static int min_separation = 10;
-    static int min_flank = 10;
+    static MethylationCallingParameters calling_parameters;
     static int min_mapping_quality = 20;
 }
 
-static const char* shortopts = "r:b:g:t:w:m:K:q:c:i:vn";
+static const char* shortopts = "r:b:g:t:w:m:K:q:c:o:i:s:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_MIN_SEPARATION, OPT_MIN_MAPPING_QUALITY, OPT_WATCH_DIR, OPT_WATCH_WRITE_BAM };
 
@@ -196,6 +147,8 @@ static const struct option longopts[] = {
     { "models-fofn",          required_argument, NULL, 'm' },
     { "watch-process-total",  required_argument, NULL, 'c' },
     { "watch-process-index",  required_argument, NULL, 'i' },
+    { "modbam-output-name",   required_argument, NULL, 'o' },
+    { "modbam-style",         required_argument, NULL, 's' },
     { "min-separation",       required_argument, NULL, OPT_MIN_SEPARATION },
     { "min-mapping-quality",  required_argument, NULL, OPT_MIN_MAPPING_QUALITY },
     { "watch",                required_argument, NULL, OPT_WATCH_DIR },
@@ -207,199 +160,8 @@ static const struct option longopts[] = {
     { NULL, 0, NULL, 0 }
 };
 
-// Test motif sites in this read for methylation
-void calculate_methylation_for_read(const OutputHandles& handles,
-                                    SquiggleRead& sr,
-                                    const faidx_t* fai,
-                                    const bam_hdr_t* hdr,
-                                    const bam1_t* record,
-                                    size_t read_idx,
-                                    int region_start,
-                                    int region_end)
-{
-    std::string read_orientation = bam_is_rev(record) ? "-" : "+";
-
-    // An output map from reference positions to scored motif sites
-    std::map<int, ScoredSite> site_score_map;
-
-    for(size_t strand_idx = 0; strand_idx < NUM_STRANDS; ++strand_idx) {
-        if(!sr.has_events_for_strand(strand_idx)) {
-            continue;
-        }
-
-        size_t k = sr.get_model_k(strand_idx);
-
-        // check if there is a motif model for this strand
-        if(!PoreModelSet::has_model(sr.get_model_kit_name(strand_idx),
-                                    opt::methylation_type,
-                                    sr.get_model_strand_name(strand_idx),
-                                    k))
-        {
-            continue;
-        }
-
-        // Build the event-to-reference map for this read from the bam record
-        SequenceAlignmentRecord seq_align_record(record);
-        EventAlignmentRecord event_align_record(&sr, strand_idx, seq_align_record);
-
-        std::vector<double> site_scores;
-        std::vector<int> site_starts;
-        std::vector<int> site_ends;
-        std::vector<int> site_count;
-
-
-        std::string contig = hdr->target_name[record->core.tid];
-        int ref_start_pos = record->core.pos;
-        int ref_end_pos =  bam_endpos(record);
-
-        // Extract the reference sequence for this region
-        int fetched_len = 0;
-        assert(ref_end_pos >= ref_start_pos);
-        std::string ref_seq = get_reference_region_ts(fai, contig.c_str(), ref_start_pos,
-                                                      ref_end_pos, &fetched_len);
-
-        // Remove non-ACGT bases from this reference segment
-        ref_seq = gDNAAlphabet.disambiguate(ref_seq);
-
-        // Scan the sequence for motifs
-        std::vector<int> motif_sites;
-        assert(ref_seq.size() != 0);
-        for(size_t i = 0; i < ref_seq.size() - 1; ++i) {
-            if(mtest_alphabet->is_motif_match(ref_seq, i))
-                motif_sites.push_back(i);
-        }
-
-        // Batch the motifs together into groups that are separated by some minimum distance
-        std::vector<std::pair<int, int>> groups;
-
-        size_t curr_idx = 0;
-        while(curr_idx < motif_sites.size()) {
-            // Find the endpoint of this group of sites
-            size_t end_idx = curr_idx + 1;
-            while(end_idx < motif_sites.size()) {
-                if(motif_sites[end_idx] - motif_sites[end_idx - 1] > opt::min_separation)
-                    break;
-                end_idx += 1;
-            }
-            groups.push_back(std::make_pair(curr_idx, end_idx));
-            curr_idx = end_idx;
-        }
-
-        for(size_t group_idx = 0; group_idx < groups.size(); ++group_idx) {
-
-            size_t start_idx = groups[group_idx].first;
-            size_t end_idx = groups[group_idx].second;
-
-            // the coordinates on the reference substring for this group of sites
-            int sub_start_pos = motif_sites[start_idx] - opt::min_flank;
-            int sub_end_pos = motif_sites[end_idx - 1] + opt::min_flank;
-            int span = motif_sites[end_idx - 1] - motif_sites[start_idx];
-
-            // skip if too close to the start of the read alignment or
-            // if the reference range is too large to efficiently call
-            if(sub_start_pos <= opt::min_separation || span > 200) {
-                continue;
-            }
-
-            std::string subseq = ref_seq.substr(sub_start_pos, sub_end_pos - sub_start_pos + 1);
-            std::string rc_subseq = mtest_alphabet->reverse_complement(subseq);
-
-            int calling_start = sub_start_pos + ref_start_pos;
-            int calling_end = sub_end_pos + ref_start_pos;
-
-            // using the reference-to-event map, look up the event indices for this segment
-            int e1,e2;
-            bool bounded = AlignmentDB::_find_by_ref_bounds(event_align_record.aligned_events,
-                                                            calling_start,
-                                                            calling_end,
-                                                            e1,
-                                                            e2);
-
-            double ratio = fabs(e2 - e1) / (calling_start - calling_end);
-
-            // Only process this region if the the read is aligned within the boundaries
-            // and the span between the start/end is not unusually short
-            if(!bounded || abs(e2 - e1) <= 10 || ratio > MAX_EVENT_TO_BP_RATIO) {
-                continue;
-            }
-
-            uint32_t hmm_flags = HAF_ALLOW_PRE_CLIP | HAF_ALLOW_POST_CLIP;
-
-            // Set up event data
-            HMMInputData data;
-            data.read = &sr;
-            data.pore_model = sr.get_model(strand_idx, opt::methylation_type);
-            data.strand = strand_idx;
-            data.rc = event_align_record.rc;
-            data.event_start_idx = e1;
-            data.event_stop_idx = e2;
-            data.event_stride = data.event_start_idx <= data.event_stop_idx ? 1 : -1;
-
-            // Calculate the likelihood of the unmethylated sequence
-            HMMInputSequence unmethylated(subseq, rc_subseq, mtest_alphabet);
-            double unmethylated_score = profile_hmm_score(unmethylated, data, hmm_flags);
-
-            // Methylate all motifs in the sequence and score again
-            std::string m_subseq = mtest_alphabet->methylate(subseq);
-            std::string rc_m_subseq = mtest_alphabet->reverse_complement(m_subseq);
-
-            // Calculate the likelihood of the methylated sequence
-            HMMInputSequence methylated(m_subseq, rc_m_subseq, mtest_alphabet);
-            double methylated_score = profile_hmm_score(methylated, data, hmm_flags);
-
-            // Aggregate score
-            int start_position = motif_sites[start_idx] + ref_start_pos;
-            auto iter = site_score_map.find(start_position);
-            if(iter == site_score_map.end()) {
-                // insert new score into the map
-                ScoredSite ss;
-                ss.chromosome = contig;
-                ss.start_position = start_position;
-                ss.end_position = motif_sites[end_idx - 1] + ref_start_pos;
-                ss.n_motif = end_idx - start_idx;
-
-                // extract the motif site(s) with a k-mers worth of surrounding context
-                size_t site_output_start = motif_sites[start_idx] - k + 1;
-                size_t site_output_end =  motif_sites[end_idx - 1] + k;
-                ss.sequence = ref_seq.substr(site_output_start, site_output_end - site_output_start);
-
-                // insert into the map
-                iter = site_score_map.insert(std::make_pair(start_position, ss)).first;
-            }
-
-            // set strand-specific score
-            // upon output below the strand scores will be summed
-            iter->second.ll_unmethylated[strand_idx] = unmethylated_score;
-            iter->second.ll_methylated[strand_idx] = methylated_score;
-            iter->second.strands_scored += 1;
-        } // for group
-    } // for strands
-
-    #pragma omp critical(call_methylation_write)
-    {
-        // write all sites for this read
-        for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
-
-            const ScoredSite& ss = iter->second;
-            double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
-            double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
-            double diff = sum_ll_m - sum_ll_u;
-
-            // do not output if outside the window boundaries
-            if((region_start != -1 && ss.start_position < region_start) ||
-               (region_end != -1 && ss.end_position >= region_end)) {
-                continue;
-            }
-
-            fprintf(handles.site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
-            fprintf(handles.site_writer, "%s\t%.2lf\t", sr.read_name.c_str(), diff);
-            fprintf(handles.site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
-            fprintf(handles.site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
-        }
-    }
-}
-
 void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
+                                             MethylationCallingResult& result,
                                              const ReadDB& read_db,
                                              const faidx_t* fai,
                                              const bam_hdr_t* hdr,
@@ -411,10 +173,11 @@ void calculate_methylation_for_read_from_bam(const OutputHandles& handles,
     // Load a squiggle read for the mapped read
     std::string read_name = bam_get_qname(record);
     SquiggleRead sr(read_name, read_db);
-    calculate_methylation_for_read(handles, sr, fai, hdr, record, read_idx, region_start, region_end);
+    calculate_methylation_for_read(handles, result, sr, opt::calling_parameters, fai, hdr, record, read_idx, region_start, region_end);
 }
 
 void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
+                                               MethylationCallingResult& result,
                                                const std::unordered_map<std::string, std::string>& sequence_map,
                                                const std::unordered_map<std::string, std::vector<bam1_t*>>& alignment_map,
                                                const faidx_t* fai,
@@ -442,7 +205,7 @@ void calculate_methylation_for_read_from_fast5(const OutputHandles& handles,
 
     //
     for(size_t i = 0; i < bam_records.size(); ++i) {
-        calculate_methylation_for_read(handles, sr, fai, hdr, bam_records[i], -1, -1, -1);
+        calculate_methylation_for_read(handles, result, sr, opt::calling_parameters, fai, hdr, bam_records[i], -1, -1, -1);
     }
 }
 
@@ -619,16 +382,20 @@ bool process_batch(const std::string& basename, const FileBatch& batch, const fa
 
     // use fast5 processor to iterate over the signal reads, and run our call-methylation function
     status.update("calling " + basename);
+    MethylationCallingResult result;
     Fast5Processor processor(batch.fast5_path, opt::num_threads);
     auto f = std::bind(calculate_methylation_for_read_from_fast5, std::ref(handles),
+                                                                  std::ref(result),
                                                                   std::ref(read_sequence_map),
                                                                   std::ref(read_alignment_map),
                                                                   fai,
                                                                   hdr,
                                                                   _1);
-
-    // call.
+    
+    // call
     processor.parallel_run(f);
+
+    assert(false && "implement writing batched results");
 
     // clean up bam records
     size_t count = 0;
@@ -762,6 +529,65 @@ void run_watch_mode(const faidx_t* fai)
     bam_hdr_destroy(hdr);
 }
 
+void write_methylation_results_as_tsv(FILE* site_writer, const bam1_t* record, std::map<int, ScoredSite>& site_score_map)
+{
+    std::string read_orientation = bam_is_rev(record) ? "-" : "+";
+
+    // 
+    for(auto iter = site_score_map.begin(); iter != site_score_map.end(); ++iter) {
+
+        const ScoredSite& ss = iter->second;
+        double sum_ll_m = ss.ll_methylated[0] + ss.ll_methylated[1];
+        double sum_ll_u = ss.ll_unmethylated[0] + ss.ll_unmethylated[1];
+        double diff = sum_ll_m - sum_ll_u;
+        
+        fprintf(site_writer, "%s\t%s\t%d\t%d\t", ss.chromosome.c_str(), read_orientation.c_str(), ss.start_position, ss.end_position);
+        fprintf(site_writer, "%s\t%.2lf\t", bam_get_qname(record), diff);
+        fprintf(site_writer, "%.2lf\t%.2lf\t", sum_ll_m, sum_ll_u);
+        fprintf(site_writer, "%d\t%d\t%s\n", ss.strands_scored, ss.n_motif, ss.sequence.c_str());
+    }
+    
+}
+
+void write_methylation_results_for_batch(const OutputHandles& handles,
+                                         MethylationCallingResult& results,
+                                         const MethylationCallingParameters& calling_parameters,
+                                         const faidx_t* fai,
+                                         const bam_hdr_t* hdr,
+                                         const std::vector<bam1_t*> batch)
+{
+    // write all sites for each alignment
+    for(auto record : batch) {
+
+        // tsv
+        if(handles.site_writer != NULL) {
+            write_methylation_results_as_tsv(handles.site_writer, record, results[record]);   
+        }
+        
+        // bam
+        if(handles.bam_writer != NULL) {
+
+            bam1_t* modbam_record = NULL;
+            if(opt::modbam_style == "read") {
+                modbam_record = create_modbam_record(record, results[record], calling_parameters);
+            } else {
+                assert(opt::modbam_style == "reference");
+                modbam_record = create_reference_modbam_record(fai, hdr, record, results[record], calling_parameters);
+            }
+
+            int write_ret = sam_write1(handles.bam_writer, hdr, modbam_record);
+            if(write_ret < 0) {
+                fprintf(stderr, "error writing bam %d\n", write_ret);
+            }
+
+            bam_destroy1(modbam_record); 
+        }
+    }
+
+    //
+    results.clear();
+}
+
 void run_from_bam(const faidx_t* fai)
 {
     ReadDB read_db;
@@ -769,16 +595,38 @@ void run_from_bam(const faidx_t* fai)
 
     // Initialize writers
     OutputHandles handles;
-    handles.site_writer = stdout;
-    handles.write_site_header();
 
     // the BamProcessor framework calls the input function with the
     // bam record, read index, etc passed as parameters
     // bind the other parameters the worker function needs here
-    auto f = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+    MethylationCallingResult result;
+
+    // this function is run on each bam record, which calculates modifications for each alignment and stores them in result
+    auto record_func = std::bind(calculate_methylation_for_read_from_bam, std::ref(handles), std::ref(result), std::ref(read_db), fai, _1, _2, _3, _4, _5);
+
+    // this function processes the results for every batch of reads processed
+    // this is needed so we can write the alignments in the same order that they currently reside in the bam
+    // (since BamProcessor is multithreaded, they may be processed out-of-order)
+    auto batch_func = std::bind(write_methylation_results_for_batch, std::ref(handles), std::ref(result), std::ref(opt::calling_parameters), fai, _1, _2);
+
     BamProcessor processor(opt::bam_file, opt::region, opt::num_threads, opt::batch_size);
     processor.set_min_mapping_quality(opt::min_mapping_quality);
-    processor.parallel_run(f);
+    
+    // initialize the writer - tsv (default) or modbam
+    if(opt::modbam_output_name.empty()) {
+        handles.site_writer = stdout;
+        handles.write_site_header();
+    } else {
+        handles.bam_writer = hts_open(opt::modbam_output_name.c_str(), "bw");
+        int ret = sam_hdr_write(handles.bam_writer, processor.get_bam_header());
+        if(ret != 0) {
+            fprintf(stderr, "Error writing SAM header\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    processor.parallel_run(record_func, batch_func);
+    handles.close();
 }
 
 void parse_call_methylation_options(int argc, char** argv)
@@ -789,7 +637,7 @@ void parse_call_methylation_options(int argc, char** argv)
         switch (c) {
             case 'r': arg >> opt::reads_file; break;
             case 'g': arg >> opt::genome_file; break;
-            case 'q': arg >> opt::methylation_type; break;
+            case 'q': arg >> opt::calling_parameters.methylation_type; break;
             case 'b': arg >> opt::bam_file; break;
             case '?': die = true; break;
             case 't': arg >> opt::num_threads; break;
@@ -799,7 +647,9 @@ void parse_call_methylation_options(int argc, char** argv)
             case 'K': arg >> opt::batch_size; break;
             case 'c': arg >> opt::watch_process_total; break;
             case 'i': arg >> opt::watch_process_index; break;
-            case OPT_MIN_SEPARATION: arg >> opt::min_separation; break;
+            case 'o': arg >> opt::modbam_output_name; break;
+            case 's': arg >> opt::modbam_style; break;
+            case OPT_MIN_SEPARATION: arg >> opt::calling_parameters.min_separation; break;
             case OPT_MIN_MAPPING_QUALITY: arg >> opt::min_mapping_quality; break;
             case OPT_WATCH_DIR: arg >> opt::watch_dir; break;
             case OPT_WATCH_WRITE_BAM: opt::watch_write_bam = true; break;
@@ -844,15 +694,20 @@ void parse_call_methylation_options(int argc, char** argv)
         }
     }
 
-    if(opt::methylation_type.empty()) {
+    if(opt::calling_parameters.methylation_type.empty()) {
         std::cerr << SUBPROGRAM ": a --methylation type must be provided\n";
         die = true;
     } else {
-        mtest_alphabet = get_alphabet_by_name(opt::methylation_type);
+        opt::calling_parameters.alphabet = get_alphabet_by_name(opt::calling_parameters.methylation_type);
     }
 
     if(opt::watch_process_index >= opt::watch_process_total) {
         std::cerr << SUBPROGRAM ": invalid --watch-process-index (must be less than --watch-process-count)\n";
+        die = true;
+    }
+
+    if(opt::modbam_style != "read" && opt::modbam_style != "reference") {
+        std::cerr << SUBPROGRAM ": unknown --modbam-style option: " << opt::modbam_style << "\n";
         die = true;
     }
 

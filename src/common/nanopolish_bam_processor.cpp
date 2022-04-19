@@ -46,11 +46,7 @@ BamProcessor::~BamProcessor()
     hts_idx_destroy(m_bam_idx);
 }
 
-void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr, 
-                                           const bam1_t* record,
-                                           size_t read_idx,
-                                           int region_start,
-                                           int region_end)> func)
+void BamProcessor::parallel_run(bam_record_function record_func, batch_function batch_func)
 {
     assert(m_bam_fh != NULL);
     assert(m_bam_idx != NULL);
@@ -98,15 +94,24 @@ void BamProcessor::parallel_run( std::function<void(const bam_hdr_t* hdr,
         result = sam_itr_next(m_bam_fh, itr, records[num_records_buffered]);
         num_records_buffered += result >= 0;
 
-        // realign if we've hit the max buffer size or reached the end of file
+        // process if we've hit the max buffer size or reached the end of file
         if(num_records_buffered == records.size() || result < 0 || (num_records_buffered + num_reads_realigned == m_max_reads)) {
             #pragma omp parallel for schedule(dynamic)
             for(size_t i = 0; i < num_records_buffered; ++i) {
                 bam1_t* record = records[i];
                 size_t read_idx = num_reads_realigned + i;
                 if( (record->core.flag & BAM_FUNMAP) == 0 && record->core.qual >= m_min_mapping_quality) {
-                    func(m_hdr, record, read_idx, clip_start, clip_end);
+                    record_func(m_hdr, record, read_idx, clip_start, clip_end);
                 }
+            }
+
+            // do any post-processing of the entire batch (typically I/O)
+            if(batch_func) {
+
+                // the records vector always has size m_batch_size, we may have processed fewer records (if we hit the end of file)
+                std::vector<bam1_t*> batch_records(records.begin(), records.begin() + num_records_buffered);
+                assert(batch_records.size() == num_records_buffered);
+                batch_func(m_hdr, batch_records);
             }
 
             num_reads_realigned += num_records_buffered;

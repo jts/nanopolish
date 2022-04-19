@@ -1,7 +1,7 @@
 #
 
 # Sub directories containing source code, except for the main programs
-SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io
+SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/alignment src/pore_model src/io src/basemods
 
 #
 # Set libraries, paths, flags and options
@@ -10,7 +10,7 @@ SUBDIRS := src src/hmm src/thirdparty src/thirdparty/scrappie src/common src/ali
 #Basic flags every build needs
 LIBS = -lz
 CXXFLAGS ?= -g -O3
-CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 #D_FILE_OFFSET_BITS=64 makes nanopolish work in 32 bit systems
+CXXFLAGS += -std=c++11 -fopenmp -fsigned-char -D_FILE_OFFSET_BITS=64 
 CFLAGS ?= -O3 -std=c99 -fsigned-char -D_FILE_OFFSET_BITS=64
 LDFLAGS ?=
 CXX ?= g++
@@ -27,7 +27,35 @@ HTS ?= install
 MINIMAP2 ?= install
 SLOW5LIB ?= install
 
-HDF5_VERSION ?= 1.8.14
+MACHINE := $(shell gcc -dumpmachine)
+
+# when building on MacOS we only support gcc, but need to set some paths
+ifneq (,$(findstring apple,$(MACHINE)))
+    SDK := $(shell xcrun --sdk macosx --show-sdk-path)
+    MAC_FLAGS = -isysroot $(SDK) -L/usr/lib
+    MAC=1
+    CXXFLAGS += $(MAC_FLAGS)
+    CFLAGS += $(MAC_FLAGS)
+endif
+
+ARM=0
+
+# set an ARM-specific flag
+ifneq (,$(findstring arm64,$(MACHINE)))
+    ARM=1
+endif
+
+# set an ARM-specific flag
+ifneq (,$(findstring aarch64,$(MACHINE)))
+    ARM=1
+endif
+
+ifeq ($(MAC), 1)
+    HDF5_VERSION ?= 1.13.0
+else
+    HDF5_VERSION ?= 1.8.14
+endif
+
 EIGEN_VERSION ?= 3.3.7
 
 # Check operating system, OSX doesn't have -lrt
@@ -80,26 +108,21 @@ else
     LIBS += -lminimap2
 endif
 
-# Default to build and link the libhts submodule
+# Default to build and link slow5 submodule
 ifeq ($(SLOW5LIB), install)
     SLOW5LIB_LIB = ./slow5lib/lib/libslow5.a
     SLOW5LIB_INCLUDE = -I./slow5lib/include/
 endif
 
 ifeq ($(ARM), 1)
-    MINIMAP2_OPT=arm_neon=1
-else
-    MINIMAP2_OPT=
+    MINIMAP2_OPT += arm_neon=1
 endif
-
-# Include the header-only fast5 library
-FAST5_INCLUDE = -I./fast5/include
 
 # Include the src subdirectories
 NP_INCLUDE = $(addprefix -I./, $(SUBDIRS))
 
 # Add include flags
-CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(MINIMAP2_INCLUDE) $(FAST5_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE) $(SLOW5LIB_INCLUDE)
+CPPFLAGS += $(H5_INCLUDE) $(HTS_INCLUDE) $(MINIMAP2_INCLUDE) $(NP_INCLUDE) $(EIGEN_INCLUDE) $(SLOW5LIB_INCLUDE)
 
 # Main programs to build
 PROGRAM = nanopolish
@@ -112,13 +135,14 @@ all: depend $(PROGRAM)
 # Build libhts
 #
 htslib/libhts.a:
-	$(MAKE) -C htslib htslib_default_libs="-lz -lm -lbz2" || exit 255
+	cp etc/htslib_config.h htslib/config.h
+	$(MAKE) -C htslib CFLAGS="$(MAC_FLAGS)" LDFLAGS="$(MAC_FLAGS)" htslib_default_libs="-lz -lm -lbz2" NONCONFIGURE_OBJS="" || exit 255
 
 minimap2/libminimap2.a:
-	$(MAKE) -C minimap2 $(MINIMAP2_OPT) libminimap2.a || exit 255
+	$(MAKE) -C minimap2 $(MINIMAP2_OPT) CFLAGS="$(MAC_FLAGS)" libminimap2.a || exit 255
 
 slow5lib/lib/libslow5.a:
-	$(MAKE) -C slow5lib || exit 255
+	$(MAKE) -C slow5lib CFLAGS="$(MAC_FLAGS)" || exit 255
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
@@ -130,7 +154,7 @@ lib/libhdf5.a:
 
 	tar -xzf hdf5-$(HDF5_VERSION).tar.gz || exit 255
 	cd hdf5-$(HDF5_VERSION) && \
-		./configure --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
+		./configure CFLAGS="$(MAC_FLAGS)" CPPFLAGS="$(MAC_FLAGS)" --enable-threadsafe --disable-hl --libdir=`pwd`/../lib --includedir=`pwd`/../include --prefix=`pwd`/.. || exit 255
 	$(MAKE) -C hdf5-$(HDF5_VERSION) && $(MAKE) -C hdf5-$(HDF5_VERSION) install
 
 # Download and install eigen if not already downloaded
