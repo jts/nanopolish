@@ -136,13 +136,13 @@ all: depend $(PROGRAM)
 #
 htslib/libhts.a:
 	cp etc/htslib_config.h htslib/config.h
-	$(MAKE) -C htslib CFLAGS="$(MAC_FLAGS)" LDFLAGS="$(MAC_FLAGS)" htslib_default_libs="-lz -lm -lbz2" NONCONFIGURE_OBJS="" || exit 255
+	$(MAKE) -C htslib CFLAGS="$(MAC_FLAGS) -g -Wall -O2 -fvisibility=hidden" LDFLAGS="$(MAC_FLAGS) -fvisibility=hidden" htslib_default_libs="-lz -lm -lbz2" NONCONFIGURE_OBJS="" || exit 255
 
 minimap2/libminimap2.a:
-	$(MAKE) -C minimap2 $(MINIMAP2_OPT) CFLAGS="$(MAC_FLAGS)" libminimap2.a || exit 255
+	$(MAKE) -C minimap2 $(MINIMAP2_OPT) CFLAGS="$(MAC_FLAGS) -g -Wall -O2 -Wc++-compat" libminimap2.a || exit 255
 
 slow5lib/lib/libslow5.a:
-	$(MAKE) -C slow5lib CFLAGS="$(MAC_FLAGS)" || exit 255
+	$(MAKE) -C slow5lib CFLAGS="$(MAC_FLAGS) -g -Wall -O2 -std=c99"|| exit 255
 #
 # If this library is a dependency the user wants HDF5 to be downloaded and built.
 #
