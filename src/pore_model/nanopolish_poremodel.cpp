@@ -10,7 +10,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
-#include <fast5.hpp>
 
 void add_found_bases(char *known, const char *kmer) {
     char newbase[2];
@@ -118,55 +117,6 @@ PoreModel::PoreModel(const std::string filename, const Alphabet *alphabet) : pma
         states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
     }
     assert( ninserted == states.size() );
-}
-
-PoreModel::PoreModel(fast5::File *f_p, const size_t strand, const std::string& bc_gr, const Alphabet *alphabet) : pmalphabet(alphabet)
-{
-    const size_t maxNucleotides=50;
-    char bases[maxNucleotides+1]="";
-
-    std::map<std::string, PoreModelStateParams> kmers;
-
-    auto model = f_p->get_basecall_model(strand, bc_gr);
-    k = array2str(model[0].kmer).length();
-    assert(k == 5 || k == 6);
-
-    // Copy into the pore model for this read
-    for(size_t mi = 0; mi < model.size(); ++mi) {
-        auto const & curr = model[mi];
-
-        std::string stringkmer = array2str(curr.kmer);
-        assert(stringkmer.size() == k);
-        kmers[stringkmer] = curr;
-        add_found_bases(bases, stringkmer.c_str());
-    }
-
-    if (pmalphabet == nullptr)
-        pmalphabet = best_alphabet(bases);
-    assert( pmalphabet != nullptr );
-
-    states.resize( pmalphabet->get_num_strings(k) );
-    assert(states.size() == model.size());
-
-    for (const auto &iter : kmers ) {
-        states[ pmalphabet->kmer_rank(iter.first.c_str(), k) ] = iter.second;
-    }
-
-    // Read and shorten the model name
-    std::string temp_name = f_p->get_basecall_model_file(strand, bc_gr);
-    std::string leader = "/opt/chimaera/model/";
-
-    size_t lp = temp_name.find(leader);
-    // leader not found
-    if(lp == std::string::npos) {
-        name = temp_name;
-    } else {
-        name = temp_name.substr(leader.size());
-    }
-
-    std::replace(name.begin(), name.end(), '/', '_');
-
-    metadata = get_model_metadata_from_name(name);
 }
 
 void PoreModel::write(const std::string filename, const std::string modelname) const

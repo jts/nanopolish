@@ -10,10 +10,8 @@
 #include <functional>
 #include "logsum.h"
 #include "nanopolish_index.h"
-#include "nanopolish_extract.h"
 #include "nanopolish_call_variants.h"
 #include "nanopolish_eventalign.h"
-#include "nanopolish_getmodel.h"
 #include "nanopolish_methyltrain.h"
 #include "nanopolish_call_methylation.h"
 #include "nanopolish_scorereads.h"
@@ -32,9 +30,7 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"--help",      print_usage},
     {"--version",   print_version},
     {"index",       index_main},
-    {"extract",     extract_main},
     {"eventalign",  eventalign_main},
-    {"getmodel",    getmodel_main},
     {"variants",    call_variants_main},
     {"methyltrain", methyltrain_main},
     {"scorereads",  scorereads_main},

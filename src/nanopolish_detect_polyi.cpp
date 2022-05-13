@@ -1037,7 +1037,7 @@ void dpi_estimate_polya_for_single_read(const ReadDB& read_db,
     if (sr.fast5_path == "" || sr.events[0].empty()) {
         #pragma omp critical
         {
-            fprintf(out_fp, "%s\t%s\t%zu\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
+            fprintf(out_fp, "%s\t%s\t%d\t-1.0\t-1.0\t-1.0\t-1.0\t-1.00\t-1.00\tREAD_FAILED_LOAD\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos);
             if (opt::verbose == 1) {
                 fprintf(out_fp,
@@ -1053,7 +1053,7 @@ void dpi_estimate_polya_for_single_read(const ReadDB& read_db,
 
     //----- print clipping data if `verbose > 2` set:
     if (opt::verbose > 2) {
-        fprintf(stderr, "[polya] read: %s length: %zu prefix clip: %zu suffix clip %zu\n",
+        fprintf(stderr, "[polya] read: %s length: %zu prefix clip: %u suffix clip %u\n",
                 read_name.c_str(), sr.read_sequence.length(), prefix_clip, suffix_clip);
     }
     std::string sequenced_transcript = sr.read_sequence;
@@ -1102,7 +1102,7 @@ void dpi_estimate_polya_for_single_read(const ReadDB& read_db,
     double transcr_sample_start = region_indices.polya+1;
     #pragma omp critical
     {
-        fprintf(out_fp, "%s\t%s\t%zu\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\t%s\n",
+        fprintf(out_fp, "%s\t%s\t%d\t%.1lf\t%.1lf\t%.1lf\t%.1lf\t%.2lf\t%.2lf\t%s\t%s\n",
                 read_name.c_str(), ref_name.c_str(), record->core.pos,
                 leader_sample_start, adapter_sample_start, polya_sample_start, transcr_sample_start,
                 read_rate, polya_length, poly_detect_tag.c_str(), qc_tag.c_str());

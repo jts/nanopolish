@@ -15,7 +15,6 @@
 #include <string>
 #include <map>
 #include "nanopolish_model_names.h"
-#include <fast5.hpp>
 
 //
 struct PoreModelStateParams
@@ -50,17 +49,6 @@ struct PoreModelStateParams
         update_logs();
     }
 
-    PoreModelStateParams& operator =(const fast5::Basecall_Model_State& e)
-    {
-        level_mean = e.level_mean;
-        level_stdv = e.level_stdv;
-        sd_mean = e.sd_mean;
-        sd_stdv = e.sd_stdv;
-        update_logs();
-        update_sd_lambda();
-        return *this;
-    }
-
     // update sd_lambda based on sd_mean & sd_stdv
     void update_sd_lambda()
     {
@@ -88,10 +76,6 @@ class PoreModel
         // so that kmers are inserted/written in order
         // nicer might be to store the states as a map from kmer -> state
         PoreModel(const std::string filename, const Alphabet *alphabet=NULL);
-        PoreModel(fast5::File *f_p,
-                  const size_t strand,
-                  const std::string& bc_gr = std::string(),
-                  const Alphabet *alphabet=NULL);
 
         void write(const std::string filename, const std::string modelname="") const;
 

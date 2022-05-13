@@ -5,6 +5,7 @@
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
 ## Release notes
+* 0.14.0: support modification bam files, compile on M1 apple hardware, support [SLOW5](https://github.com/hasindu2008/slow5lib) files
 
 * 0.13.3: fix conda build issues, better handling of VBZ-compressed files, integration of module for [nano-COP](https://www.nature.com/articles/s41596-020-00469-y)
 
@@ -42,8 +43,9 @@ By default, nanopolish will download and compile all of its required dependencie
 
 * [libhdf5-1.8.14](http://www.hdfgroup.org/HDF5/release/obtain5.html) compiled with multi-threading support `--enable-threadsafe`
 * [eigen-3.2.5](http://eigen.tuxfamily.org)
-* [htslib-1.4](http://github.com/samtools/htslib)
-* [minimap2-d2de282](http://github.com/lh3/minimap2)
+* [htslib-1.15.1](http://github.com/samtools/htslib)
+* [minimap2-fe35e67](http://github.com/lh3/minimap2)
+* [slow5lib-3680e17](https://github.com/hasindu2008/slow5lib)
 
 In order to use the additional python3 scripts within `/scripts`, install the dependencies via
 
@@ -93,11 +95,12 @@ nanopolish eventalign: align signal-level events to k-mers of a reference genome
 Nanopolish needs access to the signal-level data measured by the nanopore sequencer. The first step of any nanopolish workflow is to prepare the input data by telling nanopolish where to find the signal files. If you ran Albacore 2.0 on your data you should run `nanopolish index` on your input reads (-d can be specified more than once if using multiple runs):
 
 ```
-# Index the output of the albacore basecaller
-nanopolish index -d /path/to/raw_fast5s/ -s sequencing_summary.txt albacore_output.fastq
+# Index the output of the basecaller
+nanopolish index -d /path/to/raw_fast5s/ -s sequencing_summary.txt basecalled_output.fastq # for FAST5 inout
+nanopolish index basecalled_output.fastq --slow5 signals.blow5 # for SLOW5 input
 ```
 
-The `-s` option tells nanopolish to read the `sequencing_summary.txt` file from Albacore to speed up indexing. Without this option `nanopolish index` is extremely slow as it needs to read every fast5 file individually. If you basecalled your run in parallel, so you have multiple `sequencing_summary.txt` files, you can use the `-f` option to pass in a file containing the paths to the sequencing summary files (one per line).
+The `-s` option tells nanopolish to read the `sequencing_summary.txt` file from Albacore to speed up indexing. Without this option `nanopolish index` is extremely slow as it needs to read every fast5 file individually. If you basecalled your run in parallel, so you have multiple `sequencing_summary.txt` files, you can use the `-f` option to pass in a file containing the paths to the sequencing summary files (one per line). When using SLOW5 files as the input (FAST5 can be converted to SLOW5 using [slow5tools](https://github.com/hasindu2008/slow5tools)), `-s` option is not required and does not affect indexing performance. 
 
 ### Computing a new consensus sequence for a draft assembly
 

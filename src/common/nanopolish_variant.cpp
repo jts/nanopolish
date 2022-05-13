@@ -9,6 +9,7 @@
 #include <map>
 #include <iterator>
 #include <iomanip>
+#include <fstream>
 #include "fet.h"
 #include "nanopolish_profile_hmm.h"
 #include "nanopolish_variant.h"

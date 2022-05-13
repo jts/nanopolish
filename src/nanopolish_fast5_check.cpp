@@ -18,7 +18,6 @@
 #include <sstream>
 #include <getopt.h>
 
-#include <fast5.hpp>
 #include "nanopolish_fast5_check.h"
 #include "nanopolish_common.h"
 #include "nanopolish_read_db.h"
