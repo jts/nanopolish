@@ -85,6 +85,14 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             exit(EXIT_FAILURE);
         }
         data = Fast5Loader::load_read(slow5_file, name);
+        if(!data.is_valid) {
+            fprintf(stderr, "[warning] Read %s not found in slow5 file and will be skipped\n", name.c_str());
+            g_bad_fast5_file += 1;
+        }
+        else{
+            this->fast5_path = "slow5"; //needed for polya
+        }
+
     } else {
         this->fast5_path = read_db.get_signal_path(name);
         if(this->fast5_path == "") {
