@@ -77,7 +77,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->base_model[0] = this->base_model[1] = NULL;
 
     if(read_db.get_slow5_mode()){
-        fprintf(stderr, "slow5_mode!\n");
+        //fprintf(stderr, "slow5_mode!\n");
         slow5_file_t * slow5_file = read_db.get_slow5_file();
         if(!slow5_file){
             fprintf(stderr, "slow5 file is missing");
