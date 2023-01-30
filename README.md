@@ -4,6 +4,11 @@
 
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
+
+## A note on R10 support
+
+Presently nanopolish does not support R10.4 flowcells as variant and methylation calling is accurate enough to not require signal-level analysis. We intend to support signal exploration through `eventalign` but do not currently have a timeline for this as our development time is currently dedicated to other projects.
+
 ## Release notes
 * 0.14.0: support modification bam files, compile on M1 apple hardware, support [SLOW5](https://github.com/hasindu2008/slow5lib) files
 
