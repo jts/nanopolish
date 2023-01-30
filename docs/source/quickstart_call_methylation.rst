@@ -20,7 +20,7 @@ Download example dataset
 
 In this tutorial we will use a subset of the `NA12878 WGS Consortium data <https://github.com/nanopore-wgs-consortium/NA12878/blob/master/Genome.md>`_. You can download the example dataset we will use here (warning: the file is about 2GB): ::
 
-    wget http://s3.climb.ac.uk/nanopolish_tutorial/methylation_example.tar.gz
+    wget http://warwick.s3.climb.ac.uk/nanopolish_tutorial/methylation_example.tar.gz
     tar -xvf methylation_example.tar.gz
     cd methylation_example
 
