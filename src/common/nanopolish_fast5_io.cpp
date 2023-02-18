@@ -12,7 +12,7 @@
 #include <algorithm>
 #include "nanopolish_fast5_io.h"
 
-//#define DEBUG_FAST5_IO 1
+#define DEBUG_FAST5_IO 1
 
 #define LEGACY_FAST5_RAW_ROOT "/Raw/Reads/"
 
@@ -159,11 +159,11 @@ raw_table fast5_get_raw_samples(fast5_file& fh, const std::string& read_id, fast
         rawptr[i] = (rawptr[i] + scaling.offset) * raw_unit;
     }
 
- cleanup4:
+    cleanup4:
     H5Sclose(space);
- cleanup3:
+    cleanup3:
     H5Dclose(dset);
- cleanup2:
+    cleanup2:
     return rawtbl;
 }
 
