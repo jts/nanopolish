@@ -101,7 +101,8 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         // we no longer want to support pre-release R10
         bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
         bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
-        if( flowcell_type == "FLO-MIN110" || (cust_or_unknown_fct && has_r10_path )) {
+
+        if( ends_with(sequencing_kit, "114") || flowcell_type == "FLO-MIN110") {
             this->pore_type = PT_R10;
         } else {
             this->pore_type = PT_R9;
@@ -186,7 +187,7 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
     if(this->pore_type == PT_R10) {
         kit = "r10_450bps";
         k = 9;
-        ed_params = &event_detection_r10;
+        //ed_params = &event_detection_r10;
     }
 
     if(this->nucleotide_type == SRNT_RNA) {
