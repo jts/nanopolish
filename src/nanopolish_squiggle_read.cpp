@@ -77,7 +77,6 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
     this->base_model[0] = this->base_model[1] = NULL;
 
     if(read_db.get_slow5_mode()){
-        //fprintf(stderr, "slow5_mode!\n");
         slow5_file_t * slow5_file = read_db.get_slow5_file();
         if(!slow5_file){
             fprintf(stderr, "slow5 file is missing");
@@ -118,11 +117,11 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
         // the pore type in the path. this should be removed eventually once
         // we no longer want to support pre-release R10
         bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
-        if( flowcell_type == "FLO-MIN110") {
-            this->pore_type = PT_R10;
-        } else {
-            this->pore_type = PT_R9;
-        }
+		if( ends_with(sequencing_kit, "114") || flowcell_type == "FLO-MIN110") {
+			this->pore_type = PT_R10;
+		} else {
+			this->pore_type = PT_R9;
+		}
 
         this->read_sequence = read_db.get_read_sequence(read_name);
         load_from_raw_slow5(slow5_file, rec, flags);
@@ -156,7 +155,7 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
             // we no longer want to support pre-release R10
             bool cust_or_unknown_fct = flowcell_type.empty() || flowcell_type == "cust-flo-m";
             bool has_r10_path = this->fast5_path.find("r10") != std::string::npos;
-            if( flowcell_type == "FLO-MIN110" || (cust_or_unknown_fct && has_r10_path )) {
+            if( ends_with(sequencing_kit, "114") || flowcell_type == "FLO-MIN110") {
                 this->pore_type = PT_R10;
             } else {
                 this->pore_type = PT_R9;
@@ -242,7 +241,7 @@ void SquiggleRead::load_from_raw(fast5_file& f5_file, const uint32_t flags)
     if(this->pore_type == PT_R10) {
         kit = "r10_450bps";
         k = 9;
-        ed_params = &event_detection_r10;
+        //ed_params = &event_detection_r10;
     }
 
     if(this->nucleotide_type == SRNT_RNA) {
@@ -410,7 +409,7 @@ void SquiggleRead::load_from_raw_slow5(slow5_file_t* slow5File, slow5_rec_t *rec
     if(this->pore_type == PT_R10) {
         kit = "r10_450bps";
         k = 9;
-        ed_params = &event_detection_r10;
+        //ed_params = &event_detection_r10;
     }
 
     if(this->nucleotide_type == SRNT_RNA) {
