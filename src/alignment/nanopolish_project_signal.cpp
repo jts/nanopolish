@@ -21,6 +21,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include <math.h>
+#include <stdexcept>
 #include <limits>
 #include <iterator>
 #include <fstream>
