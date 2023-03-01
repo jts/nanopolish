@@ -21,6 +21,7 @@
 #include <omp.h>
 #include <getopt.h>
 #include <math.h>
+#include <limits>
 #include <iterator>
 #include <fstream>
 #include "htslib/faidx.h"
