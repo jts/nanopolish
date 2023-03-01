@@ -328,12 +328,12 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
         // internally this function will set shift/scale/etc of the pore model
         bool calibrated = recalibrate_model(*this, *this->base_model[strand_idx], strand_idx, alignment, true, false);
 
-//#ifdef DEBUG_MODEL_SELECTION
+#ifdef DEBUG_MODEL_SELECTION
         fprintf(stderr, "[calibration - %s] read: %s events: %zu"
                          " scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
                                 calibrated ? "OK" : "FAIL", read_name.substr(0, 6).c_str(), this->events[strand_idx].size(), this->scalings[strand_idx].scale,
                                 this->scalings[strand_idx].shift, this->scalings[strand_idx].drift, this->scalings[strand_idx].var);
-//#endif
+#endif
 
         // QC calibration
         if(!calibrated || this->scalings[strand_idx].var > MIN_CALIBRATION_VAR) {
