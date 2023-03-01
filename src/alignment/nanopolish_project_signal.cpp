@@ -63,7 +63,6 @@ static const char *PROJECT_SIGNAL_USAGE_MESSAGE =
 "  -v, --verbose                        display verbose output\n"
 "      --version                        display version\n"
 "      --help                           display this help and exit\n"
-"  -w, --window=STR                     only perform alignments for reads in region STR (ref:start-end)\n"
 "  -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE\n"
 "  -g, --genome=FILE                    the genome we are computing a consensus for is in FILE\n"
 "  -t, --threads=NUM                    use NUM threads (default: 1)\n"
@@ -91,7 +90,7 @@ namespace opt
     static bool write_samples = false;
 }
 
-static const char* shortopts = "b:g:t:w:q:m:d:vn";
+static const char* shortopts = "b:g:t:q:m:d:vn";
 
 enum { OPT_HELP = 1, OPT_VERSION, OPT_PROGRESS, OPT_SAM, OPT_SUMMARY, OPT_SCALE_EVENTS, OPT_MODELS_FOFN, OPT_SAMPLES, OPT_SIGNAL_INDEX };
 
@@ -99,7 +98,6 @@ static const struct option longopts[] = {
     { "verbose",             no_argument,       NULL, 'v' },
     { "bam",                 required_argument, NULL, 'b' },
     { "genome",              required_argument, NULL, 'g' },
-    { "window",              required_argument, NULL, 'w' },
     { "threads",             required_argument, NULL, 't' },
     { "min-mapping-quality", required_argument, NULL, 'q' },
     { "kmer-model-file",     required_argument, NULL, 'm' },
@@ -474,6 +472,7 @@ void project_read(const faidx_t* fai,
                 samples_str = samples_out.str();
             }
 
+            #pragma omp critical
             printf("%s\t%d\t%c\t%s\t%c\t%d\t%c\t%.1f\t%.3f\t%s\t%.3f\t%d\t%d\t%s\t%.2f\n", 
                 ref_name.c_str(), ap.ref_pos, ref_base, read_name.c_str(), !is_rev ? '+' : '-', ap.read_pos, read_base,
                 mean, ont_norm_mean, kmer.c_str(), model_level, start_samples[ap.read_pos], start_samples[ap.read_pos + 1],
