@@ -9,6 +9,7 @@
 #ifndef NANOPOLISH_RAW_LOADER_H
 #define NANOPOLISH_RAW_LOADER_H
 
+#include <limits>
 #include "nanopolish_squiggle_read.h"
 #include "nanopolish_anchor.h"
 #include "scrappie_structures.h"
