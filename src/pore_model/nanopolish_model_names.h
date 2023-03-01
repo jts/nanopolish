@@ -20,10 +20,10 @@ enum KitVersion
     KV_R9_250BPS,
     KV_R9_4_450BPS,
     KV_R9_4_70BPS,
+    KV_R10_4_400BPS,
     NUM_KITS
 };
 
-// The parameters of a gaussian distribution
 struct ModelMetadata
 {
     uint8_t strand_idx;
@@ -35,6 +35,7 @@ struct ModelMetadata
     std::string get_kit_name() const;
     std::string get_strand_model_name() const;
 
+    // R10 intentionally is included in this check since most functionality is shared with R9
     bool is_r9() const { return kit >= KV_R9_250BPS; }
     bool is_r7() const { return kit >= KV_SQK005 && kit <= KV_SQK006; }
 };

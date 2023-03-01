@@ -22,8 +22,9 @@ f = open(args.input)
 (dirs, filename) = os.path.split(args.input)
 (_, type_dir) = os.path.split(dirs)
 metadata_fields = type_dir.split("_")
+sys.stderr.write(",".join(metadata_fields))
 
-if(len(metadata_fields) != 5):
+if(len(metadata_fields) != 4):
     sys.stderr.write("Error, could not parse type dir\n")
     sys.exit(1)
 

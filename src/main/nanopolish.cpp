@@ -21,6 +21,7 @@
 #include "nanopolish_fast5_check.h"
 #include "nanopolish_detect_polyi.h"
 #include "nanopolish_train_poremodel_from_basecalls.h"
+#include "nanopolish_project_signal.h"
 
 int print_usage(int argc, char **argv);
 int print_version(int argc, char **argv);
@@ -39,7 +40,8 @@ static std::map< std::string, std::function<int(int, char**)> > programs = {
     {"polya",  polya_main},
     {"detect-polyi", detect_polyi_main} ,
     {"fast5-check",  fast5_check_main},
-    {"call-methylation",  call_methylation_main}
+    {"call-methylation",  call_methylation_main},
+    {"project-signal",  project_signal_main}
 };
 
 int print_usage(int, char **)

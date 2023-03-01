@@ -79,3 +79,16 @@ void write_bam_vardata(bam1_t* record,
     }
     assert(record->l_data <= record->m_data);
 }
+
+std::string bam_get_seq_str(const bam1_t* record)
+{
+    std::string out;
+    size_t l = record->core.l_qseq;
+    out.reserve(record->core.l_qseq);
+    uint8_t* p = bam_get_seq(record);
+    for(size_t i = 0; i < l; ++i) {
+        out.push_back(seq_nt16_str[bam_seqi(p, i)]);
+    }
+    return out;
+}
+

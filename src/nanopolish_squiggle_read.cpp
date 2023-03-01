@@ -186,6 +186,15 @@ int SquiggleRead::get_closest_event_to(int k_idx, uint32_t strand) const
 }
 
 //
+static detector_param const event_detection_r10 = {
+    .window_length1 = 4,
+    .window_length2 = 13,
+    .threshold1 = 1.52f,
+    .threshold2 = 3.91f,
+    .peak_height = 0.17f
+};
+
+//
 void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t flags)
 {
 
@@ -194,13 +203,14 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
     bool rna_experiment = fast5_data.experiment_type == "rna" || fast5_data.experiment_type == "internal_rna";
     this->nucleotide_type = rna_experiment && fast5_data.sequencing_kit != "sqk-dcs108" ? SRNT_RNA : SRNT_DNA;
 
-    // Hardcoded parameters, for now we can only do template with the main R9.4 model
+    // Defaults assume R9.4-like sequencing
     size_t strand_idx = 0;
     std::string alphabet = "nucleotide";
     std::string kit = "r9.4_450bps";
     std::string strand_str = "template";
     size_t k = 6;
-
+    this->read_type = SRT_TEMPLATE;
+    this->pore_type = PORETYPE_R9;
     const detector_param* ed_params = &event_detection_defaults;
 
     if(this->nucleotide_type == SRNT_RNA) {
@@ -212,8 +222,13 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
         std::replace(this->read_sequence.begin(), this->read_sequence.end(), 'U', 'T');
     }
 
-    this->read_type = SRT_TEMPLATE;
-    this->pore_type = PORETYPE_R9;
+    // Determine if using R10.4 flowcells
+    if(ends_with(fast5_data.sequencing_kit, "114")) {
+        this->pore_type = PORETYPE_R10;
+        kit = "r10.4_400bps";
+        k = 9;
+        ed_params = &event_detection_r10;
+    }
 
     // Set the base model for this read to either the nucleotide or U->T RNA model
     this->base_model[strand_idx] = PoreModelSet::get_model(kit, alphabet, strand_str, k);
@@ -267,7 +282,11 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
     free(et.event);
 
     // align events to the basecalled read
-    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, *this->base_model[strand_idx], read_sequence);
+    AdaBandedParameters params;
+    if(this->pore_type == PORETYPE_R10) {
+        params.min_average_log_emission = -7.0;
+    }
+    std::vector<AlignedPair> event_alignment = adaptive_banded_simple_event_align(*this, *this->base_model[strand_idx], read_sequence, params);
 
     // transform alignment into the base-to-event map
     if(event_alignment.size() > 0) {
@@ -309,12 +328,12 @@ void SquiggleRead::load_from_raw(const Fast5Data& fast5_data, const uint32_t fla
         // internally this function will set shift/scale/etc of the pore model
         bool calibrated = recalibrate_model(*this, *this->base_model[strand_idx], strand_idx, alignment, true, false);
 
-#ifdef DEBUG_MODEL_SELECTION
-        fprintf(stderr, "[calibration] read: %s events: %zu"
+//#ifdef DEBUG_MODEL_SELECTION
+        fprintf(stderr, "[calibration - %s] read: %s events: %zu"
                          " scale: %.2lf shift: %.2lf drift: %.5lf var: %.2lf\n",
-                                read_name.substr(0, 6).c_str(), this->events[strand_idx].size(), this->scalings[strand_idx].scale,
+                                calibrated ? "OK" : "FAIL", read_name.substr(0, 6).c_str(), this->events[strand_idx].size(), this->scalings[strand_idx].scale,
                                 this->scalings[strand_idx].shift, this->scalings[strand_idx].drift, this->scalings[strand_idx].var);
-#endif
+//#endif
 
         // QC calibration
         if(!calibrated || this->scalings[strand_idx].var > MIN_CALIBRATION_VAR) {

@@ -59,570 +59,187 @@ SquiggleScalings estimate_scalings_using_mom(const std::string& sequence,
     return out;
 }
 
-#define event_kmer_to_band(ei, ki) (ei + 1) + (ki + 1)
-#define band_event_to_offset(bi, ei) band_lower_left[bi].event_idx - (ei)
-#define band_kmer_to_offset(bi, ki) (ki) - band_lower_left[bi].kmer_idx
-#define is_offset_valid(offset) (offset) >= 0 && (offset) < bandwidth
-#define event_at_offset(bi, offset) band_lower_left[(bi)].event_idx - (offset)
-#define kmer_at_offset(bi, offset) band_lower_left[(bi)].kmer_idx + (offset)
-
-#define move_down(curr_band) { curr_band.event_idx + 1, curr_band.kmer_idx }
-#define move_right(curr_band) { curr_band.event_idx, curr_band.kmer_idx + 1 }
-
-#define ALN_BANDWIDTH 100
-
-#define BAND_ARRAY(r, c) ( bands[((r)*(ALN_BANDWIDTH)+(c))] )
-#define TRACE_ARRAY(r, c) ( trace[((r)*(ALN_BANDWIDTH)+(c))] )
-
-std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
+//
+bool qc_simple_event_alignment(SquiggleRead& read,
+                               const PoreModel& pore_model,
+                               const std::string& sequence,
+                               const AdaBandedParameters parameters,
+                               const std::vector<AlignedPair>& alignment, const char* short_name)
 {
+    // Calculate QC metrics
     size_t strand_idx = 0;
     size_t k = pore_model.k;
     const Alphabet* alphabet = pore_model.pmalphabet;
-    size_t n_events = read.events[strand_idx].size();
-    size_t n_kmers = sequence.size() - k + 1;
+    size_t n_aligned_events = 0;
+    double sum_emission = 0.0f;
 
-    // backtrack markers
-    const uint8_t FROM_D = 0;
-    const uint8_t FROM_U = 1;
-    const uint8_t FROM_L = 2;
- 
-    // qc
-    double min_average_log_emission = -5.0;
-    int max_gap_threshold = 50;
-
-    // banding
-    int bandwidth = ALN_BANDWIDTH;
-    int half_bandwidth = bandwidth / 2;
- 
-    // transition penalties
-    double events_per_kmer = (double)n_events / n_kmers;
-    double p_stay = 1 - (1 / (events_per_kmer + 1));
-
-    // setting a tiny skip penalty helps keep the true alignment within the adaptive band
-    // this was empirically determined
-    double epsilon = 1e-10;
-    double lp_skip = log(epsilon);
-    double lp_stay = log(p_stay);
-    double lp_step = log(1.0 - exp(lp_skip) - exp(lp_stay));
-    double lp_trim = log(0.01);
- 
-    // dp matrix
-    size_t n_rows = n_events + 1;
-    size_t n_cols = n_kmers + 1;
-    size_t n_bands = n_rows + n_cols;
- 
-    // Initialize
-
-    // Precompute k-mer ranks to avoid doing this in the inner loop
-    std::vector<size_t> kmer_ranks(n_kmers);
-    for(size_t i = 0; i < n_kmers; ++i) {
-        kmer_ranks[i] = alphabet->kmer_rank(sequence.substr(i, k).c_str(), k);
-    }
-
-    float* bands = (float*)malloc(sizeof(float) * n_bands * bandwidth);
-    if(bands==NULL){
-        fprintf(stderr,"Memory allocation failed at %s\n",__func__);
-        exit(1);
-    }
-    uint8_t* trace = (uint8_t*)malloc(sizeof(uint8_t) * n_bands * bandwidth);
-    if(trace==NULL){
-        fprintf(stderr,"Memory allocation failed at %s\n",__func__);
-        exit(1);
-    }
-    for (size_t i = 0; i < n_bands; i++) {
-        for (int j = 0; j < bandwidth; j++) {
-            BAND_ARRAY(i,j) = -INFINITY;
-            TRACE_ARRAY(i,j) = 0;
-        }
-    }
-
-    // Keep track of the event/kmer index for the lower left corner of the band
-    // these indices are updated at every iteration to perform the adaptive banding
-    // Only the first two bands have their coordinates initialized, the rest are computed adaptively
-    struct EventKmerPair
-    {
-        int event_idx;
-        int kmer_idx;
-    };
-
-    std::vector<EventKmerPair> band_lower_left(n_bands);
- 
-    // initialize range of first two bands
-    band_lower_left[0].event_idx = half_bandwidth - 1;
-    band_lower_left[0].kmer_idx = -1 - half_bandwidth;
-    band_lower_left[1] = move_down(band_lower_left[0]);
-
-    // band 0: score zero in the central cell
-    int start_cell_offset = band_kmer_to_offset(0, -1);
-    assert(is_offset_valid(start_cell_offset));
-    assert(band_event_to_offset(0, -1) == start_cell_offset);
-    BAND_ARRAY(0,start_cell_offset) = 0.0f;
-
-    // band 1: first event is trimmed
-    int first_trim_offset = band_event_to_offset(1, 0);
-    assert(kmer_at_offset(1, first_trim_offset) == -1);
-    assert(is_offset_valid(first_trim_offset));
-    BAND_ARRAY(1,first_trim_offset) = lp_trim;
-    TRACE_ARRAY(1,first_trim_offset) = FROM_U;
-
-    int fills = 0;
-#ifdef DEBUG_ADAPTIVE
-    fprintf(stderr, "[trim] bi: %d o: %d e: %d k: %d s: %.2lf\n", 1, first_trim_offset, 0, -1, BAND_ARRAY(1,first_trim_offset));
-#endif
-
-    // fill in remaining bands
-    for(int band_idx = 2; band_idx < n_bands; ++band_idx) {
-        // Determine placement of this band according to Suzuki's adaptive algorithm
-        // When both ll and ur are out-of-band (ob) we alternate movements
-        // otherwise we decide based on scores
-        float ll = BAND_ARRAY(band_idx - 1,0);
-        float ur = BAND_ARRAY(band_idx - 1,bandwidth - 1);
-        bool ll_ob = ll == -INFINITY;
-        bool ur_ob = ur == -INFINITY;
-
-        bool right = false;
-        if(ll_ob && ur_ob) {
-            right = band_idx % 2 == 1;
-        } else {
-            right = ll < ur; // Suzuki's rule
-        }
-
-        if(right) {
-            band_lower_left[band_idx] = move_right(band_lower_left[band_idx - 1]);
-        } else {
-            band_lower_left[band_idx] = move_down(band_lower_left[band_idx - 1]);
-        }
-
-/*
-        float max_score = -INFINITY;
-        int tmp_max_offset = 0;
-        for(int tmp = 0; tmp < bandwidth; ++tmp) {
-            float s = bands[band_idx - 1][tmp];
-            if(s > max_score) {
-                max_score = s;
-                tmp_max_offset = tmp;
-            }
-        }
-        fprintf(stderr, "bi: %d ll: %.2f up: %.2f [%d %d] [%d %d] max: %.2f [%d %d] move: %s\n", 
-            band_idx, bands[band_idx - 1][0], bands[band_idx - 1][bandwidth - 1], 
-            band_lower_left[band_idx - 1].event_idx, band_lower_left[band_idx - 1].kmer_idx,
-            event_at_offset(band_idx - 1, bandwidth - 1), kmer_at_offset(band_idx - 1, bandwidth - 1),
-            max_score, event_at_offset(band_idx - 1, tmp_max_offset), kmer_at_offset(band_idx - 1, tmp_max_offset),
-            (right ? "RIGHT" : "DOWN"));
-*/
-
-        // If the trim state is within the band, fill it in here
-        int trim_offset = band_kmer_to_offset(band_idx, -1);
-        if(is_offset_valid(trim_offset)) {
-            int event_idx = event_at_offset(band_idx, trim_offset);
-            if(event_idx >= 0 && event_idx < n_events) {
-                BAND_ARRAY(band_idx,trim_offset) = lp_trim * (event_idx + 1);
-                TRACE_ARRAY(band_idx,trim_offset) = FROM_U;
-            } else {
-                BAND_ARRAY(band_idx,trim_offset) = -INFINITY;
-            }
-        }
-
-        // Get the offsets for the first and last event and kmer
-        // We restrict the inner loop to only these values
-        int kmer_min_offset = band_kmer_to_offset(band_idx, 0);
-        int kmer_max_offset = band_kmer_to_offset(band_idx, n_kmers);
-        int event_min_offset = band_event_to_offset(band_idx, n_events - 1);
-        int event_max_offset = band_event_to_offset(band_idx, -1);
-
-        int min_offset = std::max(kmer_min_offset, event_min_offset);
-        min_offset = std::max(min_offset, 0);
-
-        int max_offset = std::min(kmer_max_offset, event_max_offset);
-        max_offset = std::min(max_offset, bandwidth);
-
-        for(int offset = min_offset; offset < max_offset; ++offset) {
-            int event_idx = event_at_offset(band_idx, offset);
-            int kmer_idx = kmer_at_offset(band_idx, offset);
-
-            size_t kmer_rank = kmer_ranks[kmer_idx];
-
-            int offset_up   = band_event_to_offset(band_idx - 1, event_idx - 1);
-            int offset_left = band_kmer_to_offset(band_idx - 1, kmer_idx - 1);
-            int offset_diag = band_kmer_to_offset(band_idx - 2, kmer_idx - 1);
-
-#ifdef DEBUG_ADAPTIVE
-            // verify loop conditions
-            assert(kmer_idx >= 0 && kmer_idx < n_kmers);
-            assert(event_idx >= 0 && event_idx < n_events);
-            assert(offset_diag == band_event_to_offset(band_idx - 2, event_idx - 1));
-            assert(offset_up - offset_left == 1);
-            assert(offset >= 0 && offset < bandwidth);
-#endif
-
-            float up   = is_offset_valid(offset_up)   ? BAND_ARRAY(band_idx - 1,offset_up)   : -INFINITY;
-            float left = is_offset_valid(offset_left) ? BAND_ARRAY(band_idx - 1,offset_left) : -INFINITY;
-            float diag = is_offset_valid(offset_diag) ? BAND_ARRAY(band_idx - 2,offset_diag) : -INFINITY;
-
-            float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
-            float score_d = diag + lp_step + lp_emission;
-            float score_u = up + lp_stay + lp_emission;
-            float score_l = left + lp_skip;
-
-            float max_score = score_d;
-            uint8_t from = FROM_D;
-
-            max_score = score_u > max_score ? score_u : max_score;
-            from = max_score == score_u ? FROM_U : from;
-            max_score = score_l > max_score ? score_l : max_score;
-            from = max_score == score_l ? FROM_L : from;
-
-#ifdef DEBUG_ADAPTIVE
-            fprintf(stderr, "[adafill] offset-up: %d offset-diag: %d offset-left: %d\n", offset_up, offset_diag, offset_left);
-            fprintf(stderr, "[adafill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
-            fprintf(stderr, "[adafill] bi: %d o: %d e: %d k: %d s: %.2lf f: %d emit: %.2lf\n", band_idx, offset, event_idx, kmer_idx, max_score, from, lp_emission);
-#endif
-            BAND_ARRAY(band_idx,offset) = max_score;
-            TRACE_ARRAY(band_idx,offset) = from;
-            fills += 1;
-        }
-    }
-
-    /*
-    // Debug, print some of the score matrix
-    for(int col = 0; col <= 10; ++col) {
-        for(int row = 0; row < 100; ++row) {
-            int kmer_idx = col - 1;
-            int event_idx = row - 1;
-            int band_idx = event_kmer_to_band(event_idx, kmer_idx);
-            int offset = band_kmer_to_offset(band_idx, kmer_idx);
-            assert(offset == band_event_to_offset(band_idx, event_idx));
-            assert(event_idx == event_at_offset(band_idx, offset));
-            fprintf(stdout, "ei: %d ki: %d bi: %d o: %d s: %.2f\n", event_idx, kmer_idx, band_idx, offset, bands[band_idx][offset]);
-        }
-    }
-    */
-
-    //
-    // Backtrack to compute alignment
-    //
-    double sum_emission = 0;
-    double n_aligned_events = 0;
-    std::vector<AlignedPair> out;
-
-    float max_score = -INFINITY;
-    int curr_event_idx = 0;
-    int curr_kmer_idx = n_kmers -1;
-
-    // Find best score between an event and the last k-mer. after trimming the remaining evnets
-    for(int event_idx = 0; event_idx < n_events; ++event_idx) {
-        size_t band_idx = event_kmer_to_band(event_idx, curr_kmer_idx);
-        size_t offset = band_event_to_offset(band_idx, event_idx);
-        if(is_offset_valid(offset)) {
-            float s = BAND_ARRAY(band_idx,offset)  + (n_events - event_idx) * lp_trim;
-            if(s > max_score) {
-                max_score = s;
-                curr_event_idx = event_idx;
-            }
-        }
-    }
-
-#ifdef DEBUG_ADAPTIVE
-    fprintf(stderr, "[adaback] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_kmer_idx, max_score);
-#endif
-
-    int curr_gap = 0;
-    int max_gap = 0;
-    while(curr_kmer_idx >= 0 && curr_event_idx >= 0) {
-
-        // emit alignment
-        out.push_back({curr_kmer_idx, curr_event_idx});
-#ifdef DEBUG_ADAPTIVE
-        fprintf(stderr, "[adaback] ei: %d ki: %d\n", curr_event_idx, curr_kmer_idx);
-#endif
-        // qc stats
-        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_kmer_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
+    for(size_t i = 0; i < alignment.size(); ++i) {
+        size_t event_idx = alignment[i].read_pos;
+        size_t kmer_idx = alignment[i].ref_pos;
+        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(kmer_idx, k).c_str(), k);
+        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
         n_aligned_events += 1;
-
-        size_t band_idx = event_kmer_to_band(curr_event_idx, curr_kmer_idx);
-        size_t offset = band_event_to_offset(band_idx, curr_event_idx);
-        assert(band_kmer_to_offset(band_idx, curr_kmer_idx) == offset);
-
-        uint8_t from = TRACE_ARRAY(band_idx,offset);
-        if(from == FROM_D) {
-            curr_kmer_idx -= 1;
-            curr_event_idx -= 1;
-            curr_gap = 0;
-        } else if(from == FROM_U) {
-            curr_event_idx -= 1;
-            curr_gap = 0;
-        } else {
-            curr_kmer_idx -= 1;
-            curr_gap += 1;
-            max_gap = std::max(curr_gap, max_gap);
-        }
     }
-    std::reverse(out.begin(), out.end());
-    
-    // QC results
+
     double avg_log_emission = sum_emission / n_aligned_events;
-    bool spanned = out.front().ref_pos == 0 && out.back().ref_pos == n_kmers - 1;
-    
-    bool failed = false;
-    if(avg_log_emission < min_average_log_emission || !spanned || max_gap > max_gap_threshold) {
-        failed = true;
-        out.clear();
+    bool spanned = !alignment.empty() && alignment.front().ref_pos == 0 && alignment.back().ref_pos == sequence.length() - k;
+    bool passed = avg_log_emission > parameters.min_average_log_emission && spanned;
+    int first_aligned_kmer = !alignment.empty() ? alignment.front().read_pos : -1;
+    double events_per_kmer = 0.0f;
+    if(parameters.verbose) {
+        fprintf(stderr, "%s\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\n", short_name,
+            read.read_name.substr(0, 6).c_str(), passed ? "OK" : "FAILED", events_per_kmer, sequence.size(), avg_log_emission, first_aligned_kmer);
     }
-
-    free(bands);
-    free(trace);
-
-    //fprintf(stderr, "ada\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, max_gap, fills);
-    return out;
+    return passed;
 }
 
-std::vector<AlignedPair> banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence)
+//
+std::vector<AlignedPair> adaptive_banded_simple_event_align(SquiggleRead& read, const PoreModel& pore_model, const std::string& sequence, const AdaBandedParameters parameters)
+{
+    size_t strand_idx = 0;
+
+    AdaptiveBandedViterbi abv;
+    abv.initialize(read, sequence, pore_model.k, strand_idx, parameters);
+
+    generic_banded_simple_hmm(read, pore_model, sequence, parameters, abv);
+    std::vector<AlignedPair> alignment = adaptive_banded_backtrack(abv);
+
+    // qc
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, sequence, parameters, alignment, abv.get_short_name());
+
+    if(!qc_pass) {
+        alignment.clear();
+    }
+
+    return alignment;
+}
+
+//
+std::vector<AlignedPair> guide_banded_simple_event_align(SquiggleRead& read,
+                                                                 const PoreModel& pore_model,
+                                                                 const Haplotype& haplotype,
+                                                                 const EventAlignmentRecord& event_align_record,
+                                                                 const AdaBandedParameters parameters)
+{
+    size_t strand_idx = 0;
+    std::vector<AlignedPair> alignment;
+
+    EventBandedViterbi ebv;
+    ebv.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    if(!ebv.are_bands_continuous()) {
+        return alignment;
+    }
+
+    // fill in DP matrix
+    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebv);
+    alignment = adaptive_banded_backtrack(ebv);
+
+    // qc
+    bool qc_pass = qc_simple_event_alignment(read, pore_model, haplotype.get_sequence(), parameters, alignment, ebv.get_short_name());
+
+    if(!qc_pass) {
+        alignment.clear();
+    }
+
+    return alignment;
+}
+
+//
+std::vector<EventKmerPosterior> guide_banded_simple_posterior(SquiggleRead& read,
+                                                                      const PoreModel& pore_model,
+                                                                      const Haplotype& haplotype,
+                                                                      const EventAlignmentRecord& event_align_record,
+                                                                      const AdaBandedParameters parameters)
 {
     size_t strand_idx = 0;
     size_t k = pore_model.k;
+    std::vector<EventKmerPosterior> assignment;
     const Alphabet* alphabet = pore_model.pmalphabet;
 
-#if DEBUG_PRINT_STATS
-    // Build a debug event->kmer map
-    std::vector<size_t> kmer_for_event(read.events[strand_idx].size());
-    for(size_t ki = 0; ki < read.base_to_event_map.size(); ++ki) {
-        IndexPair& elem = read.base_to_event_map[ki].indices[0];
-        if(elem.start == -1) {
-            continue;
+    // Forward
+    EventBandedForward ebf;
+    ebf.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    if(!ebf.are_bands_continuous()) {
+        return assignment;
+    }
+
+    generic_banded_simple_hmm(read, pore_model, haplotype.get_sequence(), parameters, ebf);
+
+    // Backward
+    EventBandedForward ebb;
+    ebb.initialize(read, haplotype, event_align_record, pore_model.k, strand_idx, parameters);
+    assert(ebb.are_bands_continuous()); // if forward is OK backwards must be too
+    generic_banded_simple_hmm_backwards(read, pore_model, haplotype.get_sequence(), parameters, ebb);
+
+    float f = ebf.get_by_event_kmer(ebf.get_num_events(), ebf.get_num_kmers());
+    float b = ebb.get_by_event_kmer(-1, -1);
+
+    if(parameters.verbose) {
+        fprintf(stderr, "%s\t%s\t%s\t%.2f\t%zu\t%.2f\t%.8f\t%.8f\n", "ebf",
+            read.read_name.substr(0, 6).c_str(), "OK", (float)ebf.get_num_events() / ebf.get_num_kmers(), haplotype.get_sequence().length(), f / ebf.get_num_events(), f, b);
+    }
+
+
+    // Pass 1: calculate normalization term by event
+    std::vector<float> normalization(ebf.get_num_events(), -INFINITY);
+    for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
+        // trim start
+        int trim_event_idx = band_idx - 1;
+        float lp = ebf.get_by_event_kmer(trim_event_idx, -1) + ebb.get_by_event_kmer(trim_event_idx, -1) - f;
+        normalization[trim_event_idx] = logsumexpf(normalization[trim_event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+        fprintf(stderr, "[normalization] %d %d %.8f %.8f\n", trim_event_idx, -1, lp, normalization[trim_event_idx]);
+#endif
+        // normal event, kmer pairs
+        int min_offset, max_offset;
+        ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
+        for(int offset = min_offset; offset < max_offset; ++offset) {
+            int event_idx = ebf.get_event_at_band_offset(band_idx, offset);
+            int kmer_idx = ebf.get_kmer_at_band_offset(band_idx, offset);
+            float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
+            float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
+            lp = fke + bke - f;
+            normalization[event_idx] = logsumexpf(normalization[event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+            fprintf(stderr, "[normalization] %d %d %.8f %.8f %.8f %.8f %.8f %.8f %.8f\n", event_idx, kmer_idx, fke, bke, fke + bke, f, lp, expf(lp), normalization[event_idx]);
+#endif
         }
 
-        for(int j = elem.start; j <= elem.stop; ++j) {
-            if(j >= 0 && j < kmer_for_event.size()) {
-                kmer_for_event[j] = ki;
+        // trim end
+        int trim_end_kmer_idx = ebf.get_num_kmers();
+        lp = ebf.get_by_event_kmer(trim_event_idx, trim_end_kmer_idx) + ebb.get_by_event_kmer(trim_event_idx, trim_end_kmer_idx) - f;
+        normalization[trim_event_idx] = logsumexpf(normalization[trim_event_idx], lp);
+#ifdef DEBUG_POSTERIOR_NORMALIZATION
+        fprintf(stderr, "[normalization] %d %d %.8f %.8f\n", trim_event_idx, ebf.get_num_kmers(), lp, normalization[trim_event_idx]);
+#endif
+    }
+
+    // Pass 2: calculate posteriors
+    float log_min_posterior = log(parameters.min_posterior);
+    for(size_t band_idx = 1; band_idx < ebf.get_num_bands() - 1; ++band_idx) {
+        int min_offset, max_offset;
+        ebf.get_offset_range_for_band(band_idx, min_offset, max_offset);
+        for(int offset = min_offset; offset < max_offset; ++offset) {
+            int event_idx = ebf.get_event_at_band_offset(band_idx, offset);
+            int kmer_idx = ebf.get_kmer_at_band_offset(band_idx, offset);
+
+            float fke = ebf.get_by_event_kmer(event_idx, kmer_idx);
+            float bke = ebb.get_by_event_kmer(event_idx, kmer_idx);
+            float n = normalization[event_idx];
+            float log_w = fke + bke - f - n;
+            EventKmerPosterior ekp = { event_idx, kmer_idx, log_w };
+            if(log_w > log_min_posterior) {
+                assignment.push_back(ekp);
+                /*
+                std::string kmer = haplotype.get_sequence().substr(ekp.kmer_idx, k);
+                size_t kmer_rank = alphabet->kmer_rank(kmer.c_str(), k);
+                fprintf(stderr, "[posterior] %d %d %s %.8f %.2f %.2f\n",
+                    ekp.event_idx, ekp.kmer_idx, kmer.c_str(), exp(log_w), read.get_fully_scaled_level(event_idx, strand_idx), pore_model.states[kmer_rank].level_mean);
+                //fprintf(stderr, "[posterior] \t(%.2lf %.2lf %.8lf %.8lf %.8lf)\n", fke, bke, fke + bke, n, fke + bke - n);
+                */
             }
         }
     }
-#endif
 
-    const uint8_t FROM_D = 0;
-    const uint8_t FROM_U = 1;
-    const uint8_t FROM_L = 2;
-    
-    // qc
-    double min_average_log_emission = -5.0;
-
-    // banding
-    int bandwidth = 1000;
-    int half_band = bandwidth / 2;
-
-    // transitions
-    double lp_skip = log(0.001);
-    double lp_stay = log(0.5);
-    double lp_step = log(1.0 - exp(lp_skip) - exp(lp_stay));
-    double lp_trim = log(0.1);
-
-    size_t n_events = read.events[strand_idx].size();
-    size_t n_kmers = sequence.size() - k + 1;
-
-    // Calculate the minimum event index that is within the band for each read kmer
-    // We determine this using the expected number of events observed per kmer
-    double events_per_kmer = (double)n_events / n_kmers;
-    std::vector<int> min_event_idx_by_kmer(n_kmers);
-    for(size_t ki = 0; ki < n_kmers; ++ki) {
-        int expected_event_idx = (double)(ki * events_per_kmer);
-        min_event_idx_by_kmer[ki] = std::max(expected_event_idx - half_band, 0);
-    }
-    // Initialize DP matrices
-    DoubleMatrix viterbi_matrix;
-    UInt8Matrix backtrack_matrix;
-
-    size_t n_rows = bandwidth;
-    size_t n_cols = n_kmers + 1;
-    allocate_matrix(viterbi_matrix, n_rows, n_cols);
-    allocate_matrix(backtrack_matrix, n_rows, n_cols);
-
-    for(size_t i = 0; i < n_cols; ++i) {
-        set(viterbi_matrix, 0, i, -INFINITY);
-        set(backtrack_matrix, 0, i, 0);
-    }
-
-    for(size_t i = 0; i < bandwidth; ++i) {
-        set(viterbi_matrix, i, 0, i * lp_trim);
-        set(backtrack_matrix, i, 0, 0);
-    }
-
-    // Fill in the matrix
-    int fills = 0;
-    for(int col = 1; col < n_cols; ++col) {
-        int kmer_idx = col - 1;
-        int min_event_idx = min_event_idx_by_kmer[kmer_idx];
-        int min_event_idx_prev_col = kmer_idx > 0 ? min_event_idx_by_kmer[kmer_idx - 1] : 0;
-        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(kmer_idx, k).c_str(), k);
-
-        for(int row = 0; row < n_rows; ++row) {
-            
-            int event_idx = min_event_idx + row;
-            if(event_idx >= n_events) {
-                set(viterbi_matrix, row, col, -INFINITY);
-                continue;
-            }
-
-            // dp update
-            // here we are calculating whether the event for each neighboring cell is within the band
-            // and calculating its position within the column
-            int row_up = event_idx - min_event_idx - 1;
-            int row_diag = event_idx - min_event_idx_prev_col - 1;
-            int row_left = event_idx - min_event_idx_prev_col;
-
-            double up = row_up >= 0 && row_up < n_rows ?        get(viterbi_matrix, row_up, col) : -INFINITY;
-            double diag = row_diag >= 0 && row_diag < n_rows ?  get(viterbi_matrix, row_diag, col - 1) : -INFINITY;
-            double left = row_left >= 0 && row_left < n_rows ?  get(viterbi_matrix, row_left, col - 1) : -INFINITY;
-            
-            float lp_emission = log_probability_match_r9(read, pore_model, kmer_rank, event_idx, strand_idx);
-     
-            double score_d = diag + lp_step + lp_emission;
-            double score_u = up + lp_stay + lp_emission;
-            double score_l = left + (kmer_idx > 0 ? lp_skip : lp_step + lp_emission);
-
-            double max_score = score_d;
-            uint8_t from = FROM_D;
-
-            max_score = score_u > max_score ? score_u : max_score;
-            from = max_score == score_u ? FROM_U : from;
-            
-            max_score = score_l > max_score ? score_l : max_score;
-            from = max_score == score_l ? FROM_L : from;
-     
-            //fprintf(stderr, "[orgfill] up: %.2lf diag: %.2lf left: %.2lf\n", up, diag, left);
-#ifdef DEBUG_BANDED
-            fprintf(stderr, "[orgfill] e: %d k: %d s: %.2lf f: %d emit: %.2lf\n", event_idx, kmer_idx, max_score, from, lp_emission);
-#endif
-            set(viterbi_matrix, row, col, max_score);
-            set(backtrack_matrix, row, col, from);
-            fills += 1;
-        }
-    }
-
-    // Backtrack
-
-    // Initialize by finding best alignment between an event and the last kmer
-    int curr_k_idx = n_kmers - 1;
-    int curr_event_idx = 0;
-    double max_score = -INFINITY;
-    for(size_t row = 0; row < n_rows; ++row) {
-        size_t col = curr_k_idx + 1;
-        int ei = row + min_event_idx_by_kmer[curr_k_idx];
-        double s = get(viterbi_matrix, row, col) + (n_events - ei - 1) * lp_trim;
-        if(s > max_score && ei < n_events) {
-            max_score = s;
-            curr_event_idx = ei;
-        }
-    }
-#ifdef DEBUG_BANDED
-    fprintf(stderr, "[orgback] ei: %d ki: %d s: %.2f\n", curr_event_idx, curr_k_idx, max_score);
-#endif
-
-    // debug stats
-    double sum_emission = 0;
-    double n_aligned_events = 0;
-    std::vector<AlignedPair> out;
-
-#if DEBUG_PRINT_STATS
-    int sum_distance_from_debug = 0;
-    int max_distance_from_debug = 0;
-    int num_exact_matches = 0;
-    int max_distance_from_expected = 0;
-    int sum_distance_from_expected = 0;
-    std::vector<int> debug_event_for_kmer(n_kmers, -1);
-#endif
-
-    while(curr_k_idx >= 0) {
-        // emit alignment
-        out.push_back({curr_k_idx, curr_event_idx});
-#ifdef DEBUG_BANDED
-        fprintf(stderr, "[orgback] ei: %d ki: %d\n", curr_event_idx, curr_k_idx);
-#endif
-        
-        size_t kmer_rank = alphabet->kmer_rank(sequence.substr(curr_k_idx, k).c_str(), k);
-        sum_emission += log_probability_match_r9(read, pore_model, kmer_rank, curr_event_idx, strand_idx);
-        n_aligned_events += 1;
-
-#if DEBUG_PRINT_STATS
-        // update debug stats
-        debug_event_for_kmer[curr_k_idx] = curr_event_idx;
-        
-        int kd = abs(curr_k_idx - kmer_for_event[curr_event_idx]);
-        sum_distance_from_debug += kd;
-        max_distance_from_debug = std::max(kd, max_distance_from_debug);
-        num_exact_matches += curr_k_idx == kmer_for_event[curr_event_idx];
-
-        int expected_event = (double)(curr_k_idx * events_per_kmer);
-        int ed = curr_event_idx - expected_event;
-        max_distance_from_expected = std::max(abs(ed), max_distance_from_expected);
-        sum_distance_from_expected += ed;
-#endif
-
-        // update indices using backtrack pointers
-        int row = curr_event_idx - min_event_idx_by_kmer[curr_k_idx];
-        int col = curr_k_idx + 1;
-
-        uint8_t from = get(backtrack_matrix, row, col);
-        if(from == FROM_D) {
-            curr_k_idx -= 1;
-            curr_event_idx -= 1;
-        } else if(from == FROM_U) {
-            curr_event_idx -= 1;
-        } else {
-            curr_k_idx -= 1;
-        }   
-    }
-    std::reverse(out.begin(), out.end());
-
-#if DEBUG_PRINT_MATRIX
-    // Columm-wise debugging
-    for(size_t ci = 1; ci < n_cols; ++ci) {
-        size_t curr_k_idx = ci - 1;
-        size_t expected_event = (double)(curr_k_idx * events_per_kmer);
-
-        // Find the maximum value in this column
-        double max_row = -INFINITY;
-        size_t max_event_idx = 0;
-
-        std::stringstream debug_out;
-        for(size_t ri = 0; ri < n_rows; ++ri) {
-            size_t curr_event_idx = ri + min_event_idx_by_kmer[curr_k_idx];
-            double s = get(viterbi_matrix, ri, ci);
-            if(s > max_row) {
-                max_row = s;
-                max_event_idx = curr_event_idx;
-            }
-            debug_out << s << ",";
-        }
-
-        std::string debug_str = debug_out.str();
-        fprintf(stderr, "DEBUG_MATRIX\t%s\n", debug_str.substr(0, debug_str.size() - 1).c_str());
-
-        size_t aligned_event = debug_event_for_kmer[curr_k_idx];
-        fprintf(stderr, "DEBUG BAND: k: %zu ee: %zu me: %zu ae: %zu d: %d\n", 
-            curr_k_idx, expected_event, max_event_idx, aligned_event, (int)max_event_idx - (int)aligned_event); 
-    }
-#endif
-
-    // QC results
-    double avg_log_emission = sum_emission / n_aligned_events;
-    bool spanned = out.front().ref_pos == 0 && out.back().ref_pos == n_kmers - 1;
-    
-    bool failed = false;
-    if(avg_log_emission < min_average_log_emission || !spanned) {
-        failed = true;
-        out.clear();
-    }
-    //fprintf(stderr, "org\t%s\t%s\t%.2lf\t%zu\t%.2lf\t%d\t%d\n", read.read_name.substr(0, 6).c_str(), failed ? "FAILED" : "OK", events_per_kmer, sequence.size(), avg_log_emission, curr_event_idx, fills);
-    
-#if DEBUG_PRINT_STATS
-    fprintf(stderr, "events per base: %.2lf\n", events_per_kmer);
-    fprintf(stderr, "truth stats -- avg: %.2lf max: %d exact: %d\n", (double)sum_distance_from_debug / n_kmers, max_distance_from_debug, num_exact_matches);
-    fprintf(stderr, "event stats -- avg: %.2lf max: %d\n", (double)sum_distance_from_expected / n_events, max_distance_from_expected);
-    fprintf(stderr, "emission stats -- avg: %.2lf\n", sum_emission / n_aligned_events);
-#endif
-    free_matrix(viterbi_matrix);
-    free_matrix(backtrack_matrix);
-    return out;
+    return assignment;
 }

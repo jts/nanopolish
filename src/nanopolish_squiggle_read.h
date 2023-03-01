@@ -24,6 +24,7 @@ enum PoreType
     PORETYPE_UNKNOWN = 0,
     PORETYPE_R7,
     PORETYPE_R9,
+    PORETYPE_R10,
 };
 
 // the type of the read

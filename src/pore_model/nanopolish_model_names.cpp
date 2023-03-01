@@ -14,7 +14,7 @@
 
 static std::string strand_by_idx[] = { "template", "complement.pop1", "complement.pop2" };
 static std::string short_strand_by_idx[] = { "t", "c.p1", "c.p2" };
-static std::string kit_name_by_idx[] = { "SQK005", "SQK006", "r9_250bps", "r9.4_450bps", "r9.4_70bps" };
+static std::string kit_name_by_idx[] = { "SQK005", "SQK006", "r9_250bps", "r9.4_450bps", "r9.4_70bps", "r10.4_400bps" };
 
 static std::map< std::string, ModelMetadata > known_models = {
 

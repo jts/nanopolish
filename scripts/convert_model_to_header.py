@@ -54,8 +54,12 @@ for ki, t in enumerate(model):
 
     is_last = ki == len(model) - 1
     sep = ',' if not is_last else ''
-
-    print("\t\t%.5f, %.5f, %.5f, %.5f%s // %s" % (float(t[1]), float(t[2]), float(t[3]), float(t[4]), sep, t[0]))
+    sd_mean = 0.0
+    sd_stdv = 0.0
+    if len(t) >= 5:
+        sd_mean = float(t[3])
+        sd_stdv = float(t[4])
+    print("\t\t%.5f, %.5f, %.5f, %.5f%s // %s" % (float(t[1]), float(t[2]), sd_mean, sd_stdv, sep, t[0]))
 print("};")
 
 print("PoreModel %s()\n{" % args.function_name)

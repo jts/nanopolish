@@ -26,4 +26,7 @@ void write_bam_vardata(bam1_t* record,
                        const std::string& qual,
                        size_t aux_reserve = 0);
 
+// return the sequence of the read as a C++ string
+std::string bam_get_seq_str(const bam1_t* record);
+
 #endif
