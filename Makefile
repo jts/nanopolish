@@ -51,7 +51,7 @@ ifneq (,$(findstring aarch64,$(MACHINE)))
 endif
 
 ifeq ($(MAC), 1)
-    HDF5_VERSION ?= 1.13.0
+    HDF5_VERSION ?= 1.13.3
 else
     HDF5_VERSION ?= 1.8.14
 endif

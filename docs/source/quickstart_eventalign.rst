@@ -21,7 +21,7 @@ Download example dataset
 
 You can download the example dataset we will use here: ::
 
-    wget http://s3.climb.ac.uk/nanopolish_tutorial/ecoli_2kb_region.tar.gz
+    wget http://warwick.s3.climb.ac.uk/nanopolish_tutorial/ecoli_2kb_region.tar.gz
     tar -xvf ecoli_2kb_region.tar.gz
     cd ecoli_2kb_region
 
