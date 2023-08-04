@@ -10,6 +10,8 @@ Software package for signal-level analysis of Oxford Nanopore sequencing data. N
 Presently nanopolish does not support R10.4 flowcells as variant and methylation calling is accurate enough to not require signal-level analysis. We intend to support signal exploration through `eventalign` but do not currently have a timeline for this as our development time is currently dedicated to other projects.
 
 ## Release notes
+* 0.14.1: added the `compare_methylation.py` script from the [methylation example data bundle](warwick.s3.climb.ac.uk/nanopolish_tutorial/methylation_example.tar.gz) to the `nanopolish` package
+
 * 0.14.0: support modification bam files, compile on M1 apple hardware, support [SLOW5](https://github.com/hasindu2008/slow5lib) files
 
 * 0.13.3: fix conda build issues, better handling of VBZ-compressed files, integration of module for [nano-COP](https://www.nature.com/articles/s41596-020-00469-y)
@@ -154,3 +156,10 @@ docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish event
 ## Credits and Thanks
 
 The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/). Nanopolish also includes code from Oxford Nanopore's [scrappie](https://github.com/nanoporetech/scrappie) basecaller. This code is licensed under the MPL.
+
+The `scripts/compare_methylation.py` was originally provided in the [example methylation data bundle](warwick.s3.climb.ac.uk/nanopolish_tutorial/methylation_example.tar.gz) which was obtained using:
+```
+curl -O warwick.s3.climb.ac.uk/nanopolish_tutorial/methylation_example.tar.gz
+tar xvfz methylation_example.tar.gz
+ls methylation_example/compare_methylation.py
+```
