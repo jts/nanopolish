@@ -1,6 +1,6 @@
 # Nanopolish
 
-[![Build Status](https://travis-ci.org/jts/nanopolish.svg?branch=master)](https://travis-ci.org/jts/nanopolish)
+![build and test](https://github.com/jts/nanopolish/actions/workflows/nanopolish.yaml/badge.svg)
 
 Software package for signal-level analysis of Oxford Nanopore sequencing data. Nanopolish can calculate an improved consensus sequence for a draft genome assembly, detect base modifications, call SNPs and indels with respect to a reference genome and more (see Nanopolish modules, below).
 
