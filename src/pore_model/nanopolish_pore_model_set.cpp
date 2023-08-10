@@ -127,6 +127,16 @@ const PoreModel* PoreModelSet::get_model_by_key(const std::string& key)
     }
 }
 
+std::vector<const PoreModel*> PoreModelSet::get_all_models()
+{
+    PoreModelSet& model_set = getInstance();
+    std::vector<const PoreModel*> out;
+    for(auto& iter : model_set.model_map) {
+        out.push_back(iter.second);       
+    }
+    return out;
+}
+
 //
 std::map<std::string, PoreModel> PoreModelSet::copy_strand_models(const std::string& kit_name,
                                                                   const std::string& alphabet,
