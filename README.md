@@ -153,6 +153,14 @@ Then you can run nanopolish from the image:
 docker run -v /path/to/local/data/data/:/data/ -it :image_id  ./nanopolish eventalign -r /data/reads.fa -b /data/alignments.sorted.bam -g /data/ref.fa
 ```
 
+## GPU acceleration
+
+The nanopolish consensus improvement algorithm can be performed faster using CUDA-enabled GPU acceleration. This is an experimental feature, to try this feature run with the `--gpu=1` flag e.g:
+```
+nanopolish variants --consensus polished_gpu.fa -w "tig00000001:200000-230000" -r reads.fasta -b reads.sorted.bam -g draft.fa --threads=8 --gpu=1
+```
+Note that this feature requires nanopolish to be compiled with `make cuda=1`. You should have the [CUDA toolkit installed and configured](https://docs.nvidia.com/cuda/cuda-quick-start-guide/). If your CUDA installation is not in the default location, you can provide the path to make as `make cuda=1 NVCC=/path/to/nvidia_c_compiler CUDA_LIB=/path/to/cuda/lib CUDA_INCLUDE=/path/to/cuda/include`.
+
 ## Credits and Thanks
 
 The fast table-driven logsum implementation was provided by Sean Eddy as public domain code. This code was originally part of [hmmer3](http://hmmer.janelia.org/). Nanopolish also includes code from Oxford Nanopore's [scrappie](https://github.com/nanoporetech/scrappie) basecaller. This code is licensed under the MPL.
